@@ -13,6 +13,12 @@ const config = JSON.parse(original)
 config.documentRoot = '/'
 config.url = 'http://localhost:5173'
 
+// Enforce minimum window size
+config.modes.window.width = Math.max(config.modes.window.width, 1280)
+config.modes.window.height = Math.max(config.modes.window.height, 720)
+config.modes.window.minWidth = 1280
+config.modes.window.minHeight = 720
+
 writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n')
 
 const restore = () => {

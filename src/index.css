@@ -5,41 +5,41 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --color-ink-black-50: #9ed8ff;
-  --color-ink-black-100: #3db1ff;
-  --color-ink-black-200: #0084db;
-  --color-ink-black-300: #00497a;
-  --color-ink-black-400: #00111c;
-  --color-ink-black-500: #000c14;
-  --color-ink-black-600: #00090f;
-  --color-ink-black-700: #00060a;
-  --color-ink-black-800: #000305;
-  --color-ink-black: #00111c;
+  --color-deep-purple-50: #ebc1eb;
+  --color-deep-purple-100: #d784d7;
+  --color-deep-purple-200: #c346c3;
+  --color-deep-purple-300: #8b2d8b;
+  --color-deep-purple-400: #4d194d;
+  --color-deep-purple-500: #3e143e;
+  --color-deep-purple-600: #2e0f2e;
+  --color-deep-purple-700: #1f0a1f;
+  --color-deep-purple-800: #0f050f;
+  --color-deep-purple: #4d194d;
 
-  --color-deep-space-50: #a8dbff;
-  --color-deep-space-100: #52b7ff;
-  --color-deep-space-200: #0092fa;
-  --color-deep-space-300: #005fa3;
-  --color-deep-space-400: #002e4e;
-  --color-deep-space-500: #00243d;
-  --color-deep-space-600: #001b2e;
-  --color-deep-space-700: #00121f;
-  --color-deep-space-800: #00090f;
-  --color-deep-space: #002e4e;
+  --color-space-indigo-50: #cdcce0;
+  --color-space-indigo-100: #9a99c2;
+  --color-space-indigo-200: #6866a3;
+  --color-space-indigo-300: #464573;
+  --color-space-indigo-400: #272640;
+  --color-space-indigo-500: #1f1f33;
+  --color-space-indigo-600: #171726;
+  --color-space-indigo-700: #100f1a;
+  --color-space-indigo-800: #08080d;
+  --color-space-indigo: #272640;
 
-  --color-yale-blue-50: #acdeff;
-  --color-yale-blue-100: #5ebfff;
-  --color-yale-blue-200: #0d9eff;
-  --color-yale-blue-300: #0071bc;
-  --color-yale-blue-400: #00406c;
-  --color-yale-blue-500: #003356;
-  --color-yale-blue-600: #002a45;
-  --color-yale-blue-700: #001f34;
-  --color-yale-blue-800: #001523;
-  --color-yale-blue-900: #000a11;
-  --color-yale-blue: #003a61;
+  --color-stormy-teal-50: #adfeff;
+  --color-stormy-teal-100: #5cfcff;
+  --color-stormy-teal-200: #0afbff;
+  --color-stormy-teal-300: #00b5b8;
+  --color-stormy-teal-400: #006466;
+  --color-stormy-teal-500: #005052;
+  --color-stormy-teal-600: #003c3d;
+  --color-stormy-teal-700: #002829;
+  --color-stormy-teal-800: #001414;
+  --color-stormy-teal-900: #000a0a;
+  --color-stormy-teal: #006466;
 }
 
 .react-flow {
-  --xy-background-color: #00111c;
+  --xy-background-color: #0f050f;
 }

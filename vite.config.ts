@@ -8,4 +8,13 @@ export default defineConfig({
   build: {
     outDir: 'dist',
   },
+  server: {
+    proxy: {
+      '/llm': {
+        target: 'http://server:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/llm/, ''),
+      },
+    },
+  },
 })

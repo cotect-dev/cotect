@@ -1,6 +1,7 @@
-import { Card, CardBody, Input } from '@heroui/react'
+import { Card, CardBody } from '@heroui/react'
 import { useLayoutStore } from '../../store'
 import ResizeHandle from '../ResizeHandle'
+import Chat from '../Chat'
 
 export default function RightPanel() {
   const rightPanelWidth = useLayoutStore((s) => s.rightPanelWidth)
@@ -12,8 +13,8 @@ export default function RightPanel() {
     >
       <ResizeHandle />
       <Card className="h-full">
-        <CardBody>
-          <Input label="Test" placeholder="Type something..." />
+        <CardBody className="p-3 overflow-hidden">
+          <Chat />
         </CardBody>
       </Card>
     </div>

@@ -33,7 +33,7 @@ export default function ResizeHandle() {
   return (
     <div
       onMouseDown={onMouseDown}
-      className="absolute left-0 top-4 bottom-4 w-1.5 z-50 rounded-lg cursor-col-resize hover:bg-yale-blue/40 active:bg-yale-blue/60 transition-colors"
+      className="absolute left-0 top-4 bottom-4 w-1.5 z-50 rounded-lg cursor-col-resize hover:bg-stormy-teal/40 active:bg-stormy-teal/60 transition-colors"
     />
   )
 }

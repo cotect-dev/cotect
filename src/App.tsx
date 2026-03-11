@@ -5,6 +5,7 @@ function App() {
   useEffect(() => {
     if (window.Neutralino) {
       window.Neutralino.init()
+      window.Neutralino.window.setSize({ minWidth: 1280, minHeight: 720 })
     }
   }, [])
 
