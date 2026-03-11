@@ -1,1 +1,45 @@
 @import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+@source '../node_modules/@heroui/theme/dist/**/*.{js,ts}';
+@plugin "../heroui.plugin.ts";
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-ink-black-50: #9ed8ff;
+  --color-ink-black-100: #3db1ff;
+  --color-ink-black-200: #0084db;
+  --color-ink-black-300: #00497a;
+  --color-ink-black-400: #00111c;
+  --color-ink-black-500: #000c14;
+  --color-ink-black-600: #00090f;
+  --color-ink-black-700: #00060a;
+  --color-ink-black-800: #000305;
+  --color-ink-black: #00111c;
+
+  --color-deep-space-50: #a8dbff;
+  --color-deep-space-100: #52b7ff;
+  --color-deep-space-200: #0092fa;
+  --color-deep-space-300: #005fa3;
+  --color-deep-space-400: #002e4e;
+  --color-deep-space-500: #00243d;
+  --color-deep-space-600: #001b2e;
+  --color-deep-space-700: #00121f;
+  --color-deep-space-800: #00090f;
+  --color-deep-space: #002e4e;
+
+  --color-yale-blue-50: #acdeff;
+  --color-yale-blue-100: #5ebfff;
+  --color-yale-blue-200: #0d9eff;
+  --color-yale-blue-300: #0071bc;
+  --color-yale-blue-400: #00406c;
+  --color-yale-blue-500: #003356;
+  --color-yale-blue-600: #002a45;
+  --color-yale-blue-700: #001f34;
+  --color-yale-blue-800: #001523;
+  --color-yale-blue-900: #000a11;
+  --color-yale-blue: #003a61;
+}
+
+.react-flow {
+  --xy-background-color: #00111c;
+}

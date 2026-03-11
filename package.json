@@ -15,9 +15,13 @@
     "neu:build": "yarn build && neu build"
   },
   "dependencies": {
+    "@heroui/react": "^2.8.10",
     "@neutralinojs/lib": "^6.5.0",
+    "@xyflow/react": "^12.10.1",
+    "framer-motion": "^12.35.2",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
