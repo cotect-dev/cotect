@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import {
   ReactFlow,
   Background,
@@ -6,21 +5,12 @@ import {
   Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useCanvasStore, useLayoutStore } from '../store'
+import { useCanvasStore } from '../store'
 import Layout from '../components/Layout'
 
 export default function Canvas() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect } =
     useCanvasStore()
-
-  useEffect(() => {
-    const onResize = () => {
-      const { rightPanelWidth, setRightPanelWidth } = useLayoutStore.getState()
-      setRightPanelWidth(rightPanelWidth)
-    }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
 
   return (
     <div className="dark w-screen h-screen text-foreground bg-background">

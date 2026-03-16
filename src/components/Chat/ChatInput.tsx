@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react'
-import { Button, Textarea, Tooltip } from '@heroui/react'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { useChatStore, sendMessage } from '../../store/chat'
 
 export default function ChatInput() {
@@ -7,9 +9,15 @@ export default function ChatInput() {
   const isGenerating = useChatStore((s) => s.isGenerating)
   const abortController = useChatStore((s) => s.abortController)
   const thinkingEnabled = useChatStore((s) => s.thinkingEnabled)
+  const model = useChatStore((s) => s.model)
+  const setModel = useChatStore((s) => s.setModel)
   const clearMessages = useChatStore((s) => s.clearMessages)
   const setThinkingEnabled = useChatStore((s) => s.setThinkingEnabled)
   const hasMessages = useChatStore((s) => s.messages.length > 0)
+
+  const toggleModel = useCallback(() => {
+    setModel(model === 'qwen1' ? 'qwen2' : 'qwen1')
+  }, [model, setModel])
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim()
@@ -35,51 +43,64 @@ export default function ChatInput() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-1 items-center">
-        <Tooltip content={thinkingEnabled ? 'Thinking enabled' : 'Thinking disabled'} size="sm">
-          <Button
-            size="sm"
-            variant={thinkingEnabled ? 'flat' : 'light'}
-            color={thinkingEnabled ? 'primary' : 'default'}
-            onPress={() => setThinkingEnabled(!thinkingEnabled)}
-            className="min-w-0 px-2 text-xs"
-          >
-            {thinkingEnabled ? 'Think' : 'No think'}
-          </Button>
-        </Tooltip>
-        {hasMessages && (
-          <Tooltip content="Clear chat" size="sm">
+        <Tooltip>
+          <TooltipTrigger render={
             <Button
               size="sm"
-              variant="light"
-              color="danger"
-              onPress={clearMessages}
-              isDisabled={isGenerating}
+              variant="secondary"
+              onClick={toggleModel}
+              disabled={isGenerating}
+              className="min-w-0 px-2 text-xs font-mono"
+            />
+          }>
+            {model}
+          </TooltipTrigger>
+          <TooltipContent>{`Model: ${model}`}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger render={
+            <Button
+              size="sm"
+              variant={thinkingEnabled ? 'secondary' : 'ghost'}
+              onClick={() => setThinkingEnabled(!thinkingEnabled)}
               className="min-w-0 px-2 text-xs"
-            >
+            />
+          }>
+            {thinkingEnabled ? 'Think' : 'No think'}
+          </TooltipTrigger>
+          <TooltipContent>{thinkingEnabled ? 'Thinking enabled' : 'Thinking disabled'}</TooltipContent>
+        </Tooltip>
+        {hasMessages && (
+          <Tooltip>
+            <TooltipTrigger render={
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={clearMessages}
+                disabled={isGenerating}
+                className="min-w-0 px-2 text-xs"
+              />
+            }>
               Clear
-            </Button>
+            </TooltipTrigger>
+            <TooltipContent>Clear chat</TooltipContent>
           </Tooltip>
         )}
       </div>
       <div className="flex gap-2 items-end">
         <Textarea
           value={text}
-          onValueChange={setText}
+          onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Send a message..."
-          minRows={1}
-          maxRows={6}
-          classNames={{
-            inputWrapper: 'bg-default-50',
-          }}
-          className="flex-1"
+          rows={1}
+          className="flex-1 min-h-0 resize-none bg-muted"
         />
         {isGenerating ? (
           <Button
             size="sm"
-            color="danger"
-            variant="flat"
-            onPress={handleStop}
+            variant="destructive"
+            onClick={handleStop}
             className="shrink-0"
           >
             Stop
@@ -87,9 +108,8 @@ export default function ChatInput() {
         ) : (
           <Button
             size="sm"
-            color="primary"
-            onPress={handleSend}
-            isDisabled={!text.trim()}
+            onClick={handleSend}
+            disabled={!text.trim()}
             className="shrink-0"
           >
             Send

@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+export type ModelId = 'qwen1' | 'qwen2'
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -9,17 +11,22 @@ export interface Message {
   thinkingDurationMs?: number
   isThinking?: boolean
   isStreaming?: boolean
+  totalTokens?: number
+  durationMs?: number
+  model?: ModelId
 }
 
 interface ChatState {
   messages: Message[]
   isGenerating: boolean
   thinkingEnabled: boolean
+  model: ModelId
   abortController: AbortController | null
   addMessage: (msg: Message) => void
   updateMessage: (id: string, update: Partial<Message>) => void
   setGenerating: (v: boolean) => void
   setThinkingEnabled: (v: boolean) => void
+  setModel: (m: ModelId) => void
   setAbortController: (c: AbortController | null) => void
   clearMessages: () => void
 }
@@ -28,6 +35,7 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   isGenerating: false,
   thinkingEnabled: true,
+  model: 'qwen1',
   abortController: null,
   addMessage: (msg) =>
     set((s) => ({ messages: [...s.messages, msg] })),
@@ -39,6 +47,7 @@ export const useChatStore = create<ChatState>((set) => ({
     })),
   setGenerating: (isGenerating) => set({ isGenerating }),
   setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),
+  setModel: (model) => set({ model }),
   setAbortController: (abortController) => set({ abortController }),
   clearMessages: () => set({ messages: [] }),
 }))
@@ -75,9 +84,11 @@ export async function sendMessage(content: string) {
   let inThinkTag = false
   let thinkingTokens = 0
   let thinkingStartTime: number | null = null
+  let totalTokens = 0
+  let streamStartTime: number | null = null
 
   try {
-    const { thinkingEnabled } = useChatStore.getState()
+    const { thinkingEnabled, model } = useChatStore.getState()
     const chatMessages = useChatStore.getState().messages
       .filter((m) => !m.isStreaming)
       .map((m) => ({ role: m.role, content: m.content }))
@@ -93,14 +104,15 @@ export async function sendMessage(content: string) {
       headers: { 'Content-Type': 'application/json' },
       signal: abort.signal,
       body: JSON.stringify({
-        model: 'qwen3.5-35b-a3b',
+        model,
         messages,
         stream: true,
-        temperature: thinkingEnabled ? 0.6 : 0.7,
+        temperature: 0.5,
         top_p: thinkingEnabled ? 0.95 : 0.8,
         top_k: 20,
         min_p: 0,
-        presence_penalty: 1.5,
+        repetition_penalty: 1.2,
+        repeat_last_n: 1024,
         chat_template_kwargs: { enable_thinking: thinkingEnabled },
       }),
     })
@@ -135,6 +147,12 @@ export async function sendMessage(content: string) {
 
           const text: string = delta.content || ''
           const reasoning: string = delta.reasoning_content || ''
+
+          // Count each chunk as a token
+          if (reasoning || text) {
+            if (!streamStartTime) streamStartTime = Date.now()
+            totalTokens++
+          }
 
           // Handle reasoning_content field (some APIs)
           if (reasoning) {
@@ -194,12 +212,16 @@ export async function sendMessage(content: string) {
             rawStream = ''
           }
 
+          const elapsed = streamStartTime ? Date.now() - streamStartTime : 0
           store.updateMessage(assistantMsg.id, {
             content: accContent,
             thinking: accThinking,
             thinkingTokens,
             thinkingDurationMs: thinkingStartTime ? Date.now() - thinkingStartTime : 0,
             isThinking: inThinkTag,
+            totalTokens,
+            durationMs: elapsed,
+            model,
           })
         } catch {
           // skip malformed chunks

@@ -31,7 +31,7 @@ function Markdown({ text, className = '' }: { text: string; className?: string }
               )
             }
             return (
-              <code className="bg-default-200 rounded px-1 py-0.5 text-xs" {...props}>
+              <code className="bg-accent rounded px-1 py-0.5 text-xs" {...props}>
                 {children}
               </code>
             )
@@ -65,7 +65,7 @@ function ThinkingBlock({ message }: { message: Message }) {
     <div className="mb-1">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-xs text-default-500 hover:text-default-700 transition-colors py-1"
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
       >
         <span
           className="transition-transform text-[0.5rem]"
@@ -79,7 +79,7 @@ function ThinkingBlock({ message }: { message: Message }) {
         {label}
       </button>
       {open && (
-        <div className="pl-2 border-l-2 border-default-300 text-default-500 max-h-64 overflow-y-auto">
+        <div className="pl-2 border-l-2 border-border text-muted-foreground max-h-64 overflow-y-auto">
           {isThinking ? (
             <div className="text-xs whitespace-pre-wrap opacity-75">{thinking}</div>
           ) : (
@@ -94,6 +94,26 @@ function ThinkingBlock({ message }: { message: Message }) {
   )
 }
 
+function StreamStats({ message }: { message: Message }) {
+  const { totalTokens = 0, durationMs = 0, isStreaming, model } = message
+  if (!totalTokens && !isStreaming) return null
+
+  const seconds = durationMs / 1000
+  const tokPerSec = seconds > 0 ? (totalTokens / seconds).toFixed(1) : '—'
+
+  return (
+    <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground font-mono">
+      {model && <span className="text-muted-foreground/70">{model}</span>}
+      <span>{totalTokens} tok</span>
+      <span>{formatDuration(durationMs)}</span>
+      <span className="text-foreground/60 font-semibold">{tokPerSec} tok/s</span>
+      {isStreaming && (
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+      )}
+    </div>
+  )
+}
+
 const ChatMessage = memo(function ChatMessage({ message }: { message: Message }) {
   const isUser = message.role === 'user'
 
@@ -102,16 +122,17 @@ const ChatMessage = memo(function ChatMessage({ message }: { message: Message })
       <div
         className={`max-w-[85%] rounded-xl px-3 py-2 ${
           isUser
-            ? 'bg-primary-400 text-primary-foreground'
-            : 'bg-default-50 text-foreground'
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-muted text-foreground'
         }`}
       >
         {!isUser && <ThinkingBlock message={message} />}
         {message.isStreaming && !message.content ? (
-          <span className="text-sm text-default-400">...</span>
+          <span className="text-sm text-muted-foreground">...</span>
         ) : (
           <Markdown text={message.content} />
         )}
+        {!isUser && <StreamStats message={message} />}
       </div>
     </div>
   )
