@@ -94,7 +94,7 @@ export default function ChatInput() {
           onKeyDown={handleKeyDown}
           placeholder="Send a message..."
           rows={1}
-          className="flex-1 min-h-0 resize-none bg-muted"
+          className="flex-1 min-h-0 resize-none"
         />
         {isGenerating ? (
           <Button

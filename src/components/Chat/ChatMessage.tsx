@@ -7,7 +7,7 @@ import type { Message } from '../../store/chat'
 
 function Markdown({ text, className = '' }: { text: string; className?: string }) {
   return (
-    <div className={`prose prose-invert prose-sm max-w-none break-words [&_p]:my-1 [&_pre]:my-1 [&_ul]:my-1 [&_ol]:my-1 ${className}`}>
+    <div className={`prose dark:prose-invert prose-sm max-w-none break-words [&_p]:my-1 [&_pre]:my-1 [&_ul]:my-1 [&_ol]:my-1 ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -80,14 +80,7 @@ function ThinkingBlock({ message }: { message: Message }) {
       </button>
       {open && (
         <div className="pl-2 border-l-2 border-border text-muted-foreground max-h-64 overflow-y-auto">
-          {isThinking ? (
-            <div className="text-xs whitespace-pre-wrap opacity-75">{thinking}</div>
-          ) : (
-            <Markdown
-              text={thinking}
-              className="!prose-xs opacity-75 [&_p]:text-xs [&_li]:text-xs [&_code]:text-[0.65rem]"
-            />
-          )}
+          <div className="text-xs whitespace-pre-wrap opacity-75">{thinking}</div>
         </div>
       )}
     </div>

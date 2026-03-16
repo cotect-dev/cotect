@@ -235,7 +235,9 @@ export async function sendMessage(content: string) {
       })
     }
   } finally {
-    store.updateMessage(assistantMsg.id, { isStreaming: false })
+    // Trim any trailing artifacts from thinking content
+    accThinking = accThinking.replace(/\s*cw\s*$/i, '').trimEnd()
+    store.updateMessage(assistantMsg.id, { isStreaming: false, thinking: accThinking })
     store.setGenerating(false)
     store.setAbortController(null)
   }

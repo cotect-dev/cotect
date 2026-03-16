@@ -5,66 +5,6 @@
 @import "@fontsource-variable/geist";
 @custom-variant dark (&:is(.dark *));
 
-@theme {
-  --color-deep-purple-50: #ebc1eb;
-  --color-deep-purple-100: #d784d7;
-  --color-deep-purple-200: #c346c3;
-  --color-deep-purple-300: #8b2d8b;
-  --color-deep-purple-400: #4d194d;
-  --color-deep-purple-500: #3e143e;
-  --color-deep-purple-600: #2e0f2e;
-  --color-deep-purple-700: #1f0a1f;
-  --color-deep-purple-800: #0f050f;
-  --color-deep-purple: #4d194d;
-
-  --color-space-indigo-50: #cdcce0;
-  --color-space-indigo-100: #9a99c2;
-  --color-space-indigo-200: #6866a3;
-  --color-space-indigo-300: #464573;
-  --color-space-indigo-400: #272640;
-  --color-space-indigo-500: #1f1f33;
-  --color-space-indigo-600: #171726;
-  --color-space-indigo-700: #100f1a;
-  --color-space-indigo-800: #08080d;
-  --color-space-indigo: #272640;
-
-  --color-stormy-teal-50: #adfeff;
-  --color-stormy-teal-100: #5cfcff;
-  --color-stormy-teal-200: #0afbff;
-  --color-stormy-teal-300: #00b5b8;
-  --color-stormy-teal-400: #006466;
-  --color-stormy-teal-500: #005052;
-  --color-stormy-teal-600: #003c3d;
-  --color-stormy-teal-700: #002829;
-  --color-stormy-teal-800: #001414;
-  --color-stormy-teal-900: #000a0a;
-  --color-stormy-teal: #006466;
-
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-
-  --radius-sm: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
-}
-
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -132,15 +72,6 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
-}
-
-body {
-  background-color: var(--background);
-  color: var(--foreground);
-}
-
-.react-flow {
-  --xy-background-color: #0f050f;
 }
 
 @theme inline {
