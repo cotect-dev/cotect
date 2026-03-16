@@ -55,28 +55,18 @@ export const useChatStore = create<ChatState>((set) => ({
 const API_BASE = '/llm/v1'
 
 export async function sendMessage(content: string) {
-  const store = useChatStore.getState()
-  if (store.isGenerating) return
+  const { addMessage, setAbortController, setGenerating, updateMessage } = useChatStore.getState()
+  if (useChatStore.getState().isGenerating) return
 
-  const userMsg: Message = {
-    id: crypto.randomUUID(),
-    role: 'user',
-    content,
-  }
-  store.addMessage(userMsg)
+  const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content }
+  addMessage(userMsg)
 
-  const assistantMsg: Message = {
-    id: crypto.randomUUID(),
-    role: 'assistant',
-    content: '',
-    thinking: '',
-    isStreaming: true,
-  }
-  store.addMessage(assistantMsg)
+  const assistantId = crypto.randomUUID()
+  addMessage({ id: assistantId, role: 'assistant', content: '', thinking: '', isStreaming: true })
 
   const abort = new AbortController()
-  store.setAbortController(abort)
-  store.setGenerating(true)
+  setAbortController(abort)
+  setGenerating(true)
 
   let accContent = ''
   let accThinking = ''
@@ -88,16 +78,10 @@ export async function sendMessage(content: string) {
   let streamStartTime: number | null = null
 
   try {
-    const { thinkingEnabled, model } = useChatStore.getState()
-    const chatMessages = useChatStore.getState().messages
+    const { thinkingEnabled, model, messages } = useChatStore.getState()
+    const chatMessages = messages
       .filter((m) => !m.isStreaming)
       .map((m) => ({ role: m.role, content: m.content }))
-
-    const thinkSuffix = thinkingEnabled ? ' /think' : ' /no_think'
-    const messages = [
-      { role: 'system' as const, content: `You are a helpful assistant.${thinkSuffix}` },
-      ...chatMessages,
-    ]
 
     const res = await fetch(`${API_BASE}/chat/completions`, {
       method: 'POST',
@@ -105,7 +89,10 @@ export async function sendMessage(content: string) {
       signal: abort.signal,
       body: JSON.stringify({
         model,
-        messages,
+        messages: [
+          { role: 'system', content: `You are a helpful assistant.${thinkingEnabled ? ' /think' : ' /no_think'}` },
+          ...chatMessages,
+        ],
         stream: true,
         temperature: 0.5,
         top_p: thinkingEnabled ? 0.95 : 0.8,
@@ -118,7 +105,6 @@ export async function sendMessage(content: string) {
     })
 
     if (!res.ok) throw new Error(`API error: ${res.status}`)
-
     const reader = res.body?.getReader()
     if (!reader) throw new Error('No response body')
 
@@ -140,47 +126,35 @@ export async function sendMessage(content: string) {
         if (data === '[DONE]') break
 
         try {
-          const parsed = JSON.parse(data)
-          const delta = parsed.choices?.[0]?.delta
-
+          const delta = JSON.parse(data).choices?.[0]?.delta
           if (!delta) continue
 
           const text: string = delta.content || ''
           const reasoning: string = delta.reasoning_content || ''
 
-          // Count each chunk as a token
           if (reasoning || text) {
             if (!streamStartTime) streamStartTime = Date.now()
             totalTokens++
           }
 
-          // Handle reasoning_content field (some APIs)
           if (reasoning) {
             if (!thinkingStartTime) thinkingStartTime = Date.now()
             accThinking += reasoning
             thinkingTokens++
           }
 
-          // Handle content field — may contain <think> tags
-          if (text) {
-            rawStream += text
-          }
+          if (text) rawStream += text
 
-          // Parse <think> tags from the accumulated raw stream
           if (rawStream) {
             let remaining = rawStream
-            // Check if we're inside a <think> block
             if (inThinkTag) {
               const closeIdx = remaining.indexOf('</think>')
               if (closeIdx !== -1) {
-                // End of thinking block
-                const chunk = remaining.slice(0, closeIdx)
-                accThinking += chunk
-                thinkingTokens += chunk.split(/\s+/).filter(Boolean).length
+                accThinking += remaining.slice(0, closeIdx)
+                thinkingTokens += remaining.slice(0, closeIdx).split(/\s+/).filter(Boolean).length
                 inThinkTag = false
-                remaining = remaining.slice(closeIdx + 8) // skip </think>
+                remaining = remaining.slice(closeIdx + 8)
               } else {
-                // Still inside think block — consume all as thinking
                 accThinking += remaining
                 thinkingTokens += remaining.split(/\s+/).filter(Boolean).length
                 remaining = ''
@@ -190,11 +164,10 @@ export async function sendMessage(content: string) {
             if (!inThinkTag) {
               const openIdx = remaining.indexOf('<think>')
               if (openIdx !== -1) {
-                // Content before <think>
                 accContent += remaining.slice(0, openIdx)
                 if (!thinkingStartTime) thinkingStartTime = Date.now()
                 inThinkTag = true
-                const afterOpen = remaining.slice(openIdx + 7) // skip <think>
+                const afterOpen = remaining.slice(openIdx + 7)
                 const closeIdx = afterOpen.indexOf('</think>')
                 if (closeIdx !== -1) {
                   accThinking += afterOpen.slice(0, closeIdx)
@@ -212,15 +185,14 @@ export async function sendMessage(content: string) {
             rawStream = ''
           }
 
-          const elapsed = streamStartTime ? Date.now() - streamStartTime : 0
-          store.updateMessage(assistantMsg.id, {
+          updateMessage(assistantId, {
             content: accContent,
             thinking: accThinking,
             thinkingTokens,
             thinkingDurationMs: thinkingStartTime ? Date.now() - thinkingStartTime : 0,
             isThinking: inThinkTag,
             totalTokens,
-            durationMs: elapsed,
+            durationMs: streamStartTime ? Date.now() - streamStartTime : 0,
             model,
           })
         } catch {
@@ -230,15 +202,13 @@ export async function sendMessage(content: string) {
     }
   } catch (err) {
     if ((err as Error).name !== 'AbortError') {
-      store.updateMessage(assistantMsg.id, {
+      updateMessage(assistantId, {
         content: accContent || `Error: ${(err as Error).message}`,
       })
     }
   } finally {
-    // Trim any trailing artifacts from thinking content
-    accThinking = accThinking.replace(/\s*cw\s*$/i, '').trimEnd()
-    store.updateMessage(assistantMsg.id, { isStreaming: false, thinking: accThinking })
-    store.setGenerating(false)
-    store.setAbortController(null)
+    updateMessage(assistantId, { isStreaming: false, thinking: accThinking.trimEnd() })
+    setGenerating(false)
+    setAbortController(null)
   }
 }

@@ -6,14 +6,11 @@ import { useChatStore, sendMessage } from '../../store/chat'
 
 export default function ChatInput() {
   const [text, setText] = useState('')
-  const isGenerating = useChatStore((s) => s.isGenerating)
-  const abortController = useChatStore((s) => s.abortController)
-  const thinkingEnabled = useChatStore((s) => s.thinkingEnabled)
-  const model = useChatStore((s) => s.model)
-  const setModel = useChatStore((s) => s.setModel)
-  const clearMessages = useChatStore((s) => s.clearMessages)
-  const setThinkingEnabled = useChatStore((s) => s.setThinkingEnabled)
-  const hasMessages = useChatStore((s) => s.messages.length > 0)
+  const {
+    isGenerating, abortController, thinkingEnabled, model,
+    setModel, clearMessages, setThinkingEnabled, messages,
+  } = useChatStore()
+  const hasMessages = messages.length > 0
 
   const toggleModel = useCallback(() => {
     setModel(model === 'qwen1' ? 'qwen2' : 'qwen1')
@@ -25,10 +22,6 @@ export default function ChatInput() {
     setText('')
     sendMessage(trimmed)
   }, [text, isGenerating])
-
-  const handleStop = useCallback(() => {
-    abortController?.abort()
-  }, [abortController])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -55,7 +48,7 @@ export default function ChatInput() {
           }>
             {model}
           </TooltipTrigger>
-          <TooltipContent>{`Model: ${model}`}</TooltipContent>
+          <TooltipContent>Model: {model}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger render={
@@ -100,7 +93,7 @@ export default function ChatInput() {
           <Button
             size="sm"
             variant="destructive"
-            onClick={handleStop}
+            onClick={() => abortController?.abort()}
             className="shrink-0"
           >
             Stop
