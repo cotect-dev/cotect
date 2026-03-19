@@ -1,17 +1,17 @@
-import { useDraggable } from '@dnd-kit/core'
-import { GripHorizontal } from 'lucide-react'
-import type { PanelPosition } from '@/store/layout'
+import { useDraggable } from '@dnd-kit/core';
+import { GripHorizontal } from 'lucide-react';
+import type { PanelPosition } from '@/store/layout';
 
 interface PanelAreaProps {
-  id: string
-  position: PanelPosition
+  id: string;
+  position: PanelPosition;
 }
 
 export default function PanelArea({ id, position }: PanelAreaProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id,
     data: { panelId: id, position },
-  })
+  });
 
   return (
     <div
@@ -34,5 +34,5 @@ export default function PanelArea({ id, position }: PanelAreaProps) {
       </div>
       <div className="flex-1" />
     </div>
-  )
+  );
 }

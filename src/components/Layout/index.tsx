@@ -1,198 +1,43 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
-import type { Modifier } from '@dnd-kit/core'
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  pointerWithin,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DragStartEvent,
-  type DragMoveEvent,
-  type DragEndEvent,
-} from '@dnd-kit/core'
+import { useCallback, useRef, useState } from 'react'
+import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { GripHorizontal } from 'lucide-react'
 import TopBar from './TopBar'
 import DropZone from './DropZone'
 import EdgeDropTarget from './EdgeDropTarget'
 import ResizeHandle from './ResizeHandle'
-import { useLayoutStore, type PanelPosition } from '@/store/layout'
-
-interface DragState {
-  panelId: string
-  fromPosition: PanelPosition
-  overPosition: PanelPosition | null
-  insertIndex: number
-}
-
-interface ZoneSizes {
-  left: number
-  right: number
-  bottom: number
-}
+import { usePanelDrag } from './usePanelDrag'
 
 const MIN_SIDE = 120
 const MIN_BOTTOM = 80
 
 export default function Layout() {
-  const { panels, movePanel } = useLayoutStore()
-  const [dragState, setDragState] = useState<DragState | null>(null)
-  const [zoneSizes, setZoneSizes] = useState<ZoneSizes>({
+  const {
+    panels,
+    dragState,
+    isDragging,
+    zoneRefs,
+    sensors,
+    collisionDetection,
+    handleDragStart,
+    handleDragMove,
+    handleDragEnd,
+    handleDragCancel,
+    centerOnCursor,
+    effectiveCount,
+    isZoneEmpty,
+  } = usePanelDrag()
+
+  const [zoneSizes, setZoneSizes] = useState({
     left: 0.2,
     right: 0.2,
     bottom: 0.25,
   })
 
-  // Refs to measure drop zone rects during drag
-  const zoneRefs = useRef<Record<PanelPosition, HTMLDivElement | null>>({
-    left: null,
-    right: null,
-    bottom: null,
-  })
   const containerRef = useRef<HTMLDivElement | null>(null)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
-  )
-
-  // Prefer real drop zones over edge targets when both match
-  const collisionDetection: CollisionDetection = useCallback((args) => {
-    const collisions = pointerWithin(args)
-    const dropZone = collisions.find((c) => String(c.id).startsWith('drop-'))
-    return dropZone ? [dropZone] : collisions
-  }, [])
-
-  const computeInsertIndex = useCallback(
-    (position: PanelPosition, pointerX: number, pointerY: number, panelId: string) => {
-      const el = zoneRefs.current[position]
-      if (!el) return 0
-
-      const rect = el.getBoundingClientRect()
-      const isVertical = position === 'left' || position === 'right'
-
-      // Build visible panels and their sizes (excluding the dragged panel)
-      const zonePanels = panels[position]
-      const zoneSizes = useLayoutStore.getState().sizes[position]
-      const visibleSizes: number[] = []
-      for (let i = 0; i < zonePanels.length; i++) {
-        if (zonePanels[i] !== panelId) {
-          visibleSizes.push(zoneSizes[i] ?? 1)
-        }
-      }
-
-      if (visibleSizes.length === 0) return 0
-
-      const totalSize = visibleSizes.reduce((a, b) => a + b, 0)
-      const relativePos = isVertical
-        ? (pointerY - rect.top) / rect.height
-        : (pointerX - rect.left) / rect.width
-
-      // Walk cumulative sizes to find the insertion boundary at each panel's midpoint
-      let cumulative = 0
-      for (let i = 0; i < visibleSizes.length; i++) {
-        const midpoint = (cumulative + visibleSizes[i] / 2) / totalSize
-        if (relativePos < midpoint) return i
-        cumulative += visibleSizes[i]
-      }
-      return visibleSizes.length
-    },
-    [panels]
-  )
-
-  const isNoOpMove = useCallback(
-    (panelId: string, fromPos: PanelPosition, toPos: PanelPosition, insertIdx: number): boolean => {
-      if (fromPos !== toPos) return false
-      const oldIndex = panels[toPos].indexOf(panelId)
-      if (oldIndex === -1) return false
-      let adjusted = insertIdx
-      if (oldIndex < insertIdx) adjusted--
-      return adjusted === oldIndex
-    },
-    [panels]
-  )
-
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const data = event.active.data.current
-    if (data?.panelId && data?.position) {
-      setDragState({
-        panelId: data.panelId,
-        fromPosition: data.position,
-        overPosition: null,
-        insertIndex: 0,
-      })
-    }
-  }, [])
-
-  const handleDragMove = useCallback(
-    (event: DragMoveEvent) => {
-      setDragState((prev) => {
-        if (!prev) return prev
-
-        const overPosition = (event.over?.data.current?.position as PanelPosition) ?? null
-
-        if (!overPosition) {
-          if (prev.overPosition === null) return prev
-          return { ...prev, overPosition: null, insertIndex: 0 }
-        }
-
-        // Compute pointer position from initial event + delta
-        const initial = event.activatorEvent as PointerEvent
-        const pointerX = initial.clientX + event.delta.x
-        const pointerY = initial.clientY + event.delta.y
-
-        const insertIndex = computeInsertIndex(overPosition, pointerX, pointerY, prev.panelId)
-
-        if (prev.overPosition === overPosition && prev.insertIndex === insertIndex) return prev
-        return { ...prev, overPosition, insertIndex }
-      })
-    },
-    [computeInsertIndex]
-  )
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      setDragState((prev) => {
-        if (prev?.overPosition != null) {
-          movePanel(prev.panelId, prev.overPosition, prev.insertIndex)
-        }
-        return null
-      })
-    },
-    [movePanel]
-  )
-
-  const handleDragCancel = useCallback(() => {
-    setDragState(null)
-  }, [])
-
-  const centerOnCursor: Modifier = useMemo(() => {
-    return ({ activatorEvent, draggingNodeRect, transform }) => {
-      if (!activatorEvent || !draggingNodeRect) return transform
-      const event = activatorEvent as PointerEvent
-      const offsetX = event.clientX - draggingNodeRect.left
-      const offsetY = event.clientY - draggingNodeRect.top
-      return {
-        ...transform,
-        x: transform.x + offsetX - draggingNodeRect.width / 2,
-        y: transform.y + offsetY - draggingNodeRect.height / 2,
-      }
-    }
-  }, [])
-
-  const isDragging = !!dragState
-
-  const effectiveCount = (pos: PanelPosition) => {
-    let count = panels[pos].length
-    if (dragState && panels[pos].includes(dragState.panelId)) count--
-    if (dragState && dragState.overPosition === pos) count++
-    return count
-  }
-
+  const topRowRef = useRef<HTMLDivElement | null>(null)
   const leftZoneRef = useRef<HTMLDivElement | null>(null)
   const rightZoneRef = useRef<HTMLDivElement | null>(null)
   const bottomZoneRef = useRef<HTMLDivElement | null>(null)
-  const topRowRef = useRef<HTMLDivElement | null>(null)
 
   const commitLeftSize = useCallback((ratio: number) => {
     setZoneSizes((prev) => ({ ...prev, left: ratio }))
@@ -208,10 +53,10 @@ export default function Layout() {
   const rightVisible = effectiveCount('right') > 0
   const bottomVisible = effectiveCount('bottom') > 0
 
-  // Zones that have no real panels (ignoring the dragged one) need edge drop targets
-  const leftEmpty = isDragging && panels.left.filter((id) => id !== dragState?.panelId).length === 0
-  const rightEmpty = isDragging && panels.right.filter((id) => id !== dragState?.panelId).length === 0
-  const bottomEmpty = isDragging && panels.bottom.filter((id) => id !== dragState?.panelId).length === 0
+  const previewFor = (pos: 'left' | 'right' | 'bottom') =>
+    dragState?.overPosition === pos
+      ? { previewIndex: dragState.insertIndex, neighborIndex: dragState.neighborIndex }
+      : { previewIndex: null, neighborIndex: null }
 
   return (
     <div className="w-screen h-screen flex flex-col">
@@ -227,18 +72,19 @@ export default function Layout() {
         onDragCancel={handleDragCancel}
       >
         <div ref={containerRef} className="relative flex-1 min-h-0 w-full flex flex-col pointer-events-none">
-          {/* Invisible edge drop targets for empty zones */}
-          {leftEmpty && <EdgeDropTarget position="left" />}
-          {rightEmpty && <EdgeDropTarget position="right" />}
-          {bottomEmpty && <EdgeDropTarget position="bottom" />}
+          {isZoneEmpty('left') && <EdgeDropTarget position="left" />}
+          {isZoneEmpty('right') && <EdgeDropTarget position="right" />}
+          {isZoneEmpty('bottom') && <EdgeDropTarget position="bottom" />}
+
           {/* Top section: left | canvas | right */}
           <div ref={topRowRef} className="flex-1 min-h-0 flex flex-row">
-            {/* Left */}
             <div
               ref={(el) => { zoneRefs.current.left = el; leftZoneRef.current = el }}
               className="h-full pointer-events-auto"
               style={{
-                flex: leftVisible ? `0 0 ${zoneSizes.left * 100}%` : '0 0 0px',
+                flexGrow: 0,
+                flexShrink: 0,
+                flexBasis: leftVisible ? `${zoneSizes.left * 100}%` : '0px',
                 minWidth: leftVisible ? MIN_SIDE : 0,
                 maxWidth: '40%',
               }}
@@ -247,34 +93,27 @@ export default function Layout() {
                 position="left"
                 panelIds={panels.left}
                 activePanelId={dragState?.panelId ?? null}
-                previewIndex={
-                  dragState?.overPosition === 'left' &&
-                  !isNoOpMove(dragState.panelId, dragState.fromPosition, 'left', dragState.insertIndex)
-                    ? dragState.insertIndex
-                    : null
-                }
+                {...previewFor('left')}
               />
             </div>
 
-            {/* Left resize handle */}
             {leftVisible && !isDragging && (
-              <ResizeHandle orientation="vertical" targetRef={leftZoneRef} containerRef={topRowRef} min={MIN_SIDE} max={0.4} onResizeEnd={commitLeftSize} />
+              <ResizeHandle mode="target" orientation="vertical" targetRef={leftZoneRef} containerRef={topRowRef} min={MIN_SIDE} max={0.4} onResizeEnd={commitLeftSize} />
             )}
 
-            {/* Center spacer */}
             <div className="flex-1 min-w-[20%]" />
 
-            {/* Right resize handle */}
             {rightVisible && !isDragging && (
-              <ResizeHandle orientation="vertical" targetRef={rightZoneRef} containerRef={topRowRef} direction={-1} min={MIN_SIDE} max={0.4} onResizeEnd={commitRightSize} />
+              <ResizeHandle mode="target" orientation="vertical" targetRef={rightZoneRef} containerRef={topRowRef} direction={-1} min={MIN_SIDE} max={0.4} onResizeEnd={commitRightSize} />
             )}
 
-            {/* Right */}
             <div
               ref={(el) => { zoneRefs.current.right = el; rightZoneRef.current = el }}
               className="h-full pointer-events-auto"
               style={{
-                flex: rightVisible ? `0 0 ${zoneSizes.right * 100}%` : '0 0 0px',
+                flexGrow: 0,
+                flexShrink: 0,
+                flexBasis: rightVisible ? `${zoneSizes.right * 100}%` : '0px',
                 minWidth: rightVisible ? MIN_SIDE : 0,
                 maxWidth: '40%',
               }}
@@ -283,27 +122,22 @@ export default function Layout() {
                 position="right"
                 panelIds={panels.right}
                 activePanelId={dragState?.panelId ?? null}
-                previewIndex={
-                  dragState?.overPosition === 'right' &&
-                  !isNoOpMove(dragState.panelId, dragState.fromPosition, 'right', dragState.insertIndex)
-                    ? dragState.insertIndex
-                    : null
-                }
+                {...previewFor('right')}
               />
             </div>
           </div>
 
-          {/* Bottom resize handle */}
           {bottomVisible && !isDragging && (
-            <ResizeHandle orientation="horizontal" targetRef={bottomZoneRef} containerRef={containerRef} direction={-1} min={MIN_BOTTOM} max={0.5} onResizeEnd={commitBottomSize} />
+            <ResizeHandle mode="target" orientation="horizontal" targetRef={bottomZoneRef} containerRef={containerRef} direction={-1} min={MIN_BOTTOM} max={0.5} onResizeEnd={commitBottomSize} />
           )}
 
-          {/* Bottom */}
           <div
             ref={(el) => { zoneRefs.current.bottom = el; bottomZoneRef.current = el }}
             className="w-full pointer-events-auto"
             style={{
-              flex: bottomVisible ? `0 0 ${zoneSizes.bottom * 100}%` : '0 0 0px',
+              flexGrow: 0,
+              flexShrink: 0,
+              flexBasis: bottomVisible ? `${zoneSizes.bottom * 100}%` : '0px',
               minHeight: bottomVisible ? MIN_BOTTOM : 0,
               maxHeight: '50%',
             }}
@@ -312,12 +146,7 @@ export default function Layout() {
               position="bottom"
               panelIds={panels.bottom}
               activePanelId={dragState?.panelId ?? null}
-              previewIndex={
-                dragState?.overPosition === 'bottom' &&
-                !isNoOpMove(dragState.panelId, dragState.fromPosition, 'bottom', dragState.insertIndex)
-                  ? dragState.insertIndex
-                  : null
-              }
+              {...previewFor('bottom')}
             />
           </div>
         </div>

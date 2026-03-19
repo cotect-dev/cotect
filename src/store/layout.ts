@@ -5,7 +5,7 @@ export type PanelPosition = 'left' | 'right' | 'bottom'
 interface LayoutState {
   panels: Record<PanelPosition, string[]>
   sizes: Record<PanelPosition, number[]>
-  movePanel: (panelId: string, to: PanelPosition, insertIndex: number) => void
+  movePanel: (panelId: string, to: PanelPosition, insertIndex: number, neighborIndex?: number) => void
   resizePanels: (position: PanelPosition, index: number, ratio: number) => void
 }
 
@@ -20,7 +20,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
     right: [1],
     bottom: [1],
   },
-  movePanel: (panelId, to, insertIndex) =>
+  movePanel: (panelId, to, insertIndex, neighborIndex) =>
     set((state) => {
       let from: PanelPosition | null = null
       for (const pos of ['left', 'right', 'bottom'] as PanelPosition[]) {
@@ -53,9 +53,8 @@ export const useLayoutStore = create<LayoutState>((set) => ({
         sizes[from] = sizes[from].map((s) => s / srcTotal)
       }
 
-      // Compute actual insert index
-      let idx = insertIndex
-      if (from === to && oldIndex < insertIndex) idx--
+      // insertIndex is already in visible (post-removal) space
+      const idx = insertIndex
       if (from === to && idx === oldIndex) return state
 
       // The new panel takes half the space of its neighbor, or full if zone is empty
@@ -63,11 +62,11 @@ export const useLayoutStore = create<LayoutState>((set) => ({
         panels[to].splice(idx, 0, panelId)
         sizes[to] = [1]
       } else {
-        // Pick the neighbor to share space with
-        const neighborIdx = idx < panels[to].length ? idx : panels[to].length - 1
-        const neighborSize = sizes[to][neighborIdx]
+        // Use the provided neighborIndex (the hovered panel), or fall back to insert position
+        const nIdx = neighborIndex ?? (idx < panels[to].length ? idx : panels[to].length - 1)
+        const neighborSize = sizes[to][nIdx]
         const half = neighborSize / 2
-        sizes[to][neighborIdx] = half
+        sizes[to][nIdx] = half
         panels[to].splice(idx, 0, panelId)
         sizes[to].splice(idx, 0, half)
       }

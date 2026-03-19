@@ -1,17 +1,15 @@
-import { useCallback } from 'react'
-import { useDroppable } from '@dnd-kit/core'
-import { GripHorizontal } from 'lucide-react'
-import { useLayoutStore, type PanelPosition } from '@/store/layout'
-import PanelArea from './PanelArea'
-import PanelResizeHandle from './PanelResizeHandle'
+import { useDroppable } from '@dnd-kit/core';
+import { GripHorizontal } from 'lucide-react';
+import { useLayoutStore, type PanelPosition } from '@/store/layout';
+import PanelArea from './PanelArea';
+import ResizeHandle from './ResizeHandle';
 
 interface DropZoneProps {
-  position: PanelPosition
-  panelIds: string[]
-  /** Which panel is being dragged (null if none) */
-  activePanelId: string | null
-  /** The insertion index to preview (null if not hovering this zone) */
-  previewIndex: number | null
+  position: PanelPosition;
+  panelIds: string[];
+  activePanelId: string | null;
+  previewIndex: number | null;
+  neighborIndex: number | null;
 }
 
 export default function DropZone({
@@ -19,72 +17,108 @@ export default function DropZone({
   panelIds,
   activePanelId,
   previewIndex,
+  neighborIndex,
 }: DropZoneProps) {
-  // Disable when the zone is effectively empty (no panels, or only the dragged panel)
-  const effectivelyEmpty = panelIds.length === 0 || (panelIds.length === 1 && panelIds[0] === activePanelId)
   const { setNodeRef } = useDroppable({
     id: `drop-${position}`,
     data: { position },
-    disabled: effectivelyEmpty,
-  })
+    disabled: panelIds.length === 0,
+  });
 
-  const sizes = useLayoutStore((s) => s.sizes[position])
-  const resizePanels = useLayoutStore((s) => s.resizePanels)
+  const sizes = useLayoutStore(s => s.sizes[position]);
 
-  const isVertical = position === 'left' || position === 'right'
+  const isVertical = position === 'left' || position === 'right';
 
-  // Hide the panel being dragged from its source, and track its size index
-  const draggedIndex = activePanelId ? panelIds.indexOf(activePanelId) : -1
-  const visiblePanels: string[] = []
-  const visibleSizes: number[] = []
+  const visiblePanels: string[] = [];
+  const visibleSizes: number[] = [];
   for (let i = 0; i < panelIds.length; i++) {
     if (panelIds[i] !== activePanelId) {
-      visiblePanels.push(panelIds[i])
-      visibleSizes.push(sizes[i] ?? 1)
+      visiblePanels.push(panelIds[i]);
+      visibleSizes.push(sizes[i] ?? 1);
     }
   }
 
-  const showGhost = previewIndex !== null && activePanelId
+  const showGhost = previewIndex !== null && neighborIndex !== null && !!activePanelId;
 
-  // Build items with sizes that match what movePanel will produce after drop.
-  // movePanel splits the neighbor's size in half, so the ghost preview should too.
-  const previewSizes = [...visibleSizes]
-  let ghostSize = 1
-  if (showGhost && visiblePanels.length > 0) {
-    const neighborIdx = previewIndex! < visiblePanels.length ? previewIndex! : visiblePanels.length - 1
-    const half = previewSizes[neighborIdx] / 2
-    previewSizes[neighborIdx] = half
-    ghostSize = half
-  }
+  // Detect no-op: dragging back to the same position in the source zone.
+  // movePanel returns state unchanged in this case, so the preview must match.
+  const originalIndex = activePanelId ? panelIds.indexOf(activePanelId) : -1;
+  const isSourceZone = originalIndex >= 0;
+  const isNoOp = showGhost && isSourceZone && previewIndex === originalIndex;
 
-  const items: { type: 'panel' | 'ghost'; id: string; size: number; storeIndex: number }[] = []
-  let panelIdx = 0
-  const totalSlots = visiblePanels.length + (showGhost ? 1 : 0)
-  for (let i = 0; i < totalSlots; i++) {
-    if (showGhost && i === previewIndex) {
-      items.push({ type: 'ghost', id: '__ghost__', size: ghostSize, storeIndex: -1 })
+  // Build item list with sizes that always sum to 1 so content fills the zone.
+  // Ghost sizing mirrors movePanel: no-op → original size, real move → split neighbor.
+  const items: { type: 'panel' | 'ghost'; id: string; size: number }[] = [];
+
+  if (showGhost) {
+    let rawSizes: number[];
+    let rawGhost: number;
+
+    if (visiblePanels.length === 0) {
+      rawGhost = 1;
+      rawSizes = [];
+    } else if (isNoOp) {
+      rawGhost = sizes[originalIndex] ?? 1;
+      rawSizes = [...visibleSizes];
     } else {
-      if (panelIdx < visiblePanels.length) {
-        const origIdx = panelIds.indexOf(visiblePanels[panelIdx])
-        items.push({ type: 'panel', id: visiblePanels[panelIdx], size: previewSizes[panelIdx], storeIndex: origIdx })
-        panelIdx++
+      rawSizes = [...visibleSizes];
+      const nSize = rawSizes[neighborIndex];
+      rawGhost = nSize / 2;
+      rawSizes[neighborIndex] = nSize / 2;
+    }
+
+    // Build items in order, inserting ghost at previewIndex
+    let panelIdx = 0;
+    const totalSlots = visiblePanels.length + 1;
+    for (let i = 0; i < totalSlots; i++) {
+      if (i === previewIndex) {
+        items.push({ type: 'ghost', id: '__ghost__', size: rawGhost });
+      } else {
+        if (panelIdx < visiblePanels.length) {
+          items.push({ type: 'panel', id: visiblePanels[panelIdx], size: rawSizes[panelIdx] });
+          panelIdx++;
+        }
       }
     }
-  }
-
-  const totalSize = items.reduce((a, b) => a + b.size, 0)
-  const isEmpty = visiblePanels.length === 0 && !showGhost
-  const isDragging = !!activePanelId
-
-  // Build resize handler for a pair of adjacent visible panels (by their store indices)
-  const makeResizeHandler = (leftStoreIdx: number, rightStoreIdx: number) => {
-    return (ratio: number) => {
-      // We need to find the consecutive store indices for resizePanels
-      // Since resizePanels expects adjacent indices, use the smaller one
-      const idx = Math.min(leftStoreIdx, rightStoreIdx)
-      resizePanels(position, idx, ratio)
+  } else {
+    for (let i = 0; i < visiblePanels.length; i++) {
+      items.push({ type: 'panel', id: visiblePanels[i], size: visibleSizes[i] });
     }
   }
+
+  // Normalize so sizes always sum to 1 — content always fills the zone
+  const rawTotal = items.reduce((a, b) => a + b.size, 0);
+  if (rawTotal > 0 && rawTotal !== 1) {
+    for (const item of items) {
+      item.size /= rawTotal;
+    }
+  }
+  const isDragging = !!activePanelId;
+
+  const makeResizeHandler = (leftId: string, rightId: string) => {
+    return (pixelLeft: number, pixelRight: number, totalPixelWidth: number) => {
+      useLayoutStore.setState(state => {
+        const currentPanels = state.panels[position].filter(
+          id => id !== activePanelId,
+        );
+        const leftIdx = currentPanels.indexOf(leftId);
+        const rightIdx = currentPanels.indexOf(rightId);
+        if (leftIdx < 0 || rightIdx < 0) return state;
+
+        const newSizes = [...state.sizes[position]];
+        const leftNormalized = newSizes[leftIdx];
+        const rightNormalized = newSizes[rightIdx];
+        const pairTotal = leftNormalized + rightNormalized;
+
+        const leftRatio = pixelLeft / totalPixelWidth;
+        const rightRatio = pixelRight / totalPixelWidth;
+
+        newSizes[leftIdx] = pairTotal * leftRatio;
+        newSizes[rightIdx] = pairTotal * rightRatio;
+        return { sizes: { ...state.sizes, [position]: newSizes } };
+      });
+    };
+  };
 
   return (
     <div
@@ -92,36 +126,47 @@ export default function DropZone({
       className={`h-full w-full flex ${isVertical ? 'flex-col' : 'flex-row'}`}
     >
       {items.map((item, i) => {
-        const flexPercent = totalSize > 0 ? (item.size / totalSize) * 100 : 100 / totalSlots
-        const elements: React.ReactNode[] = []
+        const grow = item.size;
+        const elements: React.ReactNode[] = [];
 
-        // Add resize handle before this item (between two real panels, not during drag)
-        if (i > 0 && !isDragging && item.type === 'panel' && items[i - 1].type === 'panel') {
+        if (
+          i > 0 &&
+          !isDragging &&
+          item.type === 'panel' &&
+          items[i - 1].type === 'panel'
+        ) {
           elements.push(
-            <PanelResizeHandle
+            <ResizeHandle
               key={`resize-${items[i - 1].id}-${item.id}`}
+              mode="sibling"
               orientation={isVertical ? 'horizontal' : 'vertical'}
-              onResizeEnd={makeResizeHandler(items[i - 1].storeIndex, item.storeIndex)}
-            />
-          )
+              onResizeEnd={(pixelLeft, pixelRight, totalPixelWidth) =>
+                makeResizeHandler(items[i - 1].id, item.id)(
+                  pixelLeft,
+                  pixelRight,
+                  totalPixelWidth,
+                )
+              }
+            />,
+          );
         }
 
         if (item.type === 'panel') {
           elements.push(
             <div
               key={item.id}
-              className="min-h-0 min-w-0 "
-              style={{ flex: `1 1 ${flexPercent}%` }}
+              className="min-h-0 min-w-0"
+              style={{ flexGrow: grow, flexShrink: 1, flexBasis: 0 }}
             >
               <PanelArea id={item.id} position={position} />
-            </div>
-          )
+            </div>,
+          );
         } else {
           elements.push(
             <div
               key="__ghost__"
-              className="min-h-0 min-w-0 "
-              style={{ flex: `1 1 ${flexPercent}%` }}
+              className="min-h-0 min-w-0"
+              style={{ flexGrow: grow, flexShrink: 1, flexBasis: 0 }}
             >
               <div className="h-full w-full bg-primary/10 border-2 border-dashed border-primary/30 rounded-sm flex flex-col">
                 <div className="flex items-center border-b border-primary/20 shrink-0">
@@ -134,12 +179,12 @@ export default function DropZone({
                 </div>
                 <div className="flex-1" />
               </div>
-            </div>
-          )
+            </div>,
+          );
         }
 
-        return elements
+        return elements;
       })}
     </div>
-  )
+  );
 }
