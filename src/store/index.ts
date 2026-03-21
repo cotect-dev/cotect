@@ -1,3 +1,5 @@
 export { useCanvasStore } from './canvas'
 export { useChatStore } from './chat'
+export { useConsoleStore } from './console'
 export { useLayoutStore } from './layout'
+export { useTerminalStore } from './terminal'

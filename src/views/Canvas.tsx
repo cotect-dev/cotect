@@ -27,7 +27,7 @@ export default function Canvas() {
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#555555" />
         </ReactFlow>
       </div>
-      <div className="absolute inset-0 pointer-events-none">
+      <div className="absolute inset-0 pointer-events-none z-10">
         <Layout />
       </div>
     </div>

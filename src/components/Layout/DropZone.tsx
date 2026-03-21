@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core';
 import { GripHorizontal } from 'lucide-react';
-import { useLayoutStore, type PanelPosition } from '@/store/layout';
+import { useLayoutStore, getPanelLabel, type PanelPosition } from '@/store/layout';
 import PanelArea from './PanelArea';
 import ResizeHandle from './ResizeHandle';
 
@@ -171,7 +171,7 @@ export default function DropZone({
               <div className="h-full w-full bg-primary/10 border-2 border-dashed border-primary/30 rounded-sm flex flex-col">
                 <div className="flex items-center border-b border-primary/20 shrink-0">
                   <span className="flex-1 px-3 py-1.5 text-xs text-primary/40 truncate">
-                    {activePanelId}
+                    {getPanelLabel(activePanelId!)}
                   </span>
                   <div className="px-2 py-1.5 text-primary/40">
                     <GripHorizontal className="h-3.5 w-3.5" />

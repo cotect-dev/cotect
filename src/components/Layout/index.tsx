@@ -6,6 +6,7 @@ import DropZone from './DropZone'
 import EdgeDropTarget from './EdgeDropTarget'
 import ResizeHandle from './ResizeHandle'
 import { usePanelDrag } from './usePanelDrag'
+import { getPanelLabel } from '@/store/layout'
 
 const MIN_SIDE = 120
 const MIN_BOTTOM = 80
@@ -133,7 +134,7 @@ export default function Layout() {
 
           <div
             ref={(el) => { zoneRefs.current.bottom = el; bottomZoneRef.current = el }}
-            className="w-full pointer-events-auto"
+            className="w-full pointer-events-auto relative z-[1]"
             style={{
               flexGrow: 0,
               flexShrink: 0,
@@ -155,7 +156,7 @@ export default function Layout() {
           {dragState ? (
             <div className="pointer-events-none w-[150px] bg-background/90 backdrop-blur-md rounded shadow-lg border border-primary/30 flex items-center">
               <span className="flex-1 px-3 py-1.5 text-xs text-muted-foreground truncate">
-                {dragState.panelId}
+                {getPanelLabel(dragState.panelId)}
               </span>
               <div className="px-2 py-1.5 text-muted-foreground">
                 <GripHorizontal className="h-3.5 w-3.5" />

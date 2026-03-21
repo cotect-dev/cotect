@@ -1,0 +1,75 @@
+import { create } from 'zustand'
+
+export type LogLevel = 'info' | 'warn' | 'error' | 'debug'
+
+export interface LogEntry {
+  id: string
+  level: LogLevel
+  message: string
+  timestamp: number
+}
+
+interface ConsoleState {
+  entries: LogEntry[]
+  filter: LogLevel | null
+  log: (level: LogLevel, message: string) => void
+  clear: () => void
+  setFilter: (filter: LogLevel | null) => void
+}
+
+let nextId = 0
+
+export const useConsoleStore = create<ConsoleState>((set) => ({
+  entries: [],
+  filter: null,
+  log: (level, message) =>
+    set((state) => ({
+      entries: [
+        ...state.entries,
+        { id: String(nextId++), level, message, timestamp: Date.now() },
+      ],
+    })),
+  clear: () => set({ entries: [] }),
+  setFilter: (filter) => set({ filter }),
+}))
+
+// Intercept native console methods
+const originalConsole = {
+  log: console.log.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  debug: console.debug.bind(console),
+}
+
+function formatArgs(args: unknown[]): string {
+  return args
+    .map((a) => {
+      if (typeof a === 'string') return a
+      try {
+        return JSON.stringify(a, null, 2) ?? String(a)
+      } catch {
+        return String(a)
+      }
+    })
+    .join(' ')
+}
+
+console.log = (...args: unknown[]) => {
+  originalConsole.log(...args)
+  useConsoleStore.getState().log('info', formatArgs(args))
+}
+
+console.warn = (...args: unknown[]) => {
+  originalConsole.warn(...args)
+  useConsoleStore.getState().log('warn', formatArgs(args))
+}
+
+console.error = (...args: unknown[]) => {
+  originalConsole.error(...args)
+  useConsoleStore.getState().log('error', formatArgs(args))
+}
+
+console.debug = (...args: unknown[]) => {
+  originalConsole.debug(...args)
+  useConsoleStore.getState().log('debug', formatArgs(args))
+}
