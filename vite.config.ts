@@ -43,7 +43,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/llm': {
-        target: 'http://server:8080',
+        target: 'http://server.local:1234',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/llm/, ''),
       },

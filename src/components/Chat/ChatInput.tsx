@@ -7,14 +7,10 @@ import { useChatStore, sendMessage } from '../../store/chat'
 export default function ChatInput() {
   const [text, setText] = useState('')
   const {
-    isGenerating, abortController, thinkingEnabled, model,
-    setModel, clearMessages, setThinkingEnabled, messages,
+    isGenerating, abortController, thinkingEnabled,
+    clearMessages, setThinkingEnabled, messages,
   } = useChatStore()
   const hasMessages = messages.length > 0
-
-  const toggleModel = useCallback(() => {
-    setModel(model === 'qwen1' ? 'qwen2' : 'qwen1')
-  }, [model, setModel])
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim()
@@ -36,20 +32,6 @@ export default function ChatInput() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-1 items-center">
-        <Tooltip>
-          <TooltipTrigger render={
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={toggleModel}
-              disabled={isGenerating}
-              className="min-w-0 px-2 text-xs font-mono"
-            />
-          }>
-            {model}
-          </TooltipTrigger>
-          <TooltipContent>Model: {model}</TooltipContent>
-        </Tooltip>
         <Tooltip>
           <TooltipTrigger render={
             <Button

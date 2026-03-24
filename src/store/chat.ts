@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type ModelId = 'qwen1' | 'qwen2'
+export type ModelId = 'qwen3.5-think' | 'qwen3.5-no-think'
 
 export interface Message {
   id: string
@@ -20,13 +20,11 @@ interface ChatState {
   messages: Message[]
   isGenerating: boolean
   thinkingEnabled: boolean
-  model: ModelId
   abortController: AbortController | null
   addMessage: (msg: Message) => void
   updateMessage: (id: string, update: Partial<Message>) => void
   setGenerating: (v: boolean) => void
   setThinkingEnabled: (v: boolean) => void
-  setModel: (m: ModelId) => void
   setAbortController: (c: AbortController | null) => void
   clearMessages: () => void
 }
@@ -35,7 +33,6 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   isGenerating: false,
   thinkingEnabled: true,
-  model: 'qwen1',
   abortController: null,
   addMessage: (msg) =>
     set((s) => ({ messages: [...s.messages, msg] })),
@@ -47,7 +44,6 @@ export const useChatStore = create<ChatState>((set) => ({
     })),
   setGenerating: (isGenerating) => set({ isGenerating }),
   setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),
-  setModel: (model) => set({ model }),
   setAbortController: (abortController) => set({ abortController }),
   clearMessages: () => set({ messages: [] }),
 }))
@@ -78,7 +74,8 @@ export async function sendMessage(content: string) {
   let streamStartTime: number | null = null
 
   try {
-    const { thinkingEnabled, model, messages } = useChatStore.getState()
+    const { thinkingEnabled, messages } = useChatStore.getState()
+    const model: ModelId = thinkingEnabled ? 'qwen3.5-think' : 'qwen3.5-no-think'
     const chatMessages = messages
       .filter((m) => !m.isStreaming)
       .map((m) => ({ role: m.role, content: m.content }))
