@@ -1,0 +1,77 @@
+// src/components/Canvas/layout.ts
+import type { Node, Edge } from '@xyflow/react'
+
+const NODE_WIDTH = 200
+const NODE_HEIGHT = 60
+const H_GAP = 40
+const V_GAP = 80
+
+export function layoutTree(
+  nodes: Node[],
+  edges: Edge[],
+): { nodes: Node[]; edges: Edge[] } {
+  if (nodes.length === 0) return { nodes, edges }
+
+  // Build adjacency from edges (source -> targets)
+  const children = new Map<string, string[]>()
+  const hasParent = new Set<string>()
+
+  for (const edge of edges) {
+    const list = children.get(edge.source) || []
+    list.push(edge.target)
+    children.set(edge.source, list)
+    hasParent.add(edge.target)
+  }
+
+  // Roots: nodes without parents
+  const roots = nodes.filter((n) => !hasParent.has(n.id))
+  // Standalone nodes (no edges): lay out in grid
+  const inEdge = new Set([...hasParent, ...children.keys()])
+  const standalone = nodes.filter((n) => !inEdge.has(n.id))
+
+  const positioned = new Map<string, { x: number; y: number }>()
+
+  // Position a subtree, returns its width
+  function positionSubtree(nodeId: string, x: number, y: number): number {
+    const kids = children.get(nodeId) || []
+    if (kids.length === 0) {
+      positioned.set(nodeId, { x, y })
+      return NODE_WIDTH
+    }
+
+    let totalWidth = 0
+    for (let i = 0; i < kids.length; i++) {
+      const childWidth = positionSubtree(kids[i], x + totalWidth, y + NODE_HEIGHT + V_GAP)
+      totalWidth += childWidth + (i < kids.length - 1 ? H_GAP : 0)
+    }
+
+    const subtreeWidth = Math.max(totalWidth, NODE_WIDTH)
+    positioned.set(nodeId, { x: x + (subtreeWidth - NODE_WIDTH) / 2, y })
+    return subtreeWidth
+  }
+
+  // Position root trees
+  let offsetX = 0
+  for (const root of roots.filter((r) => !standalone.includes(r))) {
+    const width = positionSubtree(root.id, offsetX, 0)
+    offsetX += width + H_GAP * 2
+  }
+
+  // Position standalone nodes in a grid
+  const cols = Math.max(1, Math.ceil(Math.sqrt(standalone.length)))
+  standalone.forEach((node, i) => {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    positioned.set(node.id, {
+      x: col * (NODE_WIDTH + H_GAP),
+      y: row * (NODE_HEIGHT + V_GAP),
+    })
+  })
+
+  const layoutNodes = nodes.map((node) => ({
+    ...node,
+    position: positioned.get(node.id) || node.position,
+  }))
+
+  return { nodes: layoutNodes, edges }
+}

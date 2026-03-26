@@ -8,11 +8,23 @@ import {
   MenubarCheckboxItem,
 } from '@/components/ui/menubar'
 import { useLayoutStore, PANEL_DEFINITIONS } from '@/store/layout'
+import { useBrowserStore } from '@/store'
+import { os } from '@neutralinojs/lib'
 
 export default function TopBar() {
   const panels = useLayoutStore((s) => s.panels)
   const addPanel = useLayoutStore((s) => s.addPanel)
   const removePanel = useLayoutStore((s) => s.removePanel)
+  const handleOpenFolder = async () => {
+    try {
+      const result = await os.showFolderDialog('Open Project Folder')
+      if (result) {
+        useBrowserStore.getState().openRoot(result)
+      }
+    } catch (err) {
+      console.error('Failed to open folder dialog:', err)
+    }
+  }
 
   const isPanelVisible = (id: string) => {
     return panels.left.includes(id) || panels.right.includes(id) || panels.bottom.includes(id)
@@ -25,7 +37,7 @@ export default function TopBar() {
         <MenubarTrigger>File</MenubarTrigger>
         <MenubarContent>
           <MenubarItem>New</MenubarItem>
-          <MenubarItem>Open</MenubarItem>
+          <MenubarItem onClick={handleOpenFolder}>Open Folder...</MenubarItem>
           <MenubarSeparator />
           <MenubarItem>Save</MenubarItem>
           <MenubarItem>Save As...</MenubarItem>
