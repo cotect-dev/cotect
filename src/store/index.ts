@@ -1,3 +1,4 @@
+export { useBrowserStore } from './browser'
 export { useCanvasStore } from './canvas'
 export { useChatStore } from './chat'
 export { useConsoleStore } from './console'
