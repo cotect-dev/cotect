@@ -82,8 +82,8 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
 
   const isPanel = mode === 'panel'
 
-  const leftVisible = (crossWindowDrag?.position === 'left' ? 1 : 0) + effectiveCount('left') > 0
-  const rightVisible = (crossWindowDrag?.position === 'right' ? 1 : 0) + effectiveCount('right') > 0
+  const leftVisible = isPanel || (crossWindowDrag?.position === 'left' ? 1 : 0) + effectiveCount('left') > 0
+  const rightVisible = isPanel || (crossWindowDrag?.position === 'right' ? 1 : 0) + effectiveCount('right') > 0
   const bottomVisible = !isPanel && ((crossWindowDrag?.position === 'bottom' ? 1 : 0) + effectiveCount('bottom') > 0)
 
   const previewFor = (pos: 'left' | 'right' | 'bottom') =>
@@ -152,7 +152,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
             </div>
 
             {isPanel ? (
-              (leftVisible || rightVisible) && !anyDragging && (
+              !anyDragging && (
                 <ResizeHandle mode="sibling" orientation="vertical" onResizeEnd={(pixelLeft, pixelRight) => {
                   const total = pixelLeft + pixelRight
                   if (total > 0) {
@@ -244,7 +244,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
           ) : null}
         </DragOverlay>
       </DndContext>
-      <CrossWindowDropOverlay zoneRefs={zoneRefs} />
+      <CrossWindowDropOverlay zoneRefs={zoneRefs} mode={mode} />
     </div>
   )
 }
