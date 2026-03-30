@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Modifier } from '@dnd-kit/core'
 import {
   PointerSensor,
@@ -11,7 +11,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
-import { broadcast } from '@/services/channel'
+import { broadcast, onMessage } from '@/services/channel'
 import { getWindowId } from '@/services/platform'
 
 const TAB_INTO_HEIGHT = 32 // px from the top of each panel area that counts as "header zone"
@@ -288,6 +288,18 @@ export function usePanelDrag() {
     },
     [isDragging, panels, dragState]
   )
+
+  // Listen for cross-window drops (this window is the source)
+  useEffect(() => {
+    return onMessage((msg) => {
+      if (msg.type === 'drag-drop' && msg.targetWindow !== getWindowId()) {
+        // Another window accepted the drop — remove panels from our store
+        for (const id of msg.panelIds) {
+          useLayoutStore.getState().removePanel(id)
+        }
+      }
+    })
+  }, [])
 
   return {
     panels,
