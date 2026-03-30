@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, watchFile, unwatchFile, existsSync } from 'fs'
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
@@ -46,8 +46,14 @@ const restore = () => {
   try { writeFileSync(configPath, original) } catch {}
 }
 
-process.on('SIGINT', () => { restore(); process.exit() })
-process.on('SIGTERM', () => { restore(); process.exit() })
+function killChildWindows() {
+  // Kill any Neutralino child window processes (spawned via window.create with ?window= in URL)
+  try { execSync('pkill -f "neutralino.*window="', { stdio: 'ignore' }) } catch {}
+}
+
+const cleanup = () => { killChildWindows(); restore(); process.exit() }
+process.on('SIGINT', cleanup)
+process.on('SIGTERM', cleanup)
 
 // Generate a JS file that sets the NL_* globals from auth_info.json
 function writeDevGlobals() {
@@ -110,6 +116,7 @@ setTimeout(() => writeDevGlobals(), 2000)
 
 neu.on('close', (code) => {
   unwatchFile(authPath)
+  killChildWindows()
   restore()
   process.exit(code ?? 0)
 })
