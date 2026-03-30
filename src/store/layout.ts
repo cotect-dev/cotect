@@ -70,30 +70,6 @@ function groupKey(group: string[]): string {
   return group[0] ?? ''
 }
 
-/** Remove duplicate panel IDs across all positions, keeping only the first occurrence. */
-function deduplicatePanels(panels: Record<PanelPosition, string[][]>, sizes: Record<PanelPosition, number[]>, activeTab: Record<string, number>) {
-  const seen = new Set<string>()
-  for (const pos of POSITIONS) {
-    for (let gi = panels[pos].length - 1; gi >= 0; gi--) {
-      const oldKey = groupKey(panels[pos][gi])
-      const group = panels[pos][gi]
-      for (let ti = group.length - 1; ti >= 0; ti--) {
-        if (seen.has(group[ti])) {
-          group.splice(ti, 1)
-        } else {
-          seen.add(group[ti])
-        }
-      }
-      if (group.length === 0) {
-        panels[pos].splice(gi, 1)
-        sizes[pos].splice(gi, 1)
-        sizes[pos] = renormalize(sizes[pos])
-        delete activeTab[oldKey]
-      }
-    }
-  }
-}
-
 export interface CrossWindowDrag {
   panelId: string
   panelIds: string[]
@@ -265,9 +241,6 @@ export const useLayoutStore = create<LayoutState>((set) => ({
         panels[to].splice(insertIndex, 0, group)
         sizes[to].splice(insertIndex, 0, half)
       }
-
-      // Ensure no panel ID appears more than once across all positions
-      deduplicatePanels(panels, sizes, activeTab)
 
       return { panels, sizes, activeTab }
     }),
