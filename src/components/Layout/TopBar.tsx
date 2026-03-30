@@ -7,14 +7,26 @@ import {
   MenubarSeparator,
   MenubarCheckboxItem,
 } from '@/components/ui/menubar'
-import { useLayoutStore, PANEL_DEFINITIONS } from '@/store/layout'
+import { useLayoutStore, loadLayoutIntoStore, PANEL_DEFINITIONS } from '@/store/layout'
 import { useBrowserStore } from '@/store'
 import { os } from '@neutralinojs/lib'
 import { createWindow, closeWindow } from '@/services/platform'
-import { registerWindow, saveLayout } from '@/services/windowManager'
+import { registerWindow, saveLayout, saveZoneSizes } from '@/services/windowManager'
 import { broadcast } from '@/services/channel'
 
-export default function TopBar() {
+const DEFAULT_LAYOUT = {
+  panels: { left: [['explorer']], right: [['chat']], bottom: [['console']] },
+  sizes: { left: [1], right: [1], bottom: [1] },
+  activeTab: {},
+}
+
+const DEFAULT_ZONE_SIZES = { left: 0.2, right: 0.2, bottom: 0.25 }
+
+interface TopBarProps {
+  onResetZoneSizes?: () => void
+}
+
+export default function TopBar({ onResetZoneSizes }: TopBarProps) {
   const panels = useLayoutStore((s) => s.panels)
   const addPanel = useLayoutStore((s) => s.addPanel)
   const removePanel = useLayoutStore((s) => s.removePanel)
@@ -65,7 +77,14 @@ export default function TopBar() {
           <MenubarItem>Zoom In</MenubarItem>
           <MenubarItem>Zoom Out</MenubarItem>
           <MenubarSeparator />
-          <MenubarItem>Reset View</MenubarItem>
+          <MenubarItem
+            onClick={() => {
+              loadLayoutIntoStore(DEFAULT_LAYOUT)
+              onResetZoneSizes?.()
+            }}
+          >
+            Reset View
+          </MenubarItem>
           <MenubarSeparator />
           <MenubarItem
             onClick={() => {
