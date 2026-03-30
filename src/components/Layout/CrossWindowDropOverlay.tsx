@@ -84,12 +84,15 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     let currentIncoming: { panelId: string; panelIds: string[]; sourceWindow: string } | null = null
     let currentZone: HoverZone = null
     let isOver = false
-    let didDrop = false // tracks whether we performed a drop for the current drag
+    let didDrop = false
+    // Track the highest focusedAt of any competing drop (even before our own)
+    let highestCompetingFocus = 0
 
     const unsub = onMessage((msg: ChannelMessage) => {
       if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
         didDrop = false
+        highestCompetingFocus = 0
       } else if (msg.type === 'drag-move' && msg.sourceWindow !== windowId && currentIncoming) {
         const result = detectZoneFromScreen(msg.screenX, msg.screenY)
         currentZone = result.zone
@@ -109,42 +112,48 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
         }
       } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
         if (currentIncoming && isOver && currentZone) {
-          // Drop immediately
-          const cwd = useLayoutStore.getState().crossWindowDrag
-          const insertIndex = cwd?.insertIndex ?? 0
-          const neighborIndex = cwd?.neighborIndex ?? 0
+          if (highestCompetingFocus > focusedAtRef.current) {
+            // A window with higher priority already dropped — don't compete
+          } else {
+            const cwd = useLayoutStore.getState().crossWindowDrag
+            const insertIndex = cwd?.insertIndex ?? 0
+            const neighborIndex = cwd?.neighborIndex ?? 0
 
-          broadcast({
-            type: 'drag-drop',
-            panelId: currentIncoming.panelId,
-            panelIds: currentIncoming.panelIds,
-            targetWindow: windowId,
-            focusedAt: focusedAtRef.current,
-            position: currentZone,
-            groupKey: null,
-          })
+            broadcast({
+              type: 'drag-drop',
+              panelId: currentIncoming.panelId,
+              panelIds: currentIncoming.panelIds,
+              targetWindow: windowId,
+              focusedAt: focusedAtRef.current,
+              position: currentZone,
+              groupKey: null,
+            })
 
-          const store = useLayoutStore.getState()
-          for (const id of currentIncoming.panelIds) {
-            store.removePanel(id)
+            const store = useLayoutStore.getState()
+            for (const id of currentIncoming.panelIds) {
+              store.removePanel(id)
+            }
+            store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
+            didDrop = true
           }
-          store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
-          didDrop = true
         }
 
         currentZone = null
         isOver = false
         setCrossWindowDrag(null)
-        // Keep currentIncoming alive to handle competing drag-drop
-      } else if (msg.type === 'drag-drop' && msg.targetWindow !== windowId && didDrop && currentIncoming) {
-        // Another window also dropped — if they have higher priority (more recently focused), undo ours
-        if (msg.focusedAt > focusedAtRef.current) {
+      } else if (msg.type === 'drag-drop' && msg.targetWindow !== windowId && currentIncoming) {
+        // Another window dropped for the same drag
+        if (msg.focusedAt > highestCompetingFocus) {
+          highestCompetingFocus = msg.focusedAt
+        }
+
+        // If we already dropped and they outrank us, undo
+        if (didDrop && msg.focusedAt > focusedAtRef.current) {
           for (const id of currentIncoming.panelIds) {
             useLayoutStore.getState().removePanel(id)
           }
           didDrop = false
         }
-        currentIncoming = null
       }
     })
 
