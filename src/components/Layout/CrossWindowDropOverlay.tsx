@@ -3,15 +3,13 @@ import { onMessage, broadcast, type ChannelMessage } from '@/services/channel'
 import { getWindowId } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
 
-interface IncomingDrag {
-  panelId: string
-  panelIds: string[]
-  sourceWindow: string
-}
-
 type HoverZone = PanelPosition | null
 
-export default function CrossWindowDropOverlay() {
+interface Props {
+  zoneRefs: React.RefObject<Record<PanelPosition, HTMLDivElement | null>>
+}
+
+export default function CrossWindowDropOverlay({ zoneRefs }: Props) {
   const windowId = getWindowId()
   const setCrossWindowDrag = useLayoutStore((s) => s.setCrossWindowDrag)
 
@@ -36,8 +34,45 @@ export default function CrossWindowDropOverlay() {
     return { zone, isOver: true }
   }, [])
 
+  // Compute insert index within a zone from screen coordinates,
+  // using the same logic as usePanelDrag's computeInsertIndex
+  const computeInsertFromScreen = useCallback((zone: PanelPosition, screenX: number, screenY: number): { insertIndex: number; neighborIndex: number } => {
+    const el = zoneRefs.current[zone]
+    if (!el) return { insertIndex: 0, neighborIndex: 0 }
+
+    const rect = el.getBoundingClientRect()
+    const isVertical = zone === 'left' || zone === 'right'
+
+    // Convert screen coords to local coords relative to the zone element
+    const localX = screenX - window.screenX - (window.outerWidth - window.innerWidth)
+    const localY = screenY - window.screenY - (window.outerHeight - window.innerHeight)
+
+    const sizes = useLayoutStore.getState().sizes[zone]
+    if (sizes.length === 0) return { insertIndex: 0, neighborIndex: 0 }
+
+    const totalSize = sizes.reduce((a, b) => a + b, 0)
+    const relativePos = isVertical
+      ? (localY - rect.top) / rect.height
+      : (localX - rect.left) / rect.width
+
+    let cumulative = 0
+    for (let i = 0; i < sizes.length; i++) {
+      const panelEnd = (cumulative + sizes[i]) / totalSize
+      if (relativePos < panelEnd) {
+        const panelMid = (cumulative + sizes[i] / 2) / totalSize
+        if (relativePos < panelMid) {
+          return { insertIndex: i, neighborIndex: i }
+        } else {
+          return { insertIndex: i + 1, neighborIndex: i }
+        }
+      }
+      cumulative += sizes[i]
+    }
+    return { insertIndex: sizes.length, neighborIndex: sizes.length - 1 }
+  }, [zoneRefs])
+
   useEffect(() => {
-    let currentIncoming: IncomingDrag | null = null
+    let currentIncoming: { panelId: string; panelIds: string[]; sourceWindow: string } | null = null
     let currentZone: HoverZone = null
     let isOver = false
 
@@ -46,20 +81,28 @@ export default function CrossWindowDropOverlay() {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
       } else if (msg.type === 'drag-move' && msg.sourceWindow !== windowId && currentIncoming) {
         const result = detectZoneFromScreen(msg.screenX, msg.screenY)
-        const prevZone = currentZone
         currentZone = result.zone
         isOver = result.isOver
 
-        if (currentZone !== prevZone) {
-          setCrossWindowDrag(currentZone ? {
-            panelId: currentIncoming.panelId,
+        if (currentZone) {
+          const { insertIndex, neighborIndex } = computeInsertFromScreen(currentZone, msg.screenX, msg.screenY)
+          setCrossWindowDrag({
+            panelId: currentIncoming.panelIds[0],
             panelIds: currentIncoming.panelIds,
             position: currentZone,
-          } : null)
+            insertIndex,
+            neighborIndex,
+          })
+        } else {
+          setCrossWindowDrag(null)
         }
       } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
         if (currentIncoming && isOver && currentZone) {
-          // Drop: broadcast confirmation and add panels locally
+          // Read the last computed insert position from the store
+          const cwd = useLayoutStore.getState().crossWindowDrag
+          const insertIndex = cwd?.insertIndex ?? 0
+          const neighborIndex = cwd?.neighborIndex ?? 0
+
           broadcast({
             type: 'drag-drop',
             panelId: currentIncoming.panelId,
@@ -73,7 +116,11 @@ export default function CrossWindowDropOverlay() {
           for (const id of currentIncoming.panelIds) {
             store.removePanel(id)
           }
+          // Use movePanel to insert at the correct position (not addPanel which always appends)
+          // First add the panel, then move it to the right spot
           store.addPanel(currentIncoming.panelIds[0], currentZone)
+          // movePanel expects the panel to already be in the store
+          store.movePanel(currentIncoming.panelIds[0], currentZone, insertIndex, neighborIndex)
           for (let i = 1; i < currentIncoming.panelIds.length; i++) {
             store.addPanel(currentIncoming.panelIds[i], currentZone)
             store.movePanelToTab(currentIncoming.panelIds[i], currentIncoming.panelIds[0])
@@ -91,8 +138,7 @@ export default function CrossWindowDropOverlay() {
       unsub()
       setCrossWindowDrag(null)
     }
-  }, [windowId, detectZoneFromScreen, setCrossWindowDrag])
+  }, [windowId, detectZoneFromScreen, computeInsertFromScreen, setCrossWindowDrag])
 
-  // No rendering — the ghost preview is handled by DropZone via crossWindowDrag state
   return null
 }
