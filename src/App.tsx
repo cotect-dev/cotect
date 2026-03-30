@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import Canvas from '@/views/Canvas'
 import NewWindow from '@/views/NewWindow'
-import { getWindowId, onWindowClose, closeWindow, createWindow, setWindowSizeConstraints } from '@/services/platform'
+import { getWindowId, onWindowClose, closeWindow, setWindowSizeConstraints } from '@/services/platform'
 import { broadcast, closeChannel, initChannel } from '@/services/channel'
 import {
   registerWindow,
@@ -48,19 +48,13 @@ function App() {
     // Start auto-persisting layout changes
     startLayoutPersistence(windowId)
 
-    // Restore child windows (main only, on startup)
+    // Clean up stale child window entries from previous sessions
     if (isMain) {
       const windows = getWindows()
       for (const w of windows) {
-        if (w.id !== 'main' && w.role === 'panel') {
-          // Only restore if layout data exists (window was properly saved)
-          const childLayout = loadLayout(w.id)
-          if (childLayout) {
-            createWindow(w.id)
-          } else {
-            // Stale entry — clean up
-            unregisterWindow(w.id)
-          }
+        if (w.id !== 'main') {
+          unregisterWindow(w.id)
+          removeLayout(w.id)
         }
       }
     }

@@ -15,7 +15,10 @@ const handlers: ((msg: ChannelMessage) => void)[] = []
 export function initChannel(windowId: string): void {
   senderId = windowId
   if (isNeutralino()) {
+    console.log('[ipc] init channel for', windowId, '(neutralino mode, polling)')
     startNeuPolling()
+  } else {
+    console.log('[ipc] init channel for', windowId, '(browser mode, BroadcastChannel)')
   }
 }
 
@@ -72,6 +75,7 @@ async function neuBroadcast(message: ChannelMessage): Promise<void> {
     envelopes.push({ sender: senderId, data: message, ts: now })
 
     await storage.setData(IPC_KEY, JSON.stringify(envelopes))
+    console.log('[ipc] broadcast:', message.type, 'from', senderId)
   } catch (err) {
     console.error('[ipc] broadcast failed:', err)
   }
@@ -84,6 +88,7 @@ async function neuPoll(): Promise<void> {
 
     for (const env of envelopes) {
       if (env.sender !== senderId && env.ts > lastSeenTs) {
+        console.log('[ipc] received:', env.data.type, 'from', env.sender)
         for (const handler of handlers) {
           handler(env.data)
         }
