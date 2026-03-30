@@ -9,6 +9,7 @@ import { usePanelDrag } from './usePanelDrag'
 import { getPanelLabel } from '@/store/layout'
 import { getWindowId } from '@/services/platform'
 import { saveZoneSizes, loadZoneSizes } from '@/services/windowManager'
+import CrossWindowDropOverlay from './CrossWindowDropOverlay'
 
 const MIN_SIDE = 120
 const MIN_BOTTOM = 80
@@ -191,6 +192,7 @@ export default function Layout() {
           ) : null}
         </DragOverlay>
       </DndContext>
+      <CrossWindowDropOverlay />
     </div>
   )
 }
