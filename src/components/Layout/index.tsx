@@ -118,8 +118,8 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
         onDragCancel={handleDragCancel}
       >
         <div ref={containerRef} className="relative flex-1 min-h-0 w-full flex flex-col pointer-events-none">
-          {!isPanel && isZoneEmpty('left') && <EdgeDropTarget position="left" />}
-          {!isPanel && isZoneEmpty('right') && <EdgeDropTarget position="right" />}
+          {isZoneEmpty('left') && <EdgeDropTarget position="left" panelMode={isPanel} />}
+          {isZoneEmpty('right') && <EdgeDropTarget position="right" panelMode={isPanel} />}
           {!isPanel && isZoneEmpty('bottom') && <EdgeDropTarget position="bottom" />}
 
           {/* Top section: left | canvas | right */}
