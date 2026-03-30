@@ -93,10 +93,14 @@ export default function Layout() {
       : getPanelLabel(activeDrag.panelId)
     : ''
 
+  const resetZoneSizes = useCallback(() => {
+    setZoneSizes({ left: 0.2, right: 0.2, bottom: 0.25 })
+  }, [])
+
   return (
     <div className="w-screen h-screen flex flex-col">
       <div className="pointer-events-none">
-        <TopBar />
+        <TopBar onResetZoneSizes={resetZoneSizes} />
       </div>
       <DndContext
         sensors={sensors}
