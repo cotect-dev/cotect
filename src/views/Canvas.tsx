@@ -5,10 +5,10 @@ import {
   BackgroundVariant,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useCanvasStore, useBrowserStore } from '../store'
-import Layout from '../components/Layout'
-import { nodeTypes } from '../components/Canvas/nodes'
-import Breadcrumbs from '../components/Canvas/Breadcrumbs'
+import { useCanvasStore, useBrowserStore } from '@/store'
+import Layout from '@/components/Layout'
+import { nodeTypes } from '@/components/Canvas/nodes'
+import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
 
 export default function Canvas() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, setNodes, setEdges } =

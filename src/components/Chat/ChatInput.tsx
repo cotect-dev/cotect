@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { useChatStore, sendMessage } from '../../store/chat'
+import { useChatStore, sendMessage } from '@/store/chat'
 
 export default function ChatInput() {
   const [text, setText] = useState('')

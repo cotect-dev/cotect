@@ -27,7 +27,7 @@ export default function TopBar() {
   }
 
   const isPanelVisible = (id: string) => {
-    return panels.left.includes(id) || panels.right.includes(id) || panels.bottom.includes(id)
+    return panels.left.some(g => g.includes(id)) || panels.right.some(g => g.includes(id)) || panels.bottom.some(g => g.includes(id))
   }
 
   return (

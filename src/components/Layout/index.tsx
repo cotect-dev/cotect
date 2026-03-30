@@ -55,9 +55,18 @@ export default function Layout() {
   const bottomVisible = effectiveCount('bottom') > 0
 
   const previewFor = (pos: 'left' | 'right' | 'bottom') =>
-    dragState?.overPosition === pos
+    dragState?.overPosition === pos && !dragState.tabIntoGroupKey
       ? { previewIndex: dragState.insertIndex, neighborIndex: dragState.neighborIndex }
       : { previewIndex: null, neighborIndex: null }
+
+  const tabIntoFor = (pos: 'left' | 'right' | 'bottom') =>
+    dragState?.overPosition === pos ? dragState.tabIntoGroupKey : null
+
+  const overlayLabel = dragState
+    ? dragState.isGroup && dragState.panelIds
+      ? dragState.panelIds.map(getPanelLabel).join(' / ')
+      : getPanelLabel(dragState.panelId)
+    : ''
 
   return (
     <div className="w-screen h-screen flex flex-col">
@@ -92,9 +101,12 @@ export default function Layout() {
             >
               <DropZone
                 position="left"
-                panelIds={panels.left}
+                groups={panels.left}
                 activePanelId={dragState?.panelId ?? null}
+                activePanelIds={dragState?.panelIds}
+                isGroupDrag={dragState?.isGroup ?? false}
                 {...previewFor('left')}
+                tabIntoGroupKey={tabIntoFor('left')}
               />
             </div>
 
@@ -121,9 +133,12 @@ export default function Layout() {
             >
               <DropZone
                 position="right"
-                panelIds={panels.right}
+                groups={panels.right}
                 activePanelId={dragState?.panelId ?? null}
+                activePanelIds={dragState?.panelIds}
+                isGroupDrag={dragState?.isGroup ?? false}
                 {...previewFor('right')}
+                tabIntoGroupKey={tabIntoFor('right')}
               />
             </div>
           </div>
@@ -145,9 +160,11 @@ export default function Layout() {
           >
             <DropZone
               position="bottom"
-              panelIds={panels.bottom}
+              groups={panels.bottom}
               activePanelId={dragState?.panelId ?? null}
+              isGroupDrag={dragState?.isGroup ?? false}
               {...previewFor('bottom')}
+              tabIntoGroupKey={tabIntoFor('bottom')}
             />
           </div>
         </div>
@@ -156,7 +173,7 @@ export default function Layout() {
           {dragState ? (
             <div className="pointer-events-none w-[150px] bg-background/90 backdrop-blur-md rounded shadow-lg border border-primary/30 flex items-center">
               <span className="flex-1 px-3 py-1.5 text-xs text-muted-foreground truncate">
-                {getPanelLabel(dragState.panelId)}
+                {overlayLabel}
               </span>
               <div className="px-2 py-1.5 text-muted-foreground">
                 <GripHorizontal className="h-3.5 w-3.5" />
