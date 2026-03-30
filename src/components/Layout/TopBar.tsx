@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/menubar'
 import { useLayoutStore, PANEL_DEFINITIONS } from '@/store/layout'
 import { useBrowserStore } from '@/store'
-import { os } from '@neutralinojs/lib'
+import { os, window as neuWindow } from '@neutralinojs/lib'
 
 export default function TopBar() {
   const panels = useLayoutStore((s) => s.panels)
@@ -63,6 +63,29 @@ export default function TopBar() {
           <MenubarItem>Zoom Out</MenubarItem>
           <MenubarSeparator />
           <MenubarItem>Reset View</MenubarItem>
+          <MenubarSeparator />
+          <MenubarItem
+            onClick={() => {
+              const url = `${window.location.origin}${window.location.pathname}?window=new`
+              if (window.NL_PORT) {
+                neuWindow.create(url, {
+                  title: 'Cotect',
+                  width: 800,
+                  height: 600,
+                  minWidth: 400,
+                  minHeight: 300,
+                  center: true,
+                  exitProcessOnClose: false,
+                }).catch(() => {
+                  window.open(url, '_blank')
+                })
+              } else {
+                window.open(url, '_blank')
+              }
+            }}
+          >
+            New Window
+          </MenubarItem>
           <MenubarSeparator />
           {PANEL_DEFINITIONS.map((def) => {
             const visible = isPanelVisible(def.id)

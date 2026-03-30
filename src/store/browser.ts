@@ -100,14 +100,11 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     const { viewMode, entries, fileAnalysis, currentPath, siblingAnalyses } = get()
 
     if (viewMode === 'directory') {
-      const nodes: AppNode[] = entries.map((entry) => ({
-        id: entry.path,
-        type: entry.isDirectory ? 'folder' as const : 'file' as const,
-        position: { x: 0, y: 0 },
-        data: entry.isDirectory
-          ? { label: entry.name, path: entry.path, isDirectory: true as const }
-          : { label: entry.name, path: entry.path },
-      }))
+      const nodes: AppNode[] = entries.map((entry): AppNode =>
+        entry.isDirectory
+          ? { id: entry.path, type: 'folder', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isDirectory: true as const } }
+          : { id: entry.path, type: 'file', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path } }
+      )
       return layoutTree(nodes, [])
     }
 
@@ -118,12 +115,21 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
 
       for (const decl of fileAnalysis.declarations) {
         const nodeId = `${fileId}:${decl.name}`
-        nodes.push({
-          id: nodeId,
-          type: decl.kind === 'class' ? 'classNode' : 'functionNode',
-          position: { x: 0, y: 0 },
-          data: { label: decl.name, kind: decl.kind, startLine: decl.startLine, endLine: decl.endLine },
-        })
+        if (decl.kind === 'class') {
+          nodes.push({
+            id: nodeId,
+            type: 'classNode',
+            position: { x: 0, y: 0 },
+            data: { label: decl.name, kind: 'class' as const, startLine: decl.startLine, endLine: decl.endLine },
+          })
+        } else {
+          nodes.push({
+            id: nodeId,
+            type: 'functionNode',
+            position: { x: 0, y: 0 },
+            data: { label: decl.name, kind: 'function' as const, startLine: decl.startLine, endLine: decl.endLine },
+          })
+        }
 
         for (const method of decl.children) {
           const methodId = `${nodeId}:${method.name}`
