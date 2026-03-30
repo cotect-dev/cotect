@@ -4,7 +4,6 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { os } from '@neutralinojs/lib'
 import { useTerminalStore, runCommand, killActiveProcess } from '@/store/terminal'
-import { loadPanelState, savePanelState } from '@/services/panelState'
 
 // Persistent xterm instance — survives component remounts
 let persistentTerm: XTerm | null = null
@@ -63,37 +62,6 @@ export default function Terminal() {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef('')
   const cursorPosRef = useRef(0)
-
-  // Sync panel state across windows
-  useEffect(() => {
-    loadPanelState<{ cwd: string; history: string[] }>('terminal').then((saved) => {
-      if (saved) {
-        if (saved.cwd) useTerminalStore.getState().setCwd(saved.cwd)
-        if (saved.history) {
-          const store = useTerminalStore.getState()
-          for (const cmd of saved.history) {
-            if (!store.history.includes(cmd)) store.pushHistory(cmd)
-          }
-        }
-      }
-    })
-
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const unsub = useTerminalStore.subscribe(() => {
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => {
-        const { cwd, history } = useTerminalStore.getState()
-        savePanelState('terminal', { cwd, history })
-      }, 300)
-    })
-
-    return () => {
-      unsub()
-      if (timer) clearTimeout(timer)
-      const { cwd, history } = useTerminalStore.getState()
-      savePanelState('terminal', { cwd, history })
-    }
-  }, [])
 
   const cwd = useTerminalStore((s) => s.cwd)
   const running = useTerminalStore((s) => s.running)

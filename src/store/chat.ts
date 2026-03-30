@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { createSyncedStore } from './synced'
 
 export type ModelId = 'qwen3.5-think' | 'qwen3.5-no-think'
 
@@ -29,7 +29,7 @@ interface ChatState {
   clearMessages: () => void
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = createSyncedStore<ChatState>('chat', (set) => ({
   messages: [],
   isGenerating: false,
   thinkingEnabled: true,

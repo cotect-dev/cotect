@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { createSyncedStore } from './synced'
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug'
 
@@ -20,7 +20,7 @@ interface ConsoleState {
 const MAX_ENTRIES = 1000
 let nextId = 0
 
-export const useConsoleStore = create<ConsoleState>((set) => ({
+export const useConsoleStore = createSyncedStore<ConsoleState>('console', (set) => ({
   entries: [],
   filter: null,
   log: (level, message) =>
