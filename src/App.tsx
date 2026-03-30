@@ -15,6 +15,7 @@ import {
   startLayoutPersistence,
   stopLayoutPersistence,
 } from '@/store/layout'
+import { initAllSyncedStores } from '@/store/synced'
 
 const windowId = getWindowId()
 const isMain = windowId === 'main'
@@ -37,8 +38,9 @@ function App() {
     // Set window size constraints
     setWindowSizeConstraints(isMain ? 1280 : 400, isMain ? 720 : 300)
 
-    // Initialize cross-window channel
+    // Initialize cross-window channel and synced stores
     initChannel(windowId)
+    initAllSyncedStores()
 
     // Register this window
     registerWindow(windowId, isMain ? 'main' : 'panel')
