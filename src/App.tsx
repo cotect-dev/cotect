@@ -3,13 +3,7 @@ import Canvas from '@/views/Canvas'
 import NewWindow from '@/views/NewWindow'
 import { getWindowId, onWindowClose, closeWindow, createWindow, killChildWindows, setWindowSizeConstraints } from '@/services/platform'
 import { broadcast, closeChannel, initChannel, onMessage } from '@/services/channel'
-import {
-  registerWindow,
-  unregisterWindow,
-  loadLayout,
-  getWindows,
-  removeLayout,
-} from '@/services/windowManager'
+import { loadLayout, getChildWindowIds, removeLayout } from '@/services/windowManager'
 import {
   loadLayoutIntoStore,
   startLayoutPersistence,
@@ -48,12 +42,8 @@ function App() {
     }
     initAllSyncedStores()
 
-    // Async init: register, load layout, restore child windows
+    // Async init: load layout, restore child windows
     ;(async () => {
-      // Register this window
-      await registerWindow(windowId, isMain ? 'main' : 'panel')
-      broadcast({ type: 'window-opened', windowId })
-
       // Load persisted layout (or default for main)
       const saved = await loadLayout(windowId)
       if (saved) {
@@ -66,20 +56,16 @@ function App() {
       startLayoutPersistence(windowId)
 
       // Restore child windows from previous session (main only)
+      // A layout file existing = window should be restored
       if (isMain) {
-        const windows = await getWindows()
-        for (const w of windows) {
-          if (w.id !== 'main' && w.role === 'panel') {
-            const childLayout = await loadLayout(w.id)
-            if (childLayout) {
-              createWindow(w.id)
-            } else {
-              unregisterWindow(w.id)
-            }
-          }
+        const childIds = await getChildWindowIds()
+        for (const id of childIds) {
+          createWindow(id)
         }
       }
     })()
+
+    broadcast({ type: 'window-opened', windowId })
 
     // Child windows: close when main window closes
     const unsubMessage = !isMain ? onMessage((msg) => {
@@ -91,12 +77,11 @@ function App() {
     // Handle this window closing
     // windowClose fires on explicit close (X button / Exit menu).
     // When neu-dev.js kills children via SIGKILL, this does NOT fire —
-    // so their registry entries and layouts persist for next startup.
+    // so their layout files persist for next startup.
     const unsubClose = onWindowClose(() => {
       stopLayoutPersistence()
       if (!isMain) {
-        // User explicitly closed this child — remove so it doesn't restore next time
-        unregisterWindow(windowId)
+        // User explicitly closed this child — remove layout so it doesn't restore
         removeLayout(windowId)
       }
       if (isMain) {
