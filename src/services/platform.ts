@@ -29,18 +29,12 @@ export function createWindow(id: string): void {
       center: true,
       exitProcessOnClose: false,
       injectGlobals: true,
-      hidden: true,
+      transparent: true,
     }).catch((err) => {
       console.error('Failed to create window:', err)
     })
   } else {
     window.open(`${window.location.origin}/?window=${id}`, '_blank')
-  }
-}
-
-export function showWindow(): void {
-  if (isNeutralino()) {
-    neuWindow.show().catch(() => {})
   }
 }
 
