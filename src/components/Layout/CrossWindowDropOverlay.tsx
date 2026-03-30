@@ -1,9 +1,11 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { onMessage, broadcast, type ChannelMessage } from '@/services/channel'
 import { getWindowId } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
 
 type HoverZone = PanelPosition | null
+
+const CLAIM_TIMEOUT = 150 // ms to wait for competing claims
 
 interface Props {
   zoneRefs: React.RefObject<Record<PanelPosition, HTMLDivElement | null>>
@@ -13,6 +15,14 @@ interface Props {
 export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Props) {
   const windowId = getWindowId()
   const setCrossWindowDrag = useLayoutStore((s) => s.setCrossWindowDrag)
+  const focusedAtRef = useRef(Date.now())
+
+  // Track when this window was last focused
+  useEffect(() => {
+    const handleFocus = () => { focusedAtRef.current = Date.now() }
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [])
 
   const detectZoneFromScreen = useCallback((screenX: number, screenY: number): { zone: HoverZone; isOver: boolean } => {
     const winLeft = window.screenX
@@ -29,10 +39,8 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
 
     let zone: HoverZone = null
     if (mode === 'panel') {
-      // Two-zone layout: left/right split at 50%
       zone = x < 0.5 ? 'left' : 'right'
     } else {
-      // Three-zone layout: left 25%, right 75%, bottom 75%
       if (y > 0.75) zone = 'bottom'
       else if (x < 0.25) zone = 'left'
       else if (x > 0.75) zone = 'right'
@@ -41,8 +49,6 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     return { zone, isOver: true }
   }, [mode])
 
-  // Compute insert index within a zone from screen coordinates,
-  // using the same logic as usePanelDrag's computeInsertIndex
   const computeInsertFromScreen = useCallback((zone: PanelPosition, screenX: number, screenY: number): { insertIndex: number; neighborIndex: number } => {
     const el = zoneRefs.current[zone]
     if (!el) return { insertIndex: 0, neighborIndex: 0 }
@@ -50,7 +56,6 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     const rect = el.getBoundingClientRect()
     const isVertical = zone === 'left' || zone === 'right'
 
-    // Convert screen coords to local coords relative to the zone element
     const localX = screenX - window.screenX - (window.outerWidth - window.innerWidth)
     const localY = screenY - window.screenY - (window.outerHeight - window.innerHeight)
 
@@ -82,10 +87,13 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     let currentIncoming: { panelId: string; panelIds: string[]; sourceWindow: string } | null = null
     let currentZone: HoverZone = null
     let isOver = false
+    let bestClaim: { windowId: string; focusedAt: number } | null = null
+    let claimTimer: ReturnType<typeof setTimeout> | null = null
 
     const unsub = onMessage((msg: ChannelMessage) => {
       if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
+        bestClaim = null
       } else if (msg.type === 'drag-move' && msg.sourceWindow !== windowId && currentIncoming) {
         const result = detectZoneFromScreen(msg.screenX, msg.screenY)
         currentZone = result.zone
@@ -105,38 +113,73 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
         }
       } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
         if (currentIncoming && isOver && currentZone) {
-          // Read the last computed insert position from the store
-          const cwd = useLayoutStore.getState().crossWindowDrag
-          const insertIndex = cwd?.insertIndex ?? 0
-          const neighborIndex = cwd?.neighborIndex ?? 0
+          // Broadcast our claim with focus timestamp
+          const myClaim = { windowId, focusedAt: focusedAtRef.current }
+          bestClaim = myClaim
+          broadcast({ type: 'drag-claim', ...myClaim })
 
-          broadcast({
-            type: 'drag-drop',
-            panelId: currentIncoming.panelId,
-            panelIds: currentIncoming.panelIds,
-            targetWindow: windowId,
-            position: currentZone,
-            groupKey: null,
-          })
+          // Wait for competing claims, then drop if we win
+          if (claimTimer) clearTimeout(claimTimer)
+          claimTimer = setTimeout(() => {
+            if (!bestClaim || bestClaim.windowId !== windowId || !currentIncoming || !currentZone) {
+              // Lost the claim or state was cleared
+              currentIncoming = null
+              currentZone = null
+              isOver = false
+              bestClaim = null
+              setCrossWindowDrag(null)
+              return
+            }
 
-          // Clear existing copies, then insert via moveGroup
-          // (moveGroup handles both existing and new panels)
-          const store = useLayoutStore.getState()
-          for (const id of currentIncoming.panelIds) {
-            store.removePanel(id)
-          }
-          store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
+            const cwd = useLayoutStore.getState().crossWindowDrag
+            const insertIndex = cwd?.insertIndex ?? 0
+            const neighborIndex = cwd?.neighborIndex ?? 0
+
+            broadcast({
+              type: 'drag-drop',
+              panelId: currentIncoming.panelId,
+              panelIds: currentIncoming.panelIds,
+              targetWindow: windowId,
+              position: currentZone,
+              groupKey: null,
+            })
+
+            const store = useLayoutStore.getState()
+            for (const id of currentIncoming.panelIds) {
+              store.removePanel(id)
+            }
+            store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
+
+            currentIncoming = null
+            currentZone = null
+            isOver = false
+            bestClaim = null
+            setCrossWindowDrag(null)
+          }, CLAIM_TIMEOUT)
+        } else {
+          currentIncoming = null
+          currentZone = null
+          isOver = false
+          bestClaim = null
+          setCrossWindowDrag(null)
         }
-
-        currentIncoming = null
-        currentZone = null
-        isOver = false
-        setCrossWindowDrag(null)
+      } else if (msg.type === 'drag-claim' && msg.windowId !== windowId) {
+        // Another window is claiming — compare focus timestamps (higher = more recent = wins)
+        if (bestClaim && msg.focusedAt > bestClaim.focusedAt) {
+          // They win — back off
+          bestClaim = { windowId: msg.windowId, focusedAt: msg.focusedAt }
+          if (claimTimer) {
+            clearTimeout(claimTimer)
+            claimTimer = null
+          }
+          setCrossWindowDrag(null)
+        }
       }
     })
 
     return () => {
       unsub()
+      if (claimTimer) clearTimeout(claimTimer)
       setCrossWindowDrag(null)
     }
   }, [windowId, detectZoneFromScreen, computeInsertFromScreen, setCrossWindowDrag])
