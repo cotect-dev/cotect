@@ -9,7 +9,10 @@ import {
 } from '@/components/ui/menubar'
 import { useLayoutStore, PANEL_DEFINITIONS } from '@/store/layout'
 import { useBrowserStore } from '@/store'
-import { os, window as neuWindow } from '@neutralinojs/lib'
+import { os } from '@neutralinojs/lib'
+import { createWindow } from '@/services/platform'
+import { registerWindow, saveLayout } from '@/services/windowManager'
+import { broadcast } from '@/services/channel'
 
 export default function TopBar() {
   const panels = useLayoutStore((s) => s.panels)
@@ -66,26 +69,15 @@ export default function TopBar() {
           <MenubarSeparator />
           <MenubarItem
             onClick={() => {
-              if (window.NL_PORT) {
-                const url = import.meta.env.DEV
-                  ? 'http://localhost:5173/?window=new'
-                  : '/?window=new'
-                neuWindow.create(url, {
-                  title: 'Cotect',
-                  width: 800,
-                  height: 600,
-                  minWidth: 400,
-                  minHeight: 300,
-                  center: true,
-                  exitProcessOnClose: false,
-                  injectGlobals: true,
-                }).catch((err) => {
-                  console.error('Failed to create window:', err)
-                })
-              } else {
-                const url = `${window.location.origin}${window.location.pathname}?window=new`
-                window.open(url, '_blank')
-              }
+              const id = crypto.randomUUID()
+              saveLayout(id, {
+                panels: { left: [], right: [], bottom: [] },
+                sizes: { left: [], right: [], bottom: [] },
+                activeTab: {},
+              })
+              registerWindow(id, 'panel')
+              broadcast({ type: 'window-opened', windowId: id })
+              createWindow(id)
             }}
           >
             New Window
