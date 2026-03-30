@@ -1,14 +1,13 @@
 import { useEffect } from 'react'
 import Canvas from '@/views/Canvas'
 import NewWindow from '@/views/NewWindow'
-import { getWindowId, onWindowClose, closeWindow, killChildWindows, setWindowSizeConstraints } from '@/services/platform'
+import { getWindowId, onWindowClose, closeWindow, createWindow, killChildWindows, setWindowSizeConstraints } from '@/services/platform'
 import { broadcast, closeChannel, initChannel, onMessage } from '@/services/channel'
 import {
   registerWindow,
   unregisterWindow,
   loadLayout,
   getWindows,
-  removeLayout,
 } from '@/services/windowManager'
 import {
   loadLayoutIntoStore,
@@ -63,13 +62,17 @@ function App() {
     // Start auto-persisting layout changes
     startLayoutPersistence(windowId)
 
-    // Clean up stale child window entries from previous sessions
+    // Restore child windows from previous session (main only)
     if (isMain) {
       const windows = getWindows()
       for (const w of windows) {
-        if (w.id !== 'main') {
-          unregisterWindow(w.id)
-          removeLayout(w.id)
+        if (w.id !== 'main' && w.role === 'panel') {
+          const childLayout = loadLayout(w.id)
+          if (childLayout) {
+            createWindow(w.id)
+          } else {
+            unregisterWindow(w.id)
+          }
         }
       }
     }
@@ -84,10 +87,6 @@ function App() {
     // Handle this window closing
     const unsubClose = onWindowClose(() => {
       stopLayoutPersistence()
-      unregisterWindow(windowId)
-      if (!isMain) {
-        removeLayout(windowId)
-      }
       // Main window: kill child processes directly (they're separate OS processes
       // that would otherwise be orphaned when the dev stack shuts down)
       if (isMain) {
