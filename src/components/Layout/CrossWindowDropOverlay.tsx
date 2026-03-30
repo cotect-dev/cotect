@@ -14,18 +14,29 @@ type HoverZone = PanelPosition | null
 export default function CrossWindowDropOverlay() {
   const [incoming, setIncoming] = useState<IncomingDrag | null>(null)
   const [hoverZone, setHoverZone] = useState<HoverZone>(null)
+  const [mouseOver, setMouseOver] = useState(false)
   const windowId = getWindowId()
 
-  const detectZone = useCallback((clientX: number, clientY: number): HoverZone => {
-    const w = window.innerWidth
-    const h = window.innerHeight
-    const x = clientX / w
-    const y = clientY / h
+  // Convert screen coordinates to a zone in this window
+  const detectZoneFromScreen = useCallback((screenX: number, screenY: number): { zone: HoverZone; isOver: boolean } => {
+    const winLeft = window.screenX
+    const winTop = window.screenY
+    const winRight = winLeft + window.outerWidth
+    const winBottom = winTop + window.outerHeight
 
-    if (y > 0.75) return 'bottom'
-    if (x < 0.25) return 'left'
-    if (x > 0.75) return 'right'
-    return null
+    if (screenX < winLeft || screenX > winRight || screenY < winTop || screenY > winBottom) {
+      return { zone: null, isOver: false }
+    }
+
+    const x = (screenX - winLeft) / window.outerWidth
+    const y = (screenY - winTop) / window.outerHeight
+
+    let zone: HoverZone = null
+    if (y > 0.75) zone = 'bottom'
+    else if (x < 0.25) zone = 'left'
+    else if (x > 0.75) zone = 'right'
+
+    return { zone, isOver: true }
   }, [])
 
   const handleDrop = useCallback((drag: IncomingDrag, zone: PanelPosition) => {
@@ -52,54 +63,41 @@ export default function CrossWindowDropOverlay() {
   useEffect(() => {
     let currentIncoming: IncomingDrag | null = null
     let currentZone: HoverZone = null
-    let mouseInWindow = false
+    let isOver = false
 
     const unsub = onMessage((msg: ChannelMessage) => {
       if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
         setIncoming(currentIncoming)
+      } else if (msg.type === 'drag-move' && msg.sourceWindow !== windowId && currentIncoming) {
+        const result = detectZoneFromScreen(msg.screenX, msg.screenY)
+        currentZone = result.zone
+        isOver = result.isOver
+        setHoverZone(currentZone)
+        setMouseOver(isOver)
       } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
-        if (currentIncoming && mouseInWindow && currentZone) {
+        if (currentIncoming && isOver && currentZone) {
           handleDrop(currentIncoming, currentZone)
         }
         currentIncoming = null
         currentZone = null
-        mouseInWindow = false
+        isOver = false
         setIncoming(null)
         setHoverZone(null)
+        setMouseOver(false)
       }
     })
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!currentIncoming) return
-      mouseInWindow = true
-      currentZone = detectZone(e.clientX, e.clientY)
-      setHoverZone(currentZone)
-    }
-
-    const handleMouseLeave = () => {
-      if (!currentIncoming) return
-      mouseInWindow = false
-      currentZone = null
-      setHoverZone(null)
-    }
-
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseleave', handleMouseLeave)
-
-    return () => {
-      unsub()
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseleave', handleMouseLeave)
-    }
-  }, [windowId, detectZone, handleDrop])
+    return () => { unsub() }
+  }, [windowId, detectZoneFromScreen, handleDrop])
 
   if (!incoming) return null
 
-  const zoneClass = (zone: PanelPosition) =>
-    hoverZone === zone
-      ? 'border-primary/60 bg-primary/15'
-      : 'border-primary/25 bg-primary/5'
+  const zoneClass = (zone: PanelPosition) => {
+    if (hoverZone === zone) return 'border-primary/60 bg-primary/15'
+    if (mouseOver) return 'border-transparent'
+    return 'border-primary/25 bg-primary/5'
+  }
 
   return (
     <div className="absolute inset-0 z-50 pointer-events-none">
