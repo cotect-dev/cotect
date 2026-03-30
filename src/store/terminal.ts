@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { createSyncedStore } from './synced'
 import { os, events } from '@neutralinojs/lib'
 import type { Terminal } from '@xterm/xterm'
 
@@ -17,7 +17,7 @@ interface TerminalState {
   setXterm: (xterm: Terminal | null) => void
 }
 
-export const useTerminalStore = create<TerminalState>((set) => ({
+export const useTerminalStore = createSyncedStore<TerminalState>('terminal', (set) => ({
   cwd: '~',
   running: false,
   activeProcessId: null,
