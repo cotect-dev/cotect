@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { GripHorizontal } from 'lucide-react'
 import TopBar from './TopBar'
@@ -7,6 +7,8 @@ import EdgeDropTarget from './EdgeDropTarget'
 import ResizeHandle from './ResizeHandle'
 import { usePanelDrag } from './usePanelDrag'
 import { getPanelLabel } from '@/store/layout'
+import { getWindowId } from '@/services/platform'
+import { saveZoneSizes, loadZoneSizes } from '@/services/windowManager'
 
 const MIN_SIDE = 120
 const MIN_BOTTOM = 80
@@ -28,11 +30,18 @@ export default function Layout() {
     isZoneEmpty,
   } = usePanelDrag()
 
-  const [zoneSizes, setZoneSizes] = useState({
-    left: 0.2,
-    right: 0.2,
-    bottom: 0.25,
+  const windowId = getWindowId()
+  const [zoneSizes, setZoneSizes] = useState(() => {
+    const saved = loadZoneSizes(windowId)
+    return saved ?? { left: 0.2, right: 0.2, bottom: 0.25 }
   })
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      saveZoneSizes(windowId, zoneSizes)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [windowId, zoneSizes])
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const topRowRef = useRef<HTMLDivElement | null>(null)
