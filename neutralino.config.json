@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "defaultMode": "window",
   "port": 0,
-  "documentRoot": "/dist/",
-  "url": "/index.html",
+  "documentRoot": "/",
+  "url": "http://localhost:5173",
   "enableServer": true,
   "enableNativeAPI": true,
   "tokenSecurity": "one-time",
@@ -30,7 +30,8 @@
       "height": 768,
       "minWidth": 1280,
       "minHeight": 720,
-      "center": true
+      "center": true,
+      "hidden": true
     }
   },
   "cli": {
