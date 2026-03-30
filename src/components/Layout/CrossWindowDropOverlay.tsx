@@ -112,19 +112,39 @@ export default function CrossWindowDropOverlay({ zoneRefs }: Props) {
             groupKey: null,
           })
 
+          // Remove any existing copies, then insert directly at the correct position
+          // (avoiding addPanel+movePanel which causes a double size-split)
           const store = useLayoutStore.getState()
           for (const id of currentIncoming.panelIds) {
             store.removePanel(id)
           }
-          // Use movePanel to insert at the correct position (not addPanel which always appends)
-          // First add the panel, then move it to the right spot
-          store.addPanel(currentIncoming.panelIds[0], currentZone)
-          // movePanel expects the panel to already be in the store
-          store.movePanel(currentIncoming.panelIds[0], currentZone, insertIndex, neighborIndex)
-          for (let i = 1; i < currentIncoming.panelIds.length; i++) {
-            store.addPanel(currentIncoming.panelIds[i], currentZone)
-            store.movePanelToTab(currentIncoming.panelIds[i], currentIncoming.panelIds[0])
-          }
+
+          useLayoutStore.setState((state) => {
+            const panels = {
+              left: state.panels.left.map((g) => [...g]),
+              right: state.panels.right.map((g) => [...g]),
+              bottom: state.panels.bottom.map((g) => [...g]),
+            }
+            const sizes = {
+              left: [...state.sizes.left],
+              right: [...state.sizes.right],
+              bottom: [...state.sizes.bottom],
+            }
+            const newGroup = [...currentIncoming!.panelIds]
+
+            if (panels[currentZone!].length === 0) {
+              panels[currentZone!].push(newGroup)
+              sizes[currentZone!] = [1]
+            } else {
+              const nIdx = neighborIndex < panels[currentZone!].length ? neighborIndex : panels[currentZone!].length - 1
+              const half = sizes[currentZone!][nIdx] / 2
+              sizes[currentZone!][nIdx] = half
+              panels[currentZone!].splice(insertIndex, 0, newGroup)
+              sizes[currentZone!].splice(insertIndex, 0, half)
+            }
+
+            return { panels, sizes }
+          })
         }
 
         currentIncoming = null
