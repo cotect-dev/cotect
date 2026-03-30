@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { saveLayout, type PersistedLayout } from '@/services/windowManager'
 
 export type PanelPosition = 'left' | 'right' | 'bottom'
 
@@ -85,14 +86,14 @@ interface LayoutState {
 
 export const useLayoutStore = create<LayoutState>((set) => ({
   panels: {
-    left: [['explorer']],
-    right: [['chat']],
-    bottom: [['console']],
+    left: [],
+    right: [],
+    bottom: [],
   },
   sizes: {
-    left: [1],
-    right: [1],
-    bottom: [1],
+    left: [],
+    right: [],
+    bottom: [],
   },
   activeTab: {},
 
@@ -321,3 +322,40 @@ export const useLayoutStore = create<LayoutState>((set) => ({
       activeTab: { ...state.activeTab, [key]: index },
     })),
 }))
+
+// --- Persistence helpers ---
+
+export function getSerializableLayout(): PersistedLayout {
+  const { panels, sizes, activeTab } = useLayoutStore.getState()
+  return { panels, sizes, activeTab }
+}
+
+export function loadLayoutIntoStore(saved: PersistedLayout): void {
+  useLayoutStore.setState({
+    panels: saved.panels,
+    sizes: saved.sizes,
+    activeTab: saved.activeTab,
+  })
+}
+
+let persistUnsub: (() => void) | null = null
+
+export function startLayoutPersistence(windowId: string): void {
+  // Avoid double-subscribe
+  if (persistUnsub) persistUnsub()
+
+  let timer: ReturnType<typeof setTimeout> | null = null
+  persistUnsub = useLayoutStore.subscribe(() => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      saveLayout(windowId, getSerializableLayout())
+    }, 300)
+  })
+}
+
+export function stopLayoutPersistence(): void {
+  if (persistUnsub) {
+    persistUnsub()
+    persistUnsub = null
+  }
+}
