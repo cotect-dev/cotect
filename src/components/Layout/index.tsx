@@ -14,7 +14,12 @@ import CrossWindowDropOverlay from './CrossWindowDropOverlay'
 const MIN_SIDE = 120
 const MIN_BOTTOM = 80
 
-export default function Layout() {
+interface LayoutProps {
+  /** 'main' = 3-zone layout (left/right/bottom) with canvas gap. 'panel' = 2-zone (left/right) filling the space. */
+  mode?: 'main' | 'panel'
+}
+
+export default function Layout({ mode = 'main' }: LayoutProps) {
   const {
     panels,
     dragState,
@@ -75,9 +80,11 @@ export default function Layout() {
 
   const anyDragging = isDragging || !!crossWindowDrag
 
+  const isPanel = mode === 'panel'
+
   const leftVisible = (crossWindowDrag?.position === 'left' ? 1 : 0) + effectiveCount('left') > 0
   const rightVisible = (crossWindowDrag?.position === 'right' ? 1 : 0) + effectiveCount('right') > 0
-  const bottomVisible = (crossWindowDrag?.position === 'bottom' ? 1 : 0) + effectiveCount('bottom') > 0
+  const bottomVisible = !isPanel && ((crossWindowDrag?.position === 'bottom' ? 1 : 0) + effectiveCount('bottom') > 0)
 
   const previewFor = (pos: 'left' | 'right' | 'bottom') =>
     activeDrag?.overPosition === pos && !activeDrag.tabIntoGroupKey
@@ -113,14 +120,19 @@ export default function Layout() {
         <div ref={containerRef} className="relative flex-1 min-h-0 w-full flex flex-col pointer-events-none">
           {isZoneEmpty('left') && <EdgeDropTarget position="left" />}
           {isZoneEmpty('right') && <EdgeDropTarget position="right" />}
-          {isZoneEmpty('bottom') && <EdgeDropTarget position="bottom" />}
+          {!isPanel && isZoneEmpty('bottom') && <EdgeDropTarget position="bottom" />}
 
           {/* Top section: left | canvas | right */}
           <div ref={topRowRef} className="flex-1 min-h-0 flex flex-row">
             <div
               ref={(el) => { zoneRefs.current.left = el; leftZoneRef.current = el }}
               className="h-full pointer-events-auto"
-              style={{
+              style={isPanel ? {
+                flexGrow: leftVisible ? 1 : 0,
+                flexShrink: 1,
+                flexBasis: 0,
+                minWidth: leftVisible ? MIN_SIDE : 0,
+              } : {
                 flexGrow: 0,
                 flexShrink: 0,
                 flexBasis: leftVisible ? `${zoneSizes.left * 100}%` : '0px',
@@ -139,20 +151,38 @@ export default function Layout() {
               />
             </div>
 
-            {leftVisible && !anyDragging && (
-              <ResizeHandle mode="target" orientation="vertical" targetRef={leftZoneRef} containerRef={topRowRef} min={MIN_SIDE} max={0.4} onResizeEnd={commitLeftSize} />
-            )}
+            {isPanel ? (
+              (leftVisible || rightVisible) && !anyDragging && (
+                <ResizeHandle mode="sibling" orientation="vertical" onResizeEnd={(pixelLeft, pixelRight) => {
+                  const total = pixelLeft + pixelRight
+                  if (total > 0) {
+                    setZoneSizes((prev) => ({ ...prev, left: pixelLeft / total, right: pixelRight / total }))
+                  }
+                }} />
+              )
+            ) : (
+              <>
+                {leftVisible && !anyDragging && (
+                  <ResizeHandle mode="target" orientation="vertical" targetRef={leftZoneRef} containerRef={topRowRef} min={MIN_SIDE} max={0.4} onResizeEnd={commitLeftSize} />
+                )}
 
-            <div className="flex-1 min-w-[20%]" />
+                <div className="flex-1 min-w-[20%]" />
 
-            {rightVisible && !anyDragging && (
-              <ResizeHandle mode="target" orientation="vertical" targetRef={rightZoneRef} containerRef={topRowRef} direction={-1} min={MIN_SIDE} max={0.4} onResizeEnd={commitRightSize} />
+                {rightVisible && !anyDragging && (
+                  <ResizeHandle mode="target" orientation="vertical" targetRef={rightZoneRef} containerRef={topRowRef} direction={-1} min={MIN_SIDE} max={0.4} onResizeEnd={commitRightSize} />
+                )}
+              </>
             )}
 
             <div
               ref={(el) => { zoneRefs.current.right = el; rightZoneRef.current = el }}
               className="h-full pointer-events-auto"
-              style={{
+              style={isPanel ? {
+                flexGrow: rightVisible ? 1 : 0,
+                flexShrink: 1,
+                flexBasis: 0,
+                minWidth: rightVisible ? MIN_SIDE : 0,
+              } : {
                 flexGrow: 0,
                 flexShrink: 0,
                 flexBasis: rightVisible ? `${zoneSizes.right * 100}%` : '0px',
@@ -172,31 +202,33 @@ export default function Layout() {
             </div>
           </div>
 
-          {bottomVisible && !anyDragging && (
+          {!isPanel && bottomVisible && !anyDragging && (
             <ResizeHandle mode="target" orientation="horizontal" targetRef={bottomZoneRef} containerRef={containerRef} direction={-1} min={MIN_BOTTOM} max={0.5} onResizeEnd={commitBottomSize} />
           )}
 
-          <div
-            ref={(el) => { zoneRefs.current.bottom = el; bottomZoneRef.current = el }}
-            className="w-full pointer-events-auto relative z-[1]"
-            style={{
-              flexGrow: 0,
-              flexShrink: 0,
-              flexBasis: bottomVisible ? `${zoneSizes.bottom * 100}%` : '0px',
-              minHeight: bottomVisible ? MIN_BOTTOM : 0,
-              maxHeight: '50%',
-            }}
-          >
-            <DropZone
-              position="bottom"
-              groups={panels.bottom}
-              activePanelId={activeDrag?.panelId ?? null}
-              activePanelIds={activeDrag?.panelIds}
-              isGroupDrag={activeDrag?.isGroup ?? false}
-              {...previewFor('bottom')}
-              tabIntoGroupKey={tabIntoFor('bottom')}
-            />
-          </div>
+          {!isPanel && (
+            <div
+              ref={(el) => { zoneRefs.current.bottom = el; bottomZoneRef.current = el }}
+              className="w-full pointer-events-auto relative z-[1]"
+              style={{
+                flexGrow: 0,
+                flexShrink: 0,
+                flexBasis: bottomVisible ? `${zoneSizes.bottom * 100}%` : '0px',
+                minHeight: bottomVisible ? MIN_BOTTOM : 0,
+                maxHeight: '50%',
+              }}
+            >
+              <DropZone
+                position="bottom"
+                groups={panels.bottom}
+                activePanelId={activeDrag?.panelId ?? null}
+                activePanelIds={activeDrag?.panelIds}
+                isGroupDrag={activeDrag?.isGroup ?? false}
+                {...previewFor('bottom')}
+                tabIntoGroupKey={tabIntoFor('bottom')}
+              />
+            </div>
+          )}
         </div>
 
         <DragOverlay dropAnimation={null} modifiers={[centerOnCursor]}>
