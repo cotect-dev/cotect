@@ -10,7 +10,7 @@ import {
 import { useLayoutStore, PANEL_DEFINITIONS } from '@/store/layout'
 import { useBrowserStore } from '@/store'
 import { os } from '@neutralinojs/lib'
-import { createWindow } from '@/services/platform'
+import { createWindow, closeWindow } from '@/services/platform'
 import { registerWindow, saveLayout } from '@/services/windowManager'
 import { broadcast } from '@/services/channel'
 
@@ -45,7 +45,7 @@ export default function TopBar() {
           <MenubarItem>Save</MenubarItem>
           <MenubarItem>Save As...</MenubarItem>
           <MenubarSeparator />
-          <MenubarItem>Exit</MenubarItem>
+          <MenubarItem onClick={closeWindow}>Exit</MenubarItem>
         </MenubarContent>
       </MenubarMenu>
       <MenubarMenu>

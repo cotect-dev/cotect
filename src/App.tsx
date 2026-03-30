@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 import Canvas from '@/views/Canvas'
 import NewWindow from '@/views/NewWindow'
-import { getWindowId, onWindowClose, createWindow, setWindowSizeConstraints } from '@/services/platform'
-import { broadcast, closeChannel } from '@/services/channel'
+import { getWindowId, onWindowClose, closeWindow, createWindow, setWindowSizeConstraints } from '@/services/platform'
+import { broadcast, closeChannel, initChannel } from '@/services/channel'
 import {
   registerWindow,
   unregisterWindow,
@@ -29,6 +29,9 @@ function App() {
   useEffect(() => {
     // Set window size constraints
     setWindowSizeConstraints(isMain ? 1280 : 400, isMain ? 720 : 300)
+
+    // Initialize cross-window channel
+    initChannel(windowId)
 
     // Register this window
     registerWindow(windowId, isMain ? 'main' : 'panel')
@@ -71,6 +74,7 @@ function App() {
       }
       broadcast({ type: 'window-closed', windowId })
       closeChannel()
+      closeWindow()
     })
 
     return () => {
