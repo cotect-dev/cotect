@@ -7,9 +7,10 @@ type HoverZone = PanelPosition | null
 
 interface Props {
   zoneRefs: React.RefObject<Record<PanelPosition, HTMLDivElement | null>>
+  mode?: 'main' | 'panel'
 }
 
-export default function CrossWindowDropOverlay({ zoneRefs }: Props) {
+export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Props) {
   const windowId = getWindowId()
   const setCrossWindowDrag = useLayoutStore((s) => s.setCrossWindowDrag)
 
@@ -27,12 +28,18 @@ export default function CrossWindowDropOverlay({ zoneRefs }: Props) {
     const y = (screenY - winTop) / window.outerHeight
 
     let zone: HoverZone = null
-    if (y > 0.75) zone = 'bottom'
-    else if (x < 0.25) zone = 'left'
-    else if (x > 0.75) zone = 'right'
+    if (mode === 'panel') {
+      // Two-zone layout: left/right split at 50%
+      zone = x < 0.5 ? 'left' : 'right'
+    } else {
+      // Three-zone layout: left 25%, right 75%, bottom 75%
+      if (y > 0.75) zone = 'bottom'
+      else if (x < 0.25) zone = 'left'
+      else if (x > 0.75) zone = 'right'
+    }
 
     return { zone, isOver: true }
-  }, [])
+  }, [mode])
 
   // Compute insert index within a zone from screen coordinates,
   // using the same logic as usePanelDrag's computeInsertIndex
