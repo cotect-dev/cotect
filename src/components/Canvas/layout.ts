@@ -6,10 +6,10 @@ const NODE_HEIGHT = 60
 const H_GAP = 40
 const V_GAP = 80
 
-export function layoutTree(
-  nodes: Node[],
+export function layoutTree<T extends Node>(
+  nodes: T[],
   edges: Edge[],
-): { nodes: Node[]; edges: Edge[] } {
+): { nodes: T[]; edges: Edge[] } {
   if (nodes.length === 0) return { nodes, edges }
 
   // Build adjacency from edges (source -> targets)

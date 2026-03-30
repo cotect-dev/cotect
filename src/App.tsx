@@ -1,6 +1,10 @@
 import { useEffect } from 'react'
 import { window as neuWindow } from '@neutralinojs/lib'
 import Canvas from '@/views/Canvas'
+import NewWindow from '@/views/NewWindow'
+
+const params = new URLSearchParams(window.location.search)
+const windowType = params.get('window')
 
 function App() {
   useEffect(() => {
@@ -9,6 +13,7 @@ function App() {
     }
   }, [])
 
+  if (windowType === 'new') return <NewWindow />
   return <Canvas />
 }
 
