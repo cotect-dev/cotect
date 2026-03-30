@@ -5,11 +5,6 @@ import type { PanelPosition } from '@/store/layout'
 const FILE_PREFIX = '/tmp/cotect-wm-'
 const LS_PREFIX = 'cotect:'
 
-export interface WindowDescriptor {
-  id: string
-  role: 'main' | 'panel'
-}
-
 export interface PersistedLayout {
   panels: Record<PanelPosition, string[][]>
   sizes: Record<PanelPosition, number[]>
@@ -22,23 +17,12 @@ export interface PersistedZoneSizes {
   bottom: number
 }
 
-// --- Shared read/write helpers ---
-
-function readFileSync(key: string): string | null {
-  // For Neutralino, we need async reads but callers expect sync.
-  // Use a cache that's populated by async reads.
-  return fileCache.get(key) ?? null
-}
-
-// File cache for Neutralino mode (populated by async preload)
-const fileCache = new Map<string, string>()
+// --- Read/write helpers ---
 
 async function fileRead(key: string): Promise<string | null> {
   if (isNeutralino()) {
     try {
-      const raw = await filesystem.readFile(`${FILE_PREFIX}${key}.json`)
-      fileCache.set(key, raw)
-      return raw
+      return await filesystem.readFile(`${FILE_PREFIX}${key}.json`)
     } catch {
       return null
     }
@@ -52,7 +36,6 @@ async function fileRead(key: string): Promise<string | null> {
 }
 
 function fileWrite(key: string, data: string): void {
-  fileCache.set(key, data)
   if (isNeutralino()) {
     filesystem.writeFile(`${FILE_PREFIX}${key}.json`, data).catch(() => {})
   } else {
@@ -61,7 +44,6 @@ function fileWrite(key: string, data: string): void {
 }
 
 function fileRemove(key: string): void {
-  fileCache.delete(key)
   if (isNeutralino()) {
     filesystem.remove(`${FILE_PREFIX}${key}.json`).catch(() => {})
   } else {
@@ -69,28 +51,34 @@ function fileRemove(key: string): void {
   }
 }
 
-// --- Window registry ---
+// --- Window discovery (no registry — layout file existence = registration) ---
 
-export async function getWindows(): Promise<WindowDescriptor[]> {
-  try {
-    const raw = await fileRead('windows')
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
+export async function getChildWindowIds(): Promise<string[]> {
+  if (isNeutralino()) {
+    try {
+      const entries = await filesystem.readDirectory('/tmp')
+      const prefix = 'cotect-wm-layout-'
+      const ids: string[] = []
+      for (const entry of entries) {
+        if (entry.type === 'FILE' && entry.entry.startsWith(prefix) && entry.entry.endsWith('.json')) {
+          const id = entry.entry.slice(prefix.length, -5) // remove prefix and .json
+          if (id !== 'main') ids.push(id)
+        }
+      }
+      return ids
+    } catch {
+      return []
+    }
+  } else {
+    const ids: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith(`${LS_PREFIX}layout-`) && !key.endsWith('-main')) {
+        ids.push(key.slice(`${LS_PREFIX}layout-`.length))
+      }
+    }
+    return ids
   }
-}
-
-export async function registerWindow(id: string, role: 'main' | 'panel'): Promise<void> {
-  const windows = await getWindows()
-  const filtered = windows.filter((w) => w.id !== id)
-  filtered.push({ id, role })
-  fileWrite('windows', JSON.stringify(filtered))
-}
-
-export async function unregisterWindow(id: string): Promise<void> {
-  const windows = await getWindows()
-  const filtered = windows.filter((w) => w.id !== id)
-  fileWrite('windows', JSON.stringify(filtered))
 }
 
 // --- Layout persistence ---

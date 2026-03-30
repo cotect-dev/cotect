@@ -11,7 +11,7 @@ import { useLayoutStore, loadLayoutIntoStore, PANEL_DEFINITIONS } from '@/store/
 import { useBrowserStore } from '@/store'
 import { os } from '@neutralinojs/lib'
 import { createWindow, closeWindow } from '@/services/platform'
-import { registerWindow, saveLayout, saveZoneSizes } from '@/services/windowManager'
+import { saveLayout } from '@/services/windowManager'
 import { broadcast } from '@/services/channel'
 
 const DEFAULT_LAYOUT = {
@@ -94,7 +94,6 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
                 sizes: { left: [], right: [], bottom: [] },
                 activeTab: {},
               })
-              registerWindow(id, 'panel')
               broadcast({ type: 'window-opened', windowId: id })
               createWindow(id)
             }}
