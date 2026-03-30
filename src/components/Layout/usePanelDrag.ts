@@ -11,6 +11,8 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
+import { broadcast } from '@/services/channel'
+import { getWindowId } from '@/services/platform'
 
 const TAB_INTO_HEIGHT = 32 // px from the top of each panel area that counts as "header zone"
 
@@ -164,6 +166,12 @@ export function usePanelDrag() {
         neighborIndex: 0,
         tabIntoGroupKey: null,
       })
+      broadcast({
+        type: 'drag-start',
+        panelId: data.panelId,
+        panelIds: data.isGroup ? data.panelIds : [data.panelId],
+        sourceWindow: getWindowId(),
+      })
     }
   }, [])
 
@@ -221,12 +229,14 @@ export function usePanelDrag() {
 
         return null
       })
+      broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
     },
     [movePanel, movePanelToTab, moveGroup, moveGroupToTab]
   )
 
   const handleDragCancel = useCallback(() => {
     setDragState(null)
+    broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
   }, [])
 
   const centerOnCursor: Modifier = useMemo(() => {
