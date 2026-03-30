@@ -8,6 +8,7 @@ import {
   unregisterWindow,
   loadLayout,
   getWindows,
+  removeLayout,
 } from '@/services/windowManager'
 import {
   loadLayoutIntoStore,
@@ -88,8 +89,16 @@ function App() {
     }) : undefined
 
     // Handle this window closing
+    // windowClose fires on explicit close (X button / Exit menu).
+    // When neu-dev.js kills children via SIGKILL, this does NOT fire —
+    // so their registry entries and layouts persist for next startup.
     const unsubClose = onWindowClose(() => {
       stopLayoutPersistence()
+      if (!isMain) {
+        // User explicitly closed this child — remove so it doesn't restore next time
+        unregisterWindow(windowId)
+        removeLayout(windowId)
+      }
       if (isMain) {
         killChildWindows()
       }
