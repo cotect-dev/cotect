@@ -38,6 +38,12 @@ export function createWindow(id: string): void {
   }
 }
 
+export function showWindow(): void {
+  if (isNeutralino()) {
+    neuWindow.show().catch(() => {})
+  }
+}
+
 export function setWindowSizeConstraints(minWidth: number, minHeight: number): void {
   if (isNeutralino()) {
     neuWindow.setSize({ minWidth, minHeight }).catch(() => {})
