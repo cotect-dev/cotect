@@ -6,8 +6,7 @@ export type ChannelMessage =
   | { type: 'drag-start'; panelId: string; panelIds: string[]; sourceWindow: string }
   | { type: 'drag-end'; sourceWindow: string }
   | { type: 'drag-move'; screenX: number; screenY: number; sourceWindow: string }
-  | { type: 'drag-claim'; windowId: string; focusedAt: number }
-  | { type: 'drag-drop'; panelId: string; panelIds: string[]; targetWindow: string; position: PanelPosition; groupKey: string | null }
+  | { type: 'drag-drop'; panelId: string; panelIds: string[]; targetWindow: string; focusedAt: number; position: PanelPosition; groupKey: string | null }
   | { type: 'window-opened'; windowId: string }
   | { type: 'window-closed'; windowId: string }
 
