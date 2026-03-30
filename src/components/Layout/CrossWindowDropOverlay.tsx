@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 import { onMessage, broadcast, type ChannelMessage } from '@/services/channel'
 import { getWindowId } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
@@ -12,12 +12,9 @@ interface IncomingDrag {
 type HoverZone = PanelPosition | null
 
 export default function CrossWindowDropOverlay() {
-  const [incoming, setIncoming] = useState<IncomingDrag | null>(null)
-  const [hoverZone, setHoverZone] = useState<HoverZone>(null)
-  const [mouseOver, setMouseOver] = useState(false)
   const windowId = getWindowId()
+  const setCrossWindowDrag = useLayoutStore((s) => s.setCrossWindowDrag)
 
-  // Convert screen coordinates to a zone in this window
   const detectZoneFromScreen = useCallback((screenX: number, screenY: number): { zone: HoverZone; isOver: boolean } => {
     const winLeft = window.screenX
     const winTop = window.screenY
@@ -39,27 +36,6 @@ export default function CrossWindowDropOverlay() {
     return { zone, isOver: true }
   }, [])
 
-  const handleDrop = useCallback((drag: IncomingDrag, zone: PanelPosition) => {
-    broadcast({
-      type: 'drag-drop',
-      panelId: drag.panelId,
-      panelIds: drag.panelIds,
-      targetWindow: windowId,
-      position: zone,
-      groupKey: null,
-    })
-
-    const store = useLayoutStore.getState()
-    for (const id of drag.panelIds) {
-      store.removePanel(id)
-    }
-    store.addPanel(drag.panelIds[0], zone)
-    for (let i = 1; i < drag.panelIds.length; i++) {
-      store.addPanel(drag.panelIds[i], zone)
-      store.movePanelToTab(drag.panelIds[i], drag.panelIds[0])
-    }
-  }, [windowId])
-
   useEffect(() => {
     let currentIncoming: IncomingDrag | null = null
     let currentZone: HoverZone = null
@@ -68,51 +44,55 @@ export default function CrossWindowDropOverlay() {
     const unsub = onMessage((msg: ChannelMessage) => {
       if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
-        setIncoming(currentIncoming)
       } else if (msg.type === 'drag-move' && msg.sourceWindow !== windowId && currentIncoming) {
         const result = detectZoneFromScreen(msg.screenX, msg.screenY)
+        const prevZone = currentZone
         currentZone = result.zone
         isOver = result.isOver
-        setHoverZone(currentZone)
-        setMouseOver(isOver)
+
+        if (currentZone !== prevZone) {
+          setCrossWindowDrag(currentZone ? {
+            panelId: currentIncoming.panelId,
+            panelIds: currentIncoming.panelIds,
+            position: currentZone,
+          } : null)
+        }
       } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
         if (currentIncoming && isOver && currentZone) {
-          handleDrop(currentIncoming, currentZone)
+          // Drop: broadcast confirmation and add panels locally
+          broadcast({
+            type: 'drag-drop',
+            panelId: currentIncoming.panelId,
+            panelIds: currentIncoming.panelIds,
+            targetWindow: windowId,
+            position: currentZone,
+            groupKey: null,
+          })
+
+          const store = useLayoutStore.getState()
+          for (const id of currentIncoming.panelIds) {
+            store.removePanel(id)
+          }
+          store.addPanel(currentIncoming.panelIds[0], currentZone)
+          for (let i = 1; i < currentIncoming.panelIds.length; i++) {
+            store.addPanel(currentIncoming.panelIds[i], currentZone)
+            store.movePanelToTab(currentIncoming.panelIds[i], currentIncoming.panelIds[0])
+          }
         }
+
         currentIncoming = null
         currentZone = null
         isOver = false
-        setIncoming(null)
-        setHoverZone(null)
-        setMouseOver(false)
+        setCrossWindowDrag(null)
       }
     })
 
-    return () => { unsub() }
-  }, [windowId, detectZoneFromScreen, handleDrop])
+    return () => {
+      unsub()
+      setCrossWindowDrag(null)
+    }
+  }, [windowId, detectZoneFromScreen, setCrossWindowDrag])
 
-  if (!incoming) return null
-
-  const zoneClass = (zone: PanelPosition) => {
-    if (hoverZone === zone) return 'border-primary/60 bg-primary/15'
-    if (mouseOver) return 'border-transparent'
-    return 'border-transparent'
-  }
-
-  return (
-    <div className="absolute inset-0 z-50 pointer-events-none">
-      <div className={`absolute left-0 top-0 w-1/4 h-3/4 border-2 border-dashed rounded-sm transition-colors ${zoneClass('left')}`} />
-      <div className={`absolute right-0 top-0 w-1/4 h-3/4 border-2 border-dashed rounded-sm transition-colors ${zoneClass('right')}`} />
-      <div className={`absolute left-0 bottom-0 w-full h-1/4 border-2 border-dashed rounded-sm transition-colors ${zoneClass('bottom')}`} />
-      {hoverZone && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="bg-background/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-primary/40 shadow-lg">
-            <span className="text-sm text-muted-foreground">
-              Drop in {hoverZone} panel
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+  // No rendering — the ghost preview is handled by DropZone via crossWindowDrag state
+  return null
 }

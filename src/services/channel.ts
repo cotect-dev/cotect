@@ -1,4 +1,5 @@
 import { filesystem } from '@neutralinojs/lib'
+import { isNeutralino } from '@/services/platform'
 import type { PanelPosition } from '@/store/layout'
 
 export type ChannelMessage =
@@ -11,10 +12,6 @@ export type ChannelMessage =
 
 let senderId = ''
 const handlers: ((msg: ChannelMessage) => void)[] = []
-
-function isNeutralino(): boolean {
-  return typeof window !== 'undefined' && !!window.NL_PORT
-}
 
 export function initChannel(windowId: string): void {
   senderId = windowId

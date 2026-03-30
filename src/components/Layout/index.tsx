@@ -6,7 +6,7 @@ import DropZone from './DropZone'
 import EdgeDropTarget from './EdgeDropTarget'
 import ResizeHandle from './ResizeHandle'
 import { usePanelDrag } from './usePanelDrag'
-import { getPanelLabel } from '@/store/layout'
+import { getPanelLabel, useLayoutStore } from '@/store/layout'
 import { getWindowId } from '@/services/platform'
 import { saveZoneSizes, loadZoneSizes } from '@/services/windowManager'
 import CrossWindowDropOverlay from './CrossWindowDropOverlay'
@@ -60,22 +60,37 @@ export default function Layout() {
     setZoneSizes((prev) => ({ ...prev, bottom: ratio }))
   }, [])
 
-  const leftVisible = effectiveCount('left') > 0
-  const rightVisible = effectiveCount('right') > 0
-  const bottomVisible = effectiveCount('bottom') > 0
+  const crossWindowDrag = useLayoutStore((s) => s.crossWindowDrag)
+
+  // Merge local drag with cross-window drag for unified DropZone props
+  const activeDrag = dragState ?? (crossWindowDrag ? {
+    panelId: crossWindowDrag.panelIds[0],
+    panelIds: crossWindowDrag.panelIds,
+    isGroup: crossWindowDrag.panelIds.length > 1,
+    overPosition: crossWindowDrag.position,
+    insertIndex: 0,
+    neighborIndex: 0,
+    tabIntoGroupKey: null,
+  } : null)
+
+  const anyDragging = isDragging || !!crossWindowDrag
+
+  const leftVisible = (crossWindowDrag?.position === 'left' ? 1 : 0) + effectiveCount('left') > 0
+  const rightVisible = (crossWindowDrag?.position === 'right' ? 1 : 0) + effectiveCount('right') > 0
+  const bottomVisible = (crossWindowDrag?.position === 'bottom' ? 1 : 0) + effectiveCount('bottom') > 0
 
   const previewFor = (pos: 'left' | 'right' | 'bottom') =>
-    dragState?.overPosition === pos && !dragState.tabIntoGroupKey
-      ? { previewIndex: dragState.insertIndex, neighborIndex: dragState.neighborIndex }
+    activeDrag?.overPosition === pos && !activeDrag.tabIntoGroupKey
+      ? { previewIndex: activeDrag.insertIndex, neighborIndex: activeDrag.neighborIndex }
       : { previewIndex: null, neighborIndex: null }
 
   const tabIntoFor = (pos: 'left' | 'right' | 'bottom') =>
-    dragState?.overPosition === pos ? dragState.tabIntoGroupKey : null
+    activeDrag?.overPosition === pos ? activeDrag.tabIntoGroupKey : null
 
-  const overlayLabel = dragState
-    ? dragState.isGroup && dragState.panelIds
-      ? dragState.panelIds.map(getPanelLabel).join(' / ')
-      : getPanelLabel(dragState.panelId)
+  const overlayLabel = activeDrag
+    ? activeDrag.isGroup && activeDrag.panelIds
+      ? activeDrag.panelIds.map(getPanelLabel).join(' / ')
+      : getPanelLabel(activeDrag.panelId)
     : ''
 
   return (
@@ -112,21 +127,21 @@ export default function Layout() {
               <DropZone
                 position="left"
                 groups={panels.left}
-                activePanelId={dragState?.panelId ?? null}
-                activePanelIds={dragState?.panelIds}
-                isGroupDrag={dragState?.isGroup ?? false}
+                activePanelId={activeDrag?.panelId ?? null}
+                activePanelIds={activeDrag?.panelIds}
+                isGroupDrag={activeDrag?.isGroup ?? false}
                 {...previewFor('left')}
                 tabIntoGroupKey={tabIntoFor('left')}
               />
             </div>
 
-            {leftVisible && !isDragging && (
+            {leftVisible && !anyDragging && (
               <ResizeHandle mode="target" orientation="vertical" targetRef={leftZoneRef} containerRef={topRowRef} min={MIN_SIDE} max={0.4} onResizeEnd={commitLeftSize} />
             )}
 
             <div className="flex-1 min-w-[20%]" />
 
-            {rightVisible && !isDragging && (
+            {rightVisible && !anyDragging && (
               <ResizeHandle mode="target" orientation="vertical" targetRef={rightZoneRef} containerRef={topRowRef} direction={-1} min={MIN_SIDE} max={0.4} onResizeEnd={commitRightSize} />
             )}
 
@@ -144,16 +159,16 @@ export default function Layout() {
               <DropZone
                 position="right"
                 groups={panels.right}
-                activePanelId={dragState?.panelId ?? null}
-                activePanelIds={dragState?.panelIds}
-                isGroupDrag={dragState?.isGroup ?? false}
+                activePanelId={activeDrag?.panelId ?? null}
+                activePanelIds={activeDrag?.panelIds}
+                isGroupDrag={activeDrag?.isGroup ?? false}
                 {...previewFor('right')}
                 tabIntoGroupKey={tabIntoFor('right')}
               />
             </div>
           </div>
 
-          {bottomVisible && !isDragging && (
+          {bottomVisible && !anyDragging && (
             <ResizeHandle mode="target" orientation="horizontal" targetRef={bottomZoneRef} containerRef={containerRef} direction={-1} min={MIN_BOTTOM} max={0.5} onResizeEnd={commitBottomSize} />
           )}
 
@@ -171,8 +186,9 @@ export default function Layout() {
             <DropZone
               position="bottom"
               groups={panels.bottom}
-              activePanelId={dragState?.panelId ?? null}
-              isGroupDrag={dragState?.isGroup ?? false}
+              activePanelId={activeDrag?.panelId ?? null}
+              activePanelIds={activeDrag?.panelIds}
+              isGroupDrag={activeDrag?.isGroup ?? false}
               {...previewFor('bottom')}
               tabIntoGroupKey={tabIntoFor('bottom')}
             />
