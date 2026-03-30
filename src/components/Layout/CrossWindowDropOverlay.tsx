@@ -17,19 +17,6 @@ export default function CrossWindowDropOverlay() {
   const [mouseInWindow, setMouseInWindow] = useState(false)
   const windowId = getWindowId()
 
-  // Listen for cross-window drag messages
-  useEffect(() => {
-    return onMessage((msg: ChannelMessage) => {
-      if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
-        setIncoming({ panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow })
-      } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
-        setIncoming(null)
-        setHoverZone(null)
-        setMouseInWindow(false)
-      }
-    })
-  }, [windowId])
-
   // Detect zone from mouse position
   const detectZone = useCallback((clientX: number, clientY: number): HoverZone => {
     const w = window.innerWidth
@@ -37,82 +24,85 @@ export default function CrossWindowDropOverlay() {
     const x = clientX / w
     const y = clientY / h
 
-    // Bottom 25%
     if (y > 0.75) return 'bottom'
-    // Left 25%
     if (x < 0.25) return 'left'
-    // Right 25%
     if (x > 0.75) return 'right'
-
     return null
   }, [])
 
-  // Track mouse movement when incoming drag is active
-  useEffect(() => {
-    if (!incoming) return
+  // Handle drop: add panels to this window's store
+  const handleDrop = useCallback((drag: IncomingDrag, zone: PanelPosition) => {
+    broadcast({
+      type: 'drag-drop',
+      panelId: drag.panelId,
+      panelIds: drag.panelIds,
+      targetWindow: windowId,
+      position: zone,
+      groupKey: null,
+    })
 
-    const handleMouseMove = (e: MouseEvent) => {
-      // Only track if a mouse button is held (cross-window drag in progress)
-      if (e.buttons > 0) {
-        setMouseInWindow(true)
-        setHoverZone(detectZone(e.clientX, e.clientY))
-      }
+    const store = useLayoutStore.getState()
+    for (const id of drag.panelIds) {
+      store.removePanel(id)
     }
+    store.addPanel(drag.panelIds[0], zone)
+    for (let i = 1; i < drag.panelIds.length; i++) {
+      store.addPanel(drag.panelIds[i], zone)
+      store.movePanelToTab(drag.panelIds[i], drag.panelIds[0])
+    }
+  }, [windowId])
 
-    const handleMouseEnter = (e: MouseEvent) => {
-      if (e.buttons > 0) {
-        setMouseInWindow(true)
-      } else {
-        // Mouse entered without button — drag was released outside, clean up
+  // Listen for cross-window drag messages
+  useEffect(() => {
+    let currentIncoming: IncomingDrag | null = null
+    let currentZone: HoverZone = null
+    let isMouseInWindow = false
+
+    const unsub = onMessage((msg: ChannelMessage) => {
+      if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
+        currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
+        setIncoming(currentIncoming)
+      } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
+        // Source released the mouse. If our mouse is over a valid zone, drop here.
+        if (currentIncoming && isMouseInWindow && currentZone) {
+          handleDrop(currentIncoming, currentZone)
+        }
+        currentIncoming = null
+        currentZone = null
+        isMouseInWindow = false
         setIncoming(null)
         setHoverZone(null)
         setMouseInWindow(false)
       }
+    })
+
+    // Track mouse position — no button check needed.
+    // We know a drag is active via IPC, so any mouse movement is drag-hover.
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!currentIncoming) return
+      isMouseInWindow = true
+      currentZone = detectZone(e.clientX, e.clientY)
+      setMouseInWindow(true)
+      setHoverZone(currentZone)
     }
 
-    const handleMouseUp = (e: MouseEvent) => {
-      if (!incoming || !mouseInWindow) return
-
-      const zone = detectZone(e.clientX, e.clientY)
-      if (zone) {
-        // Broadcast drop to source window and handle locally
-        broadcast({
-          type: 'drag-drop',
-          panelId: incoming.panelId,
-          panelIds: incoming.panelIds,
-          targetWindow: windowId,
-          position: zone,
-          groupKey: null,
-        })
-
-        // Add panels to this window's store (as a tabbed group)
-        // Remove existing panels first to avoid silent no-ops from addPanel's guard
-        const store = useLayoutStore.getState()
-        for (const id of incoming.panelIds) {
-          store.removePanel(id)
-        }
-        store.addPanel(incoming.panelIds[0], zone)
-        for (let i = 1; i < incoming.panelIds.length; i++) {
-          store.addPanel(incoming.panelIds[i], zone)
-          store.movePanelToTab(incoming.panelIds[i], incoming.panelIds[0])
-        }
-      }
-
-      setIncoming(null)
-      setHoverZone(null)
+    const handleMouseLeave = () => {
+      if (!currentIncoming) return
+      isMouseInWindow = false
+      currentZone = null
       setMouseInWindow(false)
+      setHoverZone(null)
     }
 
     document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseenter', handleMouseEnter)
-    document.addEventListener('mouseup', handleMouseUp)
+    document.addEventListener('mouseleave', handleMouseLeave)
 
     return () => {
+      unsub()
       document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseenter', handleMouseEnter)
-      document.removeEventListener('mouseup', handleMouseUp)
+      document.removeEventListener('mouseleave', handleMouseLeave)
     }
-  }, [incoming, mouseInWindow, detectZone, windowId])
+  }, [windowId, detectZone, handleDrop])
 
   if (!incoming) return null
 
@@ -141,7 +131,7 @@ export default function CrossWindowDropOverlay() {
         <div className="bg-background/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-primary/40 shadow-lg">
           <span className="text-sm text-muted-foreground">
             {!mouseInWindow
-              ? `Dragging: ${incoming.panelIds.join(', ')} — move mouse here`
+              ? `Dragging: ${incoming.panelIds.join(', ')}`
               : hoverZone
                 ? `Drop in ${hoverZone} panel`
                 : 'Move to a zone to drop'}
