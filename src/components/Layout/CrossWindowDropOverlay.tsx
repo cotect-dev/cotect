@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { onMessage, broadcast, type ChannelMessage } from '@/services/channel'
 import { getWindowId } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
@@ -15,7 +15,6 @@ export default function CrossWindowDropOverlay() {
   const [incoming, setIncoming] = useState<IncomingDrag | null>(null)
   const [hoverZone, setHoverZone] = useState<HoverZone>(null)
   const [mouseInWindow, setMouseInWindow] = useState(false)
-  const overlayRef = useRef<HTMLDivElement>(null)
   const windowId = getWindowId()
 
   // Listen for cross-window drag messages
@@ -87,7 +86,11 @@ export default function CrossWindowDropOverlay() {
         })
 
         // Add panels to this window's store (as a tabbed group)
+        // Remove existing panels first to avoid silent no-ops from addPanel's guard
         const store = useLayoutStore.getState()
+        for (const id of incoming.panelIds) {
+          store.removePanel(id)
+        }
         store.addPanel(incoming.panelIds[0], zone)
         for (let i = 1; i < incoming.panelIds.length; i++) {
           store.addPanel(incoming.panelIds[i], zone)
@@ -114,10 +117,7 @@ export default function CrossWindowDropOverlay() {
   if (!incoming || !mouseInWindow) return null
 
   return (
-    <div
-      ref={overlayRef}
-      className="absolute inset-0 z-50 pointer-events-none"
-    >
+    <div className="absolute inset-0 z-50 pointer-events-none">
       {/* Left zone highlight */}
       <div
         className={`absolute left-0 top-0 w-1/4 h-3/4 border-2 border-dashed rounded-sm transition-colors ${

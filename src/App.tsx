@@ -1,9 +1,8 @@
 import { useEffect } from 'react'
-import { window as neuWindow } from '@neutralinojs/lib'
 import Canvas from '@/views/Canvas'
 import NewWindow from '@/views/NewWindow'
-import { getWindowId, onWindowClose, createWindow } from '@/services/platform'
-import { broadcast, onMessage, closeChannel } from '@/services/channel'
+import { getWindowId, onWindowClose, createWindow, setWindowSizeConstraints } from '@/services/platform'
+import { broadcast, closeChannel } from '@/services/channel'
 import {
   registerWindow,
   unregisterWindow,
@@ -28,10 +27,8 @@ const DEFAULT_MAIN_LAYOUT = {
 
 function App() {
   useEffect(() => {
-    // Set window size constraints in Neutralino
-    if (window.NL_PORT) {
-      neuWindow.setSize({ minWidth: isMain ? 1280 : 400, minHeight: isMain ? 720 : 300 }).catch(() => {})
-    }
+    // Set window size constraints
+    setWindowSizeConstraints(isMain ? 1280 : 400, isMain ? 720 : 300)
 
     // Register this window
     registerWindow(windowId, isMain ? 'main' : 'panel')
@@ -65,14 +62,6 @@ function App() {
       }
     }
 
-    // Listen for other windows closing (clean up stale entries)
-    const unsubMessage = onMessage((msg) => {
-      if (msg.type === 'window-closed' && isMain) {
-        // Main window cleans up closed window data after a delay
-        // (the closing window already unregistered itself)
-      }
-    })
-
     // Handle this window closing
     const unsubClose = onWindowClose(() => {
       stopLayoutPersistence()
@@ -85,7 +74,6 @@ function App() {
     })
 
     return () => {
-      unsubMessage()
       unsubClose()
       stopLayoutPersistence()
     }
