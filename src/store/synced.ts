@@ -1,4 +1,4 @@
-import { create, type StateCreator } from 'zustand'
+import { create, type StateCreator, type StoreApi } from 'zustand'
 import { loadPanelState, savePanelState } from '@/services/panelState'
 
 function isSerializable(value: unknown): boolean {
@@ -7,7 +7,6 @@ function isSerializable(value: unknown): boolean {
   if (type === 'function') return false
   if (type !== 'object') return true
   if (Array.isArray(value)) return true
-  // Exclude class instances (AbortController, Terminal, etc.)
   const proto = Object.getPrototypeOf(value)
   return proto === Object.prototype || proto === null
 }
@@ -22,29 +21,42 @@ function getSerializableState<T>(state: T): Partial<T> {
   return result as Partial<T>
 }
 
+// Stores registered for syncing — initialized later via initAllSyncedStores()
+const pending: { name: string; store: StoreApi<unknown> }[] = []
+
 /**
  * Drop-in replacement for Zustand's `create` that auto-syncs state to a shared file.
  * Functions and non-serializable values (class instances) are excluded automatically.
- * State loads from the shared file on creation and saves on every change (debounced).
+ *
+ * Load and auto-save are deferred until initAllSyncedStores() is called
+ * (after Neutralino init, so isNeutralino() returns the correct value).
  */
 export function createSyncedStore<T>(name: string, creator: StateCreator<T>) {
   const store = create<T>(creator)
-
-  // Load saved state
-  loadPanelState<Partial<T>>(name).then((saved) => {
-    if (saved && typeof saved === 'object') {
-      store.setState(saved)
-    }
-  })
-
-  // Auto-save on changes (debounced)
-  let timer: ReturnType<typeof setTimeout> | null = null
-  store.subscribe(() => {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      savePanelState(name, getSerializableState(store.getState()))
-    }, 300)
-  })
-
+  pending.push({ name, store: store as unknown as StoreApi<unknown> })
   return store
+}
+
+/**
+ * Call once after Neutralino init (or immediately in browser mode).
+ * Loads saved state into each synced store and starts auto-saving.
+ */
+export function initAllSyncedStores(): void {
+  for (const { name, store } of pending) {
+    // Load saved state
+    loadPanelState(name).then((saved) => {
+      if (saved && typeof saved === 'object') {
+        store.setState(saved)
+      }
+    })
+
+    // Auto-save on changes (debounced)
+    let timer: ReturnType<typeof setTimeout> | null = null
+    store.subscribe(() => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        savePanelState(name, getSerializableState(store.getState()))
+      }, 300)
+    })
+  }
 }
