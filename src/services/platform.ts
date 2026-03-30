@@ -31,6 +31,12 @@ export function createWindow(id: string): void {
   }
 }
 
+export function setWindowSizeConstraints(minWidth: number, minHeight: number): void {
+  if (isNeutralino()) {
+    neuWindow.setSize({ minWidth, minHeight }).catch(() => {})
+  }
+}
+
 export function closeWindow(): void {
   if (isNeutralino()) {
     app.exit().catch(() => window.close())
