@@ -66,8 +66,10 @@ export default function TopBar() {
           <MenubarSeparator />
           <MenubarItem
             onClick={() => {
-              const url = `${window.location.origin}${window.location.pathname}?window=new`
               if (window.NL_PORT) {
+                const url = import.meta.env.DEV
+                  ? 'http://localhost:5173/?window=new'
+                  : '/?window=new'
                 neuWindow.create(url, {
                   title: 'Cotect',
                   width: 800,
@@ -76,10 +78,12 @@ export default function TopBar() {
                   minHeight: 300,
                   center: true,
                   exitProcessOnClose: false,
-                }).catch(() => {
-                  window.open(url, '_blank')
+                  injectGlobals: true,
+                }).catch((err) => {
+                  console.error('Failed to create window:', err)
                 })
               } else {
+                const url = `${window.location.origin}${window.location.pathname}?window=new`
                 window.open(url, '_blank')
               }
             }}
