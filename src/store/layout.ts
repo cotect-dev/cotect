@@ -202,21 +202,32 @@ export const useLayoutStore = create<LayoutState>((set) => ({
 
   moveGroup: (panelIds, to, insertIndex, neighborIndex) =>
     set((state) => {
-      // Find the group that contains these panels
-      const loc = findGroup(state.panels, panelIds[0])
-      if (!loc) return state
-
       const { panels, sizes, activeTab } = cloneState(state)
 
-      // Remove entire group
-      const group = panels[loc.position].splice(loc.groupIndex, 1)[0]
-      const oldKey = groupKey(group)
-      sizes[loc.position].splice(loc.groupIndex, 1)
-      sizes[loc.position] = renormalize(sizes[loc.position])
+      let group: string[]
+      const loc = findGroup(state.panels, panelIds[0])
 
-      // Check for no-op
-      if (loc.position === to && insertIndex === loc.groupIndex) {
-        return state
+      if (loc) {
+        // Check for no-op
+        if (loc.position === to && insertIndex === loc.groupIndex) {
+          return state
+        }
+
+        // Remove entire group from old position
+        group = panels[loc.position].splice(loc.groupIndex, 1)[0]
+        const oldKey = groupKey(group)
+        sizes[loc.position].splice(loc.groupIndex, 1)
+        sizes[loc.position] = renormalize(sizes[loc.position])
+
+        // Migrate activeTab key
+        const newKey = groupKey(group)
+        if (newKey !== oldKey && activeTab[oldKey] !== undefined) {
+          activeTab[newKey] = activeTab[oldKey]
+          delete activeTab[oldKey]
+        }
+      } else {
+        // Group doesn't exist yet (cross-window drop) — create it
+        group = [...panelIds]
       }
 
       // Insert group at target
@@ -229,13 +240,6 @@ export const useLayoutStore = create<LayoutState>((set) => ({
         sizes[to][nIdx] = half
         panels[to].splice(insertIndex, 0, group)
         sizes[to].splice(insertIndex, 0, half)
-      }
-
-      // Migrate activeTab key if group key changed
-      const newKey = groupKey(group)
-      if (newKey !== oldKey && activeTab[oldKey] !== undefined) {
-        activeTab[newKey] = activeTab[oldKey]
-        delete activeTab[oldKey]
       }
 
       return { panels, sizes, activeTab }
