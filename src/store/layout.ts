@@ -70,10 +70,17 @@ function groupKey(group: string[]): string {
   return group[0] ?? ''
 }
 
+export interface CrossWindowDrag {
+  panelId: string
+  panelIds: string[]
+  position: PanelPosition
+}
+
 interface LayoutState {
   panels: Record<PanelPosition, string[][]>
   sizes: Record<PanelPosition, number[]>
   activeTab: Record<string, number>
+  crossWindowDrag: CrossWindowDrag | null
   movePanel: (panelId: string, to: PanelPosition, insertIndex: number, neighborIndex?: number) => void
   movePanelToTab: (panelId: string, targetPanelId: string) => void
   moveGroup: (panelIds: string[], to: PanelPosition, insertIndex: number, neighborIndex?: number) => void
@@ -82,6 +89,7 @@ interface LayoutState {
   addPanel: (panelId: string, position: PanelPosition) => void
   removePanel: (panelId: string) => void
   setActiveTab: (groupKey: string, index: number) => void
+  setCrossWindowDrag: (drag: CrossWindowDrag | null) => void
 }
 
 export const useLayoutStore = create<LayoutState>((set) => ({
@@ -96,6 +104,9 @@ export const useLayoutStore = create<LayoutState>((set) => ({
     bottom: [],
   },
   activeTab: {},
+  crossWindowDrag: null,
+
+  setCrossWindowDrag: (drag) => set({ crossWindowDrag: drag }),
 
   movePanel: (panelId, to, insertIndex, neighborIndex) =>
     set((state) => {
