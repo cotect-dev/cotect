@@ -1,3 +1,4 @@
+import { filesystem } from '@neutralinojs/lib'
 import type { PanelPosition } from '@/store/layout'
 
 export type ChannelMessage =
@@ -7,24 +8,26 @@ export type ChannelMessage =
   | { type: 'window-opened'; windowId: string }
   | { type: 'window-closed'; windowId: string }
 
-// --- Shared state ---
 let senderId = ''
 const handlers: ((msg: ChannelMessage) => void)[] = []
 
+function isNeutralino(): boolean {
+  return typeof window !== 'undefined' && !!window.NL_PORT
+}
+
 export function initChannel(windowId: string): void {
   senderId = windowId
-  startPolling()
+  if (isNeutralino()) {
+    startNeuPolling()
+  }
 }
 
 // =============================================================================
-// localStorage-based IPC
-//
-// Works across separate webview processes as long as they share the same origin.
-// Each message is stored with a sender ID and timestamp. Windows poll for new
-// messages from other senders. Old messages are pruned automatically.
+// Neutralino: filesystem-based IPC at /tmp/cotect-ipc.json
+// Outside project dir so the file watcher doesn't trigger reloads.
 // =============================================================================
 
-const IPC_KEY = 'cotect:ipc'
+const IPC_FILE = '/tmp/cotect-ipc.json'
 const MESSAGE_TTL = 5000
 const POLL_INTERVAL = 100
 
@@ -35,46 +38,80 @@ interface IpcEnvelope {
 }
 
 let lastSeenTs = Date.now()
-let pollTimer: ReturnType<typeof setInterval> | null = null
+let neuPollTimer: ReturnType<typeof setInterval> | null = null
 
-function readEnvelopes(): IpcEnvelope[] {
+async function neuReadEnvelopes(): Promise<IpcEnvelope[]> {
   try {
-    return JSON.parse(localStorage.getItem(IPC_KEY) ?? '[]')
+    const raw = await filesystem.readFile(IPC_FILE)
+    return JSON.parse(raw)
   } catch {
     return []
   }
 }
 
-function writeEnvelopes(envelopes: IpcEnvelope[]): void {
-  localStorage.setItem(IPC_KEY, JSON.stringify(envelopes))
+async function neuWriteEnvelopes(envelopes: IpcEnvelope[]): Promise<void> {
+  await filesystem.writeFile(IPC_FILE, JSON.stringify(envelopes))
 }
 
-function poll(): void {
-  const envelopes = readEnvelopes()
+async function neuPoll(): Promise<void> {
+  try {
+    const envelopes = await neuReadEnvelopes()
 
-  for (const env of envelopes) {
-    if (env.sender !== senderId && env.ts > lastSeenTs) {
-      for (const handler of handlers) {
-        handler(env.data)
+    for (const env of envelopes) {
+      if (env.sender !== senderId && env.ts > lastSeenTs) {
+        for (const handler of handlers) {
+          handler(env.data)
+        }
       }
     }
-  }
 
-  if (envelopes.length > 0) {
-    lastSeenTs = Math.max(...envelopes.map((e) => e.ts), lastSeenTs)
+    if (envelopes.length > 0) {
+      lastSeenTs = Math.max(...envelopes.map((e) => e.ts), lastSeenTs)
+    }
+  } catch {
+    // file missing or unreadable — ignore
   }
 }
 
-function startPolling(): void {
-  if (pollTimer) return
-  pollTimer = setInterval(poll, POLL_INTERVAL)
+async function neuBroadcast(message: ChannelMessage): Promise<void> {
+  try {
+    const now = Date.now()
+    const envelopes = (await neuReadEnvelopes()).filter((e) => now - e.ts < MESSAGE_TTL)
+    envelopes.push({ sender: senderId, data: message, ts: now })
+    await neuWriteEnvelopes(envelopes)
+  } catch (err) {
+    console.error('[ipc] broadcast failed:', err)
+  }
 }
 
-function stopPolling(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
+function startNeuPolling(): void {
+  if (neuPollTimer) return
+  neuPollTimer = setInterval(neuPoll, POLL_INTERVAL)
+}
+
+function stopNeuPolling(): void {
+  if (neuPollTimer) {
+    clearInterval(neuPollTimer)
+    neuPollTimer = null
   }
+}
+
+// =============================================================================
+// Browser: BroadcastChannel (works across tabs of the same origin)
+// =============================================================================
+
+let bcChannel: BroadcastChannel | null = null
+
+function getBcChannel(): BroadcastChannel {
+  if (!bcChannel) {
+    bcChannel = new BroadcastChannel('cotect')
+    bcChannel.addEventListener('message', (event: MessageEvent<ChannelMessage>) => {
+      for (const handler of handlers) {
+        handler(event.data)
+      }
+    })
+  }
+  return bcChannel
 }
 
 // =============================================================================
@@ -82,14 +119,18 @@ function stopPolling(): void {
 // =============================================================================
 
 export function broadcast(message: ChannelMessage): void {
-  const now = Date.now()
-  const envelopes = readEnvelopes().filter((e) => now - e.ts < MESSAGE_TTL)
-  envelopes.push({ sender: senderId, data: message, ts: now })
-  writeEnvelopes(envelopes)
+  if (isNeutralino()) {
+    neuBroadcast(message)
+  } else {
+    getBcChannel().postMessage(message)
+  }
 }
 
 export function onMessage(handler: (message: ChannelMessage) => void): () => void {
   handlers.push(handler)
+  if (!isNeutralino()) {
+    getBcChannel()
+  }
   return () => {
     const idx = handlers.indexOf(handler)
     if (idx >= 0) handlers.splice(idx, 1)
@@ -97,6 +138,11 @@ export function onMessage(handler: (message: ChannelMessage) => void): () => voi
 }
 
 export function closeChannel(): void {
-  stopPolling()
+  if (isNeutralino()) {
+    stopNeuPolling()
+  } else if (bcChannel) {
+    bcChannel.close()
+    bcChannel = null
+  }
   handlers.length = 0
 }
