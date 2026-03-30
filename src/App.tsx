@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { window as neuWindow } from '@neutralinojs/lib'
-import Canvas from './views/Canvas'
+import Canvas from '@/views/Canvas'
 
 function App() {
   useEffect(() => {

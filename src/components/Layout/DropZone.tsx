@@ -1,60 +1,76 @@
 import { useDroppable } from '@dnd-kit/core';
-import { GripHorizontal } from 'lucide-react';
 import { useLayoutStore, getPanelLabel, type PanelPosition } from '@/store/layout';
 import PanelArea from './PanelArea';
 import ResizeHandle from './ResizeHandle';
 
 interface DropZoneProps {
   position: PanelPosition;
-  panelIds: string[];
+  groups: string[][];
   activePanelId: string | null;
+  activePanelIds?: string[];
+  isGroupDrag: boolean;
   previewIndex: number | null;
   neighborIndex: number | null;
+  tabIntoGroupKey: string | null;
 }
 
 export default function DropZone({
   position,
-  panelIds,
+  groups,
   activePanelId,
+  activePanelIds,
+  isGroupDrag,
   previewIndex,
   neighborIndex,
+  tabIntoGroupKey,
 }: DropZoneProps) {
   const { setNodeRef } = useDroppable({
     id: `drop-${position}`,
     data: { position },
-    disabled: panelIds.length === 0,
+    disabled: groups.length === 0,
   });
 
   const sizes = useLayoutStore(s => s.sizes[position]);
 
   const isVertical = position === 'left' || position === 'right';
 
-  const visiblePanels: string[] = [];
+  // Filter out the dragged group/tab to build visible list
+  const visibleGroups: string[][] = [];
   const visibleSizes: number[] = [];
-  for (let i = 0; i < panelIds.length; i++) {
-    if (panelIds[i] !== activePanelId) {
-      visiblePanels.push(panelIds[i]);
-      visibleSizes.push(sizes[i] ?? 1);
+  for (let i = 0; i < groups.length; i++) {
+    if (isGroupDrag && activePanelId && groups[i][0] === activePanelId) {
+      continue; // Skip entire group being dragged
     }
+    if (!isGroupDrag && activePanelId && groups[i].includes(activePanelId)) {
+      // Single tab drag: if group has other tabs, keep it (minus the dragged tab)
+      const remaining = groups[i].filter(id => id !== activePanelId);
+      if (remaining.length > 0) {
+        visibleGroups.push(remaining);
+        visibleSizes.push(sizes[i] ?? 1);
+      }
+      continue;
+    }
+    visibleGroups.push(groups[i]);
+    visibleSizes.push(sizes[i] ?? 1);
   }
 
-  const showGhost = previewIndex !== null && neighborIndex !== null && !!activePanelId;
+  const showGhost = previewIndex !== null && neighborIndex !== null && !!activePanelId && !tabIntoGroupKey;
 
-  // Detect no-op: dragging back to the same position in the source zone.
-  // movePanel returns state unchanged in this case, so the preview must match.
-  const originalIndex = activePanelId ? panelIds.indexOf(activePanelId) : -1;
+  // Detect no-op
+  const originalIndex = activePanelId
+    ? groups.findIndex((g) => isGroupDrag ? g[0] === activePanelId : g.includes(activePanelId))
+    : -1;
   const isSourceZone = originalIndex >= 0;
   const isNoOp = showGhost && isSourceZone && previewIndex === originalIndex;
 
-  // Build item list with sizes that always sum to 1 so content fills the zone.
-  // Ghost sizing mirrors movePanel: no-op → original size, real move → split neighbor.
-  const items: { type: 'panel' | 'ghost'; id: string; size: number }[] = [];
+  // Build item list
+  const items: { type: 'group' | 'ghost'; group: string[]; size: number }[] = [];
 
   if (showGhost) {
     let rawSizes: number[];
     let rawGhost: number;
 
-    if (visiblePanels.length === 0) {
+    if (visibleGroups.length === 0) {
       rawGhost = 1;
       rawSizes = [];
     } else if (isNoOp) {
@@ -67,42 +83,44 @@ export default function DropZone({
       rawSizes[neighborIndex] = nSize / 2;
     }
 
-    // Build items in order, inserting ghost at previewIndex
-    let panelIdx = 0;
-    const totalSlots = visiblePanels.length + 1;
+    let groupIdx = 0;
+    const totalSlots = visibleGroups.length + 1;
     for (let i = 0; i < totalSlots; i++) {
       if (i === previewIndex) {
-        items.push({ type: 'ghost', id: '__ghost__', size: rawGhost });
+        items.push({
+          type: 'ghost',
+          group: isGroupDrag ? (groups.find(g => g[0] === activePanelId) ?? [activePanelId!]) : [activePanelId!],
+          size: rawGhost,
+        });
       } else {
-        if (panelIdx < visiblePanels.length) {
-          items.push({ type: 'panel', id: visiblePanels[panelIdx], size: rawSizes[panelIdx] });
-          panelIdx++;
+        if (groupIdx < visibleGroups.length) {
+          items.push({ type: 'group', group: visibleGroups[groupIdx], size: rawSizes[groupIdx] });
+          groupIdx++;
         }
       }
     }
   } else {
-    for (let i = 0; i < visiblePanels.length; i++) {
-      items.push({ type: 'panel', id: visiblePanels[i], size: visibleSizes[i] });
+    for (let i = 0; i < visibleGroups.length; i++) {
+      items.push({ type: 'group', group: visibleGroups[i], size: visibleSizes[i] });
     }
   }
 
-  // Normalize so sizes always sum to 1 — content always fills the zone
+  // Normalize
   const rawTotal = items.reduce((a, b) => a + b.size, 0);
   if (rawTotal > 0 && rawTotal !== 1) {
     for (const item of items) {
       item.size /= rawTotal;
     }
   }
+
   const isDragging = !!activePanelId;
 
-  const makeResizeHandler = (leftId: string, rightId: string) => {
+  const makeResizeHandler = (leftKey: string, rightKey: string) => {
     return (pixelLeft: number, pixelRight: number, totalPixelWidth: number) => {
       useLayoutStore.setState(state => {
-        const currentPanels = state.panels[position].filter(
-          id => id !== activePanelId,
-        );
-        const leftIdx = currentPanels.indexOf(leftId);
-        const rightIdx = currentPanels.indexOf(rightId);
+        const currentGroups = state.panels[position];
+        const leftIdx = currentGroups.findIndex(g => g[0] === leftKey);
+        const rightIdx = currentGroups.findIndex(g => g[0] === rightKey);
         if (leftIdx < 0 || rightIdx < 0) return state;
 
         const newSizes = [...state.sizes[position]];
@@ -128,20 +146,21 @@ export default function DropZone({
       {items.map((item, i) => {
         const grow = item.size;
         const elements: React.ReactNode[] = [];
+        const itemKey = item.group[0];
 
         if (
           i > 0 &&
           !isDragging &&
-          item.type === 'panel' &&
-          items[i - 1].type === 'panel'
+          item.type === 'group' &&
+          items[i - 1].type === 'group'
         ) {
           elements.push(
             <ResizeHandle
-              key={`resize-${items[i - 1].id}-${item.id}`}
+              key={`resize-${items[i - 1].group[0]}-${itemKey}`}
               mode="sibling"
               orientation={isVertical ? 'horizontal' : 'vertical'}
               onResizeEnd={(pixelLeft, pixelRight, totalPixelWidth) =>
-                makeResizeHandler(items[i - 1].id, item.id)(
+                makeResizeHandler(items[i - 1].group[0], itemKey)(
                   pixelLeft,
                   pixelRight,
                   totalPixelWidth,
@@ -151,14 +170,21 @@ export default function DropZone({
           );
         }
 
-        if (item.type === 'panel') {
+        if (item.type === 'group') {
+          const isTabTarget = tabIntoGroupKey === itemKey;
+          // Build the ghost tab label from the dragged panel(s)
+          const ghostLabel = isTabTarget && activePanelId
+            ? (isGroupDrag && activePanelIds
+                ? activePanelIds.map(getPanelLabel).join(' / ')
+                : getPanelLabel(activePanelId))
+            : null;
           elements.push(
             <div
-              key={item.id}
+              key={itemKey}
               className="min-h-0 min-w-0"
               style={{ flexGrow: grow, flexShrink: 1, flexBasis: 0 }}
             >
-              <PanelArea id={item.id} position={position} />
+              <PanelArea group={item.group} position={position} groupIndex={i} ghostTabLabel={ghostLabel} />
             </div>,
           );
         } else {
@@ -170,12 +196,11 @@ export default function DropZone({
             >
               <div className="h-full w-full bg-primary/10 border-2 border-dashed border-primary/30 rounded-sm flex flex-col">
                 <div className="flex items-center border-b border-primary/20 shrink-0">
-                  <span className="flex-1 px-3 py-1.5 text-xs text-primary/40 truncate">
-                    {getPanelLabel(activePanelId!)}
-                  </span>
-                  <div className="px-2 py-1.5 text-primary/40">
-                    <GripHorizontal className="h-3.5 w-3.5" />
-                  </div>
+                  {item.group.map((id) => (
+                    <span key={id} className="px-2.5 py-1.5 text-xs text-primary/40 truncate">
+                      {getPanelLabel(id)}
+                    </span>
+                  ))}
                 </div>
                 <div className="flex-1" />
               </div>

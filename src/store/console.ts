@@ -17,18 +17,20 @@ interface ConsoleState {
   setFilter: (filter: LogLevel | null) => void
 }
 
+const MAX_ENTRIES = 1000
 let nextId = 0
 
 export const useConsoleStore = create<ConsoleState>((set) => ({
   entries: [],
   filter: null,
   log: (level, message) =>
-    set((state) => ({
-      entries: [
+    set((state) => {
+      const entries = [
         ...state.entries,
         { id: String(nextId++), level, message, timestamp: Date.now() },
-      ],
-    })),
+      ]
+      return { entries: entries.length > MAX_ENTRIES ? entries.slice(-MAX_ENTRIES) : entries }
+    }),
   clear: () => set({ entries: [] }),
   setFilter: (filter) => set({ filter }),
 }))

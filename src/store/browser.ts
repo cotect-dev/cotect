@@ -1,9 +1,10 @@
 // src/store/browser.ts
 import { create } from 'zustand'
-import type { Node, Edge } from '@xyflow/react'
+import type { Edge } from '@xyflow/react'
 import { readDirectory, readFileContent, type FSEntry } from '@/services/filesystem'
 import { analyzeFile, type FileAnalysis } from '@/services/treesitter'
 import { layoutTree } from '@/components/Canvas/layout'
+import type { AppNode } from '@/types/nodes'
 
 export type ViewMode = 'directory' | 'file'
 
@@ -26,7 +27,7 @@ interface BrowserState {
   openRoot: (path: string) => Promise<void>
   navigateTo: (path: string, mode: ViewMode) => Promise<void>
   navigateToBreadcrumb: (index: number) => void
-  generateNodes: () => { nodes: Node[]; edges: Edge[] }
+  generateNodes: () => { nodes: AppNode[]; edges: Edge[] }
 }
 
 export const useBrowserStore = create<BrowserState>((set, get) => ({
@@ -99,17 +100,19 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     const { viewMode, entries, fileAnalysis, currentPath, siblingAnalyses } = get()
 
     if (viewMode === 'directory') {
-      const nodes: Node[] = entries.map((entry) => ({
+      const nodes: AppNode[] = entries.map((entry) => ({
         id: entry.path,
-        type: entry.isDirectory ? 'folder' : 'file',
+        type: entry.isDirectory ? 'folder' as const : 'file' as const,
         position: { x: 0, y: 0 },
-        data: { label: entry.name, path: entry.path, isDirectory: entry.isDirectory },
+        data: entry.isDirectory
+          ? { label: entry.name, path: entry.path, isDirectory: true as const }
+          : { label: entry.name, path: entry.path },
       }))
       return layoutTree(nodes, [])
     }
 
     if (viewMode === 'file' && fileAnalysis) {
-      const nodes: Node[] = []
+      const nodes: AppNode[] = []
       const edges: Edge[] = []
       const fileId = `file:${currentPath}`
 
@@ -141,8 +144,9 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
 
       for (const imp of fileAnalysis.imports) {
         if (!imp.resolvedPath) continue
+        const candidates = new Set([imp.resolvedPath, `${imp.resolvedPath}.ts`, `${imp.resolvedPath}.tsx`, `${imp.resolvedPath}.js`, `${imp.resolvedPath}.jsx`, `${imp.resolvedPath}/index.ts`, `${imp.resolvedPath}/index.tsx`])
         for (const [resolvedFile, sibAnalysis] of siblingAnalyses) {
-          if (resolvedFile.startsWith(imp.resolvedPath)) {
+          if (candidates.has(resolvedFile)) {
             const sibFileId = `sibling:${resolvedFile}`
             const fileName = resolvedFile.split('/').pop() || resolvedFile
             if (!nodes.find((n) => n.id === sibFileId)) {
