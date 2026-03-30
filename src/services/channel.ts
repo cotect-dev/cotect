@@ -1,4 +1,3 @@
-import { storage } from '@neutralinojs/lib'
 import type { PanelPosition } from '@/store/layout'
 
 export type ChannelMessage =
@@ -14,41 +13,20 @@ const handlers: ((msg: ChannelMessage) => void)[] = []
 
 export function initChannel(windowId: string): void {
   senderId = windowId
-  if (isNeutralino()) {
-    console.log('[ipc] init channel for', windowId, '(neutralino mode, polling)')
-    startNeuPolling()
-  } else {
-    console.log('[ipc] init channel for', windowId, '(browser mode, BroadcastChannel)')
-  }
-}
-
-function isNeutralino(): boolean {
-  return typeof window !== 'undefined' && !!window.NL_PORT
+  startPolling()
 }
 
 // =============================================================================
-// Browser: BroadcastChannel
+// localStorage-based IPC
+//
+// Works across separate webview processes as long as they share the same origin.
+// Each message is stored with a sender ID and timestamp. Windows poll for new
+// messages from other senders. Old messages are pruned automatically.
 // =============================================================================
-let bcChannel: BroadcastChannel | null = null
 
-function getBcChannel(): BroadcastChannel {
-  if (!bcChannel) {
-    bcChannel = new BroadcastChannel('cotect')
-    bcChannel.addEventListener('message', (event: MessageEvent<ChannelMessage>) => {
-      for (const handler of handlers) {
-        handler(event.data)
-      }
-    })
-  }
-  return bcChannel
-}
-
-// =============================================================================
-// Neutralino: storage-based polling
-// =============================================================================
-const IPC_KEY = 'ipc_channel'
-const MESSAGE_TTL = 5000 // ms — messages older than this are pruned
-const POLL_INTERVAL = 100 // ms
+const IPC_KEY = 'cotect:ipc'
+const MESSAGE_TTL = 5000
+const POLL_INTERVAL = 100
 
 interface IpcEnvelope {
   sender: string
@@ -59,58 +37,40 @@ interface IpcEnvelope {
 let lastSeenTs = Date.now()
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
-async function neuBroadcast(message: ChannelMessage): Promise<void> {
+function readEnvelopes(): IpcEnvelope[] {
   try {
-    let envelopes: IpcEnvelope[] = []
-    try {
-      const raw = await storage.getData(IPC_KEY)
-      envelopes = JSON.parse(raw)
-    } catch {
-      // key doesn't exist yet or invalid JSON
-    }
-
-    const now = Date.now()
-    // Prune old messages and append new one
-    envelopes = envelopes.filter((e) => now - e.ts < MESSAGE_TTL)
-    envelopes.push({ sender: senderId, data: message, ts: now })
-
-    await storage.setData(IPC_KEY, JSON.stringify(envelopes))
-    console.log('[ipc] broadcast:', message.type, 'from', senderId)
-  } catch (err) {
-    console.error('[ipc] broadcast failed:', err)
+    return JSON.parse(localStorage.getItem(IPC_KEY) ?? '[]')
+  } catch {
+    return []
   }
 }
 
-async function neuPoll(): Promise<void> {
-  try {
-    const raw = await storage.getData(IPC_KEY)
-    const envelopes: IpcEnvelope[] = JSON.parse(raw)
+function writeEnvelopes(envelopes: IpcEnvelope[]): void {
+  localStorage.setItem(IPC_KEY, JSON.stringify(envelopes))
+}
 
-    for (const env of envelopes) {
-      if (env.sender !== senderId && env.ts > lastSeenTs) {
-        console.log('[ipc] received:', env.data.type, 'from', env.sender)
-        for (const handler of handlers) {
-          handler(env.data)
-        }
+function poll(): void {
+  const envelopes = readEnvelopes()
+
+  for (const env of envelopes) {
+    if (env.sender !== senderId && env.ts > lastSeenTs) {
+      for (const handler of handlers) {
+        handler(env.data)
       }
     }
+  }
 
-    // Advance watermark
-    if (envelopes.length > 0) {
-      const maxTs = envelopes.reduce((m, e) => Math.max(m, e.ts), lastSeenTs)
-      lastSeenTs = maxTs
-    }
-  } catch {
-    // storage key missing or invalid — ignore
+  if (envelopes.length > 0) {
+    lastSeenTs = Math.max(...envelopes.map((e) => e.ts), lastSeenTs)
   }
 }
 
-function startNeuPolling(): void {
+function startPolling(): void {
   if (pollTimer) return
-  pollTimer = setInterval(neuPoll, POLL_INTERVAL)
+  pollTimer = setInterval(poll, POLL_INTERVAL)
 }
 
-function stopNeuPolling(): void {
+function stopPolling(): void {
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
@@ -122,21 +82,14 @@ function stopNeuPolling(): void {
 // =============================================================================
 
 export function broadcast(message: ChannelMessage): void {
-  if (isNeutralino()) {
-    neuBroadcast(message)
-  } else {
-    getBcChannel().postMessage(message)
-  }
+  const now = Date.now()
+  const envelopes = readEnvelopes().filter((e) => now - e.ts < MESSAGE_TTL)
+  envelopes.push({ sender: senderId, data: message, ts: now })
+  writeEnvelopes(envelopes)
 }
 
 export function onMessage(handler: (message: ChannelMessage) => void): () => void {
   handlers.push(handler)
-
-  // In browser mode, ensure BroadcastChannel is initialized
-  if (!isNeutralino()) {
-    getBcChannel()
-  }
-
   return () => {
     const idx = handlers.indexOf(handler)
     if (idx >= 0) handlers.splice(idx, 1)
@@ -144,11 +97,6 @@ export function onMessage(handler: (message: ChannelMessage) => void): () => voi
 }
 
 export function closeChannel(): void {
-  if (isNeutralino()) {
-    stopNeuPolling()
-  } else if (bcChannel) {
-    bcChannel.close()
-    bcChannel = null
-  }
+  stopPolling()
   handlers.length = 0
 }
