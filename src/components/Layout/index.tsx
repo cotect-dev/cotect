@@ -68,8 +68,8 @@ export default function Layout() {
     panelIds: crossWindowDrag.panelIds,
     isGroup: crossWindowDrag.panelIds.length > 1,
     overPosition: crossWindowDrag.position,
-    insertIndex: 0,
-    neighborIndex: 0,
+    insertIndex: crossWindowDrag.insertIndex,
+    neighborIndex: crossWindowDrag.neighborIndex,
     tabIntoGroupKey: null,
   } : null)
 
@@ -208,7 +208,7 @@ export default function Layout() {
           ) : null}
         </DragOverlay>
       </DndContext>
-      <CrossWindowDropOverlay />
+      <CrossWindowDropOverlay zoneRefs={zoneRefs} />
     </div>
   )
 }
