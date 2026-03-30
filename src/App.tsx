@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import Canvas from '@/views/Canvas'
 import NewWindow from '@/views/NewWindow'
-import { getWindowId, onWindowClose, closeWindow, setWindowSizeConstraints, showWindow } from '@/services/platform'
+import { getWindowId, onWindowClose, closeWindow, setWindowSizeConstraints } from '@/services/platform'
 import { broadcast, closeChannel, initChannel } from '@/services/channel'
 import {
   registerWindow,
@@ -27,8 +27,7 @@ const DEFAULT_MAIN_LAYOUT = {
 
 function App() {
   useEffect(() => {
-    // Show window (created hidden to prevent white flash) and remove splash
-    showWindow()
+    // Remove splash screen
     const splash = document.getElementById('splash')
     if (splash) {
       splash.classList.add('hide')
