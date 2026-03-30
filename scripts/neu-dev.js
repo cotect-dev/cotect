@@ -8,6 +8,24 @@ const configPath = join(root, 'neutralino.config.json')
 const authPath = join(root, '.tmp/auth_info.json')
 const globalsOutPath = join(root, 'dist/__neutralino_globals_dev.js')
 
+const PLATFORM_MAP = {
+  linux:  { os: 'Linux',   binaries: { arm64: 'neutralino-linux_arm64', arm: 'neutralino-linux_armhf', x64: 'neutralino-linux_x64' } },
+  darwin: { os: 'Darwin',  binaries: { arm64: 'neutralino-mac_arm64',   x64: 'neutralino-mac_x64',    fallback: 'neutralino-mac_universal' } },
+  win32:  { os: 'Windows', binaries: { x64: 'neutralino-win_x64.exe' } },
+}
+
+function getPlatformInfo() {
+  const entry = PLATFORM_MAP[process.platform] ?? PLATFORM_MAP.linux
+  const binaryName = entry.binaries[process.arch] ?? entry.binaries.fallback ?? entry.binaries.x64
+  const binaryPath = join(root, 'bin', binaryName)
+  if (!existsSync(binaryPath)) {
+    console.warn(`[neu-dev] Warning: binary not found at ${binaryPath}`)
+  }
+  return { os: entry.os, binaryPath }
+}
+
+const { os: neutralinoOS, binaryPath } = getPlatformInfo()
+
 const original = readFileSync(configPath, 'utf-8')
 const config = JSON.parse(original)
 
@@ -34,18 +52,22 @@ process.on('SIGTERM', () => { restore(); process.exit() })
 function writeDevGlobals() {
   try {
     const auth = JSON.parse(readFileSync(authPath, 'utf-8'))
+    const rootEscaped = root.replace(/\\/g, '\\\\')
     const content = `// Auto-generated for dev mode
-window.NL_PORT = ${auth.nlPort};
-window.NL_TOKEN = "${auth.nlToken}";
-window.NL_ARGS = ["cotect", "--url=http://localhost:5173"];
-window.NL_CWD = "${root.replace(/\\/g, '\\\\')}";
-window.NL_APPID = "${config.applicationId}";
-window.NL_APPVERSION = "${config.version}";
-window.NL_EXTENABLED = false;
-window.NL_OS = "${process.platform === 'darwin' ? 'Darwin' : process.platform === 'win32' ? 'Windows' : 'Linux'}";
-window.NL_RESMODE = "directory";
-window.NL_GINJECTED = true;
-window.NL_CMETHODS = [];
+// Guard: skip if globals were already injected by the Neutralino binary (e.g. child windows)
+if (!window.NL_GINJECTED) {
+  window.NL_PORT = ${auth.nlPort};
+  window.NL_TOKEN = "${auth.nlToken}";
+  window.NL_ARGS = [${JSON.stringify(binaryPath)}, "--load-dir-res", "--path=${rootEscaped}", "--url=http://localhost:5173"];
+  window.NL_CWD = "${rootEscaped}";
+  window.NL_APPID = "${config.applicationId}";
+  window.NL_APPVERSION = "${config.version}";
+  window.NL_EXTENABLED = false;
+  window.NL_OS = "${neutralinoOS}";
+  window.NL_RESMODE = "directory";
+  window.NL_GINJECTED = true;
+  window.NL_CMETHODS = [];
+}
 `
     writeFileSync(globalsOutPath, content)
     console.log(`[neu-dev] Wrote dev globals (port: ${auth.nlPort})`)
