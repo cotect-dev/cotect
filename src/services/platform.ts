@@ -29,7 +29,6 @@ export function createWindow(id: string): void {
       center: true,
       exitProcessOnClose: false,
       injectGlobals: true,
-      transparent: true,
     }).catch((err) => {
       console.error('Failed to create window:', err)
     })
