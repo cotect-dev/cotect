@@ -51,31 +51,34 @@ function App() {
     registerWindow(windowId, isMain ? 'main' : 'panel')
     broadcast({ type: 'window-opened', windowId })
 
-    // Load persisted layout (or default for main)
-    const saved = loadLayout(windowId)
-    if (saved) {
-      loadLayoutIntoStore(saved)
-    } else if (isMain) {
-      loadLayoutIntoStore(DEFAULT_MAIN_LAYOUT)
-    }
+    // Async init: load layout and restore child windows
+    ;(async () => {
+      // Load persisted layout (or default for main)
+      const saved = await loadLayout(windowId)
+      if (saved) {
+        loadLayoutIntoStore(saved)
+      } else if (isMain) {
+        loadLayoutIntoStore(DEFAULT_MAIN_LAYOUT)
+      }
 
-    // Start auto-persisting layout changes
-    startLayoutPersistence(windowId)
+      // Start auto-persisting layout changes
+      startLayoutPersistence(windowId)
 
-    // Restore child windows from previous session (main only)
-    if (isMain) {
-      const windows = getWindows()
-      for (const w of windows) {
-        if (w.id !== 'main' && w.role === 'panel') {
-          const childLayout = loadLayout(w.id)
-          if (childLayout) {
-            createWindow(w.id)
-          } else {
-            unregisterWindow(w.id)
+      // Restore child windows from previous session (main only)
+      if (isMain) {
+        const windows = await getWindows()
+        for (const w of windows) {
+          if (w.id !== 'main' && w.role === 'panel') {
+            const childLayout = await loadLayout(w.id)
+            if (childLayout) {
+              createWindow(w.id)
+            } else {
+              unregisterWindow(w.id)
+            }
           }
         }
       }
-    }
+    })()
 
     // Child windows: close when main window closes
     const unsubMessage = !isMain ? onMessage((msg) => {
@@ -87,8 +90,6 @@ function App() {
     // Handle this window closing
     const unsubClose = onWindowClose(() => {
       stopLayoutPersistence()
-      // Main window: kill child processes directly (they're separate OS processes
-      // that would otherwise be orphaned when the dev stack shuts down)
       if (isMain) {
         killChildWindows()
       }
