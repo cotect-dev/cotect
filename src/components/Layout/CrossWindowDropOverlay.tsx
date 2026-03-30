@@ -96,7 +96,7 @@ export default function CrossWindowDropOverlay() {
   const zoneClass = (zone: PanelPosition) => {
     if (hoverZone === zone) return 'border-primary/60 bg-primary/15'
     if (mouseOver) return 'border-transparent'
-    return 'border-primary/25 bg-primary/5'
+    return 'border-transparent'
   }
 
   return (
@@ -104,15 +104,15 @@ export default function CrossWindowDropOverlay() {
       <div className={`absolute left-0 top-0 w-1/4 h-3/4 border-2 border-dashed rounded-sm transition-colors ${zoneClass('left')}`} />
       <div className={`absolute right-0 top-0 w-1/4 h-3/4 border-2 border-dashed rounded-sm transition-colors ${zoneClass('right')}`} />
       <div className={`absolute left-0 bottom-0 w-full h-1/4 border-2 border-dashed rounded-sm transition-colors ${zoneClass('bottom')}`} />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="bg-background/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-primary/40 shadow-lg">
-          <span className="text-sm text-muted-foreground">
-            {hoverZone
-              ? `Drop in ${hoverZone} panel`
-              : `Dragging: ${incoming.panelIds.join(', ')}`}
-          </span>
+      {hoverZone && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="bg-background/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-primary/40 shadow-lg">
+            <span className="text-sm text-muted-foreground">
+              Drop in {hoverZone} panel
+            </span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
