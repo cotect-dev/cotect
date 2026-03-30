@@ -22,7 +22,12 @@ function getSerializableState<T>(state: T): Partial<T> {
 }
 
 // Stores registered for syncing — initialized later via initAllSyncedStores()
-const pending: { name: string; store: StoreApi<unknown> }[] = []
+const pending: { name: string; store: StoreApi<unknown>; sanitize?: (s: Partial<unknown>) => Partial<unknown> }[] = []
+
+interface SyncOptions<T> {
+  /** Clean up runtime-only fields when loading saved state (e.g. clear isStreaming flags) */
+  sanitize?: (saved: Partial<T>) => Partial<T>
+}
 
 /**
  * Drop-in replacement for Zustand's `create` that auto-syncs state to a shared file.
@@ -31,9 +36,9 @@ const pending: { name: string; store: StoreApi<unknown> }[] = []
  * Load and auto-save are deferred until initAllSyncedStores() is called
  * (after Neutralino init, so isNeutralino() returns the correct value).
  */
-export function createSyncedStore<T>(name: string, creator: StateCreator<T>) {
+export function createSyncedStore<T>(name: string, creator: StateCreator<T>, options?: SyncOptions<T>) {
   const store = create<T>(creator)
-  pending.push({ name, store: store as unknown as StoreApi<unknown> })
+  pending.push({ name, store: store as unknown as StoreApi<unknown>, sanitize: options?.sanitize as ((s: Partial<unknown>) => Partial<unknown>) | undefined })
   return store
 }
 
@@ -42,11 +47,11 @@ export function createSyncedStore<T>(name: string, creator: StateCreator<T>) {
  * Loads saved state into each synced store and starts auto-saving.
  */
 export function initAllSyncedStores(): void {
-  for (const { name, store } of pending) {
+  for (const { name, store, sanitize } of pending) {
     // Load saved state
     loadPanelState(name).then((saved) => {
       if (saved && typeof saved === 'object') {
-        store.setState(saved)
+        store.setState(sanitize ? sanitize(saved as Partial<unknown>) : saved)
       }
     })
 

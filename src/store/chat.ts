@@ -46,7 +46,18 @@ export const useChatStore = createSyncedStore<ChatState>('chat', (set) => ({
   setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),
   setAbortController: (abortController) => set({ abortController }),
   clearMessages: () => set({ messages: [] }),
-}))
+}), {
+  sanitize: (saved) => ({
+    ...saved,
+    isGenerating: false,
+    abortController: null,
+    messages: (saved as Partial<ChatState>).messages?.map((m) => ({
+      ...m,
+      isStreaming: false,
+      isThinking: false,
+    })),
+  }),
+})
 
 const API_BASE = '/llm/v1'
 
