@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect } from 'react'
 import { onMessage, broadcast, type ChannelMessage } from '@/services/channel'
 import { getWindowId } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
@@ -13,13 +13,6 @@ interface Props {
 export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Props) {
   const windowId = getWindowId()
   const setCrossWindowDrag = useLayoutStore((s) => s.setCrossWindowDrag)
-  const focusedAtRef = useRef(Date.now())
-
-  useEffect(() => {
-    const handleFocus = () => { focusedAtRef.current = Date.now() }
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
-  }, [])
 
   const detectZoneFromScreen = useCallback((screenX: number, screenY: number): { zone: HoverZone; isOver: boolean } => {
     const winLeft = window.screenX
@@ -36,8 +29,10 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
 
     let zone: HoverZone = null
     if (mode === 'panel') {
+      // Two-zone layout: left/right split at 50%
       zone = x < 0.5 ? 'left' : 'right'
     } else {
+      // Three-zone layout: left 25%, right 75%, bottom 75%
       if (y > 0.75) zone = 'bottom'
       else if (x < 0.25) zone = 'left'
       else if (x > 0.75) zone = 'right'
@@ -46,6 +41,8 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     return { zone, isOver: true }
   }, [mode])
 
+  // Compute insert index within a zone from screen coordinates,
+  // using the same logic as usePanelDrag's computeInsertIndex
   const computeInsertFromScreen = useCallback((zone: PanelPosition, screenX: number, screenY: number): { insertIndex: number; neighborIndex: number } => {
     const el = zoneRefs.current[zone]
     if (!el) return { insertIndex: 0, neighborIndex: 0 }
@@ -53,6 +50,7 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     const rect = el.getBoundingClientRect()
     const isVertical = zone === 'left' || zone === 'right'
 
+    // Convert screen coords to local coords relative to the zone element
     const localX = screenX - window.screenX - (window.outerWidth - window.innerWidth)
     const localY = screenY - window.screenY - (window.outerHeight - window.innerHeight)
 
@@ -84,15 +82,12 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     let currentIncoming: { panelId: string; panelIds: string[]; sourceWindow: string } | null = null
     let currentZone: HoverZone = null
     let isOver = false
-    let didDrop = false
-    // Track the highest focusedAt of any competing drop (even before our own)
-    let highestCompetingFocus = 0
+    let lastAccepted: { panelIds: string[] } | null = null
 
     const unsub = onMessage((msg: ChannelMessage) => {
       if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
-        didDrop = false
-        highestCompetingFocus = 0
+        lastAccepted = null
       } else if (msg.type === 'drag-move' && msg.sourceWindow !== windowId && currentIncoming) {
         const result = detectZoneFromScreen(msg.screenX, msg.screenY)
         currentZone = result.zone
@@ -112,48 +107,43 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
         }
       } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
         if (currentIncoming && isOver && currentZone) {
-          if (highestCompetingFocus > focusedAtRef.current) {
-            // A window with higher priority already dropped — don't compete
-          } else {
-            const cwd = useLayoutStore.getState().crossWindowDrag
-            const insertIndex = cwd?.insertIndex ?? 0
-            const neighborIndex = cwd?.neighborIndex ?? 0
+          // Read the last computed insert position from the store
+          const cwd = useLayoutStore.getState().crossWindowDrag
+          const insertIndex = cwd?.insertIndex ?? 0
+          const neighborIndex = cwd?.neighborIndex ?? 0
 
-            broadcast({
-              type: 'drag-drop',
-              panelId: currentIncoming.panelId,
-              panelIds: currentIncoming.panelIds,
-              targetWindow: windowId,
-              focusedAt: focusedAtRef.current,
-              position: currentZone,
-              groupKey: null,
-            })
+          broadcast({
+            type: 'drag-drop',
+            panelId: currentIncoming.panelId,
+            panelIds: currentIncoming.panelIds,
+            targetWindow: windowId,
+            position: currentZone,
+            groupKey: null,
+          })
 
-            const store = useLayoutStore.getState()
-            for (const id of currentIncoming.panelIds) {
-              store.removePanel(id)
-            }
-            store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
-            didDrop = true
+          // Clear existing copies, then insert via moveGroup
+          const store = useLayoutStore.getState()
+          for (const id of currentIncoming.panelIds) {
+            store.removePanel(id)
           }
+          store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
+          lastAccepted = { panelIds: [...currentIncoming.panelIds] }
         }
 
+        currentIncoming = null
         currentZone = null
         isOver = false
         setCrossWindowDrag(null)
-      } else if (msg.type === 'drag-drop' && msg.targetWindow !== windowId && currentIncoming) {
-        // Another window dropped for the same drag
-        if (msg.focusedAt > highestCompetingFocus) {
-          highestCompetingFocus = msg.focusedAt
-        }
-
-        // If we already dropped and they outrank us, undo
-        if (didDrop && msg.focusedAt > focusedAtRef.current) {
-          for (const id of currentIncoming.panelIds) {
-            useLayoutStore.getState().removePanel(id)
+      } else if (msg.type === 'drag-drop' && msg.targetWindow !== windowId && lastAccepted) {
+        // Another window also accepted this drop (overlapping windows).
+        // Tiebreak: lower window ID wins.
+        if (msg.targetWindow < windowId) {
+          const store = useLayoutStore.getState()
+          for (const id of lastAccepted.panelIds) {
+            store.removePanel(id)
           }
-          didDrop = false
         }
+        lastAccepted = null
       }
     })
 
