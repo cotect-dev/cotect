@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import Canvas from '@/views/Canvas'
 import NewWindow from '@/views/NewWindow'
-import { getWindowId, onWindowClose, closeWindow, setWindowSizeConstraints } from '@/services/platform'
+import { getWindowId, onWindowClose, closeWindow, killChildWindows, setWindowSizeConstraints } from '@/services/platform'
 import { broadcast, closeChannel, initChannel, onMessage } from '@/services/channel'
 import {
   registerWindow,
@@ -88,13 +88,13 @@ function App() {
       if (!isMain) {
         removeLayout(windowId)
       }
-      broadcast({ type: 'window-closed', windowId })
-      // Delay exit to allow the async IPC write to complete,
-      // so child windows can see the close message
-      setTimeout(() => {
-        closeChannel()
-        closeWindow()
-      }, 150)
+      // Main window: kill child processes directly (they're separate OS processes
+      // that would otherwise be orphaned when the dev stack shuts down)
+      if (isMain) {
+        killChildWindows()
+      }
+      closeChannel()
+      closeWindow()
     })
 
     return () => {
