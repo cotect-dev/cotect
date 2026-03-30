@@ -27,9 +27,12 @@ export interface DragState {
   tabIntoGroupKey: string | null // non-null when hovering over a header to merge as tab
 }
 
+const DRAG_MOVE_THROTTLE = 50 // ms between drag-move broadcasts
+
 export function usePanelDrag() {
   const { panels, movePanel, movePanelToTab, moveGroup, moveGroupToTab } = useLayoutStore()
   const [dragState, setDragState] = useState<DragState | null>(null)
+  const lastDragMoveTs = useRef(0)
 
   const zoneRefs = useRef<Record<PanelPosition, HTMLDivElement | null>>({
     left: null,
@@ -177,6 +180,19 @@ export function usePanelDrag() {
 
   const handleDragMove = useCallback(
     (event: DragMoveEvent) => {
+      // Broadcast screen position to other windows (throttled)
+      const now = Date.now()
+      if (now - lastDragMoveTs.current >= DRAG_MOVE_THROTTLE) {
+        lastDragMoveTs.current = now
+        const initial = event.activatorEvent as PointerEvent
+        broadcast({
+          type: 'drag-move',
+          screenX: initial.screenX + event.delta.x,
+          screenY: initial.screenY + event.delta.y,
+          sourceWindow: getWindowId(),
+        })
+      }
+
       setDragState((prev) => {
         if (!prev) return prev
 

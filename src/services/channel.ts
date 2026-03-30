@@ -4,6 +4,7 @@ import type { PanelPosition } from '@/store/layout'
 export type ChannelMessage =
   | { type: 'drag-start'; panelId: string; panelIds: string[]; sourceWindow: string }
   | { type: 'drag-end'; sourceWindow: string }
+  | { type: 'drag-move'; screenX: number; screenY: number; sourceWindow: string }
   | { type: 'drag-drop'; panelId: string; panelIds: string[]; targetWindow: string; position: PanelPosition; groupKey: string | null }
   | { type: 'window-opened'; windowId: string }
   | { type: 'window-closed'; windowId: string }
@@ -23,13 +24,14 @@ export function initChannel(windowId: string): void {
 }
 
 // =============================================================================
-// Neutralino: filesystem-based IPC at /tmp/cotect-ipc.json
-// Outside project dir so the file watcher doesn't trigger reloads.
+// Neutralino: filesystem-based IPC at /tmp/
 // =============================================================================
 
 const IPC_FILE = '/tmp/cotect-ipc.json'
+const IPC_POS_FILE = '/tmp/cotect-drag-pos.json'  // fast-path for mouse position
 const MESSAGE_TTL = 5000
 const POLL_INTERVAL = 100
+const POS_POLL_INTERVAL = 30  // faster polling for mouse position
 
 interface IpcEnvelope {
   sender: string
@@ -37,8 +39,18 @@ interface IpcEnvelope {
   ts: number
 }
 
+interface DragPos {
+  sender: string
+  screenX: number
+  screenY: number
+  ts: number
+}
+
 let lastSeenTs = Date.now()
 let neuPollTimer: ReturnType<typeof setInterval> | null = null
+let posPollTimer: ReturnType<typeof setInterval> | null = null
+let lastPosTs = Date.now()
+let isDragActive = false
 
 async function neuReadEnvelopes(): Promise<IpcEnvelope[]> {
   try {
@@ -49,16 +61,20 @@ async function neuReadEnvelopes(): Promise<IpcEnvelope[]> {
   }
 }
 
-async function neuWriteEnvelopes(envelopes: IpcEnvelope[]): Promise<void> {
-  await filesystem.writeFile(IPC_FILE, JSON.stringify(envelopes))
-}
-
 async function neuPoll(): Promise<void> {
   try {
     const envelopes = await neuReadEnvelopes()
 
     for (const env of envelopes) {
       if (env.sender !== senderId && env.ts > lastSeenTs) {
+        // Track drag state for position polling
+        if (env.data.type === 'drag-start') {
+          isDragActive = true
+          startPosPolling()
+        } else if (env.data.type === 'drag-end') {
+          isDragActive = false
+          stopPosPolling()
+        }
         for (const handler of handlers) {
           handler(env.data)
         }
@@ -69,16 +85,40 @@ async function neuPoll(): Promise<void> {
       lastSeenTs = Math.max(...envelopes.map((e) => e.ts), lastSeenTs)
     }
   } catch {
-    // file missing or unreadable — ignore
+    // file missing or unreadable
+  }
+}
+
+async function posPoll(): Promise<void> {
+  try {
+    const raw = await filesystem.readFile(IPC_POS_FILE)
+    const pos: DragPos = JSON.parse(raw)
+    if (pos.sender !== senderId && pos.ts > lastPosTs) {
+      lastPosTs = pos.ts
+      for (const handler of handlers) {
+        handler({ type: 'drag-move', screenX: pos.screenX, screenY: pos.screenY, sourceWindow: pos.sender })
+      }
+    }
+  } catch {
+    // file missing — no position yet
   }
 }
 
 async function neuBroadcast(message: ChannelMessage): Promise<void> {
+  // drag-move uses the fast-path position file (just overwrite, no array)
+  if (message.type === 'drag-move') {
+    try {
+      const pos: DragPos = { sender: senderId, screenX: message.screenX, screenY: message.screenY, ts: Date.now() }
+      await filesystem.writeFile(IPC_POS_FILE, JSON.stringify(pos))
+    } catch {}
+    return
+  }
+
   try {
     const now = Date.now()
     const envelopes = (await neuReadEnvelopes()).filter((e) => now - e.ts < MESSAGE_TTL)
     envelopes.push({ sender: senderId, data: message, ts: now })
-    await neuWriteEnvelopes(envelopes)
+    await filesystem.writeFile(IPC_FILE, JSON.stringify(envelopes))
   } catch (err) {
     console.error('[ipc] broadcast failed:', err)
   }
@@ -94,10 +134,23 @@ function stopNeuPolling(): void {
     clearInterval(neuPollTimer)
     neuPollTimer = null
   }
+  stopPosPolling()
+}
+
+function startPosPolling(): void {
+  if (posPollTimer) return
+  posPollTimer = setInterval(posPoll, POS_POLL_INTERVAL)
+}
+
+function stopPosPolling(): void {
+  if (posPollTimer) {
+    clearInterval(posPollTimer)
+    posPollTimer = null
+  }
 }
 
 // =============================================================================
-// Browser: BroadcastChannel (works across tabs of the same origin)
+// Browser: BroadcastChannel
 // =============================================================================
 
 let bcChannel: BroadcastChannel | null = null
