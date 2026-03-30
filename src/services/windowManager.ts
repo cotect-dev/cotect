@@ -80,18 +80,15 @@ export async function getWindows(): Promise<WindowDescriptor[]> {
   }
 }
 
-export function registerWindow(id: string, role: 'main' | 'panel'): void {
-  // Read from cache (sync), update, write back
-  const raw = readFileSync('windows')
-  const windows: WindowDescriptor[] = raw ? JSON.parse(raw) : []
+export async function registerWindow(id: string, role: 'main' | 'panel'): Promise<void> {
+  const windows = await getWindows()
   const filtered = windows.filter((w) => w.id !== id)
   filtered.push({ id, role })
   fileWrite('windows', JSON.stringify(filtered))
 }
 
-export function unregisterWindow(id: string): void {
-  const raw = readFileSync('windows')
-  const windows: WindowDescriptor[] = raw ? JSON.parse(raw) : []
+export async function unregisterWindow(id: string): Promise<void> {
+  const windows = await getWindows()
   const filtered = windows.filter((w) => w.id !== id)
   fileWrite('windows', JSON.stringify(filtered))
 }

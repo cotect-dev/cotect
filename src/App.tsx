@@ -47,12 +47,12 @@ function App() {
     }
     initAllSyncedStores()
 
-    // Register this window
-    registerWindow(windowId, isMain ? 'main' : 'panel')
-    broadcast({ type: 'window-opened', windowId })
-
-    // Async init: load layout and restore child windows
+    // Async init: register, load layout, restore child windows
     ;(async () => {
+      // Register this window
+      await registerWindow(windowId, isMain ? 'main' : 'panel')
+      broadcast({ type: 'window-opened', windowId })
+
       // Load persisted layout (or default for main)
       const saved = await loadLayout(windowId)
       if (saved) {
