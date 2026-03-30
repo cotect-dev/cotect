@@ -89,8 +89,12 @@ function App() {
         removeLayout(windowId)
       }
       broadcast({ type: 'window-closed', windowId })
-      closeChannel()
-      closeWindow()
+      // Delay exit to allow the async IPC write to complete,
+      // so child windows can see the close message
+      setTimeout(() => {
+        closeChannel()
+        closeWindow()
+      }, 150)
     })
 
     return () => {

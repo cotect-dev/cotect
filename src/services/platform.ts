@@ -45,7 +45,9 @@ export function setWindowSizeConstraints(minWidth: number, minHeight: number): v
 
 export function closeWindow(): void {
   if (isNeutralino()) {
-    app.exit().catch(() => window.close())
+    app.killProcess().catch(() => {
+      app.exit().catch(() => window.close())
+    })
   } else {
     window.close()
   }
