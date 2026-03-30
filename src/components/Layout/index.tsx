@@ -128,10 +128,10 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
               ref={(el) => { zoneRefs.current.left = el; leftZoneRef.current = el }}
               className="h-full pointer-events-auto"
               style={isPanel ? {
-                flexGrow: leftVisible ? 1 : 0,
+                flexGrow: 1,
                 flexShrink: 1,
                 flexBasis: 0,
-                minWidth: leftVisible ? MIN_SIDE : 0,
+                minWidth: MIN_SIDE,
               } : {
                 flexGrow: 0,
                 flexShrink: 0,
@@ -178,10 +178,10 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
               ref={(el) => { zoneRefs.current.right = el; rightZoneRef.current = el }}
               className="h-full pointer-events-auto"
               style={isPanel ? {
-                flexGrow: rightVisible ? 1 : 0,
+                flexGrow: 1,
                 flexShrink: 1,
                 flexBasis: 0,
-                minWidth: rightVisible ? MIN_SIDE : 0,
+                minWidth: MIN_SIDE,
               } : {
                 flexGrow: 0,
                 flexShrink: 0,
