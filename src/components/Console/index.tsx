@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useConsoleStore, type LogLevel } from '@/store/console'
+import { loadPanelState, savePanelState } from '@/services/panelState'
 import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
 
@@ -36,6 +37,31 @@ export default function Console() {
   const clear = useConsoleStore((s) => s.clear)
   const setFilter = useConsoleStore((s) => s.setFilter)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Sync panel state across windows
+  useEffect(() => {
+    loadPanelState<{ entries: typeof entries; filter: typeof filter }>('console').then((saved) => {
+      if (saved) {
+        useConsoleStore.setState({ entries: saved.entries ?? [], filter: saved.filter ?? null })
+      }
+    })
+
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsub = useConsoleStore.subscribe(() => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        const { entries, filter } = useConsoleStore.getState()
+        savePanelState('console', { entries, filter })
+      }, 300)
+    })
+
+    return () => {
+      unsub()
+      if (timer) clearTimeout(timer)
+      const { entries, filter } = useConsoleStore.getState()
+      savePanelState('console', { entries, filter })
+    }
+  }, [])
 
   const filtered = filter ? entries.filter((e) => e.level === filter) : entries
 
