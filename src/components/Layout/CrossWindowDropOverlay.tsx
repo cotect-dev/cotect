@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { onMessage, broadcast, type ChannelMessage } from '@/services/channel'
 import { getWindowId } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
+import { reloadSyncedStore } from '@/store/synced'
 
 type HoverZone = PanelPosition | null
 
@@ -127,6 +128,10 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
             store.removePanel(id)
           }
           store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
+          // Reload synced stores so panel state (chat messages, etc.) transfers with the panel
+          for (const id of currentIncoming.panelIds) {
+            reloadSyncedStore(id)
+          }
           lastAccepted = { panelIds: [...currentIncoming.panelIds] }
         }
 

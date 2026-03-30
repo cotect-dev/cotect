@@ -30,3 +30,11 @@ export function savePanelState(panelId: string, state: unknown): void {
     try { localStorage.setItem(`${LS_PREFIX}${panelId}`, json) } catch {}
   }
 }
+
+export function clearPanelState(panelId: string): void {
+  if (isNeutralino()) {
+    filesystem.remove(`${FILE_PREFIX}${panelId}.json`).catch(() => {})
+  } else {
+    try { localStorage.removeItem(`${LS_PREFIX}${panelId}`) } catch {}
+  }
+}
