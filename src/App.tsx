@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import Canvas from '@/views/Canvas'
 import NewWindow from '@/views/NewWindow'
 import { getWindowId, onWindowClose, closeWindow, setWindowSizeConstraints } from '@/services/platform'
-import { broadcast, closeChannel, initChannel } from '@/services/channel'
+import { broadcast, closeChannel, initChannel, onMessage } from '@/services/channel'
 import {
   registerWindow,
   unregisterWindow,
@@ -15,7 +15,7 @@ import {
   startLayoutPersistence,
   stopLayoutPersistence,
 } from '@/store/layout'
-import { initAllSyncedStores } from '@/store/synced'
+import { initAllSyncedStores, clearAllSyncedStores } from '@/store/synced'
 
 const windowId = getWindowId()
 const isMain = windowId === 'main'
@@ -38,8 +38,14 @@ function App() {
     // Set window size constraints
     setWindowSizeConstraints(isMain ? 1280 : 400, isMain ? 720 : 300)
 
-    // Initialize cross-window channel and synced stores
+    // Initialize cross-window channel
     initChannel(windowId)
+
+    // Clear stale panel state from previous session (main window only),
+    // then start auto-saving. Panel state is session-scoped, not persistent.
+    if (isMain) {
+      clearAllSyncedStores()
+    }
     initAllSyncedStores()
 
     // Register this window
@@ -68,6 +74,13 @@ function App() {
       }
     }
 
+    // Child windows: close when main window closes
+    const unsubMessage = !isMain ? onMessage((msg) => {
+      if (msg.type === 'window-closed' && msg.windowId === 'main') {
+        closeWindow()
+      }
+    }) : undefined
+
     // Handle this window closing
     const unsubClose = onWindowClose(() => {
       stopLayoutPersistence()
@@ -81,6 +94,7 @@ function App() {
     })
 
     return () => {
+      unsubMessage?.()
       unsubClose()
       stopLayoutPersistence()
     }

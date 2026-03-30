@@ -1,5 +1,5 @@
 import { create, type StateCreator, type StoreApi } from 'zustand'
-import { loadPanelState, savePanelState } from '@/services/panelState'
+import { loadPanelState, savePanelState, clearPanelState } from '@/services/panelState'
 
 function isSerializable(value: unknown): boolean {
   if (value === null || value === undefined) return true
@@ -21,41 +21,39 @@ function getSerializableState<T>(state: T): Partial<T> {
   return result as Partial<T>
 }
 
-// Stores registered for syncing — initialized later via initAllSyncedStores()
-const pending: { name: string; store: StoreApi<unknown>; sanitize?: (s: Partial<unknown>) => Partial<unknown> }[] = []
+interface PendingEntry {
+  name: string
+  store: StoreApi<unknown>
+  sanitize?: (s: Partial<unknown>) => Partial<unknown>
+}
+
+const pending: PendingEntry[] = []
 
 interface SyncOptions<T> {
-  /** Clean up runtime-only fields when loading saved state (e.g. clear isStreaming flags) */
   sanitize?: (saved: Partial<T>) => Partial<T>
 }
 
 /**
  * Drop-in replacement for Zustand's `create` that auto-syncs state to a shared file.
  * Functions and non-serializable values (class instances) are excluded automatically.
- *
- * Load and auto-save are deferred until initAllSyncedStores() is called
- * (after Neutralino init, so isNeutralino() returns the correct value).
  */
 export function createSyncedStore<T>(name: string, creator: StateCreator<T>, options?: SyncOptions<T>) {
   const store = create<T>(creator)
-  pending.push({ name, store: store as unknown as StoreApi<unknown>, sanitize: options?.sanitize as ((s: Partial<unknown>) => Partial<unknown>) | undefined })
+  pending.push({
+    name,
+    store: store as unknown as StoreApi<unknown>,
+    sanitize: options?.sanitize as ((s: Partial<unknown>) => Partial<unknown>) | undefined,
+  })
   return store
 }
 
 /**
- * Call once after Neutralino init (or immediately in browser mode).
- * Loads saved state into each synced store and starts auto-saving.
+ * Call once after Neutralino init. Starts auto-saving for all synced stores.
+ * Does NOT load saved state — call clearAllSyncedStores() first on main window startup
+ * to ensure a fresh session, then stores save as they change.
  */
 export function initAllSyncedStores(): void {
-  for (const { name, store, sanitize } of pending) {
-    // Load saved state
-    loadPanelState(name).then((saved) => {
-      if (saved && typeof saved === 'object') {
-        store.setState(sanitize ? sanitize(saved as Partial<unknown>) : saved)
-      }
-    })
-
-    // Auto-save on changes (debounced)
+  for (const { name, store } of pending) {
     let timer: ReturnType<typeof setTimeout> | null = null
     store.subscribe(() => {
       if (timer) clearTimeout(timer)
@@ -63,5 +61,26 @@ export function initAllSyncedStores(): void {
         savePanelState(name, getSerializableState(store.getState()))
       }, 300)
     })
+  }
+}
+
+/**
+ * Clear all saved panel state files (call on main window startup for a fresh session).
+ */
+export function clearAllSyncedStores(): void {
+  for (const { name } of pending) {
+    clearPanelState(name)
+  }
+}
+
+/**
+ * Reload a specific store from the shared file (call when receiving a panel via cross-window drop).
+ */
+export async function reloadSyncedStore(name: string): Promise<void> {
+  const entry = pending.find((p) => p.name === name)
+  if (!entry) return
+  const saved = await loadPanelState(name)
+  if (saved && typeof saved === 'object') {
+    entry.store.setState(entry.sanitize ? entry.sanitize(saved as Partial<unknown>) : saved)
   }
 }
