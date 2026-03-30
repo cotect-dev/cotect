@@ -78,17 +78,29 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     return { insertIndex: sizes.length, neighborIndex: sizes.length - 1 }
   }, [zoneRefs])
 
+  // Compute how deep the cursor is inside this window (min distance from any edge).
+  // In an overlap scenario, the window where the cursor is deeper is the intended target.
+  const computeDepth = useCallback((screenX: number, screenY: number): number => {
+    const left = window.screenX
+    const top = window.screenY
+    const right = left + window.outerWidth
+    const bottom = top + window.outerHeight
+    return Math.min(screenX - left, right - screenX, screenY - top, bottom - screenY)
+  }, [])
+
   useEffect(() => {
     let currentIncoming: { panelId: string; panelIds: string[]; sourceWindow: string } | null = null
     let currentZone: HoverZone = null
     let isOver = false
-    let lastAccepted: { panelIds: string[] } | null = null
+    let lastScreenX = 0
+    let lastScreenY = 0
 
     const unsub = onMessage((msg: ChannelMessage) => {
       if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
-        lastAccepted = null
       } else if (msg.type === 'drag-move' && msg.sourceWindow !== windowId && currentIncoming) {
+        lastScreenX = msg.screenX
+        lastScreenY = msg.screenY
         const result = detectZoneFromScreen(msg.screenX, msg.screenY)
         currentZone = result.zone
         isOver = result.isOver
@@ -107,43 +119,40 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
         }
       } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
         if (currentIncoming && isOver && currentZone) {
-          // Read the last computed insert position from the store
-          const cwd = useLayoutStore.getState().crossWindowDrag
-          const insertIndex = cwd?.insertIndex ?? 0
-          const neighborIndex = cwd?.neighborIndex ?? 0
+          // Only accept if cursor is deep enough inside this window.
+          // In overlapping windows, the shallower window skips.
+          const depth = computeDepth(lastScreenX, lastScreenY)
+          const halfWidth = window.outerWidth / 2
+          const halfHeight = window.outerHeight / 2
+          const maxDepth = Math.min(halfWidth, halfHeight)
+          const depthRatio = maxDepth > 0 ? depth / maxDepth : 0
 
-          broadcast({
-            type: 'drag-drop',
-            panelId: currentIncoming.panelId,
-            panelIds: currentIncoming.panelIds,
-            targetWindow: windowId,
-            position: currentZone,
-            groupKey: null,
-          })
+          if (depthRatio > 0.1) {
+            const cwd = useLayoutStore.getState().crossWindowDrag
+            const insertIndex = cwd?.insertIndex ?? 0
+            const neighborIndex = cwd?.neighborIndex ?? 0
 
-          // Clear existing copies, then insert via moveGroup
-          const store = useLayoutStore.getState()
-          for (const id of currentIncoming.panelIds) {
-            store.removePanel(id)
+            broadcast({
+              type: 'drag-drop',
+              panelId: currentIncoming.panelId,
+              panelIds: currentIncoming.panelIds,
+              targetWindow: windowId,
+              position: currentZone,
+              groupKey: null,
+            })
+
+            const store = useLayoutStore.getState()
+            for (const id of currentIncoming.panelIds) {
+              store.removePanel(id)
+            }
+            store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
           }
-          store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
-          lastAccepted = { panelIds: [...currentIncoming.panelIds] }
         }
 
         currentIncoming = null
         currentZone = null
         isOver = false
         setCrossWindowDrag(null)
-      } else if (msg.type === 'drag-drop' && msg.targetWindow !== windowId && lastAccepted) {
-        // Another window also accepted this drop (overlapping windows).
-        // Tiebreak: lower window ID wins.
-        if (msg.targetWindow < windowId) {
-          const store = useLayoutStore.getState()
-          for (const id of lastAccepted.panelIds) {
-            store.removePanel(id)
-          }
-        }
-        lastAccepted = null
       }
     })
 
