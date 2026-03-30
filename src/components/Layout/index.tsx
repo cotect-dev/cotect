@@ -37,11 +37,16 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
   } = usePanelDrag()
 
   const windowId = getWindowId()
-  const [zoneSizes, setZoneSizes] = useState(() => {
-    const saved = loadZoneSizes(windowId)
-    return saved ?? { left: 0.2, right: 0.2, bottom: 0.25 }
-  })
+  const [zoneSizes, setZoneSizes] = useState({ left: 0.2, right: 0.2, bottom: 0.25 })
 
+  // Load persisted zone sizes
+  useEffect(() => {
+    loadZoneSizes(windowId).then((saved) => {
+      if (saved) setZoneSizes(saved)
+    })
+  }, [windowId])
+
+  // Auto-save zone sizes (debounced)
   useEffect(() => {
     const timer = setTimeout(() => {
       saveZoneSizes(windowId, zoneSizes)

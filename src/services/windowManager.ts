@@ -1,8 +1,9 @@
+import { filesystem } from '@neutralinojs/lib'
+import { isNeutralino } from './platform'
 import type { PanelPosition } from '@/store/layout'
 
-const WINDOWS_KEY = 'cotect:windows'
-const LAYOUT_PREFIX = 'cotect:layout:'
-const ZONE_SIZES_PREFIX = 'cotect:zones:'
+const FILE_PREFIX = '/tmp/cotect-wm-'
+const LS_PREFIX = 'cotect:'
 
 export interface WindowDescriptor {
   id: string
@@ -21,36 +22,89 @@ export interface PersistedZoneSizes {
   bottom: number
 }
 
+// --- Shared read/write helpers ---
+
+function readFileSync(key: string): string | null {
+  // For Neutralino, we need async reads but callers expect sync.
+  // Use a cache that's populated by async reads.
+  return fileCache.get(key) ?? null
+}
+
+// File cache for Neutralino mode (populated by async preload)
+const fileCache = new Map<string, string>()
+
+async function fileRead(key: string): Promise<string | null> {
+  if (isNeutralino()) {
+    try {
+      const raw = await filesystem.readFile(`${FILE_PREFIX}${key}.json`)
+      fileCache.set(key, raw)
+      return raw
+    } catch {
+      return null
+    }
+  } else {
+    try {
+      return localStorage.getItem(`${LS_PREFIX}${key}`)
+    } catch {
+      return null
+    }
+  }
+}
+
+function fileWrite(key: string, data: string): void {
+  fileCache.set(key, data)
+  if (isNeutralino()) {
+    filesystem.writeFile(`${FILE_PREFIX}${key}.json`, data).catch(() => {})
+  } else {
+    try { localStorage.setItem(`${LS_PREFIX}${key}`, data) } catch {}
+  }
+}
+
+function fileRemove(key: string): void {
+  fileCache.delete(key)
+  if (isNeutralino()) {
+    filesystem.remove(`${FILE_PREFIX}${key}.json`).catch(() => {})
+  } else {
+    try { localStorage.removeItem(`${LS_PREFIX}${key}`) } catch {}
+  }
+}
+
 // --- Window registry ---
 
-export function getWindows(): WindowDescriptor[] {
+export async function getWindows(): Promise<WindowDescriptor[]> {
   try {
-    return JSON.parse(localStorage.getItem(WINDOWS_KEY) ?? '[]')
+    const raw = await fileRead('windows')
+    return raw ? JSON.parse(raw) : []
   } catch {
     return []
   }
 }
 
 export function registerWindow(id: string, role: 'main' | 'panel'): void {
-  const windows = getWindows().filter((w) => w.id !== id)
-  windows.push({ id, role })
-  localStorage.setItem(WINDOWS_KEY, JSON.stringify(windows))
+  // Read from cache (sync), update, write back
+  const raw = readFileSync('windows')
+  const windows: WindowDescriptor[] = raw ? JSON.parse(raw) : []
+  const filtered = windows.filter((w) => w.id !== id)
+  filtered.push({ id, role })
+  fileWrite('windows', JSON.stringify(filtered))
 }
 
 export function unregisterWindow(id: string): void {
-  const windows = getWindows().filter((w) => w.id !== id)
-  localStorage.setItem(WINDOWS_KEY, JSON.stringify(windows))
+  const raw = readFileSync('windows')
+  const windows: WindowDescriptor[] = raw ? JSON.parse(raw) : []
+  const filtered = windows.filter((w) => w.id !== id)
+  fileWrite('windows', JSON.stringify(filtered))
 }
 
 // --- Layout persistence ---
 
 export function saveLayout(windowId: string, layout: PersistedLayout): void {
-  localStorage.setItem(LAYOUT_PREFIX + windowId, JSON.stringify(layout))
+  fileWrite(`layout-${windowId}`, JSON.stringify(layout))
 }
 
-export function loadLayout(windowId: string): PersistedLayout | null {
+export async function loadLayout(windowId: string): Promise<PersistedLayout | null> {
   try {
-    const raw = localStorage.getItem(LAYOUT_PREFIX + windowId)
+    const raw = await fileRead(`layout-${windowId}`)
     return raw ? JSON.parse(raw) : null
   } catch {
     return null
@@ -58,17 +112,17 @@ export function loadLayout(windowId: string): PersistedLayout | null {
 }
 
 export function removeLayout(windowId: string): void {
-  localStorage.removeItem(LAYOUT_PREFIX + windowId)
-  localStorage.removeItem(ZONE_SIZES_PREFIX + windowId)
+  fileRemove(`layout-${windowId}`)
+  fileRemove(`zones-${windowId}`)
 }
 
 export function saveZoneSizes(windowId: string, sizes: PersistedZoneSizes): void {
-  localStorage.setItem(ZONE_SIZES_PREFIX + windowId, JSON.stringify(sizes))
+  fileWrite(`zones-${windowId}`, JSON.stringify(sizes))
 }
 
-export function loadZoneSizes(windowId: string): PersistedZoneSizes | null {
+export async function loadZoneSizes(windowId: string): Promise<PersistedZoneSizes | null> {
   try {
-    const raw = localStorage.getItem(ZONE_SIZES_PREFIX + windowId)
+    const raw = await fileRead(`zones-${windowId}`)
     return raw ? JSON.parse(raw) : null
   } catch {
     return null
