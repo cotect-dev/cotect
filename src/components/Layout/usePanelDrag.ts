@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { Modifier } from '@dnd-kit/core'
 import {
   PointerSensor,
@@ -11,7 +11,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
-import { broadcast, onMessage } from '@/services/channel'
+import { broadcast } from '@/services/channel'
 import { getWindowId } from '@/services/platform'
 
 const TAB_INTO_HEIGHT = 32 // px from the top of each panel area that counts as "header zone"
@@ -33,6 +33,7 @@ export function usePanelDrag() {
   const { panels, movePanel, movePanelToTab, moveGroup, moveGroupToTab } = useLayoutStore()
   const [dragState, setDragState] = useState<DragState | null>(null)
   const lastDragMoveTs = useRef(0)
+  const wasDragOutside = useRef(false)
 
   const zoneRefs = useRef<Record<PanelPosition, HTMLDivElement | null>>({
     left: null,
@@ -182,13 +183,20 @@ export function usePanelDrag() {
     (event: DragMoveEvent) => {
       // Broadcast screen position to other windows (throttled)
       const now = Date.now()
+      const initial0 = event.activatorEvent as PointerEvent
+      const screenX = initial0.screenX + event.delta.x
+      const screenY = initial0.screenY + event.delta.y
+
+      wasDragOutside.current =
+        screenX < window.screenX || screenX > window.screenX + window.outerWidth ||
+        screenY < window.screenY || screenY > window.screenY + window.outerHeight
+
       if (now - lastDragMoveTs.current >= DRAG_MOVE_THROTTLE) {
         lastDragMoveTs.current = now
-        const initial0 = event.activatorEvent as PointerEvent
         broadcast({
           type: 'drag-move',
-          screenX: initial0.screenX + event.delta.x,
-          screenY: initial0.screenY + event.delta.y,
+          screenX,
+          screenY,
           sourceWindow: getWindowId(),
         })
       }
@@ -244,18 +252,39 @@ export function usePanelDrag() {
               movePanel(prev.panelId, prev.overPosition, prev.insertIndex, prev.neighborIndex)
             }
           }
+        } else if (wasDragOutside.current) {
+          // Cursor was outside this window — optimistically remove panels
+          // (target window will add them when it processes drag-end)
+          const ids = prev.isGroup && prev.panelIds ? prev.panelIds : [prev.panelId]
+          queueMicrotask(() => {
+            for (const id of ids) {
+              useLayoutStore.getState().removePanel(id)
+            }
+          })
         }
-        // If cursor was outside, don't remove — let the target's drag-drop handle it
 
         return null
       })
+      wasDragOutside.current = false
       broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
     },
     [movePanel, movePanelToTab, moveGroup, moveGroupToTab]
   )
 
   const handleDragCancel = useCallback(() => {
-    setDragState(null)
+    const outside = wasDragOutside.current
+    setDragState((prev) => {
+      if (outside && prev) {
+        const ids = prev.isGroup && prev.panelIds ? prev.panelIds : [prev.panelId]
+        queueMicrotask(() => {
+          for (const id of ids) {
+            useLayoutStore.getState().removePanel(id)
+          }
+        })
+      }
+      return null
+    })
+    wasDragOutside.current = false
     broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
   }, [])
 
@@ -308,18 +337,6 @@ export function usePanelDrag() {
     },
     [isDragging, panels, dragState]
   )
-
-  // Listen for cross-window drops (this window is the source)
-  useEffect(() => {
-    return onMessage((msg) => {
-      if (msg.type === 'drag-drop' && msg.targetWindow !== getWindowId()) {
-        // Another window accepted the drop — remove panels from our store
-        for (const id of msg.panelIds) {
-          useLayoutStore.getState().removePanel(id)
-        }
-      }
-    })
-  }, [])
 
   return {
     panels,
