@@ -14,10 +14,8 @@ type HoverZone = PanelPosition | null
 export default function CrossWindowDropOverlay() {
   const [incoming, setIncoming] = useState<IncomingDrag | null>(null)
   const [hoverZone, setHoverZone] = useState<HoverZone>(null)
-  const [mouseInWindow, setMouseInWindow] = useState(false)
   const windowId = getWindowId()
 
-  // Detect zone from mouse position
   const detectZone = useCallback((clientX: number, clientY: number): HoverZone => {
     const w = window.innerWidth
     const h = window.innerHeight
@@ -30,7 +28,6 @@ export default function CrossWindowDropOverlay() {
     return null
   }, [])
 
-  // Handle drop: add panels to this window's store
   const handleDrop = useCallback((drag: IncomingDrag, zone: PanelPosition) => {
     broadcast({
       type: 'drag-drop',
@@ -52,45 +49,38 @@ export default function CrossWindowDropOverlay() {
     }
   }, [windowId])
 
-  // Listen for cross-window drag messages
   useEffect(() => {
     let currentIncoming: IncomingDrag | null = null
     let currentZone: HoverZone = null
-    let isMouseInWindow = false
+    let mouseInWindow = false
 
     const unsub = onMessage((msg: ChannelMessage) => {
       if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
         setIncoming(currentIncoming)
       } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
-        // Source released the mouse. If our mouse is over a valid zone, drop here.
-        if (currentIncoming && isMouseInWindow && currentZone) {
+        if (currentIncoming && mouseInWindow && currentZone) {
           handleDrop(currentIncoming, currentZone)
         }
         currentIncoming = null
         currentZone = null
-        isMouseInWindow = false
+        mouseInWindow = false
         setIncoming(null)
         setHoverZone(null)
-        setMouseInWindow(false)
       }
     })
 
-    // Track mouse position — no button check needed.
-    // We know a drag is active via IPC, so any mouse movement is drag-hover.
     const handleMouseMove = (e: MouseEvent) => {
       if (!currentIncoming) return
-      isMouseInWindow = true
+      mouseInWindow = true
       currentZone = detectZone(e.clientX, e.clientY)
-      setMouseInWindow(true)
       setHoverZone(currentZone)
     }
 
     const handleMouseLeave = () => {
       if (!currentIncoming) return
-      isMouseInWindow = false
+      mouseInWindow = false
       currentZone = null
-      setMouseInWindow(false)
       setHoverZone(null)
     }
 
@@ -106,35 +96,22 @@ export default function CrossWindowDropOverlay() {
 
   if (!incoming) return null
 
+  const zoneClass = (zone: PanelPosition) =>
+    hoverZone === zone
+      ? 'border-primary/60 bg-primary/15'
+      : 'border-primary/25 bg-primary/5'
+
   return (
     <div className="absolute inset-0 z-50 pointer-events-none">
-      {/* Left zone highlight */}
-      <div
-        className={`absolute left-0 top-0 w-1/4 h-3/4 border-2 border-dashed rounded-sm transition-colors ${
-          hoverZone === 'left' ? 'border-primary/60 bg-primary/10' : 'border-transparent'
-        }`}
-      />
-      {/* Right zone highlight */}
-      <div
-        className={`absolute right-0 top-0 w-1/4 h-3/4 border-2 border-dashed rounded-sm transition-colors ${
-          hoverZone === 'right' ? 'border-primary/60 bg-primary/10' : 'border-transparent'
-        }`}
-      />
-      {/* Bottom zone highlight */}
-      <div
-        className={`absolute left-0 bottom-0 w-full h-1/4 border-2 border-dashed rounded-sm transition-colors ${
-          hoverZone === 'bottom' ? 'border-primary/60 bg-primary/10' : 'border-transparent'
-        }`}
-      />
-      {/* Center label */}
+      <div className={`absolute left-0 top-0 w-1/4 h-3/4 border-2 border-dashed rounded-sm transition-colors ${zoneClass('left')}`} />
+      <div className={`absolute right-0 top-0 w-1/4 h-3/4 border-2 border-dashed rounded-sm transition-colors ${zoneClass('right')}`} />
+      <div className={`absolute left-0 bottom-0 w-full h-1/4 border-2 border-dashed rounded-sm transition-colors ${zoneClass('bottom')}`} />
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="bg-background/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-primary/40 shadow-lg">
           <span className="text-sm text-muted-foreground">
-            {!mouseInWindow
-              ? `Dragging: ${incoming.panelIds.join(', ')}`
-              : hoverZone
-                ? `Drop in ${hoverZone} panel`
-                : 'Move to a zone to drop'}
+            {hoverZone
+              ? `Drop in ${hoverZone} panel`
+              : `Dragging: ${incoming.panelIds.join(', ')}`}
           </span>
         </div>
       </div>
