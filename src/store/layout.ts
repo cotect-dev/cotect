@@ -74,6 +74,8 @@ export interface CrossWindowDrag {
   panelId: string
   panelIds: string[]
   position: PanelPosition
+  insertIndex: number
+  neighborIndex: number
 }
 
 interface LayoutState {
