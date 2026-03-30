@@ -114,7 +114,7 @@ export default function CrossWindowDropOverlay() {
     }
   }, [incoming, mouseInWindow, detectZone, windowId])
 
-  if (!incoming || !mouseInWindow) return null
+  if (!incoming) return null
 
   return (
     <div className="absolute inset-0 z-50 pointer-events-none">
@@ -138,11 +138,13 @@ export default function CrossWindowDropOverlay() {
       />
       {/* Center label */}
       <div className="absolute inset-0 flex items-center justify-center">
-        <div className="bg-background/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-border shadow-lg">
+        <div className="bg-background/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-primary/40 shadow-lg">
           <span className="text-sm text-muted-foreground">
-            {hoverZone
-              ? `Drop in ${hoverZone} panel`
-              : 'Move to a zone to drop'}
+            {!mouseInWindow
+              ? `Dragging: ${incoming.panelIds.join(', ')} — move mouse here`
+              : hoverZone
+                ? `Drop in ${hoverZone} panel`
+                : 'Move to a zone to drop'}
           </span>
         </div>
       </div>
