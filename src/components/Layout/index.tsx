@@ -131,7 +131,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
                 flexGrow: 1,
                 flexShrink: 1,
                 flexBasis: 0,
-                minWidth: MIN_SIDE,
+                minWidth: '25%',
               } : {
                 flexGrow: 0,
                 flexShrink: 0,
@@ -181,7 +181,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
                 flexGrow: 1,
                 flexShrink: 1,
                 flexBasis: 0,
-                minWidth: MIN_SIDE,
+                minWidth: '25%',
               } : {
                 flexGrow: 0,
                 flexShrink: 0,
