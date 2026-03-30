@@ -1,12 +1,31 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en" class="dark" style="background:oklch(0.145 0 0)">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/cotect.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cotect</title>
+    <style>
+      body { margin: 0; background: oklch(0.145 0 0); }
+      #splash {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        background: oklch(0.145 0 0);
+        color: oklch(0.985 0 0);
+        font-family: system-ui, sans-serif;
+        gap: 10px;
+        opacity: 1; transition: opacity 0.2s;
+      }
+      #splash.hide { opacity: 0; pointer-events: none; }
+      #splash img { width: 28px; height: 28px; }
+      #splash span { font-size: 18px; font-weight: 500; letter-spacing: 0.02em; }
+    </style>
   </head>
   <body>
+    <div id="splash">
+      <img src="/cotect.svg" alt="" />
+      <span>cotect</span>
+    </div>
     <div id="root"></div>
     <script src="/__neutralino_globals.js"></script>
     <script type="module" src="/src/main.tsx"></script>
