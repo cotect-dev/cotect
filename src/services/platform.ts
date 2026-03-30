@@ -1,7 +1,13 @@
 import { app, window as neuWindow, events } from '@neutralinojs/lib'
 
-function isNeutralino(): boolean {
-  return typeof window !== 'undefined' && !!window.NL_PORT
+let neutralinoActive = false
+
+export function setNeutralinoActive(active: boolean): void {
+  neutralinoActive = active
+}
+
+export function isNeutralino(): boolean {
+  return neutralinoActive
 }
 
 export function getWindowId(): string {
