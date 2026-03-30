@@ -19,3 +19,10 @@ createRoot(document.getElementById('root')!).render(
     </TooltipProvider>
   </StrictMode>,
 )
+
+// Fade out splash screen
+const splash = document.getElementById('splash')
+if (splash) {
+  splash.classList.add('hide')
+  setTimeout(() => splash.remove(), 200)
+}
