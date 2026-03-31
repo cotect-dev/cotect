@@ -1,10 +1,6 @@
 // src/components/Canvas/layout.ts
 import type { Node, Edge } from '@xyflow/react'
-
-const NODE_WIDTH = 200
-const NODE_HEIGHT = 60
-const H_GAP = 40
-const V_GAP = 80
+import { NODE_WIDTH, NODE_HEIGHT, NODE_NODE_H_GAP, NODE_NODE_V_GAP } from '@/lib/constants'
 
 export function layoutTree<T extends Node>(
   nodes: T[],
@@ -41,8 +37,8 @@ export function layoutTree<T extends Node>(
 
     let totalWidth = 0
     for (let i = 0; i < kids.length; i++) {
-      const childWidth = positionSubtree(kids[i], x + totalWidth, y + NODE_HEIGHT + V_GAP)
-      totalWidth += childWidth + (i < kids.length - 1 ? H_GAP : 0)
+      const childWidth = positionSubtree(kids[i], x + totalWidth, y + NODE_HEIGHT + NODE_V_GAP)
+      totalWidth += childWidth + (i < kids.length - 1 ? NODE_H_GAP : 0)
     }
 
     const subtreeWidth = Math.max(totalWidth, NODE_WIDTH)
@@ -54,7 +50,7 @@ export function layoutTree<T extends Node>(
   let offsetX = 0
   for (const root of roots.filter((r) => !standalone.includes(r))) {
     const width = positionSubtree(root.id, offsetX, 0)
-    offsetX += width + H_GAP * 2
+    offsetX += width + NODE_H_GAP * 2
   }
 
   // Position standalone nodes in a grid
@@ -63,8 +59,8 @@ export function layoutTree<T extends Node>(
     const col = i % cols
     const row = Math.floor(i / cols)
     positioned.set(node.id, {
-      x: col * (NODE_WIDTH + H_GAP),
-      y: row * (NODE_HEIGHT + V_GAP),
+      x: col * (NODE_WIDTH + NODE_H_GAP),
+      y: row * (NODE_HEIGHT + NODE_V_GAP),
     })
   })
 
