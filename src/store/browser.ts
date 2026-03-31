@@ -1,4 +1,3 @@
-// src/store/browser.ts
 import { create } from 'zustand'
 import type { Edge } from '@xyflow/react'
 import { readDirectory, readFileContent, type FSEntry } from '@/services/filesystem'
@@ -29,6 +28,89 @@ interface BrowserState {
   navigateToBreadcrumb: (index: number) => void
   generateNodes: () => { nodes: AppNode[]; edges: Edge[] }
 }
+
+// --- Helpers ---
+
+const IMPORT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx']
+
+function resolveImportCandidates(basePath: string): string[] {
+  return [basePath, ...IMPORT_EXTENSIONS.map((ext) => `${basePath}${ext}`)]
+}
+
+function findMatchingFile(resolvedPath: string, fileSet: Set<string>): string | undefined {
+  return resolveImportCandidates(resolvedPath).find((c) => fileSet.has(c))
+}
+
+function generateDirectoryNodes(entries: FSEntry[]): { nodes: AppNode[]; edges: Edge[] } {
+  const nodes: AppNode[] = entries.map((entry): AppNode =>
+    entry.isDirectory
+      ? { id: entry.path, type: 'folder', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isDirectory: true as const } }
+      : { id: entry.path, type: 'file', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path } }
+  )
+  return layoutTree(nodes, [])
+}
+
+function generateFileNodes(
+  fileAnalysis: FileAnalysis,
+  currentPath: string,
+  siblingAnalyses: Map<string, FileAnalysis>,
+): { nodes: AppNode[]; edges: Edge[] } {
+  const nodes: AppNode[] = []
+  const edges: Edge[] = []
+  const fileId = `file:${currentPath}`
+
+  for (const decl of fileAnalysis.declarations) {
+    const nodeId = `${fileId}:${decl.name}`
+    if (decl.kind === 'class') {
+      nodes.push({
+        id: nodeId, type: 'classNode', position: { x: 0, y: 0 },
+        data: { label: decl.name, kind: 'class' as const, startLine: decl.startLine, endLine: decl.endLine },
+      })
+    } else {
+      nodes.push({
+        id: nodeId, type: 'functionNode', position: { x: 0, y: 0 },
+        data: { label: decl.name, kind: 'function' as const, startLine: decl.startLine, endLine: decl.endLine },
+      })
+    }
+
+    for (const method of decl.children) {
+      const methodId = `${nodeId}:${method.name}`
+      nodes.push({
+        id: methodId, type: 'functionNode', position: { x: 0, y: 0 },
+        data: { label: method.name, kind: 'function', startLine: method.startLine, endLine: method.endLine, isMethod: true },
+      })
+      edges.push({ id: `e-${nodeId}-${methodId}`, source: nodeId, target: methodId, type: 'smoothstep' })
+    }
+  }
+
+  const addedNodeIds = new Set(nodes.map((n) => n.id))
+
+  for (const imp of fileAnalysis.imports) {
+    if (!imp.resolvedPath) continue
+    const candidates = new Set(resolveImportCandidates(imp.resolvedPath))
+    for (const [resolvedFile, sibAnalysis] of siblingAnalyses) {
+      if (!candidates.has(resolvedFile)) continue
+      const sibFileId = `sibling:${resolvedFile}`
+      const fileName = resolvedFile.split('/').pop() || resolvedFile
+      if (!addedNodeIds.has(sibFileId)) {
+        addedNodeIds.add(sibFileId)
+        nodes.push({
+          id: sibFileId, type: 'file', position: { x: 0, y: 0 },
+          data: { label: fileName, path: resolvedFile, isImport: true, declarationCount: sibAnalysis.declarations.length },
+        })
+      }
+      edges.push({
+        id: `e-import-${fileId}-${sibFileId}`, source: nodes[0]?.id || fileId, target: sibFileId,
+        type: 'smoothstep', animated: true, label: 'imports', style: { stroke: '#6366f1' },
+      })
+      break
+    }
+  }
+
+  return layoutTree(nodes, edges)
+}
+
+// --- Store ---
 
 export const useBrowserStore = create<BrowserState>((set, get) => ({
   rootPath: '',
@@ -62,24 +144,17 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
         readDirectory(path.substring(0, path.lastIndexOf('/'))),
       ])
       const analysis = await analyzeFile(path, content)
-
-      // Build a set of file paths for O(1) lookup instead of repeated .find()
       const dirFileSet = new Set(dirEntries.filter((e) => !e.isDirectory).map((e) => e.path))
 
-      // Resolve which candidate file each import maps to
-      const importJobs: { resolvedFile: string; imp: typeof analysis.imports[0] }[] = []
+      // Resolve imports to sibling files
+      const importJobs: { resolvedFile: string }[] = []
       for (const imp of analysis.imports) {
         if (!imp.resolvedPath) continue
-        const candidates = [imp.resolvedPath, `${imp.resolvedPath}.ts`, `${imp.resolvedPath}.tsx`, `${imp.resolvedPath}.js`, `${imp.resolvedPath}.jsx`, `${imp.resolvedPath}/index.ts`, `${imp.resolvedPath}/index.tsx`]
-        for (const candidate of candidates) {
-          if (dirFileSet.has(candidate)) {
-            importJobs.push({ resolvedFile: candidate, imp })
-            break
-          }
-        }
+        const match = findMatchingFile(imp.resolvedPath, dirFileSet)
+        if (match) importJobs.push({ resolvedFile: match })
       }
 
-      // Analyze all sibling imports in parallel
+      // Analyze siblings in parallel
       const siblingAnalyses = new Map<string, FileAnalysis>()
       const results = await Promise.allSettled(
         importJobs.map(async ({ resolvedFile }) => {
@@ -113,91 +188,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
 
   generateNodes: () => {
     const { viewMode, entries, fileAnalysis, currentPath, siblingAnalyses } = get()
-
-    if (viewMode === 'directory') {
-      const nodes: AppNode[] = entries.map((entry): AppNode =>
-        entry.isDirectory
-          ? { id: entry.path, type: 'folder', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isDirectory: true as const } }
-          : { id: entry.path, type: 'file', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path } }
-      )
-      return layoutTree(nodes, [])
-    }
-
-    if (viewMode === 'file' && fileAnalysis) {
-      const nodes: AppNode[] = []
-      const edges: Edge[] = []
-      const fileId = `file:${currentPath}`
-
-      for (const decl of fileAnalysis.declarations) {
-        const nodeId = `${fileId}:${decl.name}`
-        if (decl.kind === 'class') {
-          nodes.push({
-            id: nodeId,
-            type: 'classNode',
-            position: { x: 0, y: 0 },
-            data: { label: decl.name, kind: 'class' as const, startLine: decl.startLine, endLine: decl.endLine },
-          })
-        } else {
-          nodes.push({
-            id: nodeId,
-            type: 'functionNode',
-            position: { x: 0, y: 0 },
-            data: { label: decl.name, kind: 'function' as const, startLine: decl.startLine, endLine: decl.endLine },
-          })
-        }
-
-        for (const method of decl.children) {
-          const methodId = `${nodeId}:${method.name}`
-          nodes.push({
-            id: methodId,
-            type: 'functionNode',
-            position: { x: 0, y: 0 },
-            data: { label: method.name, kind: 'function', startLine: method.startLine, endLine: method.endLine, isMethod: true },
-          })
-          edges.push({
-            id: `e-${nodeId}-${methodId}`,
-            source: nodeId,
-            target: methodId,
-            type: 'smoothstep',
-          })
-        }
-      }
-
-      const addedNodeIds = new Set(nodes.map((n) => n.id))
-
-      for (const imp of fileAnalysis.imports) {
-        if (!imp.resolvedPath) continue
-        const candidates = new Set([imp.resolvedPath, `${imp.resolvedPath}.ts`, `${imp.resolvedPath}.tsx`, `${imp.resolvedPath}.js`, `${imp.resolvedPath}.jsx`, `${imp.resolvedPath}/index.ts`, `${imp.resolvedPath}/index.tsx`])
-        for (const [resolvedFile, sibAnalysis] of siblingAnalyses) {
-          if (candidates.has(resolvedFile)) {
-            const sibFileId = `sibling:${resolvedFile}`
-            const fileName = resolvedFile.split('/').pop() || resolvedFile
-            if (!addedNodeIds.has(sibFileId)) {
-              addedNodeIds.add(sibFileId)
-              nodes.push({
-                id: sibFileId,
-                type: 'file',
-                position: { x: 0, y: 0 },
-                data: { label: fileName, path: resolvedFile, isImport: true, declarationCount: sibAnalysis.declarations.length },
-              })
-            }
-            edges.push({
-              id: `e-import-${fileId}-${sibFileId}`,
-              source: nodes[0]?.id || fileId,
-              target: sibFileId,
-              type: 'smoothstep',
-              animated: true,
-              label: 'imports',
-              style: { stroke: '#6366f1' },
-            })
-            break
-          }
-        }
-      }
-
-      return layoutTree(nodes, edges)
-    }
-
+    if (viewMode === 'directory') return generateDirectoryNodes(entries)
+    if (viewMode === 'file' && fileAnalysis) return generateFileNodes(fileAnalysis, currentPath, siblingAnalyses)
     return { nodes: [], edges: [] }
   },
 }))
