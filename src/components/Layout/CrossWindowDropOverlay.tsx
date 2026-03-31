@@ -118,6 +118,7 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
             panelId: currentIncoming.panelId,
             panelIds: currentIncoming.panelIds,
             targetWindow: windowId,
+            focusedAt: Date.now(),
             position: currentZone,
             groupKey: null,
           })
