@@ -167,13 +167,13 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
             ) : (
               <>
                 {leftVisible && !anyDragging && (
-                  <ResizeHandle mode="target" orientation="vertical" targetRef={leftZoneRef} containerRef={topRowRef} min={MIN_SIDE} max={0.4} onResizeEnd={commitLeftSize} />
+                  <ResizeHandle mode="target" orientation="vertical" targetRef={leftZoneRef} containerRef={topRowRef} min={MIN_SIDE_ZONE} max={0.4} onResizeEnd={commitLeftSize} />
                 )}
 
                 <div className="flex-1 min-w-[20%]" />
 
                 {rightVisible && !anyDragging && (
-                  <ResizeHandle mode="target" orientation="vertical" targetRef={rightZoneRef} containerRef={topRowRef} direction={-1} min={MIN_SIDE} max={0.4} onResizeEnd={commitRightSize} />
+                  <ResizeHandle mode="target" orientation="vertical" targetRef={rightZoneRef} containerRef={topRowRef} direction={-1} min={MIN_SIDE_ZONE} max={0.4} onResizeEnd={commitRightSize} />
                 )}
               </>
             )}
@@ -208,7 +208,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
           </div>
 
           {!isPanel && bottomVisible && !anyDragging && (
-            <ResizeHandle mode="target" orientation="horizontal" targetRef={bottomZoneRef} containerRef={containerRef} direction={-1} min={MIN_BOTTOM} max={0.5} onResizeEnd={commitBottomSize} />
+            <ResizeHandle mode="target" orientation="horizontal" targetRef={bottomZoneRef} containerRef={containerRef} direction={-1} min={MIN_BOTTOM_ZONE} max={0.5} onResizeEnd={commitBottomSize} />
           )}
 
           {!isPanel && (
@@ -219,7 +219,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
                 flexGrow: 0,
                 flexShrink: 0,
                 flexBasis: bottomVisible ? `${zoneSizes.bottom * 100}%` : '0px',
-                minHeight: bottomVisible ? MIN_BOTTOM : 0,
+                minHeight: bottomVisible ? MIN_BOTTOM_ZONE : 0,
                 maxHeight: '50%',
               }}
             >
