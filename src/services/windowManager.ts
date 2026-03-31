@@ -1,10 +1,8 @@
-import { filesystem, window as neuWindow } from '@neutralinojs/lib'
+import { window as neuWindow } from '@neutralinojs/lib'
 import { isNeutralino } from './platform'
+import { readJson, writeJsonSync, removeSync, listKeys } from './storage'
 import type { PanelPosition } from '@/store/layout'
 import { useBrowserStore } from '@/store/browser'
-
-const FILE_PREFIX = '/tmp/cotect-wm-'
-const LS_PREFIX = 'cotect:'
 
 export interface PersistedLayout {
   panels: Record<PanelPosition, string[][]>
@@ -18,104 +16,6 @@ export interface PersistedZoneSizes {
   bottom: number
 }
 
-// --- Read/write helpers ---
-
-async function fileRead(key: string): Promise<string | null> {
-  if (isNeutralino()) {
-    try {
-      return await filesystem.readFile(`${FILE_PREFIX}${key}.json`)
-    } catch {
-      return null
-    }
-  } else {
-    try {
-      return localStorage.getItem(`${LS_PREFIX}${key}`)
-    } catch {
-      return null
-    }
-  }
-}
-
-function fileWrite(key: string, data: string): void {
-  if (isNeutralino()) {
-    filesystem.writeFile(`${FILE_PREFIX}${key}.json`, data).catch(() => {})
-  } else {
-    try { localStorage.setItem(`${LS_PREFIX}${key}`, data) } catch {}
-  }
-}
-
-function fileRemove(key: string): void {
-  if (isNeutralino()) {
-    filesystem.remove(`${FILE_PREFIX}${key}.json`).catch(() => {})
-  } else {
-    try { localStorage.removeItem(`${LS_PREFIX}${key}`) } catch {}
-  }
-}
-
-// --- Window discovery (no registry — layout file existence = registration) ---
-
-export async function getChildWindowIds(): Promise<string[]> {
-  if (isNeutralino()) {
-    try {
-      const entries = await filesystem.readDirectory('/tmp')
-      const prefix = 'cotect-wm-layout-'
-      const ids: string[] = []
-      for (const entry of entries) {
-        if (entry.type === 'FILE' && entry.entry.startsWith(prefix) && entry.entry.endsWith('.json')) {
-          const id = entry.entry.slice(prefix.length, -5) // remove prefix and .json
-          if (id !== 'main') ids.push(id)
-        }
-      }
-      return ids
-    } catch {
-      return []
-    }
-  } else {
-    const ids: string[] = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (key?.startsWith(`${LS_PREFIX}layout-`) && !key.endsWith('-main')) {
-        ids.push(key.slice(`${LS_PREFIX}layout-`.length))
-      }
-    }
-    return ids
-  }
-}
-
-// --- Layout persistence ---
-
-export function saveLayout(windowId: string, layout: PersistedLayout): void {
-  fileWrite(`layout-${windowId}`, JSON.stringify(layout))
-}
-
-export async function loadLayout(windowId: string): Promise<PersistedLayout | null> {
-  try {
-    const raw = await fileRead(`layout-${windowId}`)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
-export function removeLayout(windowId: string): void {
-  fileRemove(`layout-${windowId}`)
-  fileRemove(`zones-${windowId}`)
-  fileRemove(`geometry-${windowId}`)
-}
-
-export function saveZoneSizes(windowId: string, sizes: PersistedZoneSizes): void {
-  fileWrite(`zones-${windowId}`, JSON.stringify(sizes))
-}
-
-export async function loadZoneSizes(windowId: string): Promise<PersistedZoneSizes | null> {
-  try {
-    const raw = await fileRead(`zones-${windowId}`)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
 export interface PersistedGeometry {
   x: number
   y: number
@@ -124,90 +24,128 @@ export interface PersistedGeometry {
   isMaximized: boolean
 }
 
-export function saveGeometry(windowId: string, geometry: PersistedGeometry): void {
-  fileWrite(`geometry-${windowId}`, JSON.stringify(geometry))
-}
-
-export async function loadGeometry(windowId: string): Promise<PersistedGeometry | null> {
-  try {
-    const raw = await fileRead(`geometry-${windowId}`)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
 export interface PersistedSession {
   rootPath: string
   currentPath: string
   viewMode: 'directory' | 'file'
 }
 
+// --- Window discovery ---
+
+export async function getChildWindowIds(): Promise<string[]> {
+  const keys = await listKeys('wm-layout-')
+  return keys
+    .map((k) => k.slice('wm-layout-'.length))
+    .filter((id) => id !== 'main')
+}
+
+// --- Layout persistence ---
+
+export function saveLayout(windowId: string, layout: PersistedLayout): void {
+  writeJsonSync(`wm-layout-${windowId}`, layout)
+}
+
+export async function loadLayout(windowId: string): Promise<PersistedLayout | null> {
+  return readJson<PersistedLayout>(`wm-layout-${windowId}`)
+}
+
+export function removeLayout(windowId: string): void {
+  removeSync(`wm-layout-${windowId}`)
+  removeSync(`wm-zones-${windowId}`)
+  removeSync(`wm-geometry-${windowId}`)
+}
+
+// --- Zone sizes ---
+
+export function saveZoneSizes(windowId: string, sizes: PersistedZoneSizes): void {
+  writeJsonSync(`wm-zones-${windowId}`, sizes)
+}
+
+export async function loadZoneSizes(windowId: string): Promise<PersistedZoneSizes | null> {
+  return readJson<PersistedZoneSizes>(`wm-zones-${windowId}`)
+}
+
+// --- Geometry ---
+
+export function saveGeometry(windowId: string, geometry: PersistedGeometry): void {
+  writeJsonSync(`wm-geometry-${windowId}`, geometry)
+}
+
+export async function loadGeometry(windowId: string): Promise<PersistedGeometry | null> {
+  return readJson<PersistedGeometry>(`wm-geometry-${windowId}`)
+}
+
+// --- Session ---
+
 export function saveSession(session: PersistedSession): void {
-  fileWrite('session-main', JSON.stringify(session))
+  writeJsonSync('wm-session-main', session)
 }
 
 export async function loadSession(): Promise<PersistedSession | null> {
-  try {
-    const raw = await fileRead('session-main')
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
+  return readJson<PersistedSession>('wm-session-main')
+}
+
+// --- Polling persisters ---
+
+interface Persister {
+  start(): void
+  stop(): void
+}
+
+function createPollingPersister(intervalMs: number, pollFn: () => Promise<void>): Persister {
+  let timer: ReturnType<typeof setInterval> | null = null
+  return {
+    start() {
+      if (timer) return
+      timer = setInterval(() => { pollFn().catch(() => {}) }, intervalMs)
+    },
+    stop() {
+      if (timer) {
+        clearInterval(timer)
+        timer = null
+      }
+    },
   }
 }
 
-let geometryUnsub: (() => void) | null = null
+let geometryPersister: Persister | null = null
 
 export function startGeometryPersistence(windowId: string): void {
-  if (geometryUnsub) geometryUnsub()
+  geometryPersister?.stop()
   if (!isNeutralino()) return
 
-  let timer: ReturnType<typeof setInterval> | null = null
-
-  // Poll every 2 seconds (no resize/move events available in Neutralino)
   let lastJson = ''
-  timer = setInterval(async () => {
-    try {
-      const pos = await neuWindow.getPosition()
-      const size = await neuWindow.getSize()
-      const maximized = await neuWindow.isMaximized()
-      const geometry: PersistedGeometry = {
-        x: pos.x,
-        y: pos.y,
-        width: size.width ?? 800,
-        height: size.height ?? 600,
-        isMaximized: maximized,
-      }
-      const json = JSON.stringify(geometry)
-      if (json !== lastJson) {
-        lastJson = json
-        saveGeometry(windowId, geometry)
-      }
-    } catch {
-      // Window may be closing
+  geometryPersister = createPollingPersister(2000, async () => {
+    const pos = await neuWindow.getPosition()
+    const size = await neuWindow.getSize()
+    const maximized = await neuWindow.isMaximized()
+    const geometry: PersistedGeometry = {
+      x: pos.x,
+      y: pos.y,
+      width: size.width ?? 800,
+      height: size.height ?? 600,
+      isMaximized: maximized,
     }
-  }, 2000)
-
-  geometryUnsub = () => {
-    if (timer) clearInterval(timer)
-    timer = null
-  }
+    const json = JSON.stringify(geometry)
+    if (json !== lastJson) {
+      lastJson = json
+      saveGeometry(windowId, geometry)
+    }
+  })
+  geometryPersister.start()
 }
 
 export function stopGeometryPersistence(): void {
-  if (geometryUnsub) {
-    geometryUnsub()
-    geometryUnsub = null
-  }
+  geometryPersister?.stop()
+  geometryPersister = null
 }
 
-let sessionUnsub: (() => void) | null = null
+let sessionPersister: (() => void) | null = null
 
 export function startSessionPersistence(): void {
-  if (sessionUnsub) sessionUnsub()
-
+  sessionPersister?.()
   let timer: ReturnType<typeof setTimeout> | null = null
-  sessionUnsub = useBrowserStore.subscribe((state) => {
+  sessionPersister = useBrowserStore.subscribe((state) => {
     if (!state.rootPath) return
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
@@ -221,8 +159,6 @@ export function startSessionPersistence(): void {
 }
 
 export function stopSessionPersistence(): void {
-  if (sessionUnsub) {
-    sessionUnsub()
-    sessionUnsub = null
-  }
+  sessionPersister?.()
+  sessionPersister = null
 }
