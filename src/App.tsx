@@ -108,7 +108,7 @@ function App() {
       }
     })()
 
-    broadcast({ type: 'window-opened', windowId })
+    void broadcast({ type: 'window-opened', windowId })
 
     // Child windows: close when main window closes
     const unsubMessage = !isMain ? onMessage((msg) => {

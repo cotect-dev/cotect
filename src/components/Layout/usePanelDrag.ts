@@ -170,7 +170,7 @@ export function usePanelDrag() {
         neighborIndex: 0,
         tabIntoGroupKey: null,
       })
-      broadcast({
+      void broadcast({
         type: 'drag-start',
         panelId: data.panelId,
         panelIds: data.isGroup ? data.panelIds : [data.panelId],
@@ -193,7 +193,7 @@ export function usePanelDrag() {
 
       if (now - lastDragMoveTs.current >= DRAG_MOVE_THROTTLE) {
         lastDragMoveTs.current = now
-        broadcast({
+        void broadcast({
           type: 'drag-move',
           screenX,
           screenY,
@@ -266,7 +266,7 @@ export function usePanelDrag() {
         return null
       })
       wasDragOutside.current = false
-      broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
+      void broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
     },
     [movePanel, movePanelToTab, moveGroup, moveGroupToTab]
   )
@@ -285,7 +285,7 @@ export function usePanelDrag() {
       return null
     })
     wasDragOutside.current = false
-    broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
+    void broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
   }, [])
 
   const centerOnCursor: Modifier = useMemo(() => {

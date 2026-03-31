@@ -1,5 +1,6 @@
 import { filesystem } from '@neutralinojs/lib'
 import { isNeutralino } from '@/services/platform'
+import { readJson, writeJsonSync } from '@/services/storage'
 import type { PanelPosition } from '@/store/layout'
 
 export type ChannelMessage =
@@ -21,14 +22,14 @@ export function initChannel(windowId: string): void {
 }
 
 // =============================================================================
-// Neutralino: filesystem-based IPC at /tmp/
+// Neutralino: per-sender filesystem IPC (no write contention)
 // =============================================================================
 
-const IPC_FILE = '/tmp/cotect-ipc.json'
-const IPC_POS_FILE = '/tmp/cotect-drag-pos.json'  // fast-path for mouse position
+const IPC_PREFIX = 'ipc-'
+const IPC_POS_FILE = '/tmp/cotect-drag-pos.json'
 const MESSAGE_TTL = 5000
 const POLL_INTERVAL = 100
-const POS_POLL_INTERVAL = 30  // faster polling for mouse position
+const POS_POLL_INTERVAL = 30
 
 interface IpcEnvelope {
   sender: string
@@ -47,42 +48,37 @@ let lastSeenTs = Date.now()
 let neuPollTimer: ReturnType<typeof setInterval> | null = null
 let posPollTimer: ReturnType<typeof setInterval> | null = null
 let lastPosTs = Date.now()
-let isDragActive = false
 
-async function neuReadEnvelopes(): Promise<IpcEnvelope[]> {
-  try {
-    const raw = await filesystem.readFile(IPC_FILE)
-    return JSON.parse(raw)
-  } catch {
-    return []
-  }
+async function readSenderEnvelopes(senderKey: string): Promise<IpcEnvelope[]> {
+  const data = await readJson<IpcEnvelope[]>(senderKey)
+  return data ?? []
 }
 
 async function neuPoll(): Promise<void> {
   try {
-    const envelopes = await neuReadEnvelopes()
+    const entries = await filesystem.readDirectory('/tmp')
+    const prefix = 'cotect-ipc-'
+    const now = Date.now()
 
-    for (const env of envelopes) {
-      if (env.sender !== senderId && env.ts > lastSeenTs) {
-        // Track drag state for position polling
-        if (env.data.type === 'drag-start') {
-          isDragActive = true
-          startPosPolling()
-        } else if (env.data.type === 'drag-end') {
-          isDragActive = false
-          stopPosPolling()
-        }
-        for (const handler of handlers) {
-          handler(env.data)
+    for (const entry of entries) {
+      if (entry.type !== 'FILE' || !entry.entry.startsWith(prefix) || !entry.entry.endsWith('.json')) continue
+      const senderKey = entry.entry.slice('cotect-'.length, -5)
+      const senderName = senderKey.slice(IPC_PREFIX.length)
+      if (senderName === senderId) continue
+
+      const envelopes = await readSenderEnvelopes(senderKey)
+      for (const env of envelopes) {
+        if (env.ts > lastSeenTs && now - env.ts < MESSAGE_TTL) {
+          if (env.data.type === 'drag-start') startPosPolling()
+          else if (env.data.type === 'drag-end') stopPosPolling()
+          for (const handler of handlers) handler(env.data)
         }
       }
     }
 
-    if (envelopes.length > 0) {
-      lastSeenTs = Math.max(...envelopes.map((e) => e.ts), lastSeenTs)
-    }
+    lastSeenTs = now
   } catch {
-    // file missing or unreadable
+    // polling failure — will retry next interval
   }
 }
 
@@ -102,23 +98,22 @@ async function posPoll(): Promise<void> {
 }
 
 async function neuBroadcast(message: ChannelMessage): Promise<void> {
-  // drag-move uses the fast-path position file (just overwrite, no array)
   if (message.type === 'drag-move') {
     try {
       const pos: DragPos = { sender: senderId, screenX: message.screenX, screenY: message.screenY, ts: Date.now() }
       await filesystem.writeFile(IPC_POS_FILE, JSON.stringify(pos))
-    } catch {}
+    } catch {
+      console.warn('[ipc] Failed to write drag position')
+    }
     return
   }
 
-  try {
-    const now = Date.now()
-    const envelopes = (await neuReadEnvelopes()).filter((e) => now - e.ts < MESSAGE_TTL)
-    envelopes.push({ sender: senderId, data: message, ts: now })
-    await filesystem.writeFile(IPC_FILE, JSON.stringify(envelopes))
-  } catch (err) {
-    console.error('[ipc] broadcast failed:', err)
-  }
+  const key = `${IPC_PREFIX}${senderId}`
+  const now = Date.now()
+  const existing = await readSenderEnvelopes(key)
+  const fresh = existing.filter((e) => now - e.ts < MESSAGE_TTL)
+  fresh.push({ sender: senderId, data: message, ts: now })
+  writeJsonSync(key, fresh)
 }
 
 function startNeuPolling(): void {
@@ -156,9 +151,7 @@ function getBcChannel(): BroadcastChannel {
   if (!bcChannel) {
     bcChannel = new BroadcastChannel('cotect')
     bcChannel.addEventListener('message', (event: MessageEvent<ChannelMessage>) => {
-      for (const handler of handlers) {
-        handler(event.data)
-      }
+      for (const handler of handlers) handler(event.data)
     })
   }
   return bcChannel
@@ -168,9 +161,9 @@ function getBcChannel(): BroadcastChannel {
 // Public API
 // =============================================================================
 
-export function broadcast(message: ChannelMessage): void {
+export async function broadcast(message: ChannelMessage): Promise<void> {
   if (isNeutralino()) {
-    neuBroadcast(message)
+    await neuBroadcast(message)
   } else {
     getBcChannel().postMessage(message)
   }
@@ -178,9 +171,7 @@ export function broadcast(message: ChannelMessage): void {
 
 export function onMessage(handler: (message: ChannelMessage) => void): () => void {
   handlers.push(handler)
-  if (!isNeutralino()) {
-    getBcChannel()
-  }
+  if (!isNeutralino()) getBcChannel()
   return () => {
     const idx = handlers.indexOf(handler)
     if (idx >= 0) handlers.splice(idx, 1)
