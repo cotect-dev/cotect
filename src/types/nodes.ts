@@ -4,7 +4,6 @@ export interface FolderNodeData {
   label: string
   path: string
   isDirectory: true
-  [key: string]: unknown
 }
 
 export interface FileNodeData {
@@ -13,7 +12,6 @@ export interface FileNodeData {
   isDirectory?: false
   isImport?: boolean
   declarationCount?: number
-  [key: string]: unknown
 }
 
 export interface FunctionNodeData {
@@ -22,7 +20,6 @@ export interface FunctionNodeData {
   startLine: number
   endLine: number
   isMethod?: boolean
-  [key: string]: unknown
 }
 
 export interface ClassNodeData {
@@ -30,7 +27,6 @@ export interface ClassNodeData {
   kind: 'class'
   startLine: number
   endLine: number
-  [key: string]: unknown
 }
 
 export type FolderNode = Node<FolderNodeData, 'folder'>
