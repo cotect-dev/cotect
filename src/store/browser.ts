@@ -57,25 +57,40 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       ]
       set({ currentPath: path, viewMode: mode, entries, fileAnalysis: null, breadcrumbs, loading: false, siblingAnalyses: new Map() })
     } else {
-      const content = await readFileContent(path)
+      const [content, dirEntries] = await Promise.all([
+        readFileContent(path),
+        readDirectory(path.substring(0, path.lastIndexOf('/'))),
+      ])
       const analysis = await analyzeFile(path, content)
 
-      const dir = path.substring(0, path.lastIndexOf('/'))
-      const siblingAnalyses = new Map<string, FileAnalysis>()
-      const dirEntries = await readDirectory(dir)
+      // Build a set of file paths for O(1) lookup instead of repeated .find()
+      const dirFileSet = new Set(dirEntries.filter((e) => !e.isDirectory).map((e) => e.path))
+
+      // Resolve which candidate file each import maps to
+      const importJobs: { resolvedFile: string; imp: typeof analysis.imports[0] }[] = []
       for (const imp of analysis.imports) {
         if (!imp.resolvedPath) continue
         const candidates = [imp.resolvedPath, `${imp.resolvedPath}.ts`, `${imp.resolvedPath}.tsx`, `${imp.resolvedPath}.js`, `${imp.resolvedPath}.jsx`, `${imp.resolvedPath}/index.ts`, `${imp.resolvedPath}/index.tsx`]
         for (const candidate of candidates) {
-          const found = dirEntries.find((e) => !e.isDirectory && e.path === candidate)
-          if (found && !siblingAnalyses.has(candidate)) {
-            try {
-              const sibContent = await readFileContent(candidate)
-              const sibAnalysis = await analyzeFile(candidate, sibContent)
-              siblingAnalyses.set(candidate, sibAnalysis)
-            } catch { /* file not readable */ }
+          if (dirFileSet.has(candidate)) {
+            importJobs.push({ resolvedFile: candidate, imp })
             break
           }
+        }
+      }
+
+      // Analyze all sibling imports in parallel
+      const siblingAnalyses = new Map<string, FileAnalysis>()
+      const results = await Promise.allSettled(
+        importJobs.map(async ({ resolvedFile }) => {
+          const sibContent = await readFileContent(resolvedFile)
+          const sibAnalysis = await analyzeFile(resolvedFile, sibContent)
+          return { resolvedFile, sibAnalysis }
+        })
+      )
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          siblingAnalyses.set(result.value.resolvedFile, result.value.sibAnalysis)
         }
       }
 
@@ -148,6 +163,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
         }
       }
 
+      const addedNodeIds = new Set(nodes.map((n) => n.id))
+
       for (const imp of fileAnalysis.imports) {
         if (!imp.resolvedPath) continue
         const candidates = new Set([imp.resolvedPath, `${imp.resolvedPath}.ts`, `${imp.resolvedPath}.tsx`, `${imp.resolvedPath}.js`, `${imp.resolvedPath}.jsx`, `${imp.resolvedPath}/index.ts`, `${imp.resolvedPath}/index.tsx`])
@@ -155,7 +172,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
           if (candidates.has(resolvedFile)) {
             const sibFileId = `sibling:${resolvedFile}`
             const fileName = resolvedFile.split('/').pop() || resolvedFile
-            if (!nodes.find((n) => n.id === sibFileId)) {
+            if (!addedNodeIds.has(sibFileId)) {
+              addedNodeIds.add(sibFileId)
               nodes.push({
                 id: sibFileId,
                 type: 'file',

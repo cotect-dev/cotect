@@ -1,10 +1,11 @@
+import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { FileText, FileCode } from 'lucide-react'
 import { useBrowserStore } from '@/store'
 import { getConfigForFile } from '@/services/treesitter-queries'
 import type { FileNode } from '@/types/nodes'
 
-export default function FileNode({ data }: NodeProps<FileNode>) {
+export default memo(function FileNode({ data }: NodeProps<FileNode>) {
   const navigateTo = useBrowserStore((s) => s.navigateTo)
   const parseable = getConfigForFile(data.label) !== null
   const Icon = parseable ? FileCode : FileText
@@ -29,4 +30,4 @@ export default function FileNode({ data }: NodeProps<FileNode>) {
       <Handle type="target" position={Position.Top} className="opacity-0" />
     </div>
   )
-}
+})

@@ -21,6 +21,7 @@ export interface FileAnalysis {
 
 let parserInstance: Parser | null = null
 const languageCache = new Map<string, Language>()
+const queryCache = new Map<string, Query>()
 
 async function getParser(): Promise<Parser> {
   if (!parserInstance) {
@@ -38,6 +39,15 @@ async function getLanguage(config: LanguageConfig): Promise<Language> {
   const lang = await Language.load(config.grammarPath)
   languageCache.set(config.grammarPath, lang)
   return lang
+}
+
+function getQuery(language: Language, pattern: string): Query {
+  const key = `${language}:${pattern}`
+  const cached = queryCache.get(key)
+  if (cached) return cached
+  const query = new Query(language, pattern)
+  queryCache.set(key, query)
+  return query
 }
 
 function resolveImportPath(source: string, currentFilePath: string): string | null {
@@ -63,8 +73,8 @@ export async function analyzeFile(filePath: string, content: string): Promise<Fi
   const tree = parser.parse(content)
   if (!tree) return { declarations: [], imports: [] }
 
-  // Extract declarations
-  const declQuery = new Query(language, config.declarationQuery)
+  // Extract declarations (queries are cached and reused across calls)
+  const declQuery = getQuery(language, config.declarationQuery)
   const declMatches = declQuery.matches(tree.rootNode)
   const declarations: Declaration[] = []
   const classMap = new Map<number, Declaration>()
@@ -113,10 +123,8 @@ export async function analyzeFile(filePath: string, content: string): Promise<Fi
     }
   }
 
-  declQuery.delete()
-
   // Extract imports
-  const importQuery = new Query(language, config.importQuery)
+  const importQuery = getQuery(language, config.importQuery)
   const importMatches = importQuery.matches(tree.rootNode)
   const imports: ImportInfo[] = []
 
@@ -129,8 +137,6 @@ export async function analyzeFile(filePath: string, content: string): Promise<Fi
       })
     }
   }
-
-  importQuery.delete()
 
   return { declarations, imports }
 }

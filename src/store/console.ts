@@ -25,11 +25,16 @@ export const useConsoleStore = createSyncedStore<ConsoleState>('console', (set) 
   filter: null,
   log: (level, message) =>
     set((state) => {
-      const entries = [
-        ...state.entries,
-        { id: String(nextId++), level, message, timestamp: Date.now() },
-      ]
-      return { entries: entries.length > MAX_ENTRIES ? entries.slice(-MAX_ENTRIES) : entries }
+      const entry = { id: String(nextId++), level, message, timestamp: Date.now() }
+      // When under limit, push to existing array and return a new reference.
+      // When at limit, slice off the oldest — this is the rare path.
+      if (state.entries.length < MAX_ENTRIES) {
+        return { entries: [...state.entries, entry] }
+      }
+      // Drop oldest entries to stay at limit
+      const trimmed = state.entries.slice(-(MAX_ENTRIES - 1))
+      trimmed.push(entry)
+      return { entries: trimmed }
     }),
   clear: () => set({ entries: [] }),
   setFilter: (filter) => set({ filter }),
