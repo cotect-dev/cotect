@@ -20,7 +20,6 @@ const DEFAULT_LAYOUT = {
   activeTab: {},
 }
 
-const DEFAULT_ZONE_SIZES = { left: 0.2, right: 0.2, bottom: 0.25 }
 
 interface TopBarProps {
   onResetZoneSizes?: () => void

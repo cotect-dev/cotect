@@ -119,11 +119,13 @@ export function startGeometryPersistence(windowId: string): void {
     const pos = await neuWindow.getPosition()
     const size = await neuWindow.getSize()
     const maximized = await neuWindow.isMaximized()
+    const w = size.width ?? 800
+    const h = size.height ?? 600
     const geometry: PersistedGeometry = {
-      x: pos.x,
-      y: pos.y,
-      width: size.width ?? 800,
-      height: size.height ?? 600,
+      x: pos.x ?? 0,
+      y: pos.y ?? 0,
+      width: w,
+      height: h,
       isMaximized: maximized,
     }
     const json = JSON.stringify(geometry)
