@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   ReactFlow,
   Background,
@@ -10,20 +10,28 @@ import Layout from '@/components/Layout'
 import { nodeTypes } from '@/components/Canvas/nodes'
 import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
 
+const proOptions = { hideAttribution: true }
+
 export default function Canvas() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, setNodes, setEdges } =
     useCanvasStore()
+
+  // Subscribe to minimal scalar/identity signals that indicate canvas content changed
   const currentPath = useBrowserStore((s) => s.currentPath)
   const viewMode = useBrowserStore((s) => s.viewMode)
-  const entries = useBrowserStore((s) => s.entries)
-  const fileAnalysis = useBrowserStore((s) => s.fileAnalysis)
+  const entryCount = useBrowserStore((s) => s.entries.length)
+  const declCount = useBrowserStore((s) => s.fileAnalysis?.declarations.length ?? -1)
 
-  // Regenerate canvas nodes whenever browser state changes
+  // Regenerate canvas nodes synchronously via useMemo — no useEffect flash
+  const generated = useMemo(
+    () => useBrowserStore.getState().generateNodes(),
+    [currentPath, viewMode, entryCount, declCount],
+  )
+
   useEffect(() => {
-    const { nodes: newNodes, edges: newEdges } = useBrowserStore.getState().generateNodes()
-    setNodes(newNodes)
-    setEdges(newEdges)
-  }, [currentPath, viewMode, entries, fileAnalysis, setNodes, setEdges])
+    setNodes(generated.nodes)
+    setEdges(generated.edges)
+  }, [generated, setNodes, setEdges])
 
   return (
     <div className="dark w-screen h-screen bg-background text-foreground relative">
@@ -37,7 +45,7 @@ export default function Canvas() {
           nodeTypes={nodeTypes}
           fitView
           colorMode="dark"
-          proOptions={{ hideAttribution: true }}
+          proOptions={proOptions}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#555555" />
         </ReactFlow>

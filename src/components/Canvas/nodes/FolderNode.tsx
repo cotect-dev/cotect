@@ -1,9 +1,10 @@
+import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Folder } from 'lucide-react'
 import { useBrowserStore } from '@/store'
 import type { FolderNode } from '@/types/nodes'
 
-export default function FolderNode({ data }: NodeProps<FolderNode>) {
+export default memo(function FolderNode({ data }: NodeProps<FolderNode>) {
   const navigateTo = useBrowserStore((s) => s.navigateTo)
 
   return (
@@ -19,4 +20,4 @@ export default function FolderNode({ data }: NodeProps<FolderNode>) {
       <Handle type="target" position={Position.Top} className="opacity-0" />
     </div>
   )
-}
+})

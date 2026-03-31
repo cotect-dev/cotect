@@ -1,6 +1,7 @@
-import { filesystem } from '@neutralinojs/lib'
+import { filesystem, window as neuWindow } from '@neutralinojs/lib'
 import { isNeutralino } from './platform'
 import type { PanelPosition } from '@/store/layout'
+import { useBrowserStore } from '@/store/browser'
 
 const FILE_PREFIX = '/tmp/cotect-wm-'
 const LS_PREFIX = 'cotect:'
@@ -99,6 +100,7 @@ export async function loadLayout(windowId: string): Promise<PersistedLayout | nu
 export function removeLayout(windowId: string): void {
   fileRemove(`layout-${windowId}`)
   fileRemove(`zones-${windowId}`)
+  fileRemove(`geometry-${windowId}`)
 }
 
 export function saveZoneSizes(windowId: string, sizes: PersistedZoneSizes): void {
@@ -111,5 +113,116 @@ export async function loadZoneSizes(windowId: string): Promise<PersistedZoneSize
     return raw ? JSON.parse(raw) : null
   } catch {
     return null
+  }
+}
+
+export interface PersistedGeometry {
+  x: number
+  y: number
+  width: number
+  height: number
+  isMaximized: boolean
+}
+
+export function saveGeometry(windowId: string, geometry: PersistedGeometry): void {
+  fileWrite(`geometry-${windowId}`, JSON.stringify(geometry))
+}
+
+export async function loadGeometry(windowId: string): Promise<PersistedGeometry | null> {
+  try {
+    const raw = await fileRead(`geometry-${windowId}`)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+export interface PersistedSession {
+  rootPath: string
+  currentPath: string
+  viewMode: 'directory' | 'file'
+}
+
+export function saveSession(session: PersistedSession): void {
+  fileWrite('session-main', JSON.stringify(session))
+}
+
+export async function loadSession(): Promise<PersistedSession | null> {
+  try {
+    const raw = await fileRead('session-main')
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+let geometryUnsub: (() => void) | null = null
+
+export function startGeometryPersistence(windowId: string): void {
+  if (geometryUnsub) geometryUnsub()
+  if (!isNeutralino()) return
+
+  let timer: ReturnType<typeof setInterval> | null = null
+
+  // Poll every 2 seconds (no resize/move events available in Neutralino)
+  let lastJson = ''
+  timer = setInterval(async () => {
+    try {
+      const pos = await neuWindow.getPosition()
+      const size = await neuWindow.getSize()
+      const maximized = await neuWindow.isMaximized()
+      const geometry: PersistedGeometry = {
+        x: pos.x,
+        y: pos.y,
+        width: size.width ?? 800,
+        height: size.height ?? 600,
+        isMaximized: maximized,
+      }
+      const json = JSON.stringify(geometry)
+      if (json !== lastJson) {
+        lastJson = json
+        saveGeometry(windowId, geometry)
+      }
+    } catch {
+      // Window may be closing
+    }
+  }, 2000)
+
+  geometryUnsub = () => {
+    if (timer) clearInterval(timer)
+    timer = null
+  }
+}
+
+export function stopGeometryPersistence(): void {
+  if (geometryUnsub) {
+    geometryUnsub()
+    geometryUnsub = null
+  }
+}
+
+let sessionUnsub: (() => void) | null = null
+
+export function startSessionPersistence(): void {
+  if (sessionUnsub) sessionUnsub()
+
+  let timer: ReturnType<typeof setTimeout> | null = null
+  sessionUnsub = useBrowserStore.subscribe((state) => {
+    if (!state.rootPath) return
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      saveSession({
+        rootPath: state.rootPath,
+        currentPath: state.currentPath,
+        viewMode: state.viewMode,
+      })
+    }, 300)
+  })
+}
+
+export function stopSessionPersistence(): void {
+  if (sessionUnsub) {
+    sessionUnsub()
+    sessionUnsub = null
   }
 }

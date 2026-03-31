@@ -5,11 +5,19 @@ import ChatInput from './ChatInput'
 
 export default function Chat() {
   const messages = useChatStore((s) => s.messages)
+  const messageCount = messages.length
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRafRef = useRef<number | null>(null)
 
+  // Only scroll when message count changes (new message added),
+  // not on every streaming token update
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current)
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    })
+  }, [messageCount])
 
   return (
     <div className="flex flex-col h-full gap-2">
