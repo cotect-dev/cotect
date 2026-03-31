@@ -113,7 +113,7 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
           const insertIndex = cwd?.insertIndex ?? 0
           const neighborIndex = cwd?.neighborIndex ?? 0
 
-          broadcast({
+          void broadcast({
             type: 'drag-drop',
             panelId: currentIncoming.panelId,
             panelIds: currentIncoming.panelIds,

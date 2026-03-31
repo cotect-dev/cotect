@@ -94,7 +94,7 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
                 sizes: { left: [], right: [], bottom: [] },
                 activeTab: {},
               })
-              broadcast({ type: 'window-opened', windowId: id })
+              void broadcast({ type: 'window-opened', windowId: id })
               createWindow(id)
             }}
           >
