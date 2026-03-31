@@ -1,23 +1,11 @@
-import { useEffect, useRef } from 'react'
 import { useChatStore } from '@/store/chat'
 import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
+import { useScrollToBottom } from '@/hooks/useScrollToBottom'
 
 export default function Chat() {
   const messages = useChatStore((s) => s.messages)
-  const messageCount = messages.length
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const scrollRafRef = useRef<number | null>(null)
-
-  // Only scroll when message count changes (new message added),
-  // not on every streaming token update
-  useEffect(() => {
-    if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current)
-    scrollRafRef.current = requestAnimationFrame(() => {
-      scrollRafRef.current = null
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    })
-  }, [messageCount])
+  const bottomRef = useScrollToBottom(messages.length)
 
   return (
     <div className="flex flex-col h-full gap-2">
