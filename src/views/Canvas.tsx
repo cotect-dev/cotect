@@ -1,14 +1,11 @@
 import { useEffect, useMemo } from 'react'
-import {
-  ReactFlow,
-  Background,
-  BackgroundVariant,
-} from '@xyflow/react'
+import { ReactFlow, Background, BackgroundVariant } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCanvasStore, useBrowserStore } from '@/store'
 import Layout from '@/components/Layout'
 import { nodeTypes } from '@/components/Canvas/nodes'
 import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
+import WindowShell from '@/components/WindowShell'
 
 const proOptions = { hideAttribution: true }
 
@@ -16,13 +13,11 @@ export default function Canvas() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, setNodes, setEdges } =
     useCanvasStore()
 
-  // Subscribe to minimal scalar/identity signals that indicate canvas content changed
   const currentPath = useBrowserStore((s) => s.currentPath)
   const viewMode = useBrowserStore((s) => s.viewMode)
   const entryCount = useBrowserStore((s) => s.entries.length)
   const declCount = useBrowserStore((s) => s.fileAnalysis?.declarations.length ?? -1)
 
-  // Regenerate canvas nodes synchronously via useMemo — no useEffect flash
   const generated = useMemo(
     () => useBrowserStore.getState().generateNodes(),
     [currentPath, viewMode, entryCount, declCount],
@@ -34,7 +29,7 @@ export default function Canvas() {
   }, [generated, setNodes, setEdges])
 
   return (
-    <div className="dark w-screen h-screen bg-background text-foreground relative">
+    <WindowShell>
       <div className="absolute inset-0">
         <ReactFlow
           nodes={nodes}
@@ -54,6 +49,6 @@ export default function Canvas() {
       <div className="absolute inset-0 pointer-events-none z-10">
         <Layout />
       </div>
-    </div>
+    </WindowShell>
   )
 }
