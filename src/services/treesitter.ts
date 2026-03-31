@@ -19,18 +19,28 @@ export interface FileAnalysis {
   imports: ImportInfo[]
 }
 
-let parserInstance: Parser | null = null
+let parserPromise: Promise<Parser> | null = null
 const languageCache = new Map<string, Language>()
 const queryCache = new Map<string, Query>()
 
+// Mutex to serialize setLanguage + parse (parser is single-threaded)
+let parseLock: Promise<void> = Promise.resolve()
+
+function withParseLock<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = parseLock
+  let resolve: () => void
+  parseLock = new Promise<void>((r) => { resolve = r })
+  return prev.then(fn).finally(() => resolve!())
+}
+
 async function getParser(): Promise<Parser> {
-  if (!parserInstance) {
-    await Parser.init({
-      locateFile: () => '/tree-sitter.wasm',
-    })
-    parserInstance = new Parser()
+  if (!parserPromise) {
+    parserPromise = (async () => {
+      await Parser.init({ locateFile: () => '/tree-sitter.wasm' })
+      return new Parser()
+    })()
   }
-  return parserInstance
+  return parserPromise
 }
 
 async function getLanguage(config: LanguageConfig): Promise<Language> {
@@ -66,77 +76,79 @@ export async function analyzeFile(filePath: string, content: string): Promise<Fi
   const config = getConfigForFile(filePath)
   if (!config) return { declarations: [], imports: [] }
 
-  const parser = await getParser()
-  const language = await getLanguage(config)
-  parser.setLanguage(language)
+  return withParseLock(async () => {
+    const parser = await getParser()
+    const language = await getLanguage(config)
+    parser.setLanguage(language)
 
-  const tree = parser.parse(content)
-  if (!tree) return { declarations: [], imports: [] }
+    const tree = parser.parse(content)
+    if (!tree) return { declarations: [], imports: [] }
 
-  // Extract declarations (queries are cached and reused across calls)
-  const declQuery = getQuery(language, config.declarationQuery)
-  const declMatches = declQuery.matches(tree.rootNode)
-  const declarations: Declaration[] = []
-  const classMap = new Map<number, Declaration>()
+    // Extract declarations (queries are cached and reused across calls)
+    const declQuery = getQuery(language, config.declarationQuery)
+    const declMatches = declQuery.matches(tree.rootNode)
+    const declarations: Declaration[] = []
+    const classMap = new Map<number, Declaration>()
 
-  for (const match of declMatches) {
-    const declCapture = match.captures.find((c: QueryCapture) => c.name === 'decl')
-    const nameCapture = match.captures.find((c: QueryCapture) => c.name === 'name')
-    const methodCapture = match.captures.find((c: QueryCapture) => c.name === 'method')
-    const methodNameCapture = match.captures.find((c: QueryCapture) => c.name === 'method_name')
+    for (const match of declMatches) {
+      const declCapture = match.captures.find((c: QueryCapture) => c.name === 'decl')
+      const nameCapture = match.captures.find((c: QueryCapture) => c.name === 'name')
+      const methodCapture = match.captures.find((c: QueryCapture) => c.name === 'method')
+      const methodNameCapture = match.captures.find((c: QueryCapture) => c.name === 'method_name')
 
-    if (methodCapture && methodNameCapture) {
-      let parent = methodCapture.node.parent
-      while (parent && parent.type !== 'class_body') parent = parent.parent
-      if (parent?.parent) {
-        const classDecl = classMap.get(parent.parent.startPosition.row)
-        if (classDecl) {
-          classDecl.children.push({
-            name: methodNameCapture.node.text,
-            kind: 'function',
-            startLine: methodCapture.node.startPosition.row,
-            endLine: methodCapture.node.endPosition.row,
-            children: [],
-          })
+      if (methodCapture && methodNameCapture) {
+        let parent = methodCapture.node.parent
+        while (parent && parent.type !== 'class_body') parent = parent.parent
+        if (parent?.parent) {
+          const classDecl = classMap.get(parent.parent.startPosition.row)
+          if (classDecl) {
+            classDecl.children.push({
+              name: methodNameCapture.node.text,
+              kind: 'function',
+              startLine: methodCapture.node.startPosition.row,
+              endLine: methodCapture.node.endPosition.row,
+              children: [],
+            })
+          }
+        }
+        continue
+      }
+
+      if (declCapture && nameCapture) {
+        const isClass = declCapture.node.type === 'class_declaration' ||
+          (declCapture.node.type === 'export_statement' && declCapture.node.childForFieldName('declaration')?.type === 'class_declaration')
+        const decl: Declaration = {
+          name: nameCapture.node.text,
+          kind: isClass ? 'class' : 'function',
+          startLine: declCapture.node.startPosition.row,
+          endLine: declCapture.node.endPosition.row,
+          children: [],
+        }
+        declarations.push(decl)
+        if (isClass) {
+          const classNode = declCapture.node.type === 'export_statement'
+            ? declCapture.node.childForFieldName('declaration')!
+            : declCapture.node
+          classMap.set(classNode.startPosition.row, decl)
         }
       }
-      continue
     }
 
-    if (declCapture && nameCapture) {
-      const isClass = declCapture.node.type === 'class_declaration' ||
-        (declCapture.node.type === 'export_statement' && declCapture.node.childForFieldName('declaration')?.type === 'class_declaration')
-      const decl: Declaration = {
-        name: nameCapture.node.text,
-        kind: isClass ? 'class' : 'function',
-        startLine: declCapture.node.startPosition.row,
-        endLine: declCapture.node.endPosition.row,
-        children: [],
-      }
-      declarations.push(decl)
-      if (isClass) {
-        const classNode = declCapture.node.type === 'export_statement'
-          ? declCapture.node.childForFieldName('declaration')!
-          : declCapture.node
-        classMap.set(classNode.startPosition.row, decl)
+    // Extract imports
+    const importQuery = getQuery(language, config.importQuery)
+    const importMatches = importQuery.matches(tree.rootNode)
+    const imports: ImportInfo[] = []
+
+    for (const match of importMatches) {
+      const sourceCapture = match.captures.find((c: QueryCapture) => c.name === 'source')
+      if (sourceCapture) {
+        imports.push({
+          source: sourceCapture.node.text,
+          resolvedPath: resolveImportPath(sourceCapture.node.text, filePath),
+        })
       }
     }
-  }
 
-  // Extract imports
-  const importQuery = getQuery(language, config.importQuery)
-  const importMatches = importQuery.matches(tree.rootNode)
-  const imports: ImportInfo[] = []
-
-  for (const match of importMatches) {
-    const sourceCapture = match.captures.find((c: QueryCapture) => c.name === 'source')
-    if (sourceCapture) {
-      imports.push({
-        source: sourceCapture.node.text,
-        resolvedPath: resolveImportPath(sourceCapture.node.text, filePath),
-      })
-    }
-  }
-
-  return { declarations, imports }
+    return { declarations, imports }
+  })
 }
