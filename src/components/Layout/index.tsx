@@ -10,9 +10,7 @@ import { getPanelLabel, useLayoutStore } from '@/store/layout'
 import { getWindowId } from '@/services/platform'
 import { saveZoneSizes, loadZoneSizes } from '@/services/windowManager'
 import CrossWindowDropOverlay from './CrossWindowDropOverlay'
-
-const MIN_SIDE = 120
-const MIN_BOTTOM = 80
+import { MIN_SIDE_ZONE, MIN_BOTTOM_ZONE } from '@/lib/constants'
 
 interface LayoutProps {
   /** 'main' = 3-zone layout (left/right/bottom) with canvas gap. 'panel' = 2-zone (left/right) filling the space. */
@@ -142,7 +140,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
                 flexGrow: 0,
                 flexShrink: 0,
                 flexBasis: leftVisible ? `${zoneSizes.left * 100}%` : '0px',
-                minWidth: leftVisible ? MIN_SIDE : 0,
+                minWidth: leftVisible ? MIN_SIDE_ZONE : 0,
                 maxWidth: '40%',
               }}
             >
