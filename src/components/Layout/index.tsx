@@ -191,7 +191,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
                 flexGrow: 0,
                 flexShrink: 0,
                 flexBasis: rightVisible ? `${zoneSizes.right * 100}%` : '0px',
-                minWidth: rightVisible ? MIN_SIDE : 0,
+                minWidth: rightVisible ? MIN_SIDE_ZONE : 0,
                 maxWidth: '40%',
               }}
             >

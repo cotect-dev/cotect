@@ -1,12 +1,12 @@
 import type { Node } from '@xyflow/react'
 
-export interface FolderNodeData {
+export interface FolderNodeData extends Record<string, unknown> {
   label: string
   path: string
   isDirectory: true
 }
 
-export interface FileNodeData {
+export interface FileNodeData extends Record<string, unknown> {
   label: string
   path: string
   isDirectory?: false
@@ -14,7 +14,7 @@ export interface FileNodeData {
   declarationCount?: number
 }
 
-export interface FunctionNodeData {
+export interface FunctionNodeData extends Record<string, unknown> {
   label: string
   kind: 'function'
   startLine: number
@@ -22,7 +22,7 @@ export interface FunctionNodeData {
   isMethod?: boolean
 }
 
-export interface ClassNodeData {
+export interface ClassNodeData extends Record<string, unknown> {
   label: string
   kind: 'class'
   startLine: number

@@ -1,6 +1,6 @@
 // src/components/Canvas/layout.ts
 import type { Node, Edge } from '@xyflow/react'
-import { NODE_WIDTH, NODE_HEIGHT, NODE_NODE_H_GAP, NODE_NODE_V_GAP } from '@/lib/constants'
+import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP } from '@/lib/constants'
 
 export function layoutTree<T extends Node>(
   nodes: T[],
