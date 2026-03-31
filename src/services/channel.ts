@@ -1,6 +1,5 @@
 import { filesystem } from '@neutralinojs/lib'
 import { isNeutralino } from '@/services/platform'
-import { readJson, writeJsonSync } from '@/services/storage'
 import type { PanelPosition } from '@/store/layout'
 
 export type ChannelMessage =
@@ -22,10 +21,10 @@ export function initChannel(windowId: string): void {
 }
 
 // =============================================================================
-// Neutralino: per-sender filesystem IPC (no write contention)
+// Neutralino: filesystem-based IPC at /tmp/
 // =============================================================================
 
-const IPC_PREFIX = 'ipc-'
+const IPC_FILE = '/tmp/cotect-ipc.json'
 const IPC_POS_FILE = '/tmp/cotect-drag-pos.json'
 const MESSAGE_TTL = 5000
 const POLL_INTERVAL = 100
@@ -49,36 +48,37 @@ let neuPollTimer: ReturnType<typeof setInterval> | null = null
 let posPollTimer: ReturnType<typeof setInterval> | null = null
 let lastPosTs = Date.now()
 
-async function readSenderEnvelopes(senderKey: string): Promise<IpcEnvelope[]> {
-  const data = await readJson<IpcEnvelope[]>(senderKey)
-  return data ?? []
+async function neuReadEnvelopes(): Promise<IpcEnvelope[]> {
+  try {
+    const raw = await filesystem.readFile(IPC_FILE)
+    return JSON.parse(raw)
+  } catch {
+    return []
+  }
 }
 
 async function neuPoll(): Promise<void> {
   try {
-    const entries = await filesystem.readDirectory('/tmp')
-    const prefix = 'cotect-ipc-'
-    const now = Date.now()
+    const envelopes = await neuReadEnvelopes()
 
-    for (const entry of entries) {
-      if (entry.type !== 'FILE' || !entry.entry.startsWith(prefix) || !entry.entry.endsWith('.json')) continue
-      const senderKey = entry.entry.slice('cotect-'.length, -5)
-      const senderName = senderKey.slice(IPC_PREFIX.length)
-      if (senderName === senderId) continue
-
-      const envelopes = await readSenderEnvelopes(senderKey)
-      for (const env of envelopes) {
-        if (env.ts > lastSeenTs && now - env.ts < MESSAGE_TTL) {
-          if (env.data.type === 'drag-start') startPosPolling()
-          else if (env.data.type === 'drag-end') stopPosPolling()
-          for (const handler of handlers) handler(env.data)
+    for (const env of envelopes) {
+      if (env.sender !== senderId && env.ts > lastSeenTs) {
+        if (env.data.type === 'drag-start') {
+          startPosPolling()
+        } else if (env.data.type === 'drag-end') {
+          stopPosPolling()
+        }
+        for (const handler of handlers) {
+          handler(env.data)
         }
       }
     }
 
-    lastSeenTs = now
+    if (envelopes.length > 0) {
+      lastSeenTs = Math.max(...envelopes.map((e) => e.ts), lastSeenTs)
+    }
   } catch {
-    // polling failure — will retry next interval
+    // file missing or unreadable
   }
 }
 
@@ -108,12 +108,14 @@ async function neuBroadcast(message: ChannelMessage): Promise<void> {
     return
   }
 
-  const key = `${IPC_PREFIX}${senderId}`
-  const now = Date.now()
-  const existing = await readSenderEnvelopes(key)
-  const fresh = existing.filter((e) => now - e.ts < MESSAGE_TTL)
-  fresh.push({ sender: senderId, data: message, ts: now })
-  writeJsonSync(key, fresh)
+  try {
+    const now = Date.now()
+    const envelopes = (await neuReadEnvelopes()).filter((e) => now - e.ts < MESSAGE_TTL)
+    envelopes.push({ sender: senderId, data: message, ts: now })
+    await filesystem.writeFile(IPC_FILE, JSON.stringify(envelopes))
+  } catch (err) {
+    console.warn('[ipc] broadcast failed:', err)
+  }
 }
 
 function startNeuPolling(): void {
