@@ -1,8 +1,9 @@
+import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Braces } from 'lucide-react'
 import type { FunctionNode } from '@/types/nodes'
 
-export default function FunctionNode({ data }: NodeProps<FunctionNode>) {
+export default memo(function FunctionNode({ data }: NodeProps<FunctionNode>) {
   return (
     <div className={`bg-background/90 backdrop-blur border border-border rounded-lg px-4 py-3 min-w-[160px] ${data.isMethod ? 'ml-4' : ''}`}>
       <div className="flex items-center gap-2">
@@ -17,4 +18,4 @@ export default function FunctionNode({ data }: NodeProps<FunctionNode>) {
       <Handle type="target" position={Position.Top} className="opacity-0" />
     </div>
   )
-}
+})

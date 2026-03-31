@@ -11,12 +11,19 @@ function isSerializable(value: unknown): boolean {
   return proto === Object.prototype || proto === null
 }
 
-function getSerializableState<T>(state: T): Partial<T> {
+/** Determine which keys are serializable from initial state (computed once at store creation). */
+function computeSerializableKeys(state: Record<string, unknown>): Set<string> {
+  const keys = new Set<string>()
+  for (const [key, value] of Object.entries(state)) {
+    if (isSerializable(value)) keys.add(key)
+  }
+  return keys
+}
+
+function pickKeys<T>(state: T, keys: Set<string>): Partial<T> {
   const result: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(state as Record<string, unknown>)) {
-    if (isSerializable(value)) {
-      result[key] = value
-    }
+  for (const key of keys) {
+    result[key] = (state as Record<string, unknown>)[key]
   }
   return result as Partial<T>
 }
@@ -24,6 +31,7 @@ function getSerializableState<T>(state: T): Partial<T> {
 interface PendingEntry {
   name: string
   store: StoreApi<unknown>
+  serializableKeys: Set<string>
   sanitize?: (s: Partial<unknown>) => Partial<unknown>
 }
 
@@ -39,9 +47,11 @@ interface SyncOptions<T> {
  */
 export function createSyncedStore<T>(name: string, creator: StateCreator<T>, options?: SyncOptions<T>) {
   const store = create<T>(creator)
+  const serializableKeys = computeSerializableKeys(store.getState() as Record<string, unknown>)
   pending.push({
     name,
     store: store as unknown as StoreApi<unknown>,
+    serializableKeys,
     sanitize: options?.sanitize as ((s: Partial<unknown>) => Partial<unknown>) | undefined,
   })
   return store
@@ -53,12 +63,12 @@ export function createSyncedStore<T>(name: string, creator: StateCreator<T>, opt
  * to ensure a fresh session, then stores save as they change.
  */
 export function initAllSyncedStores(): void {
-  for (const { name, store } of pending) {
+  for (const { name, store, serializableKeys } of pending) {
     let timer: ReturnType<typeof setTimeout> | null = null
     store.subscribe(() => {
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
-        savePanelState(name, getSerializableState(store.getState()))
+        savePanelState(name, pickKeys(store.getState(), serializableKeys))
       }, 300)
     })
   }

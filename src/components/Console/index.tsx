@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import { useConsoleStore, type LogLevel } from '@/store/console'
 import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
@@ -37,7 +37,10 @@ export default function Console() {
   const setFilter = useConsoleStore((s) => s.setFilter)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const filtered = filter ? entries.filter((e) => e.level === filter) : entries
+  const filtered = useMemo(
+    () => filter ? entries.filter((e) => e.level === filter) : entries,
+    [entries, filter],
+  )
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

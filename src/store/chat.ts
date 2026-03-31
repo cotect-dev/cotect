@@ -84,9 +84,34 @@ export async function sendMessage(content: string) {
   let totalTokens = 0
   let streamStartTime: number | null = null
 
+  // RAF-based batching: accumulate token data, flush to store at display refresh rate
+  let rafId: number | null = null
+  let dirty = false
+
+  function scheduleFlush() {
+    if (!dirty || rafId !== null) return
+    rafId = requestAnimationFrame(() => {
+      rafId = null
+      if (!dirty) return
+      dirty = false
+      updateMessage(assistantId, {
+        content: accContent,
+        thinking: accThinking,
+        thinkingTokens,
+        thinkingDurationMs: thinkingStartTime ? Date.now() - thinkingStartTime : 0,
+        isThinking: inThinkTag,
+        totalTokens,
+        durationMs: streamStartTime ? Date.now() - streamStartTime : 0,
+        model,
+      })
+    })
+  }
+
+  let model: ModelId = 'qwen3.5-think'
+
   try {
     const { thinkingEnabled, messages } = useChatStore.getState()
-    const model: ModelId = thinkingEnabled ? 'qwen3.5-think' : 'qwen3.5-no-think'
+    model = thinkingEnabled ? 'qwen3.5-think' : 'qwen3.5-no-think'
     const chatMessages = messages
       .filter((m) => !m.isStreaming)
       .map((m) => ({ role: m.role, content: m.content }))
@@ -193,16 +218,8 @@ export async function sendMessage(content: string) {
             rawStream = ''
           }
 
-          updateMessage(assistantId, {
-            content: accContent,
-            thinking: accThinking,
-            thinkingTokens,
-            thinkingDurationMs: thinkingStartTime ? Date.now() - thinkingStartTime : 0,
-            isThinking: inThinkTag,
-            totalTokens,
-            durationMs: streamStartTime ? Date.now() - streamStartTime : 0,
-            model,
-          })
+          dirty = true
+          scheduleFlush()
         } catch {
           // skip malformed chunks
         }
@@ -215,7 +232,19 @@ export async function sendMessage(content: string) {
       })
     }
   } finally {
-    updateMessage(assistantId, { isStreaming: false, thinking: accThinking.trimEnd() })
+    if (rafId !== null) cancelAnimationFrame(rafId)
+    // Final flush: include all accumulated content (RAF may not have fired for the last tokens)
+    updateMessage(assistantId, {
+      content: accContent,
+      thinking: accThinking.trimEnd(),
+      thinkingTokens,
+      thinkingDurationMs: thinkingStartTime ? Date.now() - thinkingStartTime : 0,
+      isThinking: false,
+      isStreaming: false,
+      totalTokens,
+      durationMs: streamStartTime ? Date.now() - streamStartTime : 0,
+      model,
+    })
     setGenerating(false)
     setAbortController(null)
   }

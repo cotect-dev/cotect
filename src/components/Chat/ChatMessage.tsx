@@ -1,45 +1,72 @@
-import { memo, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { memo, useState, useMemo, lazy, Suspense } from 'react'
 import type { Message } from '@/store/chat'
 
-function Markdown({ text, className = '' }: { text: string; className?: string }) {
-  return (
-    <div className={`prose dark:prose-invert prose-sm max-w-none break-words [&_p]:my-1 [&_pre]:my-1 [&_ul]:my-1 [&_ol]:my-1 ${className}`}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          code({ className: cn, children, ...props }) {
-            const match = /language-(\w+)/.exec(cn || '')
-            const code = String(children).replace(/\n$/, '')
-            if (match) {
-              return (
-                <SyntaxHighlighter
-                  style={oneDark}
-                  language={match[1]}
-                  PreTag="div"
-                  customStyle={{
-                    margin: 0,
-                    borderRadius: '0.375rem',
-                    fontSize: '0.75rem',
-                  }}
-                >
-                  {code}
-                </SyntaxHighlighter>
-              )
-            }
-            return (
-              <code className="bg-accent rounded px-1 py-0.5 text-xs" {...props}>
-                {children}
-              </code>
-            )
-          },
+// Lazy-load heavy markdown dependencies — they're only needed after streaming completes
+const ReactMarkdown = lazy(() => import('react-markdown'))
+const remarkGfmModule = import('remark-gfm')
+const syntaxHighlighterModule = import('react-syntax-highlighter/dist/esm/styles/prism')
+const prismModule = import('react-syntax-highlighter')
+
+// Cache resolved modules
+let _remarkGfm: typeof import('remark-gfm').default | null = null
+let _oneDark: Record<string, React.CSSProperties> | null = null
+let _SyntaxHighlighter: typeof import('react-syntax-highlighter').Prism | null = null
+
+remarkGfmModule.then((m) => { _remarkGfm = m.default })
+syntaxHighlighterModule.then((m) => { _oneDark = m.oneDark })
+prismModule.then((m) => { _SyntaxHighlighter = m.Prism })
+
+function MarkdownCode({ className: cn, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: unknown }) {
+  const match = /language-(\w+)/.exec(cn || '')
+  const code = String(children).replace(/\n$/, '')
+  if (match && _SyntaxHighlighter && _oneDark) {
+    const Highlighter = _SyntaxHighlighter
+    return (
+      <Highlighter
+        style={_oneDark}
+        language={match[1]}
+        PreTag="div"
+        customStyle={{
+          margin: 0,
+          borderRadius: '0.375rem',
+          fontSize: '0.75rem',
         }}
       >
-        {text}
-      </ReactMarkdown>
+        {code}
+      </Highlighter>
+    )
+  }
+  return (
+    <code className="bg-accent rounded px-1 py-0.5 text-xs" {...props}>
+      {children}
+    </code>
+  )
+}
+
+const markdownComponents = { code: MarkdownCode }
+
+function Markdown({ text, className = '' }: { text: string; className?: string }) {
+  const plugins = useMemo(() => _remarkGfm ? [_remarkGfm] : [], [])
+
+  return (
+    <div className={`prose dark:prose-invert prose-sm max-w-none break-words [&_p]:my-1 [&_pre]:my-1 [&_ul]:my-1 [&_ol]:my-1 ${className}`}>
+      <Suspense fallback={<StreamingText text={text} />}>
+        <ReactMarkdown
+          remarkPlugins={plugins}
+          components={markdownComponents}
+        >
+          {text}
+        </ReactMarkdown>
+      </Suspense>
+    </div>
+  )
+}
+
+/** Lightweight plain-text renderer used during streaming instead of full Markdown parsing */
+function StreamingText({ text }: { text: string }) {
+  return (
+    <div className="prose dark:prose-invert prose-sm max-w-none break-words [&_p]:my-1">
+      <p className="whitespace-pre-wrap">{text}</p>
     </div>
   )
 }
@@ -122,6 +149,8 @@ const ChatMessage = memo(function ChatMessage({ message }: { message: Message })
         {!isUser && <ThinkingBlock message={message} />}
         {message.isStreaming && !message.content ? (
           <span className="text-sm text-muted-foreground">...</span>
+        ) : message.isStreaming ? (
+          <StreamingText text={message.content} />
         ) : (
           <Markdown text={message.content} />
         )}

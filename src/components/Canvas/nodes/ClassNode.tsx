@@ -1,8 +1,9 @@
+import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Box } from 'lucide-react'
 import type { ClassNode } from '@/types/nodes'
 
-export default function ClassNode({ data }: NodeProps<ClassNode>) {
+export default memo(function ClassNode({ data }: NodeProps<ClassNode>) {
   return (
     <div className="bg-background/90 backdrop-blur border border-purple-500/50 rounded-lg px-4 py-3 min-w-[180px]">
       <div className="flex items-center gap-2">
@@ -17,4 +18,4 @@ export default function ClassNode({ data }: NodeProps<ClassNode>) {
       <Handle type="target" position={Position.Top} className="opacity-0" />
     </div>
   )
-}
+})
