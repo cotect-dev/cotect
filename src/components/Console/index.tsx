@@ -1,7 +1,8 @@
-import { useEffect, useRef, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useConsoleStore, type LogLevel } from '@/store/console'
 import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
+import { useScrollToBottom } from '@/hooks/useScrollToBottom'
 
 const levelColors: Record<LogLevel, string> = {
   info: 'text-blue-400',
@@ -35,16 +36,13 @@ export default function Console() {
   const filter = useConsoleStore((s) => s.filter)
   const clear = useConsoleStore((s) => s.clear)
   const setFilter = useConsoleStore((s) => s.setFilter)
-  const bottomRef = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(
     () => filter ? entries.filter((e) => e.level === filter) : entries,
     [entries, filter],
   )
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [filtered.length])
+  const bottomRef = useScrollToBottom(filtered.length)
 
   return (
     <div className="flex flex-col h-full">
