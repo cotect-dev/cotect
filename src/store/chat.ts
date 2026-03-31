@@ -59,7 +59,106 @@ export const useChatStore = createSyncedStore<ChatState>('chat', (set) => ({
   }),
 })
 
+// --- Helpers ---
+
 const API_BASE = '/llm/v1'
+
+function countWords(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length
+}
+
+interface StreamAccumulator {
+  content: string
+  thinking: string
+  rawStream: string
+  inThinkTag: boolean
+  thinkingTokens: number
+  thinkingStartTime: number | null
+  totalTokens: number
+  streamStartTime: number | null
+}
+
+function createAccumulator(): StreamAccumulator {
+  return { content: '', thinking: '', rawStream: '', inThinkTag: false, thinkingTokens: 0, thinkingStartTime: null, totalTokens: 0, streamStartTime: null }
+}
+
+function buildRequestPayload(messages: Message[], model: ModelId, thinkingEnabled: boolean) {
+  const chatMessages = messages
+    .filter((m) => !m.isStreaming)
+    .map((m) => ({ role: m.role, content: m.content }))
+
+  return {
+    model,
+    messages: [
+      { role: 'system', content: `You are a helpful assistant.${thinkingEnabled ? ' /think' : ' /no_think'}` },
+      ...chatMessages,
+    ],
+    stream: true,
+    temperature: 0.5,
+    top_p: thinkingEnabled ? 0.95 : 0.8,
+    top_k: 20,
+    min_p: 0,
+    repetition_penalty: 1.2,
+    repeat_last_n: 1024,
+    chat_template_kwargs: { enable_thinking: thinkingEnabled },
+  }
+}
+
+function processStreamChunk(acc: StreamAccumulator, text: string, reasoning: string): void {
+  if (reasoning || text) {
+    if (!acc.streamStartTime) acc.streamStartTime = Date.now()
+    acc.totalTokens++
+  }
+
+  if (reasoning) {
+    if (!acc.thinkingStartTime) acc.thinkingStartTime = Date.now()
+    acc.thinking += reasoning
+    acc.thinkingTokens++
+  }
+
+  if (text) acc.rawStream += text
+
+  if (!acc.rawStream) return
+
+  let remaining = acc.rawStream
+  if (acc.inThinkTag) {
+    const closeIdx = remaining.indexOf('</think>')
+    if (closeIdx !== -1) {
+      acc.thinking += remaining.slice(0, closeIdx)
+      acc.thinkingTokens += countWords(remaining.slice(0, closeIdx))
+      acc.inThinkTag = false
+      remaining = remaining.slice(closeIdx + 8)
+    } else {
+      acc.thinking += remaining
+      acc.thinkingTokens += countWords(remaining)
+      acc.rawStream = ''
+      return
+    }
+  }
+
+  const openIdx = remaining.indexOf('<think>')
+  if (openIdx !== -1) {
+    acc.content += remaining.slice(0, openIdx)
+    if (!acc.thinkingStartTime) acc.thinkingStartTime = Date.now()
+    acc.inThinkTag = true
+    const afterOpen = remaining.slice(openIdx + 7)
+    const closeIdx = afterOpen.indexOf('</think>')
+    if (closeIdx !== -1) {
+      acc.thinking += afterOpen.slice(0, closeIdx)
+      acc.thinkingTokens += countWords(afterOpen.slice(0, closeIdx))
+      acc.inThinkTag = false
+      acc.content += afterOpen.slice(closeIdx + 8)
+    } else {
+      acc.thinking += afterOpen
+      acc.thinkingTokens += countWords(afterOpen)
+    }
+  } else {
+    acc.content += remaining
+  }
+  acc.rawStream = ''
+}
+
+// --- Main send function ---
 
 export async function sendMessage(content: string) {
   const { addMessage, setAbortController, setGenerating, updateMessage } = useChatStore.getState()
@@ -75,16 +174,11 @@ export async function sendMessage(content: string) {
   setAbortController(abort)
   setGenerating(true)
 
-  let accContent = ''
-  let accThinking = ''
-  let rawStream = ''
-  let inThinkTag = false
-  let thinkingTokens = 0
-  let thinkingStartTime: number | null = null
-  let totalTokens = 0
-  let streamStartTime: number | null = null
+  const acc = createAccumulator()
+  const { thinkingEnabled, messages } = useChatStore.getState()
+  const model: ModelId = thinkingEnabled ? 'qwen3.5-think' : 'qwen3.5-no-think'
 
-  // RAF-based batching: accumulate token data, flush to store at display refresh rate
+  // RAF-based batching
   let rafId: number | null = null
   let dirty = false
 
@@ -95,46 +189,24 @@ export async function sendMessage(content: string) {
       if (!dirty) return
       dirty = false
       updateMessage(assistantId, {
-        content: accContent,
-        thinking: accThinking,
-        thinkingTokens,
-        thinkingDurationMs: thinkingStartTime ? Date.now() - thinkingStartTime : 0,
-        isThinking: inThinkTag,
-        totalTokens,
-        durationMs: streamStartTime ? Date.now() - streamStartTime : 0,
+        content: acc.content,
+        thinking: acc.thinking,
+        thinkingTokens: acc.thinkingTokens,
+        thinkingDurationMs: acc.thinkingStartTime ? Date.now() - acc.thinkingStartTime : 0,
+        isThinking: acc.inThinkTag,
+        totalTokens: acc.totalTokens,
+        durationMs: acc.streamStartTime ? Date.now() - acc.streamStartTime : 0,
         model,
       })
     })
   }
 
-  let model: ModelId = 'qwen3.5-think'
-
   try {
-    const { thinkingEnabled, messages } = useChatStore.getState()
-    model = thinkingEnabled ? 'qwen3.5-think' : 'qwen3.5-no-think'
-    const chatMessages = messages
-      .filter((m) => !m.isStreaming)
-      .map((m) => ({ role: m.role, content: m.content }))
-
     const res = await fetch(`${API_BASE}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: abort.signal,
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: `You are a helpful assistant.${thinkingEnabled ? ' /think' : ' /no_think'}` },
-          ...chatMessages,
-        ],
-        stream: true,
-        temperature: 0.5,
-        top_p: thinkingEnabled ? 0.95 : 0.8,
-        top_k: 20,
-        min_p: 0,
-        repetition_penalty: 1.2,
-        repeat_last_n: 1024,
-        chat_template_kwargs: { enable_thinking: thinkingEnabled },
-      }),
+      body: JSON.stringify(buildRequestPayload(messages, model, thinkingEnabled)),
     })
 
     if (!res.ok) throw new Error(`API error: ${res.status}`)
@@ -161,63 +233,7 @@ export async function sendMessage(content: string) {
         try {
           const delta = JSON.parse(data).choices?.[0]?.delta
           if (!delta) continue
-
-          const text: string = delta.content || ''
-          const reasoning: string = delta.reasoning_content || ''
-
-          if (reasoning || text) {
-            if (!streamStartTime) streamStartTime = Date.now()
-            totalTokens++
-          }
-
-          if (reasoning) {
-            if (!thinkingStartTime) thinkingStartTime = Date.now()
-            accThinking += reasoning
-            thinkingTokens++
-          }
-
-          if (text) rawStream += text
-
-          if (rawStream) {
-            let remaining = rawStream
-            if (inThinkTag) {
-              const closeIdx = remaining.indexOf('</think>')
-              if (closeIdx !== -1) {
-                accThinking += remaining.slice(0, closeIdx)
-                thinkingTokens += remaining.slice(0, closeIdx).split(/\s+/).filter(Boolean).length
-                inThinkTag = false
-                remaining = remaining.slice(closeIdx + 8)
-              } else {
-                accThinking += remaining
-                thinkingTokens += remaining.split(/\s+/).filter(Boolean).length
-                remaining = ''
-              }
-            }
-
-            if (!inThinkTag) {
-              const openIdx = remaining.indexOf('<think>')
-              if (openIdx !== -1) {
-                accContent += remaining.slice(0, openIdx)
-                if (!thinkingStartTime) thinkingStartTime = Date.now()
-                inThinkTag = true
-                const afterOpen = remaining.slice(openIdx + 7)
-                const closeIdx = afterOpen.indexOf('</think>')
-                if (closeIdx !== -1) {
-                  accThinking += afterOpen.slice(0, closeIdx)
-                  thinkingTokens += afterOpen.slice(0, closeIdx).split(/\s+/).filter(Boolean).length
-                  inThinkTag = false
-                  accContent += afterOpen.slice(closeIdx + 8)
-                } else {
-                  accThinking += afterOpen
-                  thinkingTokens += afterOpen.split(/\s+/).filter(Boolean).length
-                }
-              } else {
-                accContent += remaining
-              }
-            }
-            rawStream = ''
-          }
-
+          processStreamChunk(acc, delta.content || '', delta.reasoning_content || '')
           dirty = true
           scheduleFlush()
         } catch {
@@ -228,21 +244,20 @@ export async function sendMessage(content: string) {
   } catch (err) {
     if ((err as Error).name !== 'AbortError') {
       updateMessage(assistantId, {
-        content: accContent || `Error: ${(err as Error).message}`,
+        content: acc.content || `Error: ${(err as Error).message}`,
       })
     }
   } finally {
     if (rafId !== null) cancelAnimationFrame(rafId)
-    // Final flush: include all accumulated content (RAF may not have fired for the last tokens)
     updateMessage(assistantId, {
-      content: accContent,
-      thinking: accThinking.trimEnd(),
-      thinkingTokens,
-      thinkingDurationMs: thinkingStartTime ? Date.now() - thinkingStartTime : 0,
+      content: acc.content,
+      thinking: acc.thinking.trimEnd(),
+      thinkingTokens: acc.thinkingTokens,
+      thinkingDurationMs: acc.thinkingStartTime ? Date.now() - acc.thinkingStartTime : 0,
       isThinking: false,
       isStreaming: false,
-      totalTokens,
-      durationMs: streamStartTime ? Date.now() - streamStartTime : 0,
+      totalTokens: acc.totalTokens,
+      durationMs: acc.streamStartTime ? Date.now() - acc.streamStartTime : 0,
       model,
     })
     setGenerating(false)
