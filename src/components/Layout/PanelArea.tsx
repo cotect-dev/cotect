@@ -4,12 +4,9 @@ import { X } from 'lucide-react';
 import { getPanelLabel, useLayoutStore, type PanelPosition } from '@/store/layout';
 import Chat from '@/components/Chat';
 import Console from '@/components/Console';
-import Terminal from '@/components/Terminal';
-
 const PANEL_CONTENT: Record<string, ComponentType> = {
   chat: Chat,
   console: Console,
-  terminal: Terminal,
 };
 
 interface PanelAreaProps {
