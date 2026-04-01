@@ -43,3 +43,9 @@ src-tauri/gen/
 .vite
 .swc
 .eslintcache
+
+# Docs
+docs/
+
+# Claude
+.claude/
