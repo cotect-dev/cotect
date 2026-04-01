@@ -5,10 +5,6 @@ import { useBrowserStore } from '@/store/browser'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
 import { initAllSyncedStores, clearAllSyncedStores, stopAllSyncedStores } from '@/store/synced'
 
-const platform = getPlatform()
-const windowId = platform.windows.getWindowId()
-const isMain = windowId === 'main'
-
 const DEFAULT_MAIN_LAYOUT = {
   panels: { left: [['explorer']], right: [['chat']], bottom: [['console']] },
   sizes: { left: [1], right: [1], bottom: [1] },
@@ -17,6 +13,9 @@ const DEFAULT_MAIN_LAYOUT = {
 
 export function useWindowLifecycle() {
   const [isReady, setIsReady] = useState(false)
+  const platform = getPlatform()
+  const windowId = platform.windows.getWindowId()
+  const isMain = windowId === 'main'
 
   // One-time store init
   useEffect(() => {
