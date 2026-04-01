@@ -26,3 +26,20 @@ src-tauri/gen/
 *.njsproj
 *.sln
 *.sw?
+
+# Temp files
+.tmp/
+*.tmp
+*.temp
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Cache
+.cache
+.parcel-cache
+.vite
+.swc
+.eslintcache
