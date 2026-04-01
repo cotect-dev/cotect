@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod git;
+mod watcher;
 
 use std::fs;
 use tauri::Manager;
@@ -55,6 +57,7 @@ fn main() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .manage(watcher::WatcherState::new())
         .invoke_handler(tauri::generate_handler![
             commands::read_directory,
             commands::read_file_content,
@@ -63,11 +66,23 @@ fn main() {
             commands::get_window_monitor,
             commands::set_window_on_monitor,
             commands::get_monitors,
+            watcher::watch_path,
+            watcher::unwatch_path,
+            git::git_status,
+            git::git_log,
+            git::git_branch,
+            git::git_last_commit_time,
+            git::git_init,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 if window.label() == "main" {
                     save_child_window_list(window);
+                    for (label, win) in window.app_handle().webview_windows() {
+                        if label != "main" {
+                            let _ = win.close();
+                        }
+                    }
                     std::process::exit(0);
                 }
             }
