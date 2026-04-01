@@ -113,6 +113,7 @@ export function useWindowLifecycle() {
       stopSessionPersistence()
       stopAllSyncedStores()
       if (!isMain) removeLayout(windowId)
+      if (isMain) platform.windows.closeAll()
       platform.ipc.emit('window-closed', { windowId }).catch(() => {})
     })
   }, [])
