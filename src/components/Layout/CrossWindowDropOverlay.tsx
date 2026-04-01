@@ -1,6 +1,5 @@
-import { useCallback, useEffect } from 'react'
-import { onMessage, broadcast, type ChannelMessage } from '@/services/channel'
-import { getWindowId } from '@/services/platform'
+import { useCallback, useEffect, useRef } from 'react'
+import { getPlatform } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
 import { reloadSyncedStore } from '@/store/synced'
 
@@ -12,28 +11,44 @@ interface Props {
 }
 
 export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Props) {
-  const windowId = getWindowId()
+  const platform = getPlatform()
+  const windowId = platform.windows.getWindowId()
   const setCrossWindowDrag = useLayoutStore((s) => s.setCrossWindowDrag)
+  const windowBoundsRef = useRef({ left: 0, top: 0, right: 0, bottom: 0 })
+
+  // Keep window bounds updated
+  useEffect(() => {
+    const update = async () => {
+      const pos = await platform.windows.getPosition()
+      const size = await platform.windows.getSize()
+      windowBoundsRef.current = {
+        left: pos.x,
+        top: pos.y,
+        right: pos.x + size.width,
+        bottom: pos.y + size.height,
+      }
+    }
+    update()
+    const timer = setInterval(update, 500)
+    return () => clearInterval(timer)
+  }, [platform])
 
   const detectZoneFromScreen = useCallback((screenX: number, screenY: number): { zone: HoverZone; isOver: boolean } => {
-    const winLeft = window.screenX
-    const winTop = window.screenY
-    const winRight = winLeft + window.outerWidth
-    const winBottom = winTop + window.outerHeight
+    const bounds = windowBoundsRef.current
 
-    if (screenX < winLeft || screenX > winRight || screenY < winTop || screenY > winBottom) {
+    if (screenX < bounds.left || screenX > bounds.right || screenY < bounds.top || screenY > bounds.bottom) {
       return { zone: null, isOver: false }
     }
 
-    const x = (screenX - winLeft) / window.outerWidth
-    const y = (screenY - winTop) / window.outerHeight
+    const contentWidth = bounds.right - bounds.left
+    const contentHeight = bounds.bottom - bounds.top
+    const x = (screenX - bounds.left) / contentWidth
+    const y = (screenY - bounds.top) / contentHeight
 
     let zone: HoverZone = null
     if (mode === 'panel') {
-      // Two-zone layout: left/right split at 50%
       zone = x < 0.5 ? 'left' : 'right'
     } else {
-      // Three-zone layout: left 25%, right 75%, bottom 75%
       if (y > 0.75) zone = 'bottom'
       else if (x < 0.25) zone = 'left'
       else if (x > 0.75) zone = 'right'
@@ -42,8 +57,14 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     return { zone, isOver: true }
   }, [mode])
 
-  // Compute insert index within a zone from screen coordinates,
-  // using the same logic as usePanelDrag's computeInsertIndex
+  const screenToClient = useCallback((screenX: number, screenY: number) => {
+    const bounds = windowBoundsRef.current
+    return {
+      clientX: screenX - bounds.left,
+      clientY: screenY - bounds.top,
+    }
+  }, [])
+
   const computeInsertFromScreen = useCallback((zone: PanelPosition, screenX: number, screenY: number): { insertIndex: number; neighborIndex: number } => {
     const el = zoneRefs.current[zone]
     if (!el) return { insertIndex: 0, neighborIndex: 0 }
@@ -51,9 +72,7 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     const rect = el.getBoundingClientRect()
     const isVertical = zone === 'left' || zone === 'right'
 
-    // Convert screen coords to local coords relative to the zone element
-    const localX = screenX - window.screenX - (window.outerWidth - window.innerWidth)
-    const localY = screenY - window.screenY - (window.outerHeight - window.innerHeight)
+    const { clientX: localX, clientY: localY } = screenToClient(screenX, screenY)
 
     const sizes = useLayoutStore.getState().sizes[zone]
     if (sizes.length === 0) return { insertIndex: 0, neighborIndex: 0 }
@@ -77,7 +96,7 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
       cumulative += sizes[i]
     }
     return { insertIndex: sizes.length, neighborIndex: sizes.length - 1 }
-  }, [zoneRefs])
+  }, [zoneRefs, screenToClient])
 
   useEffect(() => {
     let currentIncoming: { panelId: string; panelIds: string[]; sourceWindow: string } | null = null
@@ -85,11 +104,17 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     let isOver = false
     let lastAccepted: { panelIds: string[] } | null = null
 
-    const unsub = onMessage((msg: ChannelMessage) => {
-      if (msg.type === 'drag-start' && msg.sourceWindow !== windowId) {
+    const unlistenStart = platform.ipc.listen('drag-start', (payload: unknown) => {
+      const msg = payload as { panelId: string; panelIds: string[]; sourceWindow: string }
+      if (msg.sourceWindow !== windowId) {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
         lastAccepted = null
-      } else if (msg.type === 'drag-move' && msg.sourceWindow !== windowId && currentIncoming) {
+      }
+    })
+
+    const unlistenMove = platform.ipc.listen('drag-move', (payload: unknown) => {
+      const msg = payload as { screenX: number; screenY: number; sourceWindow: string }
+      if (msg.sourceWindow !== windowId && currentIncoming) {
         const result = detectZoneFromScreen(msg.screenX, msg.screenY)
         currentZone = result.zone
         isOver = result.isOver
@@ -106,15 +131,18 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
         } else {
           setCrossWindowDrag(null)
         }
-      } else if (msg.type === 'drag-end' && msg.sourceWindow !== windowId) {
+      }
+    })
+
+    const unlistenEnd = platform.ipc.listen('drag-end', (payload: unknown) => {
+      const msg = payload as { sourceWindow: string }
+      if (msg.sourceWindow !== windowId) {
         if (currentIncoming && isOver && currentZone) {
-          // Read the last computed insert position from the store
           const cwd = useLayoutStore.getState().crossWindowDrag
           const insertIndex = cwd?.insertIndex ?? 0
           const neighborIndex = cwd?.neighborIndex ?? 0
 
-          void broadcast({
-            type: 'drag-drop',
+          void platform.ipc.emit('drag-drop', {
             panelId: currentIncoming.panelId,
             panelIds: currentIncoming.panelIds,
             targetWindow: windowId,
@@ -123,13 +151,11 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
             groupKey: null,
           })
 
-          // Clear existing copies, then insert via moveGroup
           const store = useLayoutStore.getState()
           for (const id of currentIncoming.panelIds) {
             store.removePanel(id)
           }
           store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
-          // Reload synced stores so panel state (chat messages, etc.) transfers with the panel
           for (const id of currentIncoming.panelIds) {
             reloadSyncedStore(id)
           }
@@ -140,9 +166,12 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
         currentZone = null
         isOver = false
         setCrossWindowDrag(null)
-      } else if (msg.type === 'drag-drop' && msg.targetWindow !== windowId && lastAccepted) {
-        // Another window also accepted this drop (overlapping windows).
-        // Tiebreak: lower window ID wins.
+      }
+    })
+
+    const unlistenDrop = platform.ipc.listen('drag-drop', (payload: unknown) => {
+      const msg = payload as { targetWindow: string }
+      if (msg.targetWindow !== windowId && lastAccepted) {
         if (msg.targetWindow < windowId) {
           const store = useLayoutStore.getState()
           for (const id of lastAccepted.panelIds) {
@@ -154,10 +183,13 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     })
 
     return () => {
-      unsub()
+      unlistenStart()
+      unlistenMove()
+      unlistenEnd()
+      unlistenDrop()
       setCrossWindowDrag(null)
     }
-  }, [windowId, detectZoneFromScreen, computeInsertFromScreen, setCrossWindowDrag])
+  }, [windowId, detectZoneFromScreen, computeInsertFromScreen, setCrossWindowDrag, platform])
 
   return null
 }
