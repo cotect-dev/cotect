@@ -12,6 +12,9 @@ export default defineConfig({
   },
   clearScreen: false,
   server: {
+    watch: {
+      ignored: ['**/src-tauri/**', '**/docs/**', '**/node_modules/**', '**/.git/**', '**/.superpowers/**', '**/dist/**', '**/overview.md', '**/README.md'],
+    },
     strictPort: true,
     proxy: {
       '/llm': {
