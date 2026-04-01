@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getPlatform } from '@/services/platform'
 import { loadLayout, loadGeometry, loadSession, getChildWindowIds, removeLayout, startGeometryPersistence, stopGeometryPersistence, startSessionPersistence, stopSessionPersistence, restoreGeometryOnMonitor } from '@/services/windowManager'
 import { useBrowserStore } from '@/store/browser'
+import { useGitStore, startGitWatcher, stopGitWatcher } from '@/store/git'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
 import { initAllSyncedStores, clearAllSyncedStores, stopAllSyncedStores } from '@/store/synced'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
@@ -27,7 +28,7 @@ export function useWindowLifecycle() {
         loadLayout(windowId),
         loadGeometry(windowId),
         isMain ? getChildWindowIds() : [],
-        isMain ? loadSession() : null,
+        loadSession(),
       ])
       if (cancelled) return
 
@@ -82,6 +83,22 @@ export function useWindowLifecycle() {
           } catch {}
         }
         startSessionPersistence()
+
+        useBrowserStore.subscribe((state) => {
+          const gitState = useGitStore.getState()
+          if (state.rootPath && state.rootPath !== gitState.repoPath) {
+            gitState.setRepoPath(state.rootPath)
+            stopGitWatcher()
+            startGitWatcher(state.rootPath, windowId)
+            gitState.refresh()
+          }
+        })
+      }
+
+      if (session?.rootPath) {
+        useGitStore.getState().setRepoPath(session.rootPath)
+        startGitWatcher(session.rootPath, windowId)
+        useGitStore.getState().refresh()
       }
 
       platform.ipc.emit('window-opened', { windowId }).catch(() => {})
@@ -106,8 +123,8 @@ export function useWindowLifecycle() {
       stopGeometryPersistence()
       stopSessionPersistence()
       stopAllSyncedStores()
+      stopGitWatcher()
       if (!isMain) removeLayout(windowId)
-      if (isMain) platform.windows.closeAll()
       platform.ipc.emit('window-closed', { windowId }).catch(() => {})
     })
   }, [])
@@ -117,6 +134,7 @@ export function useWindowLifecycle() {
       stopLayoutPersistence()
       stopGeometryPersistence()
       stopSessionPersistence()
+      stopGitWatcher()
     }
   }, [])
 

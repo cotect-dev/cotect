@@ -7,20 +7,32 @@ export interface PanelDefinition {
   id: string
   label: string
   defaultPosition: PanelPosition
+  fallbackPosition?: PanelPosition
 }
 
-export const PANEL_DEFINITIONS: PanelDefinition[] = [
-  { id: 'explorer', label: 'Explorer', defaultPosition: 'left' },
-  { id: 'chat', label: 'Chat', defaultPosition: 'right' },
-  { id: 'properties', label: 'Properties', defaultPosition: 'right' },
-  { id: 'console', label: 'Console', defaultPosition: 'bottom' },
-  { id: 'timeline', label: 'Timeline', defaultPosition: 'bottom' },
+export type PanelGroup = 'git' | 'tools'
+
+export const PANEL_DEFINITIONS: (PanelDefinition & { group: PanelGroup })[] = [
+  { id: 'changes', label: 'Changes', defaultPosition: 'left', group: 'git' },
+  { id: 'history', label: 'History', defaultPosition: 'left', group: 'git' },
+  { id: 'branches', label: 'Branches', defaultPosition: 'left', group: 'git' },
+  { id: 'chat', label: 'Chat', defaultPosition: 'right', group: 'tools' },
+  { id: 'console', label: 'Console', defaultPosition: 'bottom', fallbackPosition: 'right', group: 'tools' },
 ]
 
 const POSITIONS: PanelPosition[] = ['left', 'right', 'bottom']
 
 export function getPanelLabel(id: string): string {
   return PANEL_DEFINITIONS.find((d) => d.id === id)?.label ?? id
+}
+
+export function getEffectivePosition(panelId: string, isChildWindow: boolean): PanelPosition {
+  const def = PANEL_DEFINITIONS.find((d) => d.id === panelId)
+  if (!def) return 'left'
+  if (isChildWindow && def.defaultPosition === 'bottom' && def.fallbackPosition) {
+    return def.fallbackPosition
+  }
+  return def.defaultPosition
 }
 
 interface PanelLocation {
