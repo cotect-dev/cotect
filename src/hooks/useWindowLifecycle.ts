@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
-import { window as neuWindow } from '@neutralinojs/lib'
-import { getWindowId, onWindowClose, closeWindow, createWindow, killChildWindows, setWindowSizeConstraints, showWindow, isNeutralino } from '@/services/platform'
-import { broadcast, closeChannel, initChannel, onMessage } from '@/services/channel'
+import { getPlatform } from '@/services/platform'
 import { loadLayout, loadGeometry, loadSession, getChildWindowIds, removeLayout, startGeometryPersistence, stopGeometryPersistence, startSessionPersistence, stopSessionPersistence } from '@/services/windowManager'
 import { useBrowserStore } from '@/store/browser'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
-import { initAllSyncedStores, clearAllSyncedStores } from '@/store/synced'
+import { initAllSyncedStores, clearAllSyncedStores, stopAllSyncedStores } from '@/store/synced'
 
-const windowId = getWindowId()
+const platform = getPlatform()
+const windowId = platform.windows.getWindowId()
 const isMain = windowId === 'main'
 
 const DEFAULT_MAIN_LAYOUT = {
@@ -19,13 +18,12 @@ const DEFAULT_MAIN_LAYOUT = {
 export function useWindowLifecycle() {
   const [isReady, setIsReady] = useState(false)
 
-  // One-time channel + store init
+  // One-time store init
   useEffect(() => {
-    setWindowSizeConstraints(isMain ? 1280 : 400, isMain ? 720 : 300)
-    initChannel(windowId)
+    platform.windows.setMinSize(isMain ? 1280 : 400, isMain ? 720 : 300)
     if (isMain) clearAllSyncedStores()
     initAllSyncedStores()
-    return () => { closeChannel() }
+    return () => { stopAllSyncedStores() }
   }, [])
 
   // Async state restoration
@@ -35,7 +33,7 @@ export function useWindowLifecycle() {
     ;(async () => {
       const [saved, geo, childIds, session] = await Promise.all([
         loadLayout(windowId),
-        isNeutralino() ? loadGeometry(windowId) : null,
+        loadGeometry(windowId),
         isMain ? getChildWindowIds() : [],
         isMain ? loadSession() : null,
       ])
@@ -43,16 +41,16 @@ export function useWindowLifecycle() {
 
       startGeometryPersistence(windowId)
 
-      if (isNeutralino() && geo) {
-        await neuWindow.move(geo.x, geo.y).catch(() => {})
-        if (isMain) await neuWindow.setSize({ width: geo.width, height: geo.height }).catch(() => {})
-        if (geo.isMaximized) await neuWindow.maximize().catch(() => {})
+      if (geo) {
+        await platform.windows.move(geo.x, geo.y).catch(() => {})
+        if (isMain) await platform.windows.resize(geo.width, geo.height).catch(() => {})
+        if (geo.isMaximized) await platform.windows.maximize().catch(() => {})
       }
 
       loadLayoutIntoStore(saved ?? (isMain ? DEFAULT_MAIN_LAYOUT : { panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {} }))
       startLayoutPersistence(windowId)
 
-      if (isMain) showWindow()
+      if (isMain) platform.windows.show()
       const splash = document.getElementById('splash')
       if (splash) {
         splash.classList.add('hide')
@@ -63,7 +61,17 @@ export function useWindowLifecycle() {
         if (childIds.length > 0) {
           const geometries = await Promise.all(childIds.map((id) => loadGeometry(id)))
           if (cancelled) return
-          for (let i = 0; i < childIds.length; i++) createWindow(childIds[i], geometries[i])
+          for (let i = 0; i < childIds.length; i++) {
+            const geo = geometries[i]
+            await platform.windows.create(childIds[i], geo ? {
+              x: geo.x,
+              y: geo.y,
+              width: geo.width,
+              height: geo.height,
+            } : undefined).catch((err) => {
+              console.error('Failed to create window:', err)
+            })
+          }
         }
 
         if (session?.rootPath) {
@@ -74,16 +82,17 @@ export function useWindowLifecycle() {
               await useBrowserStore.getState().navigateTo(session.currentPath, session.viewMode)
             }
           } catch {
-            // Root path no longer exists — skip
+            // Root path no longer exists
           }
         }
         startSessionPersistence()
       }
 
+      // Broadcast window-opened
+      platform.ipc.emit('window-opened', { windowId }).catch(() => {})
+
       setIsReady(true)
     })()
-
-    void broadcast({ type: 'window-opened', windowId })
 
     return () => { cancelled = true }
   }, [])
@@ -91,21 +100,26 @@ export function useWindowLifecycle() {
   // Child window: close when main closes
   useEffect(() => {
     if (isMain) return
-    return onMessage((msg) => {
-      if (msg.type === 'window-closed' && msg.windowId === 'main') closeWindow()
+    return platform.ipc.listen('window-closed', (payload: unknown) => {
+      const { windowId: closedId } = payload as { windowId: string }
+      if (closedId === 'main') platform.windows.close()
     })
   }, [])
 
   // Window close handler
   useEffect(() => {
-    return onWindowClose(() => {
+    return platform.windows.onClose(() => {
       stopLayoutPersistence()
       stopGeometryPersistence()
       stopSessionPersistence()
+      stopAllSyncedStores()
       if (!isMain) removeLayout(windowId)
-      if (isMain) killChildWindows()
-      closeChannel()
-      closeWindow()
+      platform.ipc.emit('window-closed', { windowId }).catch(() => {})
+      if (isMain) {
+        platform.windows.closeAll()
+      } else {
+        platform.windows.close()
+      }
     })
   }, [])
 
