@@ -89,21 +89,18 @@ export const tauriPlatform: Platform = {
     },
 
     onClose(callback) {
-      let unlisten: UnlistenFn | null = null
-      // onCloseRequested fires when user clicks X — run cleanup, then let close proceed
-      getCurrentWebviewWindow().onCloseRequested(async () => {
-        callback()
-      }).then((fn) => { unlisten = fn })
+      // Use beforeunload — works in Tauri webview and doesn't block the native close
+      const handler = () => { callback() }
+      window.addEventListener('beforeunload', handler)
 
-      // close-all fires when main window is closing — run cleanup then force-close this window
+      // close-all fires when main window is closing — close child windows
       let unlistenAll: UnlistenFn | null = null
       listen('app-close-all', () => {
-        callback()
-        getCurrentWebviewWindow().destroy()
+        getCurrentWebviewWindow().close()
       }).then((fn) => { unlistenAll = fn })
 
       return () => {
-        unlisten?.()
+        window.removeEventListener('beforeunload', handler)
         unlistenAll?.()
       }
     },
