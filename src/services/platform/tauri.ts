@@ -19,6 +19,8 @@ function getWindowId(): string {
   return params.get('window') ?? 'main'
 }
 
+const currentWindow = getCurrentWebviewWindow()
+
 let _isWayland: boolean | null = null
 
 export const tauriPlatform: Platform = {
@@ -53,36 +55,36 @@ export const tauriPlatform: Platform = {
     },
 
     async getPosition() {
-      const pos = await getCurrentWebviewWindow().outerPosition()
+      const pos = await currentWindow.outerPosition()
       return { x: pos.x, y: pos.y }
     },
 
     async getSize() {
-      const size = await getCurrentWebviewWindow().outerSize()
+      const size = await currentWindow.outerSize()
       return { width: size.width, height: size.height }
     },
 
     async move(x, y) {
       const { PhysicalPosition } = await import('@tauri-apps/api/dpi')
-      await getCurrentWebviewWindow().setPosition(new PhysicalPosition(x, y))
+      await currentWindow.setPosition(new PhysicalPosition(x, y))
     },
 
     async resize(width, height) {
       const { PhysicalSize } = await import('@tauri-apps/api/dpi')
-      await getCurrentWebviewWindow().setSize(new PhysicalSize(width, height))
+      await currentWindow.setSize(new PhysicalSize(width, height))
     },
 
     async setMinSize(width, height) {
       const { PhysicalSize } = await import('@tauri-apps/api/dpi')
-      await getCurrentWebviewWindow().setMinSize(new PhysicalSize(width, height))
+      await currentWindow.setMinSize(new PhysicalSize(width, height))
     },
 
     async maximize() {
-      await getCurrentWebviewWindow().maximize()
+      await currentWindow.maximize()
     },
 
     async isMaximized() {
-      return getCurrentWebviewWindow().isMaximized()
+      return currentWindow.isMaximized()
     },
 
     async getCursorWindow(): Promise<CursorWindowInfo | null> {
@@ -101,12 +103,24 @@ export const tauriPlatform: Platform = {
       return invoke<MonitorInfo[]>('get_monitors')
     },
 
+    async onMoved(callback) {
+      return currentWindow.onMoved(({ payload }) => {
+        callback({ x: payload.x, y: payload.y })
+      })
+    },
+
+    async onResized(callback) {
+      return currentWindow.onResized(({ payload }) => {
+        callback({ width: payload.width, height: payload.height })
+      })
+    },
+
     async show() {
-      await getCurrentWebviewWindow().show()
+      await currentWindow.show()
     },
 
     async close() {
-      await getCurrentWebviewWindow().close()
+      await currentWindow.close()
     },
 
     async closeAll() {
@@ -114,14 +128,12 @@ export const tauriPlatform: Platform = {
     },
 
     onClose(callback) {
-      // Use beforeunload — works in Tauri webview and doesn't block the native close
       const handler = () => { callback() }
       window.addEventListener('beforeunload', handler)
 
-      // close-all fires when main window is closing — close child windows
       let unlistenAll: UnlistenFn | null = null
       listen('app-close-all', () => {
-        getCurrentWebviewWindow().close()
+        currentWindow.close()
       }).then((fn) => { unlistenAll = fn })
 
       return () => {

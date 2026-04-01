@@ -8,7 +8,6 @@ interface TargetModeProps extends BaseProps {
   mode: 'target';
   targetRef: React.RefObject<HTMLDivElement | null>;
   containerRef: React.RefObject<HTMLDivElement | null>;
-  /** -1 = shrink target when pointer moves positive, 1 = grow target */
   direction?: 1 | -1;
   min: number;
   max: number;
@@ -76,8 +75,6 @@ export default function ResizeHandle(props: ResizeHandleProps) {
           const finalSize = isVert ? target.offsetWidth : target.offsetHeight;
           onResizeEnd(finalSize / containerSize);
 
-          // React re-render will overwrite flexBasis with the new percentage.
-          // Just restore transition.
           target.style.transition = '';
         };
       } else {

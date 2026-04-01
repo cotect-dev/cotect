@@ -30,12 +30,9 @@ export interface PersistedSession {
   viewMode: 'directory' | 'file'
 }
 
-// --- Window discovery ---
-
 export async function getChildWindowIds(): Promise<string[]> {
   const platform = getPlatform()
-  // Use the child list saved by the Rust side on shutdown (synchronous,
-  // reliable). Falls back to scanning layout keys for first run / migration.
+  // Falls back to scanning layout keys for first run / migration.
   const ids = await platform.storage.get<string[]>('wm-children')
   if (ids) return ids
 
@@ -44,8 +41,6 @@ export async function getChildWindowIds(): Promise<string[]> {
     .map((k) => k.slice('wm-layout-'.length))
     .filter((id) => id !== 'main')
 }
-
-// --- Layout persistence ---
 
 export function saveLayout(windowId: string, layout: PersistedLayout): void {
   getPlatform().storage.setSync(`wm-layout-${windowId}`, layout)
@@ -62,8 +57,6 @@ export function removeLayout(windowId: string): void {
   platform.storage.removeSync(`wm-geometry-${windowId}`)
 }
 
-// --- Zone sizes ---
-
 export function saveZoneSizes(windowId: string, sizes: PersistedZoneSizes): void {
   getPlatform().storage.setSync(`wm-zones-${windowId}`, sizes)
 }
@@ -71,8 +64,6 @@ export function saveZoneSizes(windowId: string, sizes: PersistedZoneSizes): void
 export async function loadZoneSizes(windowId: string): Promise<PersistedZoneSizes | null> {
   return getPlatform().storage.get<PersistedZoneSizes>(`wm-zones-${windowId}`)
 }
-
-// --- Geometry ---
 
 export function saveGeometry(windowId: string, geometry: PersistedGeometry): void {
   getPlatform().storage.setSync(`wm-geometry-${windowId}`, geometry)
@@ -82,8 +73,6 @@ export async function loadGeometry(windowId: string): Promise<PersistedGeometry 
   return getPlatform().storage.get<PersistedGeometry>(`wm-geometry-${windowId}`)
 }
 
-// --- Session ---
-
 export function saveSession(session: PersistedSession): void {
   getPlatform().storage.setSync('wm-session-main', session)
 }
@@ -92,41 +81,20 @@ export async function loadSession(): Promise<PersistedSession | null> {
   return getPlatform().storage.get<PersistedSession>('wm-session-main')
 }
 
-// --- Polling persisters ---
-
-interface Persister {
-  start(): void
-  stop(): void
-}
-
-function createPollingPersister(intervalMs: number, pollFn: () => Promise<void>): Persister {
-  let timer: ReturnType<typeof setInterval> | null = null
-  return {
-    start() {
-      if (timer) return
-      timer = setInterval(() => { pollFn().catch(() => {}) }, intervalMs)
-    },
-    stop() {
-      if (timer) {
-        clearInterval(timer)
-        timer = null
-      }
-    },
-  }
-}
-
-let geometryPersister: Persister | null = null
+let geometryCleanup: (() => void) | null = null
 
 export async function startGeometryPersistence(windowId: string): Promise<void> {
-  geometryPersister?.stop()
+  stopGeometryPersistence()
 
   const platform = getPlatform()
   const isWayland = await platform.isWayland()
 
+  let pos = await platform.windows.getPosition()
+  let size = await platform.windows.getSize()
   let lastJson = ''
-  geometryPersister = createPollingPersister(2000, async () => {
-    const pos = await platform.windows.getPosition()
-    const size = await platform.windows.getSize()
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  const persist = async () => {
     const maximized = await platform.windows.isMaximized()
 
     let monitorInfo: WindowMonitorInfo | undefined
@@ -147,13 +115,38 @@ export async function startGeometryPersistence(windowId: string): Promise<void> 
       lastJson = json
       saveGeometry(windowId, geometry)
     }
+  }
+
+  const schedulePersist = () => {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => { persist().catch(() => {}) }, 300)
+  }
+
+  persist().catch(() => {})
+
+  const cleanups: (() => void)[] = []
+
+  const unlistenMove = await platform.windows.onMoved((p) => {
+    pos = p
+    schedulePersist()
   })
-  geometryPersister.start()
+  cleanups.push(unlistenMove)
+
+  const unlistenResize = await platform.windows.onResized((s) => {
+    size = s
+    schedulePersist()
+  })
+  cleanups.push(unlistenResize)
+
+  geometryCleanup = () => {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    for (const fn of cleanups) fn()
+  }
 }
 
 export function stopGeometryPersistence(): void {
-  geometryPersister?.stop()
-  geometryPersister = null
+  geometryCleanup?.()
+  geometryCleanup = null
 }
 
 let sessionPersister: (() => void) | null = null

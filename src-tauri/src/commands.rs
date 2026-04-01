@@ -56,13 +56,63 @@ pub fn is_wayland() -> bool {
         && std::env::var("XDG_SESSION_TYPE").map_or(false, |v| v == "wayland")
 }
 
-// ---------------------------------------------------------------------------
-// GDK-based cursor and monitor tracking (works on both X11 and Wayland)
-// ---------------------------------------------------------------------------
+use gdk::prelude::*;
+use gtk::prelude::{GtkWindowExt, WidgetExt};
 
-/// Returns (window_label, local_x, local_y) for the Tauri window the cursor
-/// is currently over, or None if the cursor is outside all app windows.
-/// Uses GDK's pointer tracking which works on Wayland (surface-local coords).
+fn find_gtk_window_by_title(
+    tauri_windows: &std::collections::HashMap<String, tauri::WebviewWindow>,
+    target_title: &str,
+) -> Option<gtk::Window> {
+    for widget in gtk::Window::list_toplevels() {
+        let gtk_win: gtk::Window = match widget.downcast() {
+            Ok(w) => w,
+            Err(_) => continue,
+        };
+        let Some(gtk_title) = gtk_win.title() else {
+            continue;
+        };
+        if gtk_title == target_title {
+            let is_ours = tauri_windows
+                .values()
+                .any(|tw| tw.title().map_or(false, |t| t == target_title));
+            if is_ours {
+                return Some(gtk_win);
+            }
+        }
+    }
+    None
+}
+
+fn with_matching_gtk_windows<T>(
+    app: &tauri::AppHandle,
+    mut f: impl FnMut(&gtk::Window, &gdk::Window, &str) -> Option<T>,
+) -> Option<T> {
+    let tauri_windows = app.webview_windows();
+    for widget in gtk::Window::list_toplevels() {
+        let gtk_win: gtk::Window = match widget.downcast() {
+            Ok(w) => w,
+            Err(_) => continue,
+        };
+        let Some(gdk_win) = gtk_win.window() else {
+            continue;
+        };
+        let Some(gtk_title) = gtk_win.title() else {
+            continue;
+        };
+
+        for (label, tauri_win) in &tauri_windows {
+            if let Ok(tauri_title) = tauri_win.title() {
+                if gtk_title == tauri_title {
+                    if let Some(result) = f(&gtk_win, &gdk_win, label) {
+                        return Some(result);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 #[derive(Serialize)]
 pub struct CursorWindowInfo {
     pub label: String,
@@ -72,67 +122,36 @@ pub struct CursorWindowInfo {
 
 #[tauri::command]
 pub fn get_cursor_window(app: tauri::AppHandle) -> Option<CursorWindowInfo> {
-    use gdk::prelude::*;
-    use gtk::prelude::{GtkWindowExt, WidgetExt};
-
     let display = gdk::Display::default()?;
     let seat = display.default_seat()?;
     let pointer = seat.pointer()?;
 
-    // window_at_position returns the deepest GdkWindow under the cursor + local coords
     let (gdk_win, child_x, child_y) = pointer.window_at_position();
     let gdk_win = gdk_win?;
-
-    // Translate from the deepest child up to root coords, then back to
-    // each toplevel to find which window the cursor is in.
     let (root_x, root_y) = gdk_win.root_coords(child_x, child_y);
 
-    // Build a map of Tauri window labels to titles for matching
-    let tauri_windows = app.webview_windows();
-
-    // Check each GTK toplevel
-    for widget in gtk::Window::list_toplevels() {
-        let gtk_win: gtk::Window = match widget.downcast() {
-            Ok(w) => w,
-            Err(_) => continue,
-        };
-        let Some(gw) = gtk_win.window() else { continue };
-        let Some(gtk_title) = gtk_win.title() else {
-            continue;
-        };
-
-        // Translate root coords to this window's local coords
+    with_matching_gtk_windows(&app, |_gtk_win, gw, label| {
         let (win_origin_x, win_origin_y) = gw.root_coords(0, 0);
         let local_x = root_x - win_origin_x;
         let local_y = root_y - win_origin_y;
 
         let (_, _, geo_w, geo_h) = gw.geometry();
         if local_x < 0 || local_y < 0 || local_x >= geo_w || local_y >= geo_h {
-            continue;
+            return None;
         }
 
-        // Match to a Tauri window by title
-        for (label, tauri_win) in &tauri_windows {
-            if let Ok(tauri_title) = tauri_win.title() {
-                if gtk_title == tauri_title {
-                    return Some(CursorWindowInfo {
-                        label: label.clone(),
-                        x: local_x as f64,
-                        y: local_y as f64,
-                    });
-                }
-            }
-        }
-    }
-    None
+        Some(CursorWindowInfo {
+            label: label.to_string(),
+            x: local_x as f64,
+            y: local_y as f64,
+        })
+    })
 }
 
-/// Returns the monitor name/connector for the monitor a given window is on.
 #[derive(Serialize)]
 pub struct WindowMonitorInfo {
     pub monitor_model: Option<String>,
     pub monitor_manufacturer: Option<String>,
-    /// Monitor geometry in GDK coords (logical)
     pub monitor_x: i32,
     pub monitor_y: i32,
     pub monitor_width: i32,
@@ -142,50 +161,30 @@ pub struct WindowMonitorInfo {
 
 #[tauri::command]
 pub fn get_window_monitor(app: tauri::AppHandle, label: String) -> Option<WindowMonitorInfo> {
-    use gdk::prelude::*;
-    use gtk::prelude::{GtkWindowExt, WidgetExt};
-
     let display = gdk::Display::default()?;
     let tauri_win = app.webview_windows().get(&label)?.clone();
     let tauri_title = tauri_win.title().ok()?;
 
-    for widget in gtk::Window::list_toplevels() {
-        let gtk_win: gtk::Window = match widget.downcast() {
-            Ok(w) => w,
-            Err(_) => continue,
-        };
-        let Some(gtk_title) = gtk_win.title() else {
-            continue;
-        };
-        if gtk_title != tauri_title {
-            continue;
-        }
-        let Some(gdk_win) = gtk_win.window() else {
-            continue;
-        };
+    let tauri_windows = app.webview_windows();
+    let gtk_win = find_gtk_window_by_title(&tauri_windows, &tauri_title)?;
+    let gdk_win = gtk_win.window()?;
 
-        let monitor = display.monitor_at_window(&gdk_win)?;
-        let geo = monitor.geometry();
-        return Some(WindowMonitorInfo {
-            monitor_model: monitor.model().map(|s| s.to_string()),
-            monitor_manufacturer: monitor.manufacturer().map(|s| s.to_string()),
-            monitor_x: geo.x(),
-            monitor_y: geo.y(),
-            monitor_width: geo.width(),
-            monitor_height: geo.height(),
-            scale_factor: monitor.scale_factor(),
-        });
-    }
-    None
+    let monitor = display.monitor_at_window(&gdk_win)?;
+    let geo = monitor.geometry();
+
+    Some(WindowMonitorInfo {
+        monitor_model: monitor.model().map(|s| s.to_string()),
+        monitor_manufacturer: monitor.manufacturer().map(|s| s.to_string()),
+        monitor_x: geo.x(),
+        monitor_y: geo.y(),
+        monitor_width: geo.width(),
+        monitor_height: geo.height(),
+        scale_factor: monitor.scale_factor(),
+    })
 }
 
-/// Places the current window on a specific monitor by its index.
-/// Returns true if successful.
 #[tauri::command]
 pub fn set_window_on_monitor(app: tauri::AppHandle, label: String, monitor_index: i32) -> bool {
-    use gdk::prelude::*;
-    use gtk::prelude::GtkWindowExt;
-
     let display = match gdk::Display::default() {
         Some(d) => d,
         None => return false,
@@ -204,38 +203,27 @@ pub fn set_window_on_monitor(app: tauri::AppHandle, label: String, monitor_index
         return false;
     };
 
-    let Ok(tauri_title) = tauri_win.title() else {
+    let tauri_title = match tauri_win.title() {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+
+    let Some(gtk_win) = find_gtk_window_by_title(&tauri_windows, &tauri_title) else {
         return false;
     };
 
-    for widget in gtk::Window::list_toplevels() {
-        let gtk_win: gtk::Window = match widget.downcast() {
-            Ok(w) => w,
-            Err(_) => continue,
-        };
+    let size = gtk_win.size();
+    let win_width = size.0 / scale;
+    let win_height = size.1 / scale;
 
-        let Some(gtk_title) = gtk_win.title() else {
-            continue;
-        };
+    let x = geo.x() + (geo.width() - win_width) / 2;
+    let y = geo.y() + (geo.height() - win_height) / 2;
 
-        if gtk_title != tauri_title {
-            continue;
-        }
+    let _ = tauri_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+        x, y,
+    )));
 
-        let size = gtk_win.size();
-        let win_width = size.0 / scale;
-        let win_height = size.1 / scale;
-
-        let x = geo.x() + (geo.width() - win_width) / 2;
-        let y = geo.y() + (geo.height() - win_height) / 2;
-
-        let _ = tauri_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-            x, y,
-        )));
-
-        return true;
-    }
-    false
+    true
 }
 
 #[derive(Serialize)]
@@ -252,20 +240,17 @@ pub struct MonitorInfo {
 
 #[tauri::command]
 pub fn get_monitors() -> Vec<MonitorInfo> {
-    use gdk::prelude::*;
-
     let display = match gdk::Display::default() {
         Some(d) => d,
         None => return vec![],
     };
 
-    let mut monitors = Vec::new();
     let n = display.n_monitors();
-
-    for i in 0..n {
-        if let Some(monitor) = display.monitor(i) {
+    (0..n)
+        .filter_map(|i| {
+            let monitor = display.monitor(i)?;
             let geo = monitor.geometry();
-            monitors.push(MonitorInfo {
+            Some(MonitorInfo {
                 index: i,
                 model: monitor.model().map(|s| s.to_string()),
                 manufacturer: monitor.manufacturer().map(|s| s.to_string()),
@@ -274,9 +259,7 @@ pub fn get_monitors() -> Vec<MonitorInfo> {
                 width: geo.width(),
                 height: geo.height(),
                 scale_factor: monitor.scale_factor(),
-            });
-        }
-    }
-
-    monitors
+            })
+        })
+        .collect()
 }
