@@ -105,7 +105,7 @@ export function useWindowLifecycle() {
     })
   }, [])
 
-  // Window close handler
+  // Window close handler — runs cleanup only; Tauri handles the actual close
   useEffect(() => {
     return platform.windows.onClose(() => {
       stopLayoutPersistence()
@@ -114,11 +114,6 @@ export function useWindowLifecycle() {
       stopAllSyncedStores()
       if (!isMain) removeLayout(windowId)
       platform.ipc.emit('window-closed', { windowId }).catch(() => {})
-      if (isMain) {
-        platform.windows.closeAll()
-      } else {
-        platform.windows.close()
-      }
     })
   }, [])
 

@@ -86,18 +86,20 @@ export const tauriPlatform: Platform = {
 
     async closeAll() {
       await emit('app-close-all', {})
-      await getCurrentWebviewWindow().close()
     },
 
     onClose(callback) {
       let unlisten: UnlistenFn | null = null
+      // onCloseRequested fires when user clicks X — run cleanup, then let close proceed
       getCurrentWebviewWindow().onCloseRequested(async () => {
         callback()
       }).then((fn) => { unlisten = fn })
 
+      // close-all fires when main window is closing — run cleanup then force-close this window
       let unlistenAll: UnlistenFn | null = null
       listen('app-close-all', () => {
         callback()
+        getCurrentWebviewWindow().destroy()
       }).then((fn) => { unlistenAll = fn })
 
       return () => {
