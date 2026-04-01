@@ -34,15 +34,13 @@ export default function DropZone({
 
   const isVertical = position === 'left' || position === 'right';
 
-  // Filter out the dragged group/tab to build visible list
   const visibleGroups: string[][] = [];
   const visibleSizes: number[] = [];
   for (let i = 0; i < groups.length; i++) {
     if (isGroupDrag && activePanelId && groups[i][0] === activePanelId) {
-      continue; // Skip entire group being dragged
+      continue;
     }
     if (!isGroupDrag && activePanelId && groups[i].includes(activePanelId)) {
-      // Single tab drag: if group has other tabs, keep it (minus the dragged tab)
       const remaining = groups[i].filter(id => id !== activePanelId);
       if (remaining.length > 0) {
         visibleGroups.push(remaining);
@@ -56,14 +54,12 @@ export default function DropZone({
 
   const showGhost = previewIndex !== null && neighborIndex !== null && !!activePanelId && !tabIntoGroupKey;
 
-  // Detect no-op
   const originalIndex = activePanelId
     ? groups.findIndex((g) => isGroupDrag ? g[0] === activePanelId : g.includes(activePanelId))
     : -1;
   const isSourceZone = originalIndex >= 0;
   const isNoOp = showGhost && isSourceZone && previewIndex === originalIndex;
 
-  // Build item list
   const items: { type: 'group' | 'ghost'; group: string[]; size: number }[] = [];
 
   if (showGhost) {
@@ -105,7 +101,6 @@ export default function DropZone({
     }
   }
 
-  // Normalize
   const rawTotal = items.reduce((a, b) => a + b.size, 0);
   if (rawTotal > 0 && rawTotal !== 1) {
     for (const item of items) {
@@ -172,7 +167,6 @@ export default function DropZone({
 
         if (item.type === 'group') {
           const isTabTarget = tabIntoGroupKey === itemKey;
-          // Build the ghost tab label from the dragged panel(s)
           const ghostLabel = isTabTarget && activePanelId
             ? (isGroupDrag && activePanelIds
                 ? activePanelIds.map(getPanelLabel).join(' / ')

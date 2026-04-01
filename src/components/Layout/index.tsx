@@ -13,7 +13,6 @@ import CrossWindowDropOverlay from './CrossWindowDropOverlay'
 import { MIN_SIDE_ZONE, MIN_BOTTOM_ZONE } from '@/lib/constants'
 
 interface LayoutProps {
-  /** 'main' = 3-zone layout (left/right/bottom) with canvas gap. 'panel' = 2-zone (left/right) filling the space. */
   mode?: 'main' | 'panel'
 }
 
@@ -37,14 +36,12 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
   const windowId = getPlatform().windows.getWindowId()
   const [zoneSizes, setZoneSizes] = useState({ left: 0.2, right: 0.2, bottom: 0.25 })
 
-  // Load persisted zone sizes
   useEffect(() => {
     loadZoneSizes(windowId).then((saved) => {
       if (saved) setZoneSizes(saved)
     })
   }, [windowId])
 
-  // Auto-save zone sizes (debounced)
   useEffect(() => {
     const timer = setTimeout(() => {
       saveZoneSizes(windowId, zoneSizes)
@@ -70,7 +67,6 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
 
   const crossWindowDrag = useLayoutStore((s) => s.crossWindowDrag)
 
-  // Merge local drag with cross-window drag for unified DropZone props
   const activeDrag = dragState ?? (crossWindowDrag ? {
     panelId: crossWindowDrag.panelIds[0],
     panelIds: crossWindowDrag.panelIds,
@@ -125,7 +121,6 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
           {isZoneEmpty('right') && <EdgeDropTarget position="right" panelMode={isPanel} />}
           {!isPanel && isZoneEmpty('bottom') && <EdgeDropTarget position="bottom" />}
 
-          {/* Top section: left | canvas | right */}
           <div ref={topRowRef} className="flex-1 min-h-0 flex flex-row">
             <div
               ref={(el) => { zoneRefs.current.left = el; leftZoneRef.current = el }}

@@ -8,19 +8,16 @@ export interface WindowBounds {
   bottom: number
 }
 
-const POLL_INTERVAL = 500
-
 export function useWindowBounds() {
   const platform = getPlatform()
   const boundsRef = useRef<WindowBounds>({ left: 0, top: 0, right: 0, bottom: 0 })
 
   useEffect(() => {
-    const update = async () => {
-      const pos = await platform.windows.getPosition()
-      const size = await platform.windows.getSize()
-      // Convert physical pixels to CSS pixels so bounds are in the same
-      // coordinate system as clientX/clientY and getBoundingClientRect().
-      // This is critical for multi-monitor setups with mixed DPI scaling.
+    let pos = { x: 0, y: 0 }
+    let size = { width: 0, height: 0 }
+
+    const recompute = () => {
+      // Physical pixels -> CSS pixels (same coordinate system as clientX/clientY)
       const dpr = window.devicePixelRatio || 1
       boundsRef.current = {
         left: pos.x / dpr,
@@ -29,9 +26,31 @@ export function useWindowBounds() {
         bottom: (pos.y + size.height) / dpr,
       }
     }
-    update()
-    const timer = setInterval(update, POLL_INTERVAL)
-    return () => clearInterval(timer)
+
+    Promise.all([
+      platform.windows.getPosition(),
+      platform.windows.getSize(),
+    ]).then(([p, s]) => {
+      pos = p
+      size = s
+      recompute()
+    })
+
+    const cleanups: (() => void)[] = []
+
+    platform.windows.onMoved((p) => {
+      pos = p
+      recompute()
+    }).then((unlisten) => cleanups.push(unlisten))
+
+    platform.windows.onResized((s) => {
+      size = s
+      recompute()
+    }).then((unlisten) => cleanups.push(unlisten))
+
+    return () => {
+      for (const fn of cleanups) fn()
+    }
   }, [platform])
 
   return boundsRef

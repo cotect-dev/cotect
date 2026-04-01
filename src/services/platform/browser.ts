@@ -1,4 +1,4 @@
-import type { Platform, FSEntry } from './types'
+import type { Platform, FSEntry, CursorWindowInfo, WindowMonitorInfo, MonitorInfo } from './types'
 
 const LS_PREFIX = 'cotect:'
 
@@ -50,21 +50,41 @@ export const browserPlatform: Platform = {
       window.resizeTo(width, height)
     },
 
-    async setMinSize() {
-      // Not supported in browser
-    },
+    async setMinSize() {},
 
-    async maximize() {
-      // Not supported in browser
-    },
+    async maximize() {},
 
     async isMaximized() {
       return false
     },
 
-    async show() {
-      // Window is already visible in browser
+    async getCursorWindow(): Promise<CursorWindowInfo | null> {
+      return null
     },
+
+    async getWindowMonitor(): Promise<WindowMonitorInfo | null> {
+      return null
+    },
+
+    async setWindowOnMonitor(): Promise<boolean> {
+      return false
+    },
+
+    async getMonitors(): Promise<MonitorInfo[]> {
+      return []
+    },
+
+    async onMoved(_callback) {
+      return () => {}
+    },
+
+    async onResized(callback) {
+      const handler = () => { callback({ width: window.outerWidth, height: window.outerHeight }) }
+      window.addEventListener('resize', handler)
+      return () => window.removeEventListener('resize', handler)
+    },
+
+    async show() {},
 
     async close() {
       window.close()

@@ -1,13 +1,11 @@
 import { memo, useState, useMemo, lazy, Suspense } from 'react'
 import type { Message } from '@/store/chat'
 
-// Lazy-load heavy markdown dependencies — they're only needed after streaming completes
 const ReactMarkdown = lazy(() => import('react-markdown'))
 const remarkGfmModule = import('remark-gfm')
 const syntaxHighlighterModule = import('react-syntax-highlighter/dist/esm/styles/prism')
 const prismModule = import('react-syntax-highlighter')
 
-// Cache resolved modules
 let _remarkGfm: typeof import('remark-gfm').default | null = null
 let _oneDark: Record<string, React.CSSProperties> | null = null
 let _SyntaxHighlighter: typeof import('react-syntax-highlighter').Prism | null = null
@@ -62,7 +60,6 @@ function Markdown({ text, className = '' }: { text: string; className?: string }
   )
 }
 
-/** Lightweight plain-text renderer used during streaming instead of full Markdown parsing */
 function StreamingText({ text }: { text: string }) {
   return (
     <div className="prose dark:prose-invert prose-sm max-w-none break-words [&_p]:my-1">

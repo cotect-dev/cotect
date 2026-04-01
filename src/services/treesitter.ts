@@ -23,7 +23,6 @@ let parserPromise: Promise<Parser> | null = null
 const languageCache = new Map<string, Language>()
 const queryCache = new Map<string, Query>()
 
-// Mutex to serialize setLanguage + parse (parser is single-threaded)
 let parseLock: Promise<void> = Promise.resolve()
 
 function withParseLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -84,7 +83,6 @@ export async function analyzeFile(filePath: string, content: string): Promise<Fi
     const tree = parser.parse(content)
     if (!tree) return { declarations: [], imports: [] }
 
-    // Extract declarations (queries are cached and reused across calls)
     const declQuery = getQuery(language, config.declarationQuery)
     const declMatches = declQuery.matches(tree.rootNode)
     const declarations: Declaration[] = []
@@ -134,7 +132,6 @@ export async function analyzeFile(filePath: string, content: string): Promise<Fi
       }
     }
 
-    // Extract imports
     const importQuery = getQuery(language, config.importQuery)
     const importMatches = importQuery.matches(tree.rootNode)
     const imports: ImportInfo[] = []

@@ -1,4 +1,4 @@
-import { createSyncedStore } from './synced'
+import { create } from 'zustand'
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug'
 
@@ -20,18 +20,15 @@ interface ConsoleState {
 const MAX_ENTRIES = 1000
 let nextId = 0
 
-export const useConsoleStore = createSyncedStore<ConsoleState>('console', (set) => ({
+export const useConsoleStore = create<ConsoleState>((set) => ({
   entries: [],
   filter: null,
   log: (level, message) =>
     set((state) => {
       const entry = { id: String(nextId++), level, message, timestamp: Date.now() }
-      // When under limit, push to existing array and return a new reference.
-      // When at limit, slice off the oldest — this is the rare path.
       if (state.entries.length < MAX_ENTRIES) {
         return { entries: [...state.entries, entry] }
       }
-      // Drop oldest entries to stay at limit
       const trimmed = state.entries.slice(-(MAX_ENTRIES - 1))
       trimmed.push(entry)
       return { entries: trimmed }
@@ -40,7 +37,6 @@ export const useConsoleStore = createSyncedStore<ConsoleState>('console', (set) 
   setFilter: (filter) => set({ filter }),
 }))
 
-// Intercept native console methods
 const originalConsole = {
   log: console.log.bind(console),
   warn: console.warn.bind(console),
