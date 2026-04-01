@@ -7,7 +7,6 @@ export function layoutTree<T extends Node>(
 ): { nodes: T[]; edges: Edge[] } {
   if (nodes.length === 0) return { nodes, edges }
 
-  // Build adjacency from edges (source -> targets)
   const children = new Map<string, string[]>()
   const hasParent = new Set<string>()
 
@@ -18,15 +17,12 @@ export function layoutTree<T extends Node>(
     hasParent.add(edge.target)
   }
 
-  // Roots: nodes without parents
   const roots = nodes.filter((n) => !hasParent.has(n.id))
-  // Standalone nodes (no edges): lay out in grid
   const inEdge = new Set([...hasParent, ...children.keys()])
   const standalone = nodes.filter((n) => !inEdge.has(n.id))
 
   const positioned = new Map<string, { x: number; y: number }>()
 
-  // Position a subtree, returns its width
   function positionSubtree(nodeId: string, x: number, y: number): number {
     const kids = children.get(nodeId) || []
     if (kids.length === 0) {
@@ -45,14 +41,12 @@ export function layoutTree<T extends Node>(
     return subtreeWidth
   }
 
-  // Position root trees
   let offsetX = 0
   for (const root of roots.filter((r) => !standalone.includes(r))) {
     const width = positionSubtree(root.id, offsetX, 0)
     offsetX += width + NODE_H_GAP * 2
   }
 
-  // Position standalone nodes in a grid
   const cols = Math.max(1, Math.ceil(Math.sqrt(standalone.length)))
   standalone.forEach((node, i) => {
     const col = i % cols

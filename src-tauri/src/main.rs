@@ -5,10 +5,8 @@ mod commands;
 use std::fs;
 use tauri::Manager;
 
-/// Before exiting, persist the list of alive child windows directly to the
-/// store file. This must be synchronous because `process::exit` follows
-/// immediately — JS-side `beforeunload` cleanup is fire-and-forget async
-/// and races against the exit.
+/// Synchronously persist the alive child window list before exit —
+/// JS-side beforeunload races against process::exit.
 fn save_child_window_list(window: &tauri::Window) {
     let children: Vec<String> = window
         .app_handle()
@@ -28,7 +26,6 @@ fn save_child_window_list(window: &tauri::Window) {
     };
     if let Some(obj) = json.as_object_mut() {
         obj.insert("wm-children".into(), serde_json::json!(children));
-        // Also remove storage entries for windows that no longer exist
         let stale_keys: Vec<String> = obj
             .keys()
             .filter(|k| {

@@ -59,8 +59,6 @@ export const useChatStore = createSyncedStore<ChatState>('chat', (set) => ({
   }),
 })
 
-// --- Helpers ---
-
 const API_BASE = '/llm/v1'
 
 function countWords(text: string): number {
@@ -158,8 +156,6 @@ function processStreamChunk(acc: StreamAccumulator, text: string, reasoning: str
   acc.rawStream = ''
 }
 
-// --- Main send function ---
-
 export async function sendMessage(content: string) {
   const { addMessage, setAbortController, setGenerating, updateMessage } = useChatStore.getState()
   if (useChatStore.getState().isGenerating) return
@@ -178,7 +174,6 @@ export async function sendMessage(content: string) {
   const { thinkingEnabled, messages } = useChatStore.getState()
   const model: ModelId = thinkingEnabled ? 'qwen3.5-think' : 'qwen3.5-no-think'
 
-  // RAF-based batching
   let rafId: number | null = null
   let dirty = false
 
@@ -236,9 +231,7 @@ export async function sendMessage(content: string) {
           processStreamChunk(acc, delta.content || '', delta.reasoning_content || '')
           dirty = true
           scheduleFlush()
-        } catch {
-          // skip malformed chunks
-        }
+        } catch {}
       }
     }
   } catch (err) {

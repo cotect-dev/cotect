@@ -29,8 +29,6 @@ interface BrowserState {
   generateNodes: () => { nodes: AppNode[]; edges: Edge[] }
 }
 
-// --- Helpers ---
-
 const IMPORT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx']
 
 function resolveImportCandidates(basePath: string): string[] {
@@ -110,8 +108,6 @@ function generateFileNodes(
   return layoutTree(nodes, edges)
 }
 
-// --- Store ---
-
 export const useBrowserStore = create<BrowserState>((set, get) => ({
   rootPath: '',
   currentPath: '',
@@ -146,7 +142,6 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       const analysis = await analyzeFile(path, content)
       const dirFileSet = new Set(dirEntries.filter((e) => !e.isDirectory).map((e) => e.path))
 
-      // Resolve imports to sibling files
       const importJobs: { resolvedFile: string }[] = []
       for (const imp of analysis.imports) {
         if (!imp.resolvedPath) continue
@@ -154,7 +149,6 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
         if (match) importJobs.push({ resolvedFile: match })
       }
 
-      // Analyze siblings in parallel
       const siblingAnalyses = new Map<string, FileAnalysis>()
       const results = await Promise.allSettled(
         importJobs.map(async ({ resolvedFile }) => {

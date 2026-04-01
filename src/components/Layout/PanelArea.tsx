@@ -72,7 +72,6 @@ export default function PanelArea({ group, position, groupIndex, ghostTabLabel }
   const setActiveTab = useLayoutStore((s) => s.setActiveTab);
   const activeIndex = Math.min(activeTabIndex, group.length - 1);
 
-  // Draggable for the entire group (drag from empty header space)
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `group-${group[0]}`,
     data: { panelId: group[0], panelIds: group, position, isGroup: true, groupIndex },

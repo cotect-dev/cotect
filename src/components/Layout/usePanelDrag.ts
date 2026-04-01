@@ -112,7 +112,6 @@ export function usePanelDrag() {
       const zoneGroups = useLayoutStore.getState().panels[position]
       const zoneSizes = useLayoutStore.getState().sizes[position]
 
-      // Build visible groups and sizes (excluding dragged)
       const visible: { key: string; size: number }[] = []
       for (let i = 0; i < zoneGroups.length; i++) {
         const group = zoneGroups[i]
@@ -130,7 +129,6 @@ export function usePanelDrag() {
 
       const totalSize = visible.reduce((a, b) => a + b.size, 0)
 
-      // Compute each panel's region from sizes and check if pointer is in its header zone
       let cumulative = 0
       for (const item of visible) {
         const start = cumulative / totalSize
@@ -184,9 +182,7 @@ export function usePanelDrag() {
 
   const handleDragMove = useCallback(
     (event: DragMoveEvent) => {
-      // Detect if cursor left this window using viewport-relative coordinates.
-      // We avoid screen coordinates because Wayland doesn't expose absolute
-      // window positions, making screen-coordinate-based detection unreliable.
+      // Viewport-relative detection — screen coords are unreliable on Wayland.
       const now = Date.now()
       const initial0 = event.activatorEvent as PointerEvent
       const clientX = initial0.clientX + event.delta.x
@@ -220,7 +216,6 @@ export function usePanelDrag() {
         const pointerX = initial.clientX + event.delta.x
         const pointerY = initial.clientY + event.delta.y
 
-        // Check if hovering over a panel's header zone (tab-into)
         const tabIntoGroupKey = detectTabInto(overPosition, pointerX, pointerY, prev.panelId, prev.isGroup)
 
         if (tabIntoGroupKey) {
@@ -243,7 +238,6 @@ export function usePanelDrag() {
         if (!prev) return null
 
         if (prev.overPosition) {
-          // Local drop
           if (prev.tabIntoGroupKey) {
             if (prev.isGroup && prev.panelIds) {
               moveGroupToTab(prev.panelIds, prev.tabIntoGroupKey)
@@ -258,8 +252,7 @@ export function usePanelDrag() {
             }
           }
         } else if (wasDragOutside.current) {
-          // Cursor was outside this window — optimistically remove panels
-          // (target window will add them when it processes drag-end)
+          // Optimistic remove — target window adds them on drag-end
           const ids = prev.isGroup && prev.panelIds ? prev.panelIds : [prev.panelId]
           queueMicrotask(() => {
             for (const id of ids) {
@@ -318,7 +311,6 @@ export function usePanelDrag() {
         )
         if (draggedGroupIdx >= 0) {
           if (!dragState.isGroup && panels[pos][draggedGroupIdx].length > 1) {
-            // Group stays, no count change from removal
           } else {
             count--
           }

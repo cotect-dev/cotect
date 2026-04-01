@@ -23,8 +23,6 @@ export function getPanelLabel(id: string): string {
   return PANEL_DEFINITIONS.find((d) => d.id === id)?.label ?? id
 }
 
-// --- Pure helper types ---
-
 interface PanelLocation {
   position: PanelPosition
   groupIndex: number
@@ -36,8 +34,6 @@ interface LayoutSlice {
   sizes: Record<PanelPosition, number[]>
   activeTab: Record<string, number>
 }
-
-// --- Pure helper functions ---
 
 function groupKey(group: string[]): string {
   return group[0] ?? ''
@@ -76,7 +72,6 @@ function findGroupLocation(panels: Record<PanelPosition, string[][]>, panelId: s
   return null
 }
 
-/** Remove a panel from its group. Cleans up empty groups and migrates activeTab keys. */
 function removePanelFromState(slice: LayoutSlice, loc: PanelLocation): void {
   const group = slice.panels[loc.position][loc.groupIndex]
   const oldKey = groupKey(group)
@@ -99,7 +94,6 @@ function removePanelFromState(slice: LayoutSlice, loc: PanelLocation): void {
   }
 }
 
-/** Insert a group into a zone, splitting the neighbor's size. */
 function insertGroupIntoZone(slice: LayoutSlice, group: string[], position: PanelPosition, insertIndex: number, neighborIndex?: number): void {
   if (slice.panels[position].length === 0) {
     slice.panels[position].push(group)
@@ -112,8 +106,6 @@ function insertGroupIntoZone(slice: LayoutSlice, group: string[], position: Pane
     slice.sizes[position].splice(insertIndex, 0, half)
   }
 }
-
-// --- Store ---
 
 export interface CrossWindowDrag {
   panelId: string
@@ -253,8 +245,6 @@ export const useLayoutStore = create<LayoutState>((set) => ({
       activeTab: { ...state.activeTab, [key]: index },
     })),
 }))
-
-// --- Persistence helpers ---
 
 export function getSerializableLayout(): PersistedLayout {
   const { panels, sizes, activeTab } = useLayoutStore.getState()

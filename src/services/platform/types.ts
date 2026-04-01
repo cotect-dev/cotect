@@ -60,6 +60,8 @@ export interface Platform {
     getWindowMonitor(label: string): Promise<WindowMonitorInfo | null>
     setWindowOnMonitor(label: string, monitorIndex: number): Promise<boolean>
     getMonitors(): Promise<MonitorInfo[]>
+    onMoved(callback: (position: { x: number; y: number }) => void): Promise<() => void>
+    onResized(callback: (size: { width: number; height: number }) => void): Promise<() => void>
     show(): Promise<void>
     close(): Promise<void>
     closeAll(): Promise<void>

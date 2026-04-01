@@ -22,6 +22,7 @@ interface PendingEntry {
   store: StoreApi<unknown>
   serializableKeys: Set<string>
   sanitize?: (s: Partial<unknown>) => Partial<unknown>
+  syncing: boolean
 }
 
 const pending: PendingEntry[] = []
@@ -40,12 +41,12 @@ export function createSyncedStore<T>(name: string, creator: StateCreator<T>, opt
     store: store as unknown as StoreApi<unknown>,
     serializableKeys,
     sanitize: options?.sanitize as ((s: Partial<unknown>) => Partial<unknown>) | undefined,
+    syncing: false,
   })
   return store
 }
 
 let unlisteners: (() => void)[] = []
-let isSyncing = false
 
 export function initAllSyncedStores(): void {
   const platform = getPlatform()
@@ -53,8 +54,9 @@ export function initAllSyncedStores(): void {
 
   for (const entry of pending) {
     let timer: ReturnType<typeof setTimeout> | null = null
+
     entry.store.subscribe(() => {
-      if (isSyncing) return
+      if (entry.syncing) return
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
         const data = pickKeys(entry.store.getState(), entry.serializableKeys)
@@ -66,9 +68,9 @@ export function initAllSyncedStores(): void {
     const unlisten = platform.ipc.listen(`store-sync:${entry.name}`, (payload: unknown) => {
       const { state, source } = payload as { state: Partial<unknown>; source: string }
       if (source !== windowId && state) {
-        isSyncing = true
+        entry.syncing = true
         entry.store.setState(entry.sanitize ? entry.sanitize(state) : state)
-        isSyncing = false
+        entry.syncing = false
       }
     })
     unlisteners.push(unlisten)
@@ -95,8 +97,8 @@ export async function reloadSyncedStore(name: string): Promise<void> {
   if (!entry) return
   const saved = await platform.storage.get<Partial<unknown>>(`${STORAGE_PREFIX}${name}`)
   if (saved && typeof saved === 'object') {
-    isSyncing = true
+    entry.syncing = true
     entry.store.setState(entry.sanitize ? entry.sanitize(saved) : saved)
-    isSyncing = false
+    entry.syncing = false
   }
 }

@@ -12,7 +12,6 @@ export function useWindowLifecycle() {
   const windowId = platform.windows.getWindowId()
   const isMain = windowId === 'main'
 
-  // One-time store init
   useEffect(() => {
     platform.windows.setMinSize(isMain ? 1280 : 400, isMain ? 720 : 300)
     if (isMain) clearAllSyncedStores()
@@ -20,7 +19,6 @@ export function useWindowLifecycle() {
     return () => { stopAllSyncedStores() }
   }, [])
 
-  // Async state restoration
   useEffect(() => {
     let cancelled = false
 
@@ -59,11 +57,8 @@ export function useWindowLifecycle() {
           const isWayland = await platform.isWayland()
           for (let i = 0; i < childIds.length; i++) {
             const geo = geometries[i]
-            // Pass position at creation time — the child's own lifecycle
-            // handles its geometry restoration via restoreGeometryOnMonitor.
-            // We must NOT call restoreGeometryOnMonitor from the parent
-            // because move() targets getCurrentWebviewWindow() (the main
-            // window), not the child.
+            // Don't call restoreGeometryOnMonitor from the parent —
+            // move() targets the current window, not the child.
             const hasPosition = geo && (isWayland ? !!geo.monitorInfo : true)
             await platform.windows.create(childIds[i], geo ? {
               width: Math.round(geo.width / dpr),
@@ -84,14 +79,11 @@ export function useWindowLifecycle() {
             if (session.currentPath && session.currentPath !== session.rootPath) {
               await useBrowserStore.getState().navigateTo(session.currentPath, session.viewMode)
             }
-          } catch {
-            // Root path no longer exists
-          }
+          } catch {}
         }
         startSessionPersistence()
       }
 
-      // Broadcast window-opened
       platform.ipc.emit('window-opened', { windowId }).catch(() => {})
 
       setIsReady(true)
@@ -100,7 +92,6 @@ export function useWindowLifecycle() {
     return () => { cancelled = true }
   }, [])
 
-  // Child window: close when main closes
   useEffect(() => {
     if (isMain) return
     return platform.ipc.listen('window-closed', (payload: unknown) => {
@@ -109,7 +100,6 @@ export function useWindowLifecycle() {
     })
   }, [])
 
-  // Window close handler — runs cleanup only; Tauri handles the actual close
   useEffect(() => {
     return platform.windows.onClose(() => {
       stopLayoutPersistence()
@@ -122,7 +112,6 @@ export function useWindowLifecycle() {
     })
   }, [])
 
-  // Cleanup persistence on unmount
   useEffect(() => {
     return () => {
       stopLayoutPersistence()
