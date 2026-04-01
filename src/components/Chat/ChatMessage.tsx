@@ -16,7 +16,7 @@ remarkGfmModule.then((m) => { _remarkGfm = m.default })
 syntaxHighlighterModule.then((m) => { _oneDark = m.oneDark })
 prismModule.then((m) => { _SyntaxHighlighter = m.Prism })
 
-function MarkdownCode({ className: cn, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: unknown }) {
+function MarkdownCode({ className: cn, children, ...props }: React.HTMLAttributes<HTMLElement>) {
   const match = /language-(\w+)/.exec(cn || '')
   const code = String(children).replace(/\n$/, '')
   if (match && _SyntaxHighlighter && _oneDark) {
