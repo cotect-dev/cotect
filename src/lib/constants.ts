@@ -9,7 +9,7 @@ export const NODE_H_GAP = 40
 export const NODE_V_GAP = 80
 
 export const DEFAULT_MAIN_LAYOUT: PersistedLayout = {
-  panels: { left: [['explorer']], right: [['chat']], bottom: [['console']] },
+  panels: { left: [['changes']], right: [['chat']], bottom: [['console']] },
   sizes: { left: [1], right: [1], bottom: [1] },
   activeTab: {},
 }
