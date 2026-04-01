@@ -9,7 +9,7 @@ let store: Store | null = null
 
 async function getStore(): Promise<Store> {
   if (!store) {
-    store = await Store.load('app-state.json', { autoSave: true })
+    store = await Store.load('app-state.json', { defaults: {}, autoSave: true })
   }
   return store
 }
