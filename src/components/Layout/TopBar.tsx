@@ -9,10 +9,8 @@ import {
 } from '@/components/ui/menubar'
 import { useLayoutStore, loadLayoutIntoStore, PANEL_DEFINITIONS } from '@/store/layout'
 import { useBrowserStore } from '@/store'
-import { os } from '@neutralinojs/lib'
-import { createWindow, closeWindow } from '@/services/platform'
+import { getPlatform } from '@/services/platform'
 import { saveLayout } from '@/services/windowManager'
-import { broadcast } from '@/services/channel'
 
 const DEFAULT_LAYOUT = {
   panels: { left: [['explorer']], right: [['chat']], bottom: [['console']] },
@@ -26,12 +24,13 @@ interface TopBarProps {
 }
 
 export default function TopBar({ onResetZoneSizes }: TopBarProps) {
+  const platform = getPlatform()
   const panels = useLayoutStore((s) => s.panels)
   const addPanel = useLayoutStore((s) => s.addPanel)
   const removePanel = useLayoutStore((s) => s.removePanel)
   const handleOpenFolder = async () => {
     try {
-      const result = await os.showFolderDialog('Open Project Folder')
+      const result = await platform.fs.showFolderDialog('Open Project Folder')
       if (result) {
         useBrowserStore.getState().openRoot(result)
       }
@@ -56,7 +55,7 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
           <MenubarItem>Save</MenubarItem>
           <MenubarItem>Save As...</MenubarItem>
           <MenubarSeparator />
-          <MenubarItem onClick={closeWindow}>Exit</MenubarItem>
+          <MenubarItem onClick={() => platform.windows.close()}>Exit</MenubarItem>
         </MenubarContent>
       </MenubarMenu>
       <MenubarMenu>
@@ -93,8 +92,8 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
                 sizes: { left: [], right: [], bottom: [] },
                 activeTab: {},
               })
-              void broadcast({ type: 'window-opened', windowId: id })
-              createWindow(id)
+              void platform.ipc.emit('window-opened', { windowId: id })
+              void platform.windows.create(id)
             }}
           >
             New Window
