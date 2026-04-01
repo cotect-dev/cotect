@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Modifier } from '@dnd-kit/core'
 import {
   PointerSensor,
@@ -11,8 +11,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
-import { broadcast } from '@/services/channel'
-import { getWindowId } from '@/services/platform'
+import { getPlatform } from '@/services/platform'
 
 const TAB_INTO_HEIGHT = 32 // px from the top of each panel area that counts as "header zone"
 
@@ -34,6 +33,26 @@ export function usePanelDrag() {
   const [dragState, setDragState] = useState<DragState | null>(null)
   const lastDragMoveTs = useRef(0)
   const wasDragOutside = useRef(false)
+
+  const platform = getPlatform()
+  const windowId = platform.windows.getWindowId()
+  const windowBoundsRef = useRef({ left: 0, top: 0, right: 0, bottom: 0 })
+
+  useEffect(() => {
+    const update = async () => {
+      const pos = await platform.windows.getPosition()
+      const size = await platform.windows.getSize()
+      windowBoundsRef.current = {
+        left: pos.x,
+        top: pos.y,
+        right: pos.x + size.width,
+        bottom: pos.y + size.height,
+      }
+    }
+    update()
+    const timer = setInterval(update, 500)
+    return () => clearInterval(timer)
+  }, [platform])
 
   const zoneRefs = useRef<Record<PanelPosition, HTMLDivElement | null>>({
     left: null,
@@ -170,14 +189,13 @@ export function usePanelDrag() {
         neighborIndex: 0,
         tabIntoGroupKey: null,
       })
-      void broadcast({
-        type: 'drag-start',
+      void platform.ipc.emit('drag-start', {
         panelId: data.panelId,
         panelIds: data.isGroup ? data.panelIds : [data.panelId],
-        sourceWindow: getWindowId(),
+        sourceWindow: windowId,
       })
     }
-  }, [])
+  }, [platform, windowId])
 
   const handleDragMove = useCallback(
     (event: DragMoveEvent) => {
@@ -187,17 +205,18 @@ export function usePanelDrag() {
       const screenX = initial0.screenX + event.delta.x
       const screenY = initial0.screenY + event.delta.y
 
+      const bounds = windowBoundsRef.current
+
       wasDragOutside.current =
-        screenX < window.screenX || screenX > window.screenX + window.outerWidth ||
-        screenY < window.screenY || screenY > window.screenY + window.outerHeight
+        screenX < bounds.left || screenX > bounds.right ||
+        screenY < bounds.top || screenY > bounds.bottom
 
       if (now - lastDragMoveTs.current >= DRAG_MOVE_THROTTLE) {
         lastDragMoveTs.current = now
-        void broadcast({
-          type: 'drag-move',
+        void platform.ipc.emit('drag-move', {
           screenX,
           screenY,
-          sourceWindow: getWindowId(),
+          sourceWindow: windowId,
         })
       }
 
@@ -266,9 +285,9 @@ export function usePanelDrag() {
         return null
       })
       wasDragOutside.current = false
-      void broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
+      void platform.ipc.emit('drag-end', { sourceWindow: windowId })
     },
-    [movePanel, movePanelToTab, moveGroup, moveGroupToTab]
+    [movePanel, movePanelToTab, moveGroup, moveGroupToTab, platform, windowId]
   )
 
   const handleDragCancel = useCallback(() => {
@@ -285,8 +304,8 @@ export function usePanelDrag() {
       return null
     })
     wasDragOutside.current = false
-    void broadcast({ type: 'drag-end', sourceWindow: getWindowId() })
-  }, [])
+    void platform.ipc.emit('drag-end', { sourceWindow: windowId })
+  }, [platform, windowId])
 
   const centerOnCursor: Modifier = useMemo(() => {
     return ({ activatorEvent, draggingNodeRect, transform }) => {
