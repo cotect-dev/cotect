@@ -44,8 +44,15 @@ src-tauri/gen/
 .swc
 .eslintcache
 
-# Docs
-docs/
+# Docs (allow specs and plans)
+docs/*
+!docs/superpowers
+docs/superpowers/*
+!docs/superpowers/specs
+!docs/superpowers/plans
+
+# Superpowers brainstorm sessions
+.superpowers/
 
 # Claude
 .claude/
