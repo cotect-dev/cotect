@@ -21,6 +21,8 @@ function getBcChannel(): BroadcastChannel {
 }
 
 export const browserPlatform: Platform = {
+  async isWayland() { return false },
+
   windows: {
     getWindowId,
 

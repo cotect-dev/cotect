@@ -1,15 +1,10 @@
 import { useEffect, useState } from 'react'
 import { getPlatform } from '@/services/platform'
-import { loadLayout, loadGeometry, loadSession, getChildWindowIds, removeLayout, startGeometryPersistence, stopGeometryPersistence, startSessionPersistence, stopSessionPersistence } from '@/services/windowManager'
+import { loadLayout, loadGeometry, loadSession, getChildWindowIds, removeLayout, startGeometryPersistence, stopGeometryPersistence, startSessionPersistence, stopSessionPersistence, restoreGeometryOnMonitor } from '@/services/windowManager'
 import { useBrowserStore } from '@/store/browser'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
 import { initAllSyncedStores, clearAllSyncedStores, stopAllSyncedStores } from '@/store/synced'
-
-const DEFAULT_MAIN_LAYOUT = {
-  panels: { left: [['explorer']], right: [['chat']], bottom: [['console']] },
-  sizes: { left: [1], right: [1], bottom: [1] },
-  activeTab: {},
-}
+import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
 
 export function useWindowLifecycle() {
   const [isReady, setIsReady] = useState(false)
@@ -38,10 +33,10 @@ export function useWindowLifecycle() {
       ])
       if (cancelled) return
 
-      startGeometryPersistence(windowId)
+      await startGeometryPersistence(windowId)
 
       if (geo) {
-        await platform.windows.move(geo.x, geo.y).catch(() => {})
+        await restoreGeometryOnMonitor(windowId, geo, platform)
         if (isMain) await platform.windows.resize(geo.width, geo.height).catch(() => {})
         if (geo.isMaximized) await platform.windows.maximize().catch(() => {})
       }
@@ -62,14 +57,18 @@ export function useWindowLifecycle() {
           if (cancelled) return
           for (let i = 0; i < childIds.length; i++) {
             const geo = geometries[i]
+            const dpr = window.devicePixelRatio || 1
+            const isWayland = await platform.isWayland()
             await platform.windows.create(childIds[i], geo ? {
-              x: geo.x,
-              y: geo.y,
-              width: geo.width,
-              height: geo.height,
+              width: Math.round(geo.width / dpr),
+              height: Math.round(geo.height / dpr),
+              center: !isWayland || !geo.monitorInfo,
             } : undefined).catch((err) => {
               console.error('Failed to create window:', err)
             })
+            if (geo) {
+              await restoreGeometryOnMonitor(childIds[i], geo, platform)
+            }
           }
         }
 

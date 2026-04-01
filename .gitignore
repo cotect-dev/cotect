@@ -12,9 +12,9 @@ dist
 dist-ssr
 *.local
 
-# NeutralinoJS
-.tmp
-bin/
+# Tauri
+src-tauri/target/
+src-tauri/gen/
 
 # Editor directories and files
 .vscode/*

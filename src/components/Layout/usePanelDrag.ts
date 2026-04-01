@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { Modifier } from '@dnd-kit/core'
 import {
   PointerSensor,
@@ -12,6 +12,7 @@ import {
 } from '@dnd-kit/core'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
 import { getPlatform } from '@/services/platform'
+import { useWindowBounds } from '@/hooks/useWindowBounds'
 
 const TAB_INTO_HEIGHT = 32 // px from the top of each panel area that counts as "header zone"
 
@@ -36,23 +37,7 @@ export function usePanelDrag() {
 
   const platform = getPlatform()
   const windowId = platform.windows.getWindowId()
-  const windowBoundsRef = useRef({ left: 0, top: 0, right: 0, bottom: 0 })
-
-  useEffect(() => {
-    const update = async () => {
-      const pos = await platform.windows.getPosition()
-      const size = await platform.windows.getSize()
-      windowBoundsRef.current = {
-        left: pos.x,
-        top: pos.y,
-        right: pos.x + size.width,
-        bottom: pos.y + size.height,
-      }
-    }
-    update()
-    const timer = setInterval(update, 500)
-    return () => clearInterval(timer)
-  }, [platform])
+  const windowBoundsRef = useWindowBounds()
 
   const zoneRefs = useRef<Record<PanelPosition, HTMLDivElement | null>>({
     left: null,
@@ -199,23 +184,24 @@ export function usePanelDrag() {
 
   const handleDragMove = useCallback(
     (event: DragMoveEvent) => {
-      // Broadcast screen position to other windows (throttled)
+      // Detect if cursor left this window using viewport-relative coordinates.
+      // We avoid screen coordinates because Wayland doesn't expose absolute
+      // window positions, making screen-coordinate-based detection unreliable.
       const now = Date.now()
       const initial0 = event.activatorEvent as PointerEvent
-      const screenX = initial0.screenX + event.delta.x
-      const screenY = initial0.screenY + event.delta.y
-
-      const bounds = windowBoundsRef.current
+      const clientX = initial0.clientX + event.delta.x
+      const clientY = initial0.clientY + event.delta.y
 
       wasDragOutside.current =
-        screenX < bounds.left || screenX > bounds.right ||
-        screenY < bounds.top || screenY > bounds.bottom
+        clientX < 0 || clientX > window.innerWidth ||
+        clientY < 0 || clientY > window.innerHeight
 
       if (now - lastDragMoveTs.current >= DRAG_MOVE_THROTTLE) {
         lastDragMoveTs.current = now
+        const bounds = windowBoundsRef.current
         void platform.ipc.emit('drag-move', {
-          screenX,
-          screenY,
+          screenX: bounds.left + clientX,
+          screenY: bounds.top + clientY,
           sourceWindow: windowId,
         })
       }
