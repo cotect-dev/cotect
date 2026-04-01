@@ -1,4 +1,3 @@
-// src/components/Canvas/Breadcrumbs.tsx
 import { ChevronRight, Home } from 'lucide-react'
 import { useBrowserStore } from '@/store'
 

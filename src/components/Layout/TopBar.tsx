@@ -11,13 +11,7 @@ import { useLayoutStore, loadLayoutIntoStore, PANEL_DEFINITIONS } from '@/store/
 import { useBrowserStore } from '@/store'
 import { getPlatform } from '@/services/platform'
 import { saveLayout } from '@/services/windowManager'
-
-const DEFAULT_LAYOUT = {
-  panels: { left: [['explorer']], right: [['chat']], bottom: [['console']] },
-  sizes: { left: [1], right: [1], bottom: [1] },
-  activeTab: {},
-}
-
+import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
 
 interface TopBarProps {
   onResetZoneSizes?: () => void
@@ -77,7 +71,7 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
           <MenubarSeparator />
           <MenubarItem
             onClick={() => {
-              loadLayoutIntoStore(DEFAULT_LAYOUT)
+              loadLayoutIntoStore(DEFAULT_MAIN_LAYOUT)
               onResetZoneSizes?.()
             }}
           >

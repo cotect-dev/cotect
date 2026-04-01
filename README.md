@@ -1,26 +1,24 @@
 # Cotect
 
-Desktop application built with React, Vite, Tailwind CSS, and NeutralinoJS.
+Desktop application built with React, Vite, Tailwind CSS, and Tauri.
 
 ## Setup
 
 ```bash
 yarn install
-yarn neu:update
 ```
 
 ## Development
 
 ```bash
-yarn dev          # Neutralino window + Vite HMR
+yarn dev          # Tauri window + Vite HMR
 yarn vite:dev     # Vite dev server only (browser)
 ```
 
 ## Build
 
 ```bash
-yarn build        # Production build
-yarn neu:build    # Package as Neutralino desktop app
+yarn build        # Production build (Tauri desktop app)
 ```
 
 ## Color Palette

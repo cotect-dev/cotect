@@ -1,4 +1,3 @@
-// src/components/Canvas/layout.ts
 import type { Node, Edge } from '@xyflow/react'
 import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP } from '@/lib/constants'
 
