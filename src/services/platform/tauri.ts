@@ -130,15 +130,8 @@ export const tauriPlatform: Platform = {
     onClose(callback) {
       const handler = () => { callback() }
       window.addEventListener('beforeunload', handler)
-
-      let unlistenAll: UnlistenFn | null = null
-      listen('app-close-all', () => {
-        currentWindow.close()
-      }).then((fn) => { unlistenAll = fn })
-
       return () => {
         window.removeEventListener('beforeunload', handler)
-        unlistenAll?.()
       }
     },
   },
