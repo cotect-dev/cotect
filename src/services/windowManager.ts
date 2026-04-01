@@ -199,7 +199,5 @@ export async function restoreGeometryOnMonitor(
     }
   }
 
-  if (geometry.x !== 0 || geometry.y !== 0) {
-    await platform.windows.move(geometry.x, geometry.y).catch(() => {})
-  }
+  await platform.windows.move(geometry.x, geometry.y).catch(() => {})
 }
