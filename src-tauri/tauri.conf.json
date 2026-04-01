@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri-schema/main/schema/2.0/tauri.conf.json",
+  "productName": "Cotect",
+  "version": "0.0.0",
+  "identifier": "com.cotect.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "yarn vite:dev",
+    "beforeBuildCommand": "yarn vite:build"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Cotect",
+        "width": 1280,
+        "height": 720,
+        "minWidth": 1280,
+        "minHeight": 720,
+        "visible": false,
+        "center": true
+      }
+    ]
+  }
+}
