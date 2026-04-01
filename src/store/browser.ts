@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Edge } from '@xyflow/react'
-import { readDirectory, readFileContent, type FSEntry } from '@/services/filesystem'
+import { getPlatform, type FSEntry } from '@/services/platform'
 import { analyzeFile, type FileAnalysis } from '@/services/treesitter'
 import { layoutTree } from '@/components/Canvas/layout'
 import type { AppNode } from '@/types/nodes'
@@ -131,7 +131,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     set({ loading: true })
 
     if (mode === 'directory') {
-      const entries = await readDirectory(path)
+      const entries = await getPlatform().fs.readDirectory(path)
       const state = get()
       const breadcrumbs: BreadcrumbEntry[] = [
         ...state.breadcrumbs.filter((b) => path.startsWith(b.path) && b.path !== path),
@@ -140,8 +140,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       set({ currentPath: path, viewMode: mode, entries, fileAnalysis: null, breadcrumbs, loading: false, siblingAnalyses: new Map() })
     } else {
       const [content, dirEntries] = await Promise.all([
-        readFileContent(path),
-        readDirectory(path.substring(0, path.lastIndexOf('/'))),
+        getPlatform().fs.readFile(path),
+        getPlatform().fs.readDirectory(path.substring(0, path.lastIndexOf('/'))),
       ])
       const analysis = await analyzeFile(path, content)
       const dirFileSet = new Set(dirEntries.filter((e) => !e.isDirectory).map((e) => e.path))
@@ -158,7 +158,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       const siblingAnalyses = new Map<string, FileAnalysis>()
       const results = await Promise.allSettled(
         importJobs.map(async ({ resolvedFile }) => {
-          const sibContent = await readFileContent(resolvedFile)
+          const sibContent = await getPlatform().fs.readFile(resolvedFile)
           const sibAnalysis = await analyzeFile(resolvedFile, sibContent)
           return { resolvedFile, sibAnalysis }
         })
