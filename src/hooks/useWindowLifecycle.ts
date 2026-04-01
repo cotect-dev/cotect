@@ -55,20 +55,25 @@ export function useWindowLifecycle() {
         if (childIds.length > 0) {
           const geometries = await Promise.all(childIds.map((id) => loadGeometry(id)))
           if (cancelled) return
+          const dpr = window.devicePixelRatio || 1
+          const isWayland = await platform.isWayland()
           for (let i = 0; i < childIds.length; i++) {
             const geo = geometries[i]
-            const dpr = window.devicePixelRatio || 1
-            const isWayland = await platform.isWayland()
+            // Pass position at creation time — the child's own lifecycle
+            // handles its geometry restoration via restoreGeometryOnMonitor.
+            // We must NOT call restoreGeometryOnMonitor from the parent
+            // because move() targets getCurrentWebviewWindow() (the main
+            // window), not the child.
+            const hasPosition = geo && (isWayland ? !!geo.monitorInfo : true)
             await platform.windows.create(childIds[i], geo ? {
               width: Math.round(geo.width / dpr),
               height: Math.round(geo.height / dpr),
-              center: !isWayland || !geo.monitorInfo,
+              x: hasPosition ? Math.round(geo.x / dpr) : undefined,
+              y: hasPosition ? Math.round(geo.y / dpr) : undefined,
+              center: !hasPosition,
             } : undefined).catch((err) => {
               console.error('Failed to create window:', err)
             })
-            if (geo) {
-              await restoreGeometryOnMonitor(childIds[i], geo, platform)
-            }
           }
         }
 
