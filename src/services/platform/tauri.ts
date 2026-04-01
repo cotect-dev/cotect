@@ -3,7 +3,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { Store } from '@tauri-apps/plugin-store'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { Platform, FSEntry } from './types'
+import type { Platform, FSEntry, CursorWindowInfo, WindowMonitorInfo, MonitorInfo } from './types'
 
 let store: Store | null = null
 
@@ -19,7 +19,16 @@ function getWindowId(): string {
   return params.get('window') ?? 'main'
 }
 
+let _isWayland: boolean | null = null
+
 export const tauriPlatform: Platform = {
+  async isWayland() {
+    if (_isWayland === null) {
+      _isWayland = await invoke<boolean>('is_wayland')
+    }
+    return _isWayland
+  },
+
   windows: {
     getWindowId,
 
@@ -74,6 +83,22 @@ export const tauriPlatform: Platform = {
 
     async isMaximized() {
       return getCurrentWebviewWindow().isMaximized()
+    },
+
+    async getCursorWindow(): Promise<CursorWindowInfo | null> {
+      return invoke<CursorWindowInfo | null>('get_cursor_window')
+    },
+
+    async getWindowMonitor(label: string): Promise<WindowMonitorInfo | null> {
+      return invoke<WindowMonitorInfo | null>('get_window_monitor', { label })
+    },
+
+    async setWindowOnMonitor(label: string, monitorIndex: number): Promise<boolean> {
+      return invoke<boolean>('set_window_on_monitor', { label, monitorIndex })
+    },
+
+    async getMonitors(): Promise<MonitorInfo[]> {
+      return invoke<MonitorInfo[]>('get_monitors')
     },
 
     async show() {

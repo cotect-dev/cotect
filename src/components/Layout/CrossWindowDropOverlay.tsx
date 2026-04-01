@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getPlatform } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
 import { reloadSyncedStore } from '@/store/synced'
+import { useWindowBounds } from '@/hooks/useWindowBounds'
 
 type HoverZone = PanelPosition | null
 
@@ -14,73 +15,61 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
   const platform = getPlatform()
   const windowId = platform.windows.getWindowId()
   const setCrossWindowDrag = useLayoutStore((s) => s.setCrossWindowDrag)
-  const windowBoundsRef = useRef({ left: 0, top: 0, right: 0, bottom: 0 })
+  const windowBoundsRef = useWindowBounds()
+  const [isWayland, setIsWayland] = useState<boolean | null>(null)
 
-  // Keep window bounds updated
   useEffect(() => {
-    const update = async () => {
-      const pos = await platform.windows.getPosition()
-      const size = await platform.windows.getSize()
-      windowBoundsRef.current = {
-        left: pos.x,
-        top: pos.y,
-        right: pos.x + size.width,
-        bottom: pos.y + size.height,
-      }
-    }
-    update()
-    const timer = setInterval(update, 500)
-    return () => clearInterval(timer)
+    platform.isWayland().then(setIsWayland)
   }, [platform])
 
-  const detectZoneFromScreen = useCallback((screenX: number, screenY: number): { zone: HoverZone; isOver: boolean } => {
-    const bounds = windowBoundsRef.current
+  const detectZone = useCallback((clientX: number, clientY: number): HoverZone => {
+    const x = clientX / window.innerWidth
+    const y = clientY / window.innerHeight
 
-    if (screenX < bounds.left || screenX > bounds.right || screenY < bounds.top || screenY > bounds.bottom) {
-      return { zone: null, isOver: false }
+    if (mode === 'panel') {
+      return x < 0.5 ? 'left' : 'right'
+    } else {
+      if (y > 0.75) return 'bottom'
+      else if (x < 0.25) return 'left'
+      else if (x > 0.75) return 'right'
+      return null
     }
+  }, [mode])
 
+  const detectZoneFromScreen = useCallback((screenX: number, screenY: number): HoverZone => {
+    const bounds = windowBoundsRef.current
+    if (screenX < bounds.left || screenX > bounds.right || screenY < bounds.top || screenY > bounds.bottom) {
+      return null
+    }
     const contentWidth = bounds.right - bounds.left
     const contentHeight = bounds.bottom - bounds.top
     const x = (screenX - bounds.left) / contentWidth
     const y = (screenY - bounds.top) / contentHeight
 
-    let zone: HoverZone = null
     if (mode === 'panel') {
-      zone = x < 0.5 ? 'left' : 'right'
+      return x < 0.5 ? 'left' : 'right'
     } else {
-      if (y > 0.75) zone = 'bottom'
-      else if (x < 0.25) zone = 'left'
-      else if (x > 0.75) zone = 'right'
+      if (y > 0.75) return 'bottom'
+      else if (x < 0.25) return 'left'
+      else if (x > 0.75) return 'right'
+      return null
     }
+  }, [mode, windowBoundsRef])
 
-    return { zone, isOver: true }
-  }, [mode])
-
-  const screenToClient = useCallback((screenX: number, screenY: number) => {
-    const bounds = windowBoundsRef.current
-    return {
-      clientX: screenX - bounds.left,
-      clientY: screenY - bounds.top,
-    }
-  }, [])
-
-  const computeInsertFromScreen = useCallback((zone: PanelPosition, screenX: number, screenY: number): { insertIndex: number; neighborIndex: number } => {
+  const computeInsertFromClient = useCallback((zone: PanelPosition, clientX: number, clientY: number): { insertIndex: number; neighborIndex: number } => {
     const el = zoneRefs.current[zone]
     if (!el) return { insertIndex: 0, neighborIndex: 0 }
 
     const rect = el.getBoundingClientRect()
     const isVertical = zone === 'left' || zone === 'right'
 
-    const { clientX: localX, clientY: localY } = screenToClient(screenX, screenY)
-
     const sizes = useLayoutStore.getState().sizes[zone]
     if (sizes.length === 0) return { insertIndex: 0, neighborIndex: 0 }
 
-    const totalSize = sizes.reduce((a, b) => a + b, 0)
+    const totalSize = sizes.reduce((a: number, b: number) => a + b, 0)
     const relativePos = isVertical
-      ? (localY - rect.top) / rect.height
-      : (localX - rect.left) / rect.width
+      ? (clientY - rect.top) / rect.height
+      : (clientX - rect.left) / rect.width
 
     let cumulative = 0
     for (let i = 0; i < sizes.length; i++) {
@@ -96,35 +85,67 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
       cumulative += sizes[i]
     }
     return { insertIndex: sizes.length, neighborIndex: sizes.length - 1 }
-  }, [zoneRefs, screenToClient])
+  }, [zoneRefs])
 
   useEffect(() => {
+    if (isWayland === null) return
+
     let currentIncoming: { panelId: string; panelIds: string[]; sourceWindow: string } | null = null
     let currentZone: HoverZone = null
-    let isOver = false
     let lastAccepted: { panelIds: string[] } | null = null
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!currentIncoming) return
+      const zone = detectZone(e.clientX, e.clientY)
+      currentZone = zone
+      if (zone) {
+        const { insertIndex, neighborIndex } = computeInsertFromClient(zone, e.clientX, e.clientY)
+        setCrossWindowDrag({
+          panelId: currentIncoming.panelIds[0],
+          panelIds: currentIncoming.panelIds,
+          position: zone,
+          insertIndex,
+          neighborIndex,
+        })
+      } else {
+        setCrossWindowDrag(null)
+      }
+    }
+
+    const handlePointerLeave = () => {
+      if (!currentIncoming) return
+      currentZone = null
+      setCrossWindowDrag(null)
+    }
 
     const unlistenStart = platform.ipc.listen('drag-start', (payload: unknown) => {
       const msg = payload as { panelId: string; panelIds: string[]; sourceWindow: string }
       if (msg.sourceWindow !== windowId) {
         currentIncoming = { panelId: msg.panelId, panelIds: msg.panelIds, sourceWindow: msg.sourceWindow }
         lastAccepted = null
+        document.addEventListener('pointermove', handlePointerMove)
+        document.addEventListener('pointerleave', handlePointerLeave)
+      } else {
+        lastAccepted = null
       }
     })
 
     const unlistenMove = platform.ipc.listen('drag-move', (payload: unknown) => {
+      if (isWayland) return
+
       const msg = payload as { screenX: number; screenY: number; sourceWindow: string }
       if (msg.sourceWindow !== windowId && currentIncoming) {
-        const result = detectZoneFromScreen(msg.screenX, msg.screenY)
-        currentZone = result.zone
-        isOver = result.isOver
-
-        if (currentZone) {
-          const { insertIndex, neighborIndex } = computeInsertFromScreen(currentZone, msg.screenX, msg.screenY)
+        const zone = detectZoneFromScreen(msg.screenX, msg.screenY)
+        const bounds = windowBoundsRef.current
+        const clientX = msg.screenX - bounds.left
+        const clientY = msg.screenY - bounds.top
+        currentZone = zone
+        if (zone) {
+          const { insertIndex, neighborIndex } = computeInsertFromClient(zone, clientX, clientY)
           setCrossWindowDrag({
             panelId: currentIncoming.panelIds[0],
             panelIds: currentIncoming.panelIds,
-            position: currentZone,
+            position: zone,
             insertIndex,
             neighborIndex,
           })
@@ -137,7 +158,7 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     const unlistenEnd = platform.ipc.listen('drag-end', (payload: unknown) => {
       const msg = payload as { sourceWindow: string }
       if (msg.sourceWindow !== windowId) {
-        if (currentIncoming && isOver && currentZone) {
+        if (currentIncoming && currentZone) {
           const cwd = useLayoutStore.getState().crossWindowDrag
           const insertIndex = cwd?.insertIndex ?? 0
           const neighborIndex = cwd?.neighborIndex ?? 0
@@ -146,33 +167,31 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
             panelId: currentIncoming.panelId,
             panelIds: currentIncoming.panelIds,
             targetWindow: windowId,
+            sourceWindow: currentIncoming.sourceWindow,
             focusedAt: Date.now(),
             position: currentZone,
             groupKey: null,
           })
 
-          const store = useLayoutStore.getState()
-          for (const id of currentIncoming.panelIds) {
-            store.removePanel(id)
-          }
-          store.moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
+          useLayoutStore.getState().moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
           for (const id of currentIncoming.panelIds) {
             reloadSyncedStore(id)
           }
           lastAccepted = { panelIds: [...currentIncoming.panelIds] }
         }
 
+        document.removeEventListener('pointermove', handlePointerMove)
+        document.removeEventListener('pointerleave', handlePointerLeave)
         currentIncoming = null
         currentZone = null
-        isOver = false
         setCrossWindowDrag(null)
       }
     })
 
     const unlistenDrop = platform.ipc.listen('drag-drop', (payload: unknown) => {
-      const msg = payload as { targetWindow: string }
+      const msg = payload as { targetWindow: string; sourceWindow: string }
       if (msg.targetWindow !== windowId && lastAccepted) {
-        if (msg.targetWindow < windowId) {
+        if (windowId === msg.sourceWindow) {
           const store = useLayoutStore.getState()
           for (const id of lastAccepted.panelIds) {
             store.removePanel(id)
@@ -187,9 +206,11 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
       unlistenMove()
       unlistenEnd()
       unlistenDrop()
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerleave', handlePointerLeave)
       setCrossWindowDrag(null)
     }
-  }, [windowId, detectZoneFromScreen, computeInsertFromScreen, setCrossWindowDrag, platform])
+  }, [windowId, isWayland, detectZone, detectZoneFromScreen, computeInsertFromClient, setCrossWindowDrag, platform, windowBoundsRef])
 
   return null
 }
