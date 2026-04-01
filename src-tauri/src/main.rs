@@ -11,6 +11,14 @@ fn main() {
             commands::read_directory,
             commands::read_file_content,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                // When the main window closes, exit the entire app
+                if window.label() == "main" {
+                    std::process::exit(0);
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
