@@ -4,9 +4,15 @@ import { X } from 'lucide-react';
 import { getPanelLabel, useLayoutStore, type PanelPosition } from '@/store/layout';
 import Chat from '@/components/Chat';
 import Console from '@/components/Console';
+import Changes from '@/components/Changes';
+import History from '@/components/History';
+import Branches from '@/components/Branches';
 const PANEL_CONTENT: Record<string, ComponentType> = {
   chat: Chat,
   console: Console,
+  changes: Changes,
+  history: History,
+  branches: Branches,
 };
 
 interface PanelAreaProps {

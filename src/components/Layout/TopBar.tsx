@@ -7,17 +7,23 @@ import {
   MenubarSeparator,
   MenubarCheckboxItem,
 } from '@/components/ui/menubar'
-import { useLayoutStore, loadLayoutIntoStore, PANEL_DEFINITIONS } from '@/store/layout'
+import { useLayoutStore, loadLayoutIntoStore, PANEL_DEFINITIONS, getEffectivePosition } from '@/store/layout'
 import { useBrowserStore } from '@/store'
 import { getPlatform } from '@/services/platform'
 import { saveLayout } from '@/services/windowManager'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
+import { useGitStore } from '@/store/git'
+import RelativeTime from '@/components/RelativeTime'
+import { DEV } from '@/lib/env'
+import { useState } from 'react'
 
 interface TopBarProps {
   onResetZoneSizes?: () => void
 }
 
 export default function TopBar({ onResetZoneSizes }: TopBarProps) {
+  const [testError, setTestError] = useState(false)
+  if (testError) throw new Error('Test error — this is intentional')
   const platform = getPlatform()
   const panels = useLayoutStore((s) => s.panels)
   const addPanel = useLayoutStore((s) => s.addPanel)
@@ -32,6 +38,12 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
       console.error('Failed to open folder dialog:', err)
     }
   }
+
+  const isMainWindow = platform.windows.getWindowId() === 'main'
+  const isGitRepo = useGitStore((s) => s.isGitRepo)
+  const totalInsertions = useGitStore((s) => s.status?.total_insertions ?? 0)
+  const totalDeletions = useGitStore((s) => s.status?.total_deletions ?? 0)
+  const lastCommitTimestamp = useGitStore((s) => s.lastCommitTimestamp)
 
   const isPanelVisible = (id: string) => {
     return panels.left.some(g => g.includes(id)) || panels.right.some(g => g.includes(id)) || panels.bottom.some(g => g.includes(id))
@@ -61,6 +73,14 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
           <MenubarItem>Cut</MenubarItem>
           <MenubarItem>Copy</MenubarItem>
           <MenubarItem>Paste</MenubarItem>
+          {DEV && (
+            <>
+              <MenubarSeparator />
+              <MenubarItem onClick={() => setTestError(true)}>
+                Trigger Test Error
+              </MenubarItem>
+            </>
+          )}
         </MenubarContent>
       </MenubarMenu>
       <MenubarMenu>
@@ -93,7 +113,8 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
             New Window
           </MenubarItem>
           <MenubarSeparator />
-          {PANEL_DEFINITIONS.map((def) => {
+          <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">Git</div>
+          {PANEL_DEFINITIONS.filter((d) => d.group === 'git').map((def) => {
             const visible = isPanelVisible(def.id)
             return (
               <MenubarCheckboxItem
@@ -103,7 +124,29 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
                   if (visible) {
                     removePanel(def.id)
                   } else {
-                    addPanel(def.id, def.defaultPosition)
+                    const isChild = getPlatform().windows.getWindowId() !== 'main'
+                    addPanel(def.id, getEffectivePosition(def.id, isChild))
+                  }
+                }}
+              >
+                {def.label}
+              </MenubarCheckboxItem>
+            )
+          })}
+          <MenubarSeparator />
+          <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">Tools</div>
+          {PANEL_DEFINITIONS.filter((d) => d.group === 'tools').map((def) => {
+            const visible = isPanelVisible(def.id)
+            return (
+              <MenubarCheckboxItem
+                key={def.id}
+                checked={visible}
+                onCheckedChange={() => {
+                  if (visible) {
+                    removePanel(def.id)
+                  } else {
+                    const isChild = getPlatform().windows.getWindowId() !== 'main'
+                    addPanel(def.id, getEffectivePosition(def.id, isChild))
                   }
                 }}
               >
@@ -113,6 +156,19 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
           })}
         </MenubarContent>
       </MenubarMenu>
+      <div className="flex-1" />
+      {isMainWindow && isGitRepo && (totalInsertions > 0 || totalDeletions > 0 || lastCommitTimestamp) && (
+        <div className="flex items-center gap-1.5 pr-2 text-xs font-mono select-none">
+          {totalInsertions > 0 && <span className="text-green-500">+{totalInsertions}</span>}
+          {totalDeletions > 0 && <span className="text-red-500">-{totalDeletions}</span>}
+          {lastCommitTimestamp && (
+            <>
+              <span className="text-muted-foreground/40">·</span>
+              <RelativeTime timestamp={lastCommitTimestamp} className="text-muted-foreground/60" />
+            </>
+          )}
+        </div>
+      )}
     </Menubar>
   )
 }
