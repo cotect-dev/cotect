@@ -44,12 +44,8 @@ src-tauri/gen/
 .swc
 .eslintcache
 
-# Docs (allow specs and plans)
-docs/*
-!docs/superpowers
-docs/superpowers/*
-!docs/superpowers/specs
-!docs/superpowers/plans
+# Docs
+docs/
 
 # Superpowers brainstorm sessions
 .superpowers/
