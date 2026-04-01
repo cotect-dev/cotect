@@ -7,7 +7,7 @@ import EdgeDropTarget from './EdgeDropTarget'
 import ResizeHandle from './ResizeHandle'
 import { usePanelDrag } from './usePanelDrag'
 import { getPanelLabel, useLayoutStore } from '@/store/layout'
-import { getWindowId } from '@/services/platform'
+import { getPlatform } from '@/services/platform'
 import { saveZoneSizes, loadZoneSizes } from '@/services/windowManager'
 import CrossWindowDropOverlay from './CrossWindowDropOverlay'
 import { MIN_SIDE_ZONE, MIN_BOTTOM_ZONE } from '@/lib/constants'
@@ -34,7 +34,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
     isZoneEmpty,
   } = usePanelDrag()
 
-  const windowId = getWindowId()
+  const windowId = getPlatform().windows.getWindowId()
   const [zoneSizes, setZoneSizes] = useState({ left: 0.2, right: 0.2, bottom: 0.25 })
 
   // Load persisted zone sizes
