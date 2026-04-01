@@ -1,6 +1,4 @@
-import { window as neuWindow } from '@neutralinojs/lib'
-import { isNeutralino } from './platform'
-import { readJson, writeJsonSync, removeSync, listKeys } from './storage'
+import { getPlatform } from '@/services/platform'
 import type { PanelPosition } from '@/store/layout'
 import { useBrowserStore } from '@/store/browser'
 
@@ -33,7 +31,8 @@ export interface PersistedSession {
 // --- Window discovery ---
 
 export async function getChildWindowIds(): Promise<string[]> {
-  const keys = await listKeys('wm-layout-')
+  const platform = getPlatform()
+  const keys = await platform.storage.listKeys('wm-layout-')
   return keys
     .map((k) => k.slice('wm-layout-'.length))
     .filter((id) => id !== 'main')
@@ -42,47 +41,48 @@ export async function getChildWindowIds(): Promise<string[]> {
 // --- Layout persistence ---
 
 export function saveLayout(windowId: string, layout: PersistedLayout): void {
-  writeJsonSync(`wm-layout-${windowId}`, layout)
+  getPlatform().storage.setSync(`wm-layout-${windowId}`, layout)
 }
 
 export async function loadLayout(windowId: string): Promise<PersistedLayout | null> {
-  return readJson<PersistedLayout>(`wm-layout-${windowId}`)
+  return getPlatform().storage.get<PersistedLayout>(`wm-layout-${windowId}`)
 }
 
 export function removeLayout(windowId: string): void {
-  removeSync(`wm-layout-${windowId}`)
-  removeSync(`wm-zones-${windowId}`)
-  removeSync(`wm-geometry-${windowId}`)
+  const platform = getPlatform()
+  platform.storage.removeSync(`wm-layout-${windowId}`)
+  platform.storage.removeSync(`wm-zones-${windowId}`)
+  platform.storage.removeSync(`wm-geometry-${windowId}`)
 }
 
 // --- Zone sizes ---
 
 export function saveZoneSizes(windowId: string, sizes: PersistedZoneSizes): void {
-  writeJsonSync(`wm-zones-${windowId}`, sizes)
+  getPlatform().storage.setSync(`wm-zones-${windowId}`, sizes)
 }
 
 export async function loadZoneSizes(windowId: string): Promise<PersistedZoneSizes | null> {
-  return readJson<PersistedZoneSizes>(`wm-zones-${windowId}`)
+  return getPlatform().storage.get<PersistedZoneSizes>(`wm-zones-${windowId}`)
 }
 
 // --- Geometry ---
 
 export function saveGeometry(windowId: string, geometry: PersistedGeometry): void {
-  writeJsonSync(`wm-geometry-${windowId}`, geometry)
+  getPlatform().storage.setSync(`wm-geometry-${windowId}`, geometry)
 }
 
 export async function loadGeometry(windowId: string): Promise<PersistedGeometry | null> {
-  return readJson<PersistedGeometry>(`wm-geometry-${windowId}`)
+  return getPlatform().storage.get<PersistedGeometry>(`wm-geometry-${windowId}`)
 }
 
 // --- Session ---
 
 export function saveSession(session: PersistedSession): void {
-  writeJsonSync('wm-session-main', session)
+  getPlatform().storage.setSync('wm-session-main', session)
 }
 
 export async function loadSession(): Promise<PersistedSession | null> {
-  return readJson<PersistedSession>('wm-session-main')
+  return getPlatform().storage.get<PersistedSession>('wm-session-main')
 }
 
 // --- Polling persisters ---
@@ -112,20 +112,19 @@ let geometryPersister: Persister | null = null
 
 export function startGeometryPersistence(windowId: string): void {
   geometryPersister?.stop()
-  if (!isNeutralino()) return
 
   let lastJson = ''
   geometryPersister = createPollingPersister(2000, async () => {
-    const pos = await neuWindow.getPosition()
-    const size = await neuWindow.getSize()
-    const maximized = await neuWindow.isMaximized()
-    const w = size.width ?? 800
-    const h = size.height ?? 600
+    const platform = getPlatform()
+    const pos = await platform.windows.getPosition()
+    const size = await platform.windows.getSize()
+    const maximized = await platform.windows.isMaximized()
+
     const geometry: PersistedGeometry = {
-      x: pos.x ?? 0,
-      y: pos.y ?? 0,
-      width: w,
-      height: h,
+      x: pos.x,
+      y: pos.y,
+      width: size.width,
+      height: size.height,
       isMaximized: maximized,
     }
     const json = JSON.stringify(geometry)
