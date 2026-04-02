@@ -127,6 +127,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
             <div
               ref={(el) => { zoneRefs.current.left = el; leftZoneRef.current = el }}
               className="h-full pointer-events-auto"
+              data-zone="left"
               style={isPanel ? {
                 flexGrow: 1,
                 flexShrink: 1,
