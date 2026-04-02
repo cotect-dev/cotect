@@ -1,12 +1,20 @@
 import type { Node, Edge } from '@xyflow/react'
 import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP } from '@/lib/constants'
 
+/**
+ * Column layout algorithm for directory-level views.
+ * Files are placed in a vertical stack on the left column,
+ * folders in a vertical stack on the right column.
+ * For file-level views with edges (class->method), subtrees
+ * are positioned using the tree layout within the files column.
+ */
 export function layoutTree<T extends Node>(
   nodes: T[],
   edges: Edge[],
 ): { nodes: T[]; edges: Edge[] } {
   if (nodes.length === 0) return { nodes, edges }
 
+  // Build parent-child relationship map from edges
   const children = new Map<string, string[]>()
   const hasParent = new Set<string>()
 
@@ -17,12 +25,18 @@ export function layoutTree<T extends Node>(
     hasParent.add(edge.target)
   }
 
-  const roots = nodes.filter((n) => !hasParent.has(n.id))
+  // Separate nodes with edges (tree nodes) from standalone nodes
   const inEdge = new Set([...hasParent, ...children.keys()])
+  const treeRoots = nodes.filter((n) => inEdge.has(n.id) && !hasParent.has(n.id))
   const standalone = nodes.filter((n) => !inEdge.has(n.id))
+
+  // Separate standalone nodes into files and folders columns
+  const files = standalone.filter((n) => n.type !== 'folder')
+  const folders = standalone.filter((n) => n.type === 'folder')
 
   const positioned = new Map<string, { x: number; y: number }>()
 
+  // Subtree positioning for tree structures (file-level view)
   function positionSubtree(nodeId: string, x: number, y: number): number {
     const kids = children.get(nodeId) || []
     if (kids.length === 0) {
@@ -41,22 +55,48 @@ export function layoutTree<T extends Node>(
     return subtreeWidth
   }
 
-  let offsetX = 0
-  for (const root of roots.filter((r) => !standalone.includes(r))) {
-    const width = positionSubtree(root.id, offsetX, 0)
-    offsetX += width + NODE_H_GAP * 2
+  // Position tree roots (used in file-level view)
+  let treeOffsetX = 0
+  let treeMaxY = 0
+  for (const root of treeRoots) {
+    const width = positionSubtree(root.id, treeOffsetX, 0)
+    treeOffsetX += width + NODE_H_GAP * 2
+
+    for (const [, pos] of positioned) {
+      if (pos.y > treeMaxY) treeMaxY = pos.y
+    }
   }
 
-  const cols = Math.max(1, Math.ceil(Math.sqrt(standalone.length)))
-  const standaloneOffsetX = offsetX > 0 && standalone.length > 0 ? offsetX : 0
-  standalone.forEach((node, i) => {
-    const col = i % cols
-    const row = Math.floor(i / cols)
-    positioned.set(node.id, {
-      x: standaloneOffsetX + col * (NODE_WIDTH + NODE_H_GAP),
-      y: row * (NODE_HEIGHT + NODE_V_GAP),
-    })
-  })
+  if (treeRoots.length > 0) {
+    // Files (standalone, non-folder) below trees
+    let fileY = treeMaxY > 0 ? treeMaxY + NODE_HEIGHT + NODE_V_GAP : 0
+    for (const file of files) {
+      positioned.set(file.id, { x: 0, y: fileY })
+      fileY += NODE_HEIGHT + NODE_V_GAP
+    }
+
+    // Folders to the right of the tree area
+    const folderX = Math.max(treeOffsetX, NODE_WIDTH + NODE_H_GAP)
+    let folderY = 0
+    for (const folder of folders) {
+      positioned.set(folder.id, { x: folderX, y: folderY })
+      folderY += NODE_HEIGHT + NODE_V_GAP
+    }
+  } else {
+    // Pure directory view — files left column, folders right column
+    let fileY = 0
+    for (const file of files) {
+      positioned.set(file.id, { x: 0, y: fileY })
+      fileY += NODE_HEIGHT + NODE_V_GAP
+    }
+
+    const folderX = files.length > 0 ? NODE_WIDTH + NODE_H_GAP : 0
+    let folderY = 0
+    for (const folder of folders) {
+      positioned.set(folder.id, { x: folderX, y: folderY })
+      folderY += NODE_HEIGHT + NODE_V_GAP
+    }
+  }
 
   const layoutNodes = nodes.map((node) => ({
     ...node,

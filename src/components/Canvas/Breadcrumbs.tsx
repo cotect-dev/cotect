@@ -1,36 +1,59 @@
 import { ChevronRight, Home } from 'lucide-react'
-import { useBrowserStore } from '@/store'
+import { useBrowserStore, useCanvasStore } from '@/store'
 
 export default function Breadcrumbs() {
-  const { breadcrumbs, navigateToBreadcrumb, currentPath, loading } = useBrowserStore()
+  const loading = useBrowserStore((s) => s.loading)
+  const depthChain = useCanvasStore((s) => s.depthChain)
+  const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
 
-  if (breadcrumbs.length === 0 && !currentPath) return null
+  // Build breadcrumb entries from the depth chain
+  const crumbs = depthChain.map((path, i) => ({
+    path,
+    label: path.includes(':') ? path.split(':').pop()! : path.split('/').pop() || path,
+    isCurrent: i === currentColumnIndex,
+  }))
+
+  function navigateToColumn(targetIndex: number) {
+    if (targetIndex === currentColumnIndex) return
+    if (targetIndex < currentColumnIndex) {
+      // Navigate left repeatedly
+      const steps = currentColumnIndex - targetIndex
+      for (let i = 0; i < steps; i++) {
+        useCanvasStore.getState().navigateLeft()
+      }
+    }
+  }
+
+  function navigateToRoot() {
+    const steps = currentColumnIndex
+    for (let i = 0; i < steps; i++) {
+      useCanvasStore.getState().navigateLeft()
+    }
+  }
 
   return (
     <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
       <div className="flex items-center gap-1 bg-background/90 backdrop-blur-md border border-border rounded-lg px-3 py-1.5 shadow-lg">
         <button
-          className="text-muted-foreground hover:text-foreground transition-colors"
+          className={`text-xs transition-colors ${currentColumnIndex === 0 ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}
           aria-label="Navigate to root"
-          onClick={() => {
-            const { rootPath } = useBrowserStore.getState()
-            if (rootPath) useBrowserStore.getState().navigateTo(rootPath, 'directory')
-          }}
+          onClick={navigateToRoot}
+          disabled={currentColumnIndex === 0}
         >
           <Home className="h-3.5 w-3.5" />
         </button>
 
-        {breadcrumbs.map((crumb, i) => (
-          <div key={crumb.path} className="flex items-center gap-1">
+        {crumbs.map((crumb, i) => (
+          <div key={`${i}-${crumb.path}`} className="flex items-center gap-1">
             <ChevronRight className="h-3 w-3 text-muted-foreground" />
             <button
               className={`text-xs transition-colors ${
-                i === breadcrumbs.length - 1
+                crumb.isCurrent
                   ? 'text-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
-              onClick={() => navigateToBreadcrumb(i)}
-              disabled={i === breadcrumbs.length - 1}
+              onClick={() => navigateToColumn(i)}
+              disabled={crumb.isCurrent}
             >
               {crumb.label}
             </button>

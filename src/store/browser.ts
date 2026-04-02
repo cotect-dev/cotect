@@ -3,6 +3,8 @@ import type { Edge } from '@xyflow/react'
 import { getPlatform, type FSEntry } from '@/services/platform'
 import { analyzeFile, type FileAnalysis } from '@/services/treesitter'
 import { layoutTree } from '@/components/Canvas/layout'
+import { HIDDEN_DIRECTORIES } from '@/lib/constants'
+import { detectProjectMeta, type ProjectMeta } from '@/services/projectMeta'
 import type { AppNode } from '@/types/nodes'
 
 export type ViewMode = 'directory' | 'file'
@@ -22,6 +24,7 @@ interface BrowserState {
   entries: FSEntry[]
   fileAnalysis: FileAnalysis | null
   siblingAnalyses: Map<string, FileAnalysis>
+  projectMeta: ProjectMeta | null
 
   openRoot: (path: string) => Promise<void>
   navigateTo: (path: string, mode: ViewMode) => Promise<void>
@@ -139,9 +142,12 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   entries: [],
   fileAnalysis: null,
   siblingAnalyses: new Map(),
+  projectMeta: null,
 
   openRoot: async (path) => {
     set({ rootPath: path, breadcrumbs: [] })
+    // Detect project metadata in parallel with navigation
+    detectProjectMeta(path).then((meta) => set({ projectMeta: meta })).catch(() => {})
     await get().navigateTo(path, 'directory')
   },
 
@@ -149,7 +155,10 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     set({ loading: true })
 
     if (mode === 'directory') {
-      const entries = await getPlatform().fs.readDirectory(path)
+      const rawEntries = await getPlatform().fs.readDirectory(path)
+      const entries = rawEntries.filter((e) =>
+        !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.'))
+      )
       const state = get()
       const breadcrumbs: BreadcrumbEntry[] = [
         ...state.breadcrumbs.filter((b) => path.startsWith(b.path) && b.path !== path),

@@ -9,15 +9,19 @@ interface BaseNodeProps {
   borderClassName?: string
   className?: string
   onClick?: () => void
+  onDoubleClick?: () => void
   badge?: string
+  focused?: boolean
   children?: ReactNode
 }
 
-export default function BaseNode({ icon: Icon, iconClassName, label, borderClassName = 'border-border', className = '', onClick, badge, children }: BaseNodeProps) {
+export default function BaseNode({ icon: Icon, iconClassName, label, borderClassName = 'border-border', className = '', onClick, onDoubleClick, badge, focused, children }: BaseNodeProps) {
+  const focusRing = focused ? 'ring-2 ring-primary/60 bg-primary/10 scale-[1.02]' : ''
   return (
     <div
-      className={`bg-background/90 backdrop-blur border rounded-lg px-4 py-3 min-w-[160px] ${borderClassName} ${onClick ? 'cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors' : ''} ${className}`}
+      className={`bg-background/90 backdrop-blur border rounded-lg px-3 py-2 min-w-[140px] transition-all duration-150 ${borderClassName} ${onClick || onDoubleClick ? 'cursor-pointer hover:border-primary/50 hover:bg-muted/50' : ''} ${focusRing} ${className}`}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
     >
       <div className="flex items-center gap-2">
         <Icon className={`h-4 w-4 ${iconClassName ?? 'text-muted-foreground'}`} />

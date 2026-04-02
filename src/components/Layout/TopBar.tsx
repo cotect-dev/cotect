@@ -87,9 +87,6 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
       <MenubarMenu>
         <MenubarTrigger>View</MenubarTrigger>
         <MenubarContent>
-          <MenubarItem>Zoom In</MenubarItem>
-          <MenubarItem>Zoom Out</MenubarItem>
-          <MenubarSeparator />
           <MenubarItem
             onClick={() => {
               loadLayoutIntoStore(DEFAULT_MAIN_LAYOUT)
