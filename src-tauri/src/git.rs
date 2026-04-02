@@ -39,14 +39,9 @@ pub struct GitStatus {
     pub total_deletions: u32,
 }
 
-#[tauri::command]
-pub fn git_status(repo_path: String) -> Result<GitStatus, String> {
-    let porcelain = run_git(&repo_path, &["status", "--porcelain"])?;
-    let numstat = run_git(&repo_path, &["diff", "--numstat"]).unwrap_or_default();
-    let cached_numstat = run_git(&repo_path, &["diff", "--cached", "--numstat"]).unwrap_or_default();
-
+fn parse_numstat(numstat: &str) -> HashMap<String, (u32, u32)> {
     let mut stats: HashMap<String, (u32, u32)> = HashMap::new();
-    for line in numstat.lines().chain(cached_numstat.lines()) {
+    for line in numstat.lines() {
         let parts: Vec<&str> = line.split('\t').collect();
         if parts.len() == 3 {
             let ins = parts[0].parse::<u32>().unwrap_or(0);
@@ -56,7 +51,10 @@ pub fn git_status(repo_path: String) -> Result<GitStatus, String> {
             entry.1 += del;
         }
     }
+    stats
+}
 
+fn parse_porcelain(porcelain: &str, stats: &HashMap<String, (u32, u32)>) -> (Vec<GitFileStatus>, u32, u32) {
     let mut files = Vec::new();
     let mut total_insertions = 0u32;
     let mut total_deletions = 0u32;
@@ -68,6 +66,12 @@ pub fn git_status(repo_path: String) -> Result<GitStatus, String> {
         let status_code = line[..2].trim();
         let path = line[3..].to_string();
         if status_code == "??" {
+            files.push(GitFileStatus {
+                path,
+                status: "U".to_string(),
+                insertions: 0,
+                deletions: 0,
+            });
             continue;
         }
         let status = match status_code {
@@ -90,6 +94,24 @@ pub fn git_status(repo_path: String) -> Result<GitStatus, String> {
             deletions: del,
         });
     }
+
+    (files, total_insertions, total_deletions)
+}
+
+#[tauri::command]
+pub fn git_status(repo_path: String) -> Result<GitStatus, String> {
+    let porcelain = run_git(&repo_path, &["status", "--porcelain"])?;
+    let numstat = run_git(&repo_path, &["diff", "--numstat"]).unwrap_or_default();
+    let cached_numstat = run_git(&repo_path, &["diff", "--cached", "--numstat"]).unwrap_or_default();
+
+    let mut stats = parse_numstat(&numstat);
+    for (path, (ins, del)) in parse_numstat(&cached_numstat) {
+        let entry = stats.entry(path).or_insert((0, 0));
+        entry.0 += ins;
+        entry.1 += del;
+    }
+
+    let (files, total_insertions, total_deletions) = parse_porcelain(&porcelain, &stats);
 
     Ok(GitStatus {
         files,
@@ -116,18 +138,7 @@ pub struct GitLogEntry {
     pub files: Vec<GitLogFile>,
 }
 
-#[tauri::command]
-pub fn git_log(repo_path: String, limit: Option<u32>, skip: Option<u32>) -> Result<Vec<GitLogEntry>, String> {
-    let limit_str = format!("-{}", limit.unwrap_or(50));
-    let mut args = vec!["log", &limit_str];
-    let skip_str;
-    if let Some(s) = skip {
-        skip_str = format!("--skip={s}");
-        args.push(&skip_str);
-    }
-    args.extend_from_slice(&["--format=%H%n%s%n%an%n%ct%n---END---", "--numstat"]);
-    let output = run_git(&repo_path, &args)?;
-
+fn parse_log_output(output: &str) -> Vec<GitLogEntry> {
     let mut entries = Vec::new();
     let mut lines = output.lines().peekable();
 
@@ -189,7 +200,22 @@ pub fn git_log(repo_path: String, limit: Option<u32>, skip: Option<u32>) -> Resu
         });
     }
 
-    Ok(entries)
+    entries
+}
+
+#[tauri::command]
+pub fn git_log(repo_path: String, limit: Option<u32>, skip: Option<u32>) -> Result<Vec<GitLogEntry>, String> {
+    let limit_str = format!("-{}", limit.unwrap_or(50));
+    let mut args = vec!["log", &limit_str];
+    let skip_str;
+    if let Some(s) = skip {
+        skip_str = format!("--skip={s}");
+        args.push(&skip_str);
+    }
+    args.extend_from_slice(&["--format=%H%n%s%n%an%n%ct%n---END---", "--numstat"]);
+    let output = run_git(&repo_path, &args)?;
+
+    Ok(parse_log_output(&output))
 }
 
 #[derive(Serialize)]
@@ -217,4 +243,187 @@ pub fn git_last_commit_time(repo_path: String) -> Result<i64, String> {
 #[tauri::command]
 pub fn git_init(repo_path: String) -> Result<(), String> {
     run_git(&repo_path, &["init"]).map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- parse_numstat tests ---
+
+    #[test]
+    fn parse_numstat_empty() {
+        let stats = parse_numstat("");
+        assert!(stats.is_empty());
+    }
+
+    #[test]
+    fn parse_numstat_single_file() {
+        let input = "10\t5\tsrc/main.rs";
+        let stats = parse_numstat(input);
+        assert_eq!(stats.get("src/main.rs"), Some(&(10, 5)));
+    }
+
+    #[test]
+    fn parse_numstat_multiple_files() {
+        let input = "10\t5\tsrc/main.rs\n3\t1\tsrc/lib.rs";
+        let stats = parse_numstat(input);
+        assert_eq!(stats.len(), 2);
+        assert_eq!(stats.get("src/main.rs"), Some(&(10, 5)));
+        assert_eq!(stats.get("src/lib.rs"), Some(&(3, 1)));
+    }
+
+    #[test]
+    fn parse_numstat_binary_file_dashes() {
+        // Binary files show "-" for insertions/deletions
+        let input = "-\t-\tbinary.png";
+        let stats = parse_numstat(input);
+        assert_eq!(stats.get("binary.png"), Some(&(0, 0)));
+    }
+
+    #[test]
+    fn parse_numstat_duplicate_paths_accumulate() {
+        let input = "5\t2\tsrc/main.rs\n3\t1\tsrc/main.rs";
+        let stats = parse_numstat(input);
+        assert_eq!(stats.get("src/main.rs"), Some(&(8, 3)));
+    }
+
+    // --- parse_porcelain tests ---
+
+    #[test]
+    fn parse_porcelain_empty() {
+        let stats = HashMap::new();
+        let (files, ins, del) = parse_porcelain("", &stats);
+        assert!(files.is_empty());
+        assert_eq!(ins, 0);
+        assert_eq!(del, 0);
+    }
+
+    #[test]
+    fn parse_porcelain_modified_file() {
+        let mut stats = HashMap::new();
+        stats.insert("src/main.rs".to_string(), (10, 5));
+        let (files, ins, del) = parse_porcelain(" M src/main.rs", &stats);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "src/main.rs");
+        assert_eq!(files[0].status, "M");
+        assert_eq!(files[0].insertions, 10);
+        assert_eq!(files[0].deletions, 5);
+        assert_eq!(ins, 10);
+        assert_eq!(del, 5);
+    }
+
+    #[test]
+    fn parse_porcelain_added_file() {
+        let stats = HashMap::new();
+        let (files, _, _) = parse_porcelain("A  new_file.rs", &stats);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, "A");
+    }
+
+    #[test]
+    fn parse_porcelain_deleted_file() {
+        let stats = HashMap::new();
+        let (files, _, _) = parse_porcelain("D  removed.rs", &stats);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, "D");
+    }
+
+    #[test]
+    fn parse_porcelain_untracked_file() {
+        let stats = HashMap::new();
+        let (files, _, _) = parse_porcelain("?? untracked.txt", &stats);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, "U");
+        assert_eq!(files[0].insertions, 0);
+        assert_eq!(files[0].deletions, 0);
+    }
+
+    #[test]
+    fn parse_porcelain_renamed_file() {
+        let stats = HashMap::new();
+        let (files, _, _) = parse_porcelain("R  old.rs -> new.rs", &stats);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, "R");
+    }
+
+    #[test]
+    fn parse_porcelain_skips_short_lines() {
+        let stats = HashMap::new();
+        let (files, _, _) = parse_porcelain("ab", &stats);
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn parse_porcelain_mixed_statuses() {
+        let mut stats = HashMap::new();
+        stats.insert("a.rs".to_string(), (2, 1));
+        let input = " M a.rs\nA  b.rs\n?? c.txt";
+        let (files, ins, del) = parse_porcelain(input, &stats);
+        assert_eq!(files.len(), 3);
+        assert_eq!(files[0].status, "M");
+        assert_eq!(files[1].status, "A");
+        assert_eq!(files[2].status, "U");
+        assert_eq!(ins, 2);
+        assert_eq!(del, 1);
+    }
+
+    // --- parse_log_output tests ---
+
+    #[test]
+    fn parse_log_output_empty() {
+        let entries = parse_log_output("");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parse_log_output_single_commit_no_files() {
+        let output = "abc1234567890\nInitial commit\nJohn Doe\n1700000000\n---END---\n";
+        let entries = parse_log_output(output);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].hash, "abc1234");
+        assert_eq!(entries[0].message, "Initial commit");
+        assert_eq!(entries[0].author, "John Doe");
+        assert_eq!(entries[0].timestamp, 1700000000);
+        assert!(entries[0].files.is_empty());
+    }
+
+    #[test]
+    fn parse_log_output_commit_with_files() {
+        let output = "abc1234567890\nFix bug\nJane\n1700000000\n---END---\n\n10\t5\tsrc/main.rs\n3\t1\tsrc/lib.rs\n";
+        let entries = parse_log_output(output);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].files.len(), 2);
+        assert_eq!(entries[0].insertions, 13);
+        assert_eq!(entries[0].deletions, 6);
+        assert_eq!(entries[0].files[0].path, "src/main.rs");
+        assert_eq!(entries[0].files[1].path, "src/lib.rs");
+    }
+
+    #[test]
+    fn parse_log_output_multiple_commits() {
+        let output = "\
+abc1234567890\nFirst\nAlice\n1700000000\n---END---\n\n2\t1\ta.rs\n\n\
+def7890123456\nSecond\nBob\n1700001000\n---END---\n\n1\t0\tb.rs\n";
+        let entries = parse_log_output(output);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].hash, "abc1234");
+        assert_eq!(entries[0].message, "First");
+        assert_eq!(entries[1].hash, "def7890");
+        assert_eq!(entries[1].message, "Second");
+    }
+
+    #[test]
+    fn parse_log_hash_truncated_to_7() {
+        let output = "abcdefghijklmnop\nMsg\nAuthor\n0\n---END---\n";
+        let entries = parse_log_output(output);
+        assert_eq!(entries[0].hash, "abcdefg");
+    }
+
+    #[test]
+    fn parse_log_short_hash() {
+        let output = "abc\nMsg\nAuthor\n0\n---END---\n";
+        let entries = parse_log_output(output);
+        assert_eq!(entries[0].hash, "abc");
+    }
 }

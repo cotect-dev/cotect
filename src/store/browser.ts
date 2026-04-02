@@ -31,15 +31,18 @@ interface BrowserState {
 
 const IMPORT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx']
 
-function resolveImportCandidates(basePath: string): string[] {
+/** @internal Exported for testing only. */
+export function resolveImportCandidates(basePath: string): string[] {
   return [basePath, ...IMPORT_EXTENSIONS.map((ext) => `${basePath}${ext}`)]
 }
 
-function findMatchingFile(resolvedPath: string, fileSet: Set<string>): string | undefined {
+/** @internal Exported for testing only. */
+export function findMatchingFile(resolvedPath: string, fileSet: Set<string>): string | undefined {
   return resolveImportCandidates(resolvedPath).find((c) => fileSet.has(c))
 }
 
-function generateDirectoryNodes(entries: FSEntry[]): { nodes: AppNode[]; edges: Edge[] } {
+/** @internal Exported for testing only. */
+export function generateDirectoryNodes(entries: FSEntry[]): { nodes: AppNode[]; edges: Edge[] } {
   const nodes: AppNode[] = entries.map((entry): AppNode =>
     entry.isDirectory
       ? { id: entry.path, type: 'folder', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isDirectory: true as const } }
@@ -48,7 +51,8 @@ function generateDirectoryNodes(entries: FSEntry[]): { nodes: AppNode[]; edges: 
   return layoutTree(nodes, [])
 }
 
-function generateFileNodes(
+/** @internal Exported for testing only. */
+export function generateFileNodes(
   fileAnalysis: FileAnalysis,
   currentPath: string,
   siblingAnalyses: Map<string, FileAnalysis>,
@@ -83,6 +87,9 @@ function generateFileNodes(
 
   const addedNodeIds = new Set(nodes.map((n) => n.id))
 
+  // Track whether we need a file-level node as the import edge source
+  let hasImportEdges = false
+
   for (const imp of fileAnalysis.imports) {
     if (!imp.resolvedPath) continue
     const candidates = new Set(resolveImportCandidates(imp.resolvedPath))
@@ -96,12 +103,27 @@ function generateFileNodes(
           id: sibFileId, type: 'file', position: { x: 0, y: 0 },
           data: { label: fileName, path: resolvedFile, isImport: true, declarationCount: sibAnalysis.declarations.length },
         })
+        hasImportEdges = true
+        edges.push({
+          id: `e-import-${fileId}-${sibFileId}`, source: fileId, target: sibFileId,
+          type: 'smoothstep', animated: true, label: 'imports', style: { stroke: '#6366f1' },
+        })
       }
-      edges.push({
-        id: `e-import-${fileId}-${sibFileId}`, source: nodes[0]?.id || fileId, target: sibFileId,
-        type: 'smoothstep', animated: true, label: 'imports', style: { stroke: '#6366f1' },
-      })
       break
+    }
+  }
+
+  // Add a file node as import edge source if needed
+  if (hasImportEdges && !addedNodeIds.has(fileId)) {
+    const fileName = currentPath.split('/').pop() || currentPath
+    nodes.unshift({
+      id: fileId, type: 'file', position: { x: 0, y: 0 },
+      data: { label: fileName, path: currentPath },
+    })
+    // Connect declarations to the file node
+    for (const decl of fileAnalysis.declarations) {
+      const nodeId = `${fileId}:${decl.name}`
+      edges.push({ id: `e-${fileId}-${nodeId}`, source: fileId, target: nodeId, type: 'smoothstep' })
     }
   }
 

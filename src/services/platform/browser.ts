@@ -177,4 +177,37 @@ export const browserPlatform: Platform = {
       return keys
     },
   },
+
+  syncedState: {
+    set(name: string, state: unknown, windowId: string) {
+      getBcChannel().postMessage({
+        event: `synced-state-update:${name}`,
+        payload: { state, source: windowId },
+      })
+      localStorage.setItem(lsKey(`panel-${name}`), JSON.stringify(state))
+    },
+
+    async get(name: string): Promise<unknown | null> {
+      try {
+        const raw = localStorage.getItem(lsKey(`panel-${name}`))
+        return raw ? JSON.parse(raw) : null
+      } catch {
+        return null
+      }
+    },
+
+    async clear(name: string): Promise<void> {
+      localStorage.removeItem(lsKey(`panel-${name}`))
+    },
+
+    listen(name: string, callback: (payload: { state: unknown; source: string }) => void): () => void {
+      const handler = (e: MessageEvent) => {
+        if (e.data?.event === `synced-state-update:${name}`) {
+          callback(e.data.payload)
+        }
+      }
+      getBcChannel().addEventListener('message', handler)
+      return () => getBcChannel().removeEventListener('message', handler)
+    },
+  },
 }

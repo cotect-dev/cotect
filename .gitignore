@@ -44,8 +44,14 @@ src-tauri/gen/
 .swc
 .eslintcache
 
+# Test coverage output
+coverage/
+
 # Docs
 docs/
+
+# Plans
+plans/
 
 # Superpowers brainstorm sessions
 .superpowers/

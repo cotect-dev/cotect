@@ -10,6 +10,7 @@ import { getPanelLabel, useLayoutStore } from '@/store/layout'
 import { getPlatform } from '@/services/platform'
 import { saveZoneSizes, loadZoneSizes } from '@/services/windowManager'
 import CrossWindowDropOverlay from './CrossWindowDropOverlay'
+import { PanelHostProvider } from './PanelHost'
 import { MIN_SIDE_ZONE, MIN_BOTTOM_ZONE } from '@/lib/constants'
 
 interface LayoutProps {
@@ -104,6 +105,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
   }, [])
 
   return (
+    <PanelHostProvider>
     <div className="w-screen h-screen flex flex-col">
       <div className="pointer-events-none">
         <TopBar onResetZoneSizes={resetZoneSizes} />
@@ -246,5 +248,6 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
       </DndContext>
       <CrossWindowDropOverlay zoneRefs={zoneRefs} mode={mode} />
     </div>
+    </PanelHostProvider>
   )
 }

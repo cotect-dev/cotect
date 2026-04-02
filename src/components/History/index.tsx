@@ -10,7 +10,11 @@ function CommitEntry({ commit }: { commit: GitLogEntry }) {
   return (
     <div
       className="px-2 py-1.5 border-b border-border/10 hover:bg-muted/30 cursor-pointer"
+      role="button"
+      tabIndex={0}
       onClick={() => setExpanded((v) => !v)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded((v) => !v) } }}
+      aria-expanded={expanded}
     >
       <div className="flex items-center justify-between text-[10px] text-muted-foreground/50 font-mono">
         <span>{commit.hash}</span>

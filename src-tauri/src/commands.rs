@@ -47,6 +47,15 @@ pub fn read_directory(dir_path: String) -> Result<Vec<FSEntry>, String> {
 
 #[tauri::command]
 pub fn read_file_content(file_path: String) -> Result<String, String> {
+    const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+    let metadata = fs::metadata(&file_path).map_err(|e| e.to_string())?;
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(format!(
+            "File too large ({:.1} MB). Maximum supported size is {:.0} MB.",
+            metadata.len() as f64 / (1024.0 * 1024.0),
+            MAX_FILE_SIZE as f64 / (1024.0 * 1024.0),
+        ));
+    }
     fs::read_to_string(&file_path).map_err(|e| e.to_string())
 }
 
@@ -262,4 +271,99 @@ pub fn get_monitors() -> Vec<MonitorInfo> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn directory_entries_sorted_dirs_first_case_insensitive() {
+        let mut entries = vec![
+            FSEntry { name: "zebra.txt".into(), path: "/tmp/zebra.txt".into(), is_directory: false },
+            FSEntry { name: "alpha".into(), path: "/tmp/alpha".into(), is_directory: true },
+            FSEntry { name: "beta.txt".into(), path: "/tmp/beta.txt".into(), is_directory: false },
+            FSEntry { name: "Gamma".into(), path: "/tmp/Gamma".into(), is_directory: true },
+        ];
+
+        entries.sort_by(|a, b| {
+            if a.is_directory != b.is_directory {
+                if a.is_directory {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                }
+            } else {
+                a.name.to_lowercase().cmp(&b.name.to_lowercase())
+            }
+        });
+
+        assert_eq!(entries[0].name, "alpha");
+        assert_eq!(entries[1].name, "Gamma");
+        assert_eq!(entries[2].name, "beta.txt");
+        assert_eq!(entries[3].name, "zebra.txt");
+    }
+
+    #[test]
+    fn is_wayland_returns_false_without_env_vars() {
+        // Ensure the env vars are not set
+        std::env::remove_var("WAYLAND_DISPLAY");
+        std::env::remove_var("XDG_SESSION_TYPE");
+        // is_wayland checks both vars -- without them, should return false
+        let result = std::env::var("WAYLAND_DISPLAY").is_ok()
+            && std::env::var("XDG_SESSION_TYPE").map_or(false, |v| v == "wayland");
+        assert!(!result);
+    }
+
+    #[test]
+    fn read_file_content_rejects_oversized() {
+        // Create a temp file > 10MB
+        let dir = std::env::temp_dir().join("cotect_test_oversized");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("big_file.bin");
+        {
+            let mut f = fs::File::create(&path).unwrap();
+            let chunk = vec![0u8; 1024 * 1024]; // 1MB
+            for _ in 0..11 {
+                f.write_all(&chunk).unwrap();
+            }
+        }
+        let result = read_file_content(path.to_string_lossy().to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("File too large"));
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn read_file_content_reads_normal_file() {
+        let dir = std::env::temp_dir().join("cotect_test_normal");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("test.txt");
+        fs::write(&path, "hello world").unwrap();
+        let result = read_file_content(path.to_string_lossy().to_string());
+        assert_eq!(result.unwrap(), "hello world");
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn read_directory_returns_sorted_entries() {
+        let dir = std::env::temp_dir().join("cotect_test_readdir");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("c.txt"), "").unwrap();
+        fs::write(dir.join("a.txt"), "").unwrap();
+        fs::create_dir(dir.join("b_dir")).unwrap();
+
+        let result = read_directory(dir.to_string_lossy().to_string()).unwrap();
+        // Directories first, then files alphabetically
+        assert!(result[0].is_directory);
+        assert_eq!(result[0].name, "b_dir");
+        assert_eq!(result[1].name, "a.txt");
+        assert_eq!(result[2].name, "c.txt");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

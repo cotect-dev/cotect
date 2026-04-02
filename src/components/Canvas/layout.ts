@@ -48,11 +48,12 @@ export function layoutTree<T extends Node>(
   }
 
   const cols = Math.max(1, Math.ceil(Math.sqrt(standalone.length)))
+  const standaloneOffsetX = offsetX > 0 && standalone.length > 0 ? offsetX : 0
   standalone.forEach((node, i) => {
     const col = i % cols
     const row = Math.floor(i / cols)
     positioned.set(node.id, {
-      x: col * (NODE_WIDTH + NODE_H_GAP),
+      x: standaloneOffsetX + col * (NODE_WIDTH + NODE_H_GAP),
       y: row * (NODE_HEIGHT + NODE_V_GAP),
     })
   })

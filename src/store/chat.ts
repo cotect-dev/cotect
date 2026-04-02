@@ -61,11 +61,12 @@ export const useChatStore = createSyncedStore<ChatState>('chat', (set) => ({
 
 const API_BASE = '/llm/v1'
 
-function countWords(text: string): number {
+/** @internal Exported for testing only. */
+export function countWords(text: string): number {
   return text.split(/\s+/).filter(Boolean).length
 }
 
-interface StreamAccumulator {
+export interface StreamAccumulator {
   content: string
   thinking: string
   rawStream: string
@@ -76,11 +77,13 @@ interface StreamAccumulator {
   streamStartTime: number | null
 }
 
-function createAccumulator(): StreamAccumulator {
+/** @internal Exported for testing only. */
+export function createAccumulator(): StreamAccumulator {
   return { content: '', thinking: '', rawStream: '', inThinkTag: false, thinkingTokens: 0, thinkingStartTime: null, totalTokens: 0, streamStartTime: null }
 }
 
-function buildRequestPayload(messages: Message[], model: ModelId, thinkingEnabled: boolean) {
+/** @internal Exported for testing only. */
+export function buildRequestPayload(messages: Message[], model: ModelId, thinkingEnabled: boolean) {
   const chatMessages = messages
     .filter((m) => !m.isStreaming)
     .map((m) => ({ role: m.role, content: m.content }))
@@ -102,7 +105,8 @@ function buildRequestPayload(messages: Message[], model: ModelId, thinkingEnable
   }
 }
 
-function processStreamChunk(acc: StreamAccumulator, text: string, reasoning: string): void {
+/** @internal Exported for testing only. */
+export function processStreamChunk(acc: StreamAccumulator, text: string, reasoning: string): void {
   if (reasoning || text) {
     if (!acc.streamStartTime) acc.streamStartTime = Date.now()
     acc.totalTokens++
@@ -119,17 +123,19 @@ function processStreamChunk(acc: StreamAccumulator, text: string, reasoning: str
   if (!acc.rawStream) return
 
   let remaining = acc.rawStream
+  let chunkHadThinking = false
   if (acc.inThinkTag) {
     const closeIdx = remaining.indexOf('</think>')
     if (closeIdx !== -1) {
       acc.thinking += remaining.slice(0, closeIdx)
-      acc.thinkingTokens += countWords(remaining.slice(0, closeIdx))
+      chunkHadThinking = closeIdx > 0
       acc.inThinkTag = false
       remaining = remaining.slice(closeIdx + 8)
     } else {
       acc.thinking += remaining
-      acc.thinkingTokens += countWords(remaining)
+      chunkHadThinking = remaining.length > 0
       acc.rawStream = ''
+      if (chunkHadThinking) acc.thinkingTokens++
       return
     }
   }
@@ -143,16 +149,17 @@ function processStreamChunk(acc: StreamAccumulator, text: string, reasoning: str
     const closeIdx = afterOpen.indexOf('</think>')
     if (closeIdx !== -1) {
       acc.thinking += afterOpen.slice(0, closeIdx)
-      acc.thinkingTokens += countWords(afterOpen.slice(0, closeIdx))
+      chunkHadThinking = chunkHadThinking || closeIdx > 0
       acc.inThinkTag = false
       acc.content += afterOpen.slice(closeIdx + 8)
     } else {
       acc.thinking += afterOpen
-      acc.thinkingTokens += countWords(afterOpen)
+      chunkHadThinking = chunkHadThinking || afterOpen.length > 0
     }
   } else {
     acc.content += remaining
   }
+  if (chunkHadThinking) acc.thinkingTokens++
   acc.rawStream = ''
 }
 
@@ -231,14 +238,16 @@ export async function sendMessage(content: string) {
           processStreamChunk(acc, delta.content || '', delta.reasoning_content || '')
           dirty = true
           scheduleFlush()
-        } catch {}
+        } catch {
+          // Ignore individual SSE chunk parse errors; stream continues
+        }
       }
     }
   } catch (err) {
     if ((err as Error).name !== 'AbortError') {
-      updateMessage(assistantId, {
-        content: acc.content || `Error: ${(err as Error).message}`,
-      })
+      acc.content = acc.content
+        ? `${acc.content}\n\n[Error: ${(err as Error).message}]`
+        : `Error: ${(err as Error).message}`
     }
   } finally {
     if (rafId !== null) cancelAnimationFrame(rafId)

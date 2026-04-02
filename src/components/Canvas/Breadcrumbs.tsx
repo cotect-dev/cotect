@@ -11,6 +11,7 @@ export default function Breadcrumbs() {
       <div className="flex items-center gap-1 bg-background/90 backdrop-blur-md border border-border rounded-lg px-3 py-1.5 shadow-lg">
         <button
           className="text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Navigate to root"
           onClick={() => {
             const { rootPath } = useBrowserStore.getState()
             if (rootPath) useBrowserStore.getState().navigateTo(rootPath, 'directory')
