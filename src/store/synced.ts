@@ -21,6 +21,7 @@ interface PendingEntry {
   name: string
   store: StoreApi<unknown>
   serializableKeys: Set<string>
+  /** Applied when loading from persistent storage (app restart / reload). */
   sanitize?: (s: Partial<unknown>) => Partial<unknown>
   syncing: boolean
 }
@@ -28,10 +29,9 @@ interface PendingEntry {
 const pending: PendingEntry[] = []
 
 interface SyncOptions<T> {
+  /** Clean up transient state when restoring from persistent storage. */
   sanitize?: (saved: Partial<T>) => Partial<T>
 }
-
-const STORAGE_PREFIX = 'panel-'
 
 export function createSyncedStore<T>(name: string, creator: StateCreator<T>, options?: SyncOptions<T>) {
   const store = create<T>(creator)
@@ -53,34 +53,39 @@ export function initAllSyncedStores(): void {
   const windowId = platform.windows.getWindowId()
 
   for (const entry of pending) {
-    let timer: ReturnType<typeof setTimeout> | null = null
-
-    entry.store.subscribe(() => {
+    // --- outbound: store → backend (fire-and-forget, Rust handles batching) ---
+    const unsub = entry.store.subscribe(() => {
       if (entry.syncing) return
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => {
-        const data = pickKeys(entry.store.getState(), entry.serializableKeys)
-        platform.storage.setSync(`${STORAGE_PREFIX}${entry.name}`, data)
-        platform.ipc.emit(`store-sync:${entry.name}`, { state: data, source: windowId }).catch(() => {})
-      }, 300)
+      const data = pickKeys(entry.store.getState(), entry.serializableKeys)
+      platform.syncedState.set(entry.name, data, windowId)
     })
+    unlisteners.push(unsub)
 
-    const unlisten = platform.ipc.listen(`store-sync:${entry.name}`, (payload: unknown) => {
-      const { state, source } = payload as { state: Partial<unknown>; source: string }
+    // --- inbound: backend → this store ---
+    const unlisten = platform.syncedState.listen(entry.name, ({ state, source }) => {
       if (source !== windowId && state) {
         entry.syncing = true
-        entry.store.setState(entry.sanitize ? entry.sanitize(state) : state)
+        entry.store.setState(state as Partial<unknown>)
         entry.syncing = false
       }
     })
     unlisteners.push(unlisten)
+
+    // --- initial load from backend ---
+    platform.syncedState.get(entry.name).then((state) => {
+      if (state && typeof state === 'object') {
+        entry.syncing = true
+        entry.store.setState(entry.sanitize ? entry.sanitize(state as Partial<unknown>) : state as Partial<unknown>)
+        entry.syncing = false
+      }
+    })
   }
 }
 
 export function clearAllSyncedStores(): void {
   const platform = getPlatform()
   for (const { name } of pending) {
-    platform.storage.removeSync(`${STORAGE_PREFIX}${name}`)
+    platform.syncedState.clear(name)
   }
 }
 
@@ -91,14 +96,19 @@ export function stopAllSyncedStores(): void {
   unlisteners = []
 }
 
-export async function reloadSyncedStore(name: string): Promise<void> {
+/**
+ * Load a synced store's current state from the backend.
+ * Used for cross-window panel transfers where the target window
+ * needs to pick up the latest state immediately.
+ */
+export async function loadSyncedStoreFromBackend(name: string): Promise<void> {
   const platform = getPlatform()
   const entry = pending.find((p) => p.name === name)
   if (!entry) return
-  const saved = await platform.storage.get<Partial<unknown>>(`${STORAGE_PREFIX}${name}`)
-  if (saved && typeof saved === 'object') {
+  const state = await platform.syncedState.get(name)
+  if (state && typeof state === 'object') {
     entry.syncing = true
-    entry.store.setState(entry.sanitize ? entry.sanitize(saved) : saved)
+    entry.store.setState(state as Partial<unknown>)
     entry.syncing = false
   }
 }

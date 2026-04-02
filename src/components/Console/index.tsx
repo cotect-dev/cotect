@@ -46,10 +46,12 @@ export default function Console() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-border/50 shrink-0">
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border/50 shrink-0" role="tablist">
         {filterOptions.map((opt) => (
           <button
             key={opt.label}
+            role="tab"
+            aria-selected={filter === opt.value}
             onClick={() => setFilter(opt.value)}
             className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
               filter === opt.value
@@ -65,6 +67,7 @@ export default function Console() {
           variant="ghost"
           size="xs"
           onClick={clear}
+          aria-label="Clear console"
           className="text-muted-foreground"
           disabled={entries.length === 0}
         >

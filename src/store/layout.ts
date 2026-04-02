@@ -228,6 +228,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
 
   resizePanels: (position, index, ratio) =>
     set((state) => {
+      if (index < 0 || index + 1 >= state.sizes[position].length) return state
       const sizes = { ...state.sizes, [position]: [...state.sizes[position]] }
       const total = sizes[position][index] + sizes[position][index + 1]
       sizes[position][index] = total * ratio

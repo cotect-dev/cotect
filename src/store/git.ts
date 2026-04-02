@@ -35,7 +35,7 @@ export interface GitBranch {
   current: string
 }
 
-type GitError = 'GIT_NOT_FOUND' | 'NOT_A_REPO' | 'NO_COMMITS' | null
+type GitError = 'GIT_NOT_FOUND' | 'NOT_A_REPO' | 'NO_COMMITS' | 'PARTIAL_FAILURE' | null
 
 interface GitState {
   repoPath: string
@@ -91,12 +91,20 @@ export const useGitStore = create<GitState>((set, get) => ({
           broadcastGitState(state)
           return
         }
+        // Unknown error from git_status — don't fall through to success path
+        console.error('Git status failed with unknown error:', err)
+        set({ initialized: true, isGitRepo: false, gitError: null, status: null, log: null, branch: null, lastCommitTimestamp: null, loading: false })
+        return
       }
+
+      const hasPartialFailure = [status, log, branch, lastCommitTime].some(
+        (r) => r.status === 'rejected',
+      )
 
       const newState = {
         initialized: true,
         isGitRepo: true,
-        gitError: null as GitError,
+        gitError: hasPartialFailure ? ('PARTIAL_FAILURE' as GitError) : (null as GitError),
         status: status.status === 'fulfilled' ? status.value : null,
         log: log.status === 'fulfilled' ? log.value : null,
         branch: branch.status === 'fulfilled' ? branch.value : null,
@@ -104,7 +112,8 @@ export const useGitStore = create<GitState>((set, get) => ({
       }
       set({ ...newState, loading: false })
       broadcastGitState(newState)
-    } catch {
+    } catch (err) {
+      console.error('Git refresh failed:', err)
       set({ loading: false })
     }
   },
