@@ -113,6 +113,11 @@ function CanvasFlow() {
   // Keyboard navigation
   useCanvasKeyboard(containerRef)
 
+  // Auto-focus container on mount so keyboard navigation works immediately
+  useEffect(() => {
+    containerRef.current?.focus()
+  }, [])
+
   // Wheel handler: translate vertical scroll into viewport pan
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.stopPropagation()
@@ -128,6 +133,8 @@ function CanvasFlow() {
       <div
         ref={containerRef}
         className="absolute inset-0 outline-none"
+        tabIndex={-1}
+        data-canvas-container
         onWheel={handleWheel}
       >
         <ReactFlow
@@ -146,6 +153,9 @@ function CanvasFlow() {
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}
+          nodesFocusable={false}
+          edgesFocusable={false}
+          disableKeyboardA11y={true}
           minZoom={1}
           maxZoom={1}
         >

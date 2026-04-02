@@ -24,8 +24,6 @@ export default memo(function FunctionNode({ id, data }: NodeProps<FunctionNode>)
         setFocus(id)
         navigateRight()
       }}
-    >
-      <div className="text-xs text-muted-foreground mt-0.5">L{data.startLine}–{data.endLine}</div>
-    </BaseNode>
+    />
   )
 })

@@ -11,6 +11,7 @@ import {
 } from '@xyflow/react'
 import { getPlatform } from '@/services/platform'
 import { analyzeFile } from '@/services/treesitter'
+import { detectProjectMeta } from '@/services/projectMeta'
 import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP } from '@/lib/constants'
 import type { AppNode } from '@/types/nodes'
 
@@ -175,7 +176,8 @@ async function buildCodeNode(filePath: string, name: string, startLine: number, 
   const platform = getPlatform()
   const fullFileContent = await platform.fs.readFile(filePath)
   const lines = fullFileContent.split('\n')
-  const content = lines.slice(startLine - 1, endLine).join('\n')
+  // startLine/endLine are 0-indexed (from tree-sitter)
+  const content = lines.slice(startLine, endLine + 1).join('\n')
 
   const node: AppNode = {
     id: `code:${filePath}:${name}`,
@@ -200,8 +202,8 @@ async function buildCodeNode(filePath: string, name: string, startLine: number, 
  * Position nodes within a column at a given X offset.
  * Folders above files, single vertical column.
  */
-function positionColumnNodes(nodes: AppNode[], xOffset: number): AppNode[] {
-  let y = 0
+function positionColumnNodes(nodes: AppNode[], xOffset: number, yStart: number = 0): AppNode[] {
+  let y = yStart
   return nodes.map((node) => {
     const positioned = { ...node, position: { x: xOffset, y } }
     y += NODE_HEIGHT + NODE_V_GAP
@@ -298,16 +300,36 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   /**
    * Initialize the canvas with the project root.
-   * Shows project meta on the left, root directory contents in the center.
+   * Column 0 = project meta, Column 1 = root directory contents.
+   * User starts focused on the root directory (column 1).
    */
   initRoot: async (rootPath: string) => {
     try {
-      const dirNodes = await buildDirectoryNodes(rootPath)
+      // Detect project metadata and build directory nodes in parallel
+      const [meta, dirNodes] = await Promise.all([
+        detectProjectMeta(rootPath),
+        buildDirectoryNodes(rootPath),
+      ])
+
+      // Build the project meta column (single node)
+      const metaNode: AppNode = {
+        id: '__project_meta__',
+        type: 'projectMeta',
+        position: { x: 0, y: 0 },
+        data: {
+          name: meta.name,
+          description: meta.description,
+          version: meta.version,
+          language: meta.language,
+          framework: meta.framework,
+        },
+      }
+      const metaColumn: Column = { path: '__meta__', kind: 'directory', nodes: [metaNode], edges: [] }
       const rootColumn: Column = { path: rootPath, kind: 'directory', nodes: dirNodes, edges: [] }
 
       set({
-        columns: [rootColumn],
-        currentColumnIndex: 0,
+        columns: [metaColumn, rootColumn],
+        currentColumnIndex: 1,
         depthChain: [rootPath],
         focusedNodeId: dirNodes.length > 0 ? dirNodes[0].id : null,
         selectedFunction: null,
@@ -380,7 +402,18 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
     // No matching preview — load fresh
     try {
-      if (node.type === 'folder') {
+      if (node.type === 'projectMeta') {
+        // Project meta: just advance to next column if it exists
+        const nextCol = columns[currentColumnIndex + 1]
+        if (nextCol) {
+          set({
+            currentColumnIndex: currentColumnIndex + 1,
+            focusedNodeId: nextCol.nodes.length > 0 ? nextCol.nodes[0].id : null,
+          })
+          flattenAndRender(get, set)
+          get().updatePreview()
+        }
+      } else if (node.type === 'folder') {
         const path = data.path as string
         const dirNodes = await buildDirectoryNodes(path)
         const newColumn: Column = { path, kind: 'directory', nodes: dirNodes, edges: [] }
@@ -517,7 +550,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     try {
       let previewCol: Column | null = null
 
-      if (node.type === 'folder') {
+      if (node.type === 'projectMeta') {
+        // For project meta, the root directory column (index 1) already exists — keep it
+        const existingNext = columns[currentColumnIndex + 1]
+        if (existingNext) {
+          previewCol = existingNext
+        }
+      } else if (node.type === 'folder') {
         const path = data.path as string
         const dirNodes = await buildDirectoryNodes(path)
         previewCol = { path, kind: 'directory', nodes: dirNodes, edges: [] }
@@ -593,18 +632,34 @@ function flattenAndRender(
   const allEdges: Edge[] = []
   let xOffset = 0
 
+  // First pass: position current column to find focused node Y
+  let focusedNodeY = 0
+  const { focusedNodeId } = get()
+
   for (let i = startIdx; i <= endIdx; i++) {
     const col = columns[i]
     const isCurrentCol = i === currentColumnIndex
+    const isPreviewCol = i === currentColumnIndex + 1
+
+    // For the preview column, if it's a code column, align its node
+    // with the focused node's Y position instead of starting at y=0
+    let yStart = 0
+    if (isPreviewCol && col.kind === 'code' && focusedNodeId) {
+      yStart = focusedNodeY
+    }
 
     // Position nodes in this column
-    const positioned = positionColumnNodes(col.nodes, xOffset)
+    const positioned = positionColumnNodes(col.nodes, xOffset, yStart)
 
     // Tag nodes: dim non-current columns
     for (const node of positioned) {
+      // Track focused node's Y for aligning the preview column
+      if (node.id === focusedNodeId) {
+        focusedNodeY = node.position.y
+      }
+
       allNodes.push({
         ...node,
-        // Prefix IDs to avoid collisions across columns - but keep original for matching
         id: node.id,
         data: {
           ...node.data,
@@ -619,7 +674,6 @@ function flattenAndRender(
       allEdges.push({ ...edge })
     }
 
-    // Calculate column width: find max node count to determine height, then advance X
     xOffset += NODE_WIDTH + NODE_H_GAP
   }
 

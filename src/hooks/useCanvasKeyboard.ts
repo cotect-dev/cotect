@@ -15,11 +15,12 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
     if (!container) return
 
     function handleKeyDown(e: KeyboardEvent) {
-      // Focus guard: don't capture when typing in inputs
-      const active = document.activeElement
+      // Focus guard: don't capture when typing in inputs or code editors
+      const active = document.activeElement as HTMLElement | null
       if (active && (
         FOCUS_GUARD_TAGS.has(active.tagName) ||
-        (active as HTMLElement).isContentEditable
+        active.isContentEditable ||
+        active.closest('.cm-editor')
       )) {
         return
       }
@@ -48,6 +49,18 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
           e.preventDefault()
           store.navigateRight()
           break
+        case 'e': {
+          // Focus the CodeMirror editor inside the currently focused code node
+          const focusedId = store.focusedNodeId
+          if (!focusedId) break
+          const nodeEl = container?.querySelector(`[data-id="${CSS.escape(focusedId)}"]`)
+          const cmContent = nodeEl?.querySelector('.cm-content') as HTMLElement | null
+          if (cmContent) {
+            e.preventDefault()
+            cmContent.focus()
+          }
+          break
+        }
       }
     }
 
