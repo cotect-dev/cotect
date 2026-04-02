@@ -89,4 +89,15 @@ export interface Platform {
     exists(key: string): Promise<boolean>
     listKeys(prefix: string): Promise<string[]>
   }
+
+  syncedState: {
+    /** Push state update to the backend. */
+    set(name: string, state: unknown, windowId: string): void
+    /** Get current state from the backend. */
+    get(name: string): Promise<unknown | null>
+    /** Clear a store's state in the backend (used on fresh start). */
+    clear(name: string): Promise<void>
+    /** Listen for state updates broadcast by the backend. */
+    listen(name: string, callback: (payload: { state: unknown; source: string }) => void): () => void
+  }
 }

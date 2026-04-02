@@ -80,7 +80,9 @@ export function useWindowLifecycle() {
             if (session.currentPath && session.currentPath !== session.rootPath) {
               await useBrowserStore.getState().navigateTo(session.currentPath, session.viewMode)
             }
-          } catch {}
+          } catch (err) {
+            console.error('Failed to restore session root:', err)
+          }
         }
         startSessionPersistence()
 
@@ -93,9 +95,18 @@ export function useWindowLifecycle() {
             gitState.refresh()
           }
         })
+
+        // Initialize git for the already-restored session (subscription above
+        // only fires on *future* changes, so we need to handle the current state)
+        const currentRoot = useBrowserStore.getState().rootPath
+        if (currentRoot && currentRoot !== useGitStore.getState().repoPath) {
+          useGitStore.getState().setRepoPath(currentRoot)
+          startGitWatcher(currentRoot, windowId)
+          useGitStore.getState().refresh()
+        }
       }
 
-      if (session?.rootPath) {
+      if (session?.rootPath && !isMain) {
         useGitStore.getState().setRepoPath(session.rootPath)
         startGitWatcher(session.rootPath, windowId)
         useGitStore.getState().refresh()

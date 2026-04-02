@@ -10,7 +10,10 @@ import App from './App'
 async function bootstrap() {
   await initPlatform()
 
-  createRoot(document.getElementById('root')!).render(
+  const root = document.getElementById('root')
+  if (!root) throw new Error('Root element #root not found')
+
+  createRoot(root).render(
     <StrictMode>
       <ErrorBoundary>
         <TooltipProvider>
@@ -21,4 +24,6 @@ async function bootstrap() {
   )
 }
 
-bootstrap()
+bootstrap().catch((err) => {
+  console.error('Failed to bootstrap application:', err)
+})

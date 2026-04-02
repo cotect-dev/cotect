@@ -1,19 +1,7 @@
-import { type ComponentType } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { X } from 'lucide-react';
 import { getPanelLabel, useLayoutStore, type PanelPosition } from '@/store/layout';
-import Chat from '@/components/Chat';
-import Console from '@/components/Console';
-import Changes from '@/components/Changes';
-import History from '@/components/History';
-import Branches from '@/components/Branches';
-const PANEL_CONTENT: Record<string, ComponentType> = {
-  chat: Chat,
-  console: Console,
-  changes: Changes,
-  history: History,
-  branches: Branches,
-};
+import { PANEL_CONTENT, PanelSlot } from './PanelHost';
 
 interface PanelAreaProps {
   group: string[];
@@ -55,6 +43,7 @@ function TabButton({ id, isActive, position, onClick }: { id: string; isActive: 
           e.stopPropagation();
           removePanel(id);
         }}
+        aria-label={`Close ${label}`}
         className="p-0.5 mr-1 rounded-sm hover:bg-destructive/20 hover:text-destructive transition-colors"
       >
         <X className="h-3 w-3" />
@@ -110,6 +99,7 @@ export default function PanelArea({ group, position, groupIndex, ghostTabLabel }
                 removePanel(group[0]);
               }}
               onPointerDown={(e) => e.stopPropagation()}
+              aria-label={`Close ${getPanelLabel(group[0])}`}
               className="px-2 py-1.5 text-muted-foreground hover:text-destructive transition-colors"
             >
               <X className="h-3.5 w-3.5" />
@@ -132,16 +122,9 @@ export default function PanelArea({ group, position, groupIndex, ghostTabLabel }
       </div>
       <div className="flex-1 min-h-0 relative">
         {group.map((id, i) => {
-          const C = PANEL_CONTENT[id];
-          if (!C) return null;
+          if (!PANEL_CONTENT[id]) return null;
           return (
-            <div
-              key={id}
-              className="absolute inset-0"
-              style={{ display: i === activeIndex ? 'block' : 'none' }}
-            >
-              <C />
-            </div>
+            <PanelSlot key={id} id={id} visible={i === activeIndex} />
           );
         })}
       </div>

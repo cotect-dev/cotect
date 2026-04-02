@@ -50,8 +50,8 @@ async function getLanguage(config: LanguageConfig): Promise<Language> {
   return lang
 }
 
-function getQuery(language: Language, pattern: string): Query {
-  const key = `${language}:${pattern}`
+function getQuery(language: Language, grammarPath: string, pattern: string): Query {
+  const key = `${grammarPath}:${pattern}`
   const cached = queryCache.get(key)
   if (cached) return cached
   const query = new Query(language, pattern)
@@ -59,7 +59,8 @@ function getQuery(language: Language, pattern: string): Query {
   return query
 }
 
-function resolveImportPath(source: string, currentFilePath: string): string | null {
+/** @internal Exported for testing only. */
+export function resolveImportPath(source: string, currentFilePath: string): string | null {
   if (!source.startsWith('.')) return null // external package
   const dir = currentFilePath.substring(0, currentFilePath.lastIndexOf('/'))
   const parts = `${dir}/${source}`.split('/')
@@ -83,7 +84,7 @@ export async function analyzeFile(filePath: string, content: string): Promise<Fi
     const tree = parser.parse(content)
     if (!tree) return { declarations: [], imports: [] }
 
-    const declQuery = getQuery(language, config.declarationQuery)
+    const declQuery = getQuery(language, config.grammarPath, config.declarationQuery)
     const declMatches = declQuery.matches(tree.rootNode)
     const declarations: Declaration[] = []
     const classMap = new Map<number, Declaration>()
@@ -132,7 +133,7 @@ export async function analyzeFile(filePath: string, content: string): Promise<Fi
       }
     }
 
-    const importQuery = getQuery(language, config.importQuery)
+    const importQuery = getQuery(language, config.grammarPath, config.importQuery)
     const importMatches = importQuery.matches(tree.rootNode)
     const imports: ImportInfo[] = []
 

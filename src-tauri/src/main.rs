@@ -2,6 +2,7 @@
 
 mod commands;
 mod git;
+mod synced_state;
 mod watcher;
 
 use std::fs;
@@ -58,6 +59,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(watcher::WatcherState::new())
+        .manage(synced_state::SyncedStateStore::new())
         .invoke_handler(tauri::generate_handler![
             commands::read_directory,
             commands::read_file_content,
@@ -73,10 +75,18 @@ fn main() {
             git::git_branch,
             git::git_last_commit_time,
             git::git_init,
+            synced_state::set_synced_state,
+            synced_state::get_synced_state,
+            synced_state::clear_synced_state,
         ])
+        .setup(|app| {
+            synced_state::start_batch_broadcaster(app.handle().clone());
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 if window.label() == "main" {
+                    synced_state::persist_all(window.app_handle());
                     save_child_window_list(window);
                     for (label, win) in window.app_handle().webview_windows() {
                         if label != "main" {

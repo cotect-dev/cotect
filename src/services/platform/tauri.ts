@@ -216,4 +216,26 @@ export const tauriPlatform: Platform = {
       return allKeys.filter((k) => k.startsWith(prefix))
     },
   },
+
+  syncedState: {
+    set(name: string, state: unknown, windowId: string) {
+      invoke('set_synced_state', { name, state, source: windowId }).catch(() => {})
+    },
+
+    async get(name: string): Promise<unknown | null> {
+      return invoke('get_synced_state', { name })
+    },
+
+    async clear(name: string): Promise<void> {
+      await invoke('clear_synced_state', { name })
+    },
+
+    listen(name: string, callback: (payload: { state: unknown; source: string }) => void): () => void {
+      let unlisten: UnlistenFn | null = null
+      listen(`synced-state-update:${name}`, (e) => {
+        callback(e.payload as { state: unknown; source: string })
+      }).then((fn) => { unlisten = fn })
+      return () => { unlisten?.() }
+    },
+  },
 }

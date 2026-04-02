@@ -1,18 +1,25 @@
-import { memo, useState, useMemo, lazy, Suspense } from 'react'
+import { memo, useState, useMemo, useSyncExternalStore, lazy, Suspense } from 'react'
 import type { Message } from '@/store/chat'
 
 const ReactMarkdown = lazy(() => import('react-markdown'))
-const remarkGfmModule = import('remark-gfm')
-const syntaxHighlighterModule = import('react-syntax-highlighter/dist/esm/styles/prism')
-const prismModule = import('react-syntax-highlighter')
 
 let _remarkGfm: typeof import('remark-gfm').default | null = null
 let _oneDark: Record<string, React.CSSProperties> | null = null
 let _SyntaxHighlighter: typeof import('react-syntax-highlighter').Prism | null = null
 
-remarkGfmModule.then((m) => { _remarkGfm = m.default })
-syntaxHighlighterModule.then((m) => { _oneDark = m.oneDark })
-prismModule.then((m) => { _SyntaxHighlighter = m.Prism })
+let _loadVersion = 0
+const _listeners = new Set<() => void>()
+function subscribeModules(cb: () => void) {
+  _listeners.add(cb)
+  return () => _listeners.delete(cb)
+}
+function getModulesSnapshot() {
+  return _loadVersion
+}
+
+import('remark-gfm').then((m) => { _remarkGfm = m.default; _loadVersion++; _listeners.forEach((fn) => fn()) })
+import('react-syntax-highlighter/dist/esm/styles/prism').then((m) => { _oneDark = m.oneDark; _loadVersion++; _listeners.forEach((fn) => fn()) })
+import('react-syntax-highlighter').then((m) => { _SyntaxHighlighter = m.Prism; _loadVersion++; _listeners.forEach((fn) => fn()) })
 
 function MarkdownCode({ className: cn, children, ...props }: React.HTMLAttributes<HTMLElement>) {
   const match = /language-(\w+)/.exec(cn || '')
@@ -44,7 +51,8 @@ function MarkdownCode({ className: cn, children, ...props }: React.HTMLAttribute
 const markdownComponents = { code: MarkdownCode }
 
 function Markdown({ text, className = '' }: { text: string; className?: string }) {
-  const plugins = useMemo(() => _remarkGfm ? [_remarkGfm] : [], [])
+  useSyncExternalStore(subscribeModules, getModulesSnapshot)
+  const plugins = useMemo(() => _remarkGfm ? [_remarkGfm] : [], [_remarkGfm])
 
   return (
     <div className={`prose dark:prose-invert prose-sm max-w-none break-words [&_p]:my-1 [&_pre]:my-1 [&_ul]:my-1 [&_ol]:my-1 ${className}`}>
@@ -89,6 +97,7 @@ function ThinkingBlock({ message }: { message: Message }) {
     <div className="mb-1">
       <button
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
         className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
       >
         <span
