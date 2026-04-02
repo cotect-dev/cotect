@@ -16,6 +16,7 @@ import { useGitStore } from '@/store/git'
 import RelativeTime from '@/components/RelativeTime'
 import { DEV } from '@/lib/env'
 import { useState } from 'react'
+import { GitBranch } from 'lucide-react'
 
 interface TopBarProps {
   onResetZoneSizes?: () => void
@@ -159,6 +160,7 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
       <div className="flex-1" />
       {isMainWindow && isGitRepo && (totalInsertions > 0 || totalDeletions > 0 || lastCommitTimestamp) && (
         <div className="flex items-center gap-1.5 pr-2 text-xs font-mono select-none">
+          <GitBranch className="h-3.5 w-3.5 text-muted-foreground/60" />
           {totalInsertions > 0 && <span className="text-green-500">+{totalInsertions}</span>}
           {totalDeletions > 0 && <span className="text-red-500">-{totalDeletions}</span>}
           {lastCommitTimestamp && (
