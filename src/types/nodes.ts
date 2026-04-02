@@ -11,6 +11,7 @@ export interface FileNodeData extends Record<string, unknown> {
   path: string
   isDirectory?: false
   isImport?: boolean
+  isTestFile?: boolean
   declarationCount?: number
 }
 

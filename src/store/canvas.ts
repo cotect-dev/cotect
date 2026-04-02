@@ -14,6 +14,23 @@ import { analyzeFile } from '@/services/treesitter'
 import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP } from '@/lib/constants'
 import type { AppNode } from '@/types/nodes'
 
+/**
+ * Returns true if a filename looks like a test/spec file.
+ * Matches patterns like: *.test.ts, *.spec.js, test_foo.py, etc.
+ */
+function isTestFile(name: string): boolean {
+  const lower = name.toLowerCase()
+  // .test. or .spec. before the final extension
+  if (/\.(test|spec)\.\w+$/.test(lower)) return true
+  // _test. before the final extension (Go, Python conventions)
+  if (/[_-]test\.\w+$/.test(lower)) return true
+  // Files named exactly "test.*" or "tests.*"
+  if (/^tests?\.\w+$/.test(lower)) return true
+  // Common test config/setup files
+  if (/^(jest|vitest|karma|cypress|playwright)[.\-]/.test(lower)) return true
+  return false
+}
+
 export interface SelectedFunction {
   filePath: string
   name: string
@@ -81,15 +98,16 @@ async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
     !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.'))
   )
 
-  // Sort: folders first, then files, alphabetical within each group
+  // Sort: folders first, then regular files, then test files — alphabetical within each group
   const folders = entries.filter((e) => e.isDirectory).sort((a, b) => a.name.localeCompare(b.name))
-  const files = entries.filter((e) => !e.isDirectory).sort((a, b) => a.name.localeCompare(b.name))
-  const sorted = [...folders, ...files]
+  const regularFiles = entries.filter((e) => !e.isDirectory && !isTestFile(e.name)).sort((a, b) => a.name.localeCompare(b.name))
+  const testFiles = entries.filter((e) => !e.isDirectory && isTestFile(e.name)).sort((a, b) => a.name.localeCompare(b.name))
+  const sorted = [...folders, ...regularFiles, ...testFiles]
 
   return sorted.map((entry): AppNode =>
     entry.isDirectory
       ? { id: entry.path, type: 'folder', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isDirectory: true as const } }
-      : { id: entry.path, type: 'file', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path } }
+      : { id: entry.path, type: 'file', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isTestFile: isTestFile(entry.name) } }
   )
 }
 
