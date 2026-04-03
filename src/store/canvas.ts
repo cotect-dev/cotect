@@ -688,10 +688,10 @@ function flattenAndRender(
     const hidden = col.nodes.filter((n) => hiddenNodeIds.has(n.id))
     const orderedNodes = [...visible, ...hidden]
 
-    // For the preview column, if it's a code column, align its node
-    // with the focused node's Y position instead of starting at y=0
+    // For the preview column, align its top with the focused node's Y
+    // position so the content is visible near the current viewport
     let yStart = 0
-    if (isPreviewCol && col.kind === 'code' && focusedNodeId) {
+    if (isPreviewCol && focusedNodeId) {
       yStart = focusedNodeY
     }
 
