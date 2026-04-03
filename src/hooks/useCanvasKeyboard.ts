@@ -61,6 +61,10 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
           }
           break
         }
+        case 'h':
+          e.preventDefault()
+          store.toggleHideNode()
+          break
       }
     }
 

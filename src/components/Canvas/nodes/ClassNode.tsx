@@ -10,6 +10,7 @@ export default memo(function ClassNode({ id, data }: NodeProps<ClassNode>) {
   const setFocus = useCanvasStore((s) => s.setFocus)
   const navigateRight = useCanvasStore((s) => s.navigateRight)
   const isCurrent = (data as Record<string, unknown>).__isCurrent as boolean | undefined
+  const isHidden = (data as Record<string, unknown>).__isHidden as boolean | undefined
 
   return (
     <BaseNode
@@ -17,7 +18,7 @@ export default memo(function ClassNode({ id, data }: NodeProps<ClassNode>) {
       iconClassName="text-purple-400"
       label={data.label}
       borderClassName="border-purple-500/50"
-      className={`min-w-[150px] ${isCurrent === false ? 'opacity-50' : ''}`}
+      className={`${isHidden ? 'opacity-30' : isCurrent === false ? 'opacity-50' : ''}`}
       badge="class"
       focused={focusedNodeId === id}
       onClick={() => setFocus(id)}
@@ -25,6 +26,8 @@ export default memo(function ClassNode({ id, data }: NodeProps<ClassNode>) {
         setFocus(id)
         navigateRight()
       }}
-    />
+    >
+      <div className="text-xs text-muted-foreground mt-0.5">L{data.startLine}–{data.endLine}</div>
+    </BaseNode>
   )
 })
