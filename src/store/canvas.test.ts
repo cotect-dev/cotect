@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Node } from '@xyflow/react'
-import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP } from '@/lib/constants'
+import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
 
 // --- Mocks ---
 
@@ -1182,7 +1182,8 @@ describe('flattenAndRender', () => {
     expect(state.edges).toEqual([])
   })
 
-  it('preview column starts at Y=0 when visibleTopY is 0 (viewport at top)', () => {
+  it('preview column starts at Y=0 when focused node is near the top', () => {
+    // With a large viewport, the focused node near the top doesn't cause panning
     const nodesCol0 = [makeSimpleNode('n0'), makeSimpleNode('n1')]
     const nodesCol1 = [makeSimpleNode('prev0'), makeSimpleNode('prev1')]
 
@@ -1191,7 +1192,7 @@ describe('flattenAndRender', () => {
       currentColumnIndex: 0,
       focusedNodeId: 'n0',
       hiddenNodeIds: new Set(),
-      visibleTopY: 0,
+      viewportHeight: 800,
     })
 
     // Trigger flattenAndRender
@@ -1205,49 +1206,58 @@ describe('flattenAndRender', () => {
     expect(prev1.position.y).toBe(NODE_HEIGHT + NODE_V_GAP)
   })
 
-  it('preview column offsets to visibleTopY when viewport has scrolled down', () => {
+  it('preview column offsets when focused node is far down the list', () => {
+    // 20 nodes, focused on the last one — camera must pan, preview should follow
     const nodesCol0 = Array.from({ length: 20 }, (_, i) => makeSimpleNode(`n-${i}`, 'folder'))
     const nodesCol1 = [makeSimpleNode('prev0'), makeSimpleNode('prev1')]
 
-    const scrolledY = 500
+    const viewportH = 600
     useCanvasStore.setState({
       columns: [makeColumn('/root', nodesCol0), makeColumn('/root/sub', nodesCol1)],
       currentColumnIndex: 0,
       focusedNodeId: 'n-19',
       hiddenNodeIds: new Set(),
-      visibleTopY: scrolledY,
+      viewportHeight: viewportH,
     })
 
     useCanvasStore.getState().toggleHideNode()
 
     const state = useCanvasStore.getState()
     const prev0 = state.nodes.find((n) => n.id === 'prev0')!
-    const prev1 = state.nodes.find((n) => n.id === 'prev1')!
 
-    expect(prev0.position.y).toBe(scrolledY)
-    expect(prev1.position.y).toBe(scrolledY + NODE_HEIGHT + NODE_V_GAP)
+    // The focused node's Y in the current column (index 19, including hidden n-19 at end)
+    // n-19 is now hidden (toggleHideNode added it), but that doesn't matter for the
+    // focusedNodeY calculation inside flattenAndRender — it walks the ordered list.
+    // After toggling, n-19 is hidden, so ordered = [n-0..n-18, n-19].
+    // n-19 is at index 19: Y = 19 * (NODE_HEIGHT + NODE_V_GAP) = 19 * 72 = 1368
+    const focusedY = 19 * (NODE_HEIGHT + NODE_V_GAP)
+    const expectedPreviewY = focusedY + NODE_HEIGHT + CANVAS_MARGIN - viewportH + CANVAS_PAD_Y
+
+    expect(prev0.position.y).toBe(expectedPreviewY)
+    expect(prev0.position.y).toBeGreaterThan(0)
   })
 
-  it('preview column clamps visibleTopY to 0 when negative', () => {
-    const nodesCol0 = [makeSimpleNode('n0')]
+  it('preview column stays at Y=0 when viewportHeight is 0 (not yet measured)', () => {
+    const nodesCol0 = Array.from({ length: 20 }, (_, i) => makeSimpleNode(`n-${i}`))
     const nodesCol1 = [makeSimpleNode('prev0')]
 
     useCanvasStore.setState({
       columns: [makeColumn('/root', nodesCol0), makeColumn('/root/sub', nodesCol1)],
       currentColumnIndex: 0,
-      focusedNodeId: 'n0',
+      focusedNodeId: 'n-19',
       hiddenNodeIds: new Set(),
-      visibleTopY: -100, // negative means viewport shows above canvas origin
+      viewportHeight: 0, // not yet measured
     })
 
     useCanvasStore.getState().toggleHideNode()
 
     const state = useCanvasStore.getState()
     const prev0 = state.nodes.find((n) => n.id === 'prev0')!
-    expect(prev0.position.y).toBe(0) // clamped to 0
+    // Without viewport info, fall back to Y=0
+    expect(prev0.position.y).toBe(0)
   })
 
-  it('current column always starts at Y=0 regardless of visibleTopY', () => {
+  it('current column always starts at Y=0 regardless of focused position', () => {
     const nodesCol0 = [makeSimpleNode('n0'), makeSimpleNode('n1')]
 
     useCanvasStore.setState({
@@ -1255,7 +1265,7 @@ describe('flattenAndRender', () => {
       currentColumnIndex: 0,
       focusedNodeId: 'n1', // focus on n1 so toggling hide puts n1 in hidden
       hiddenNodeIds: new Set(),
-      visibleTopY: 400,
+      viewportHeight: 200,
     })
 
     useCanvasStore.getState().toggleHideNode()
@@ -1267,31 +1277,44 @@ describe('flattenAndRender', () => {
     expect(n0.position.y).toBe(0)
   })
 
-  it('setVisibleTopY re-renders preview column when value changes significantly', () => {
-    const nodesCol0 = [makeSimpleNode('n0')]
+  it('preview column offset matches camera pan formula exactly', () => {
+    // Verify the preview offset exactly mirrors the camera's pan-to-focus calculation
+    const viewportH = 500
+    // Create enough nodes so the focused node is definitely below the fold
+    const count = 10
+    const nodesCol0 = Array.from({ length: count }, (_, i) => makeSimpleNode(`n-${i}`))
     const nodesCol1 = [makeSimpleNode('prev0')]
 
+    // Focus on a middle node that's below the usable area
+    const focusIdx = 8
     useCanvasStore.setState({
       columns: [makeColumn('/root', nodesCol0), makeColumn('/root/sub', nodesCol1)],
       currentColumnIndex: 0,
-      focusedNodeId: 'n0',
+      focusedNodeId: `n-${focusIdx}`,
       hiddenNodeIds: new Set(),
-      visibleTopY: 0,
+      viewportHeight: viewportH,
     })
 
-    // Initial render
     useCanvasStore.getState().toggleHideNode()
-    let prev0 = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!
-    expect(prev0.position.y).toBe(0)
 
-    // Simulate viewport scrolling down significantly
-    useCanvasStore.getState().setVisibleTopY(300)
+    // After toggleHideNode, n-8 is hidden and moved to end, but it's at the same
+    // index position (all others visible, then n-8 at end = index 9 after reorder)
+    // Actually: visible = [n-0..n-7, n-9], hidden = [n-8] → ordered index of n-8 is 9
+    const focusedY = 9 * (NODE_HEIGHT + NODE_V_GAP)
+    const usableHeight = viewportH - CANVAS_PAD_Y - CANVAS_MARGIN
+    const needsPan = focusedY + NODE_HEIGHT > usableHeight
 
-    prev0 = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!
-    expect(prev0.position.y).toBe(300)
+    const state = useCanvasStore.getState()
+    const prev0 = state.nodes.find((n) => n.id === 'prev0')!
+
+    if (needsPan) {
+      const expectedY = focusedY + NODE_HEIGHT + CANVAS_MARGIN - viewportH + CANVAS_PAD_Y
+      expect(prev0.position.y).toBe(expectedY)
+    } else {
+      expect(prev0.position.y).toBe(0)
+    }
   })
 })
-
 // ============================================================================
 // Tests for buildFileNodes (via navigateRight into file)
 // ============================================================================

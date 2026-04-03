@@ -13,7 +13,7 @@ import {
 import { getPlatform } from '@/services/platform'
 import { analyzeFile } from '@/services/treesitter'
 import { detectProjectMeta } from '@/services/projectMeta'
-import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP } from '@/lib/constants'
+import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
 import type { AppNode } from '@/types/nodes'
 
 /**
@@ -81,11 +81,11 @@ export type CanvasState = {
   // Hidden nodes: node IDs that have been hidden by the user (H key)
   hiddenNodeIds: Set<string>
 
-  // The canvas-Y coordinate at the top of the visible area (kept in sync by the view)
-  visibleTopY: number
+  // The height of the canvas viewport in pixels (set by the view layer)
+  viewportHeight: number
 
   // Actions
-  setVisibleTopY: (y: number) => void
+  setViewportHeight: (h: number) => void
   setFocus: (nodeId: string | null) => void
   moveFocus: (direction: 'up' | 'down') => void
   navigateRight: () => Promise<void>
@@ -268,7 +268,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   depthChain: [],
   selectedFunction: null,
   hiddenNodeIds: new Set(),
-  visibleTopY: 0,
+  viewportHeight: 0,
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) })
@@ -285,14 +285,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
 
-  setVisibleTopY: (y) => {
-    const prev = get().visibleTopY
-    set({ visibleTopY: y })
-    // Re-render preview column when the visible area shifts meaningfully
-    if (Math.abs(y - prev) > NODE_HEIGHT / 2) {
-      flattenAndRender(get, set)
-    }
-  },
+  setViewportHeight: (h) => set({ viewportHeight: h }),
 
   setFocus: (nodeId) => {
     set({ focusedNodeId: nodeId })
@@ -688,7 +681,39 @@ function flattenAndRender(
   const allEdges: Edge[] = []
   let xOffset = 0
 
-  const { focusedNodeId, hiddenNodeIds, visibleTopY } = get()
+  const { focusedNodeId, hiddenNodeIds, viewportHeight } = get()
+
+  // First pass: position the current column to find the focused node's Y.
+  // This lets us compute where the camera will be after panning.
+  let focusedNodeY = 0
+  const currentCol = columns[currentColumnIndex]
+  if (currentCol && focusedNodeId) {
+    const visible = currentCol.nodes.filter((n) => !hiddenNodeIds.has(n.id))
+    const hidden = currentCol.nodes.filter((n) => hiddenNodeIds.has(n.id))
+    const ordered = [...visible, ...hidden]
+    let y = 0
+    for (const node of ordered) {
+      if (node.id === focusedNodeId) {
+        focusedNodeY = y
+        break
+      }
+      y += NODE_HEIGHT + NODE_V_GAP
+    }
+  }
+
+  // Compute the preview column Y offset: mirror the camera's pan logic.
+  // The camera keeps the focused node visible within [CANVAS_PAD_Y .. viewportHeight - CANVAS_MARGIN].
+  // When the focused node is below the visible area, the camera pans down.
+  // "visibleTop" is the canvas-Y at the top of the screen after panning.
+  let previewYStart = 0
+  if (viewportHeight > 0) {
+    // The usable vertical space on screen where content is fully visible
+    const usableHeight = viewportHeight - CANVAS_PAD_Y - CANVAS_MARGIN
+    if (focusedNodeY + NODE_HEIGHT > usableHeight) {
+      // Camera has panned — the top of the visible area is offset
+      previewYStart = focusedNodeY + NODE_HEIGHT + CANVAS_MARGIN - viewportHeight + CANVAS_PAD_Y
+    }
+  }
 
   for (let i = startIdx; i <= endIdx; i++) {
     const col = columns[i]
@@ -700,12 +725,10 @@ function flattenAndRender(
     const hidden = col.nodes.filter((n) => hiddenNodeIds.has(n.id))
     const orderedNodes = [...visible, ...hidden]
 
-    // For the preview column, start at the top of the visible area so
-    // its content is always on-screen regardless of how far down the
-    // user has scrolled in the current column.
+    // For the preview column, start at the top of the visible area
     let yStart = 0
     if (isPreviewCol) {
-      yStart = Math.max(0, visibleTopY)
+      yStart = Math.max(0, previewYStart)
     }
 
     // Position nodes in this column
