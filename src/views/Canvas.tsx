@@ -50,13 +50,16 @@ function CanvasFlow() {
 
   // Track previous panel width to compute deltas on resize
   const prevPanelWidth = useRef(leftPanelWidth)
+  // Keep a ref so the deferred viewport callback always reads the latest value
+  const leftPanelWidthRef = useRef(leftPanelWidth)
+  leftPanelWidthRef.current = leftPanelWidth
 
   // Set viewport to top-left on actual navigation (not preview updates)
   useEffect(() => {
-    prevPanelWidth.current = leftPanelWidth
+    prevPanelWidth.current = leftPanelWidthRef.current
     const timer = setTimeout(() => {
       reactFlow.setViewport(
-        { x: CANVAS_PAD_X + leftPanelWidth, y: CANVAS_PAD_Y, zoom: 1 },
+        { x: CANVAS_PAD_X + leftPanelWidthRef.current, y: CANVAS_PAD_Y, zoom: 1 },
         { duration: 200 },
       )
     }, 30)
