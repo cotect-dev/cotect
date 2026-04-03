@@ -1234,7 +1234,7 @@ describe('flattenAndRender', () => {
     const focusedY = 19 * (NODE_HEIGHT + NODE_V_GAP)
     // Camera clamps: newCameraY = viewportH - CANVAS_MARGIN - focusedY - NODE_HEIGHT
     const expectedCameraY = viewportH - CANVAS_MARGIN - focusedY - NODE_HEIGHT
-    const expectedPreviewY = Math.max(0, -expectedCameraY)
+    const expectedPreviewY = Math.max(0, -expectedCameraY + CANVAS_PAD_Y)
 
     expect(prev0.position.y).toBe(expectedPreviewY)
     expect(prev0.position.y).toBeGreaterThan(0)
