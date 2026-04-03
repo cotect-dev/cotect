@@ -730,8 +730,10 @@ function flattenAndRender(
     set({ cameraY: newCameraY })
   }
 
-  // The visible canvas-Y at the top of the screen
-  const previewYStart = Math.max(0, -newCameraY)
+  // The visible canvas-Y below the top bar (breadcrumbs).
+  // -newCameraY is the canvas-Y at the very top of the screen;
+  // adding CANVAS_PAD_Y pushes past the bar overlay.
+  const previewYStart = Math.max(0, -newCameraY + CANVAS_PAD_Y)
 
   for (let i = startIdx; i <= endIdx; i++) {
     const col = columns[i]
