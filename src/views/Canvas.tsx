@@ -78,15 +78,17 @@ function CanvasFlow() {
     )
   }, [leftPanelWidth]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Pan to keep focused node in view when focus changes
+  // Pan to keep focused node in view when focus or its position changes
+  const focusedNode = focusedNodeId ? nodes.find((n) => n.id === focusedNodeId) : null
+  const focusedNodeX = focusedNode?.position.x ?? 0
+  const focusedNodeY = focusedNode?.position.y ?? 0
+
   useEffect(() => {
-    if (!focusedNodeId) return
-    const node = nodes.find((n) => n.id === focusedNodeId)
-    if (!node) return
+    if (!focusedNode) return
 
     const viewport = reactFlow.getViewport()
-    const nodeScreenX = node.position.x * viewport.zoom + viewport.x
-    const nodeScreenY = node.position.y * viewport.zoom + viewport.y
+    const nodeScreenX = focusedNode.position.x * viewport.zoom + viewport.x
+    const nodeScreenY = focusedNode.position.y * viewport.zoom + viewport.y
 
     const container = containerRef.current
     if (!container) return
@@ -97,21 +99,21 @@ function CanvasFlow() {
     let newY = viewport.y
 
     if (nodeScreenX < leftPanelWidth + margin) {
-      newX = -(node.position.x * viewport.zoom) + leftPanelWidth + margin
+      newX = -(focusedNode.position.x * viewport.zoom) + leftPanelWidth + margin
     } else if (nodeScreenX + NODE_WIDTH * viewport.zoom > cw - margin) {
-      newX = cw - margin - (node.position.x + NODE_WIDTH) * viewport.zoom
+      newX = cw - margin - (focusedNode.position.x + NODE_WIDTH) * viewport.zoom
     }
 
     if (nodeScreenY < margin) {
-      newY = -(node.position.y * viewport.zoom) + margin
+      newY = -(focusedNode.position.y * viewport.zoom) + margin
     } else if (nodeScreenY + NODE_HEIGHT * viewport.zoom > ch - margin) {
-      newY = ch - margin - (node.position.y + NODE_HEIGHT) * viewport.zoom
+      newY = ch - margin - (focusedNode.position.y + NODE_HEIGHT) * viewport.zoom
     }
 
     if (newX !== viewport.x || newY !== viewport.y) {
       reactFlow.setViewport({ x: newX, y: newY, zoom: viewport.zoom }, { duration: 150 })
     }
-  }, [focusedNodeId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [focusedNodeId, focusedNodeX, focusedNodeY]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard navigation
   useCanvasKeyboard(containerRef)
