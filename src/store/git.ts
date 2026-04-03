@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { preserveStoreOnHMR } from '@/lib/hmr'
+import { createStoreWithHMR } from '@/lib/hmr'
 
 export interface GitFileStatus {
   path: string
@@ -53,7 +53,7 @@ interface GitState {
   setRepoPath: (path: string) => void
 }
 
-export const useGitStore = create<GitState>((set, get) => ({
+export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => create<GitState>((set, get) => ({
   repoPath: '',
   initialized: false,
   isGitRepo: false,
@@ -130,7 +130,7 @@ export const useGitStore = create<GitState>((set, get) => ({
     if (path === get().repoPath) return
     set({ repoPath: path, initialized: false, isGitRepo: false, gitError: null, status: null, log: null, branch: null, lastCommitTimestamp: null })
   },
-}))
+})))
 
 let windowId = ''
 
@@ -213,5 +213,3 @@ export function stopGitWatcher(): void {
   watcherCleanup?.()
   watcherCleanup = null
 }
-
-preserveStoreOnHMR(import.meta.hot, 'git', useGitStore)

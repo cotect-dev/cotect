@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { preserveStoreOnHMR } from './hmr'
+import { createStoreWithHMR } from './hmr'
 
-describe('preserveStoreOnHMR', () => {
+describe('createStoreWithHMR', () => {
   function createMockStore<T extends Record<string, unknown>>(initialState: T) {
     let state = { ...initialState }
     return {
@@ -14,167 +14,146 @@ describe('preserveStoreOnHMR', () => {
     }
   }
 
-  function createMockHot() {
-    const disposeCallbacks: Array<(data: Record<string, unknown>) => void> = []
-    const hot = {
-      data: {} as Record<string, unknown>,
-      dispose: (cb: (data: Record<string, unknown>) => void) => {
-        disposeCallbacks.push(cb)
-      },
-      // Test helper to simulate HMR dispose
-      triggerDispose: () => {
-        for (const cb of disposeCallbacks) {
-          cb(hot.data)
-        }
-      },
-      get _disposeCallbacks() { return disposeCallbacks },
-    }
-    return hot
-  }
-
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('does nothing when hot is undefined', () => {
+  it('returns the factory result when hot is undefined', () => {
     const store = createMockStore({ count: 0, increment: () => {} })
-    expect(() => preserveStoreOnHMR(undefined, 'test', store as any)).not.toThrow()
+    const result = createStoreWithHMR(undefined, 'test', () => store as any)
+    expect(result).toBe(store)
   })
 
-  it('does nothing when hot.data is undefined', () => {
+  it('returns the factory result when hot.data is undefined', () => {
     const store = createMockStore({ count: 0 })
     const hot = { data: undefined } as any
-    expect(() => preserveStoreOnHMR(hot, 'test', store as any)).not.toThrow()
+    const result = createStoreWithHMR(hot, 'test', () => store as any)
+    expect(result).toBe(store)
   })
 
-  it('registers a dispose callback', () => {
+  it('stashes the store in hot.data on first load', () => {
     const store = createMockStore({ count: 0 })
-    const hot = createMockHot()
-    preserveStoreOnHMR(hot as any, 'test', store as any)
-    expect(hot._disposeCallbacks).toHaveLength(1)
+    const hot = { data: {} as Record<string, unknown> } as any
+    const result = createStoreWithHMR(hot, 'myStore', () => store as any)
+    expect(result).toBe(store)
+    expect(hot.data['__store__myStore']).toBe(store)
   })
 
-  it('snapshots non-function state on dispose', () => {
-    const store = createMockStore({
-      count: 42,
-      name: 'test',
+  it('returns the original store on HMR re-execution (preserves instance identity)', () => {
+    const hot = { data: {} as Record<string, unknown> } as any
+
+    // First load
+    const originalStore = createMockStore({ count: 42, action: vi.fn() })
+    const first = createStoreWithHMR(hot, 'test', () => originalStore as any)
+    expect(first).toBe(originalStore)
+
+    // Simulate HMR re-execution — factory creates a fresh store
+    const freshStore = createMockStore({ count: 0, action: vi.fn() })
+    const second = createStoreWithHMR(hot, 'test', () => freshStore as any)
+
+    // Must return the ORIGINAL store, not the fresh one
+    expect(second).toBe(originalStore)
+    expect(second).not.toBe(freshStore)
+  })
+
+  it('patches action functions from the fresh store into the original', () => {
+    const hot = { data: {} as Record<string, unknown> } as any
+
+    const originalAction = vi.fn()
+    const originalStore = createMockStore({ count: 42, action: originalAction })
+    createStoreWithHMR(hot, 'test', () => originalStore as any)
+
+    // HMR re-execution with new action implementation
+    const freshAction = vi.fn()
+    const freshStore = createMockStore({ count: 0, action: freshAction })
+    const result = createStoreWithHMR(hot, 'test', () => freshStore as any)
+
+    // The action on the returned (original) store should be the fresh one
+    expect(result.getState().action).toBe(freshAction)
+    // But data should be preserved
+    expect(result.getState().count).toBe(42)
+  })
+
+  it('preserves non-function state from the original store across HMR', () => {
+    const hot = { data: {} as Record<string, unknown> } as any
+
+    const originalStore = createMockStore({
+      count: 99,
+      name: 'original',
       items: [1, 2, 3],
       doSomething: () => {},
     })
-    const hot = createMockHot()
-    preserveStoreOnHMR(hot as any, 'myStore', store as any)
+    createStoreWithHMR(hot, 'test', () => originalStore as any)
 
-    // Simulate HMR dispose
-    hot.triggerDispose()
-
-    const saved = hot.data['myStore'] as Record<string, unknown>
-    expect(saved).toBeDefined()
-    expect(saved.count).toBe(42)
-    expect(saved.name).toBe('test')
-    expect(saved.items).toEqual([1, 2, 3])
-    // Functions should NOT be saved
-    expect(saved.doSomething).toBeUndefined()
-  })
-
-  it('restores non-function state from previous HMR cycle', () => {
-    const store = createMockStore({
+    // HMR re-execution with default values
+    const freshStore = createMockStore({
       count: 0,
-      name: 'default',
-      increment: () => {},
+      name: 'fresh',
+      items: [] as number[],
+      doSomething: () => {},
     })
+    const result = createStoreWithHMR(hot, 'test', () => freshStore as any)
 
-    // Simulate data from a previous HMR cycle
-    const hot = createMockHot()
-    hot.data['myStore'] = {
-      count: 99,
-      name: 'restored',
-      increment: () => {}, // This should be ignored (function in saved data)
-    }
-
-    preserveStoreOnHMR(hot as any, 'myStore', store as any)
-
-    // State should be restored
-    expect(store.getState().count).toBe(99)
-    expect(store.getState().name).toBe('restored')
-    // The function should NOT be overwritten — it stays as the fresh store's version
-    expect(typeof store.getState().increment).toBe('function')
-  })
-
-  it('does not restore function properties from saved state', () => {
-    const originalFn = vi.fn()
-    const store = createMockStore({
-      count: 0,
-      action: originalFn,
-    })
-
-    const hot = createMockHot()
-    const savedFn = vi.fn()
-    hot.data['store'] = {
-      count: 10,
-      action: savedFn,
-    }
-
-    preserveStoreOnHMR(hot as any, 'store', store as any)
-
-    // count should be restored, but action should remain the original
-    expect(store.getState().count).toBe(10)
-    // The action is a function in current state, so it should NOT be restored
-    expect(store.getState().action).toBe(originalFn)
+    // Data state must be preserved from the original
+    expect(result.getState().count).toBe(99)
+    expect(result.getState().name).toBe('original')
+    expect(result.getState().items).toEqual([1, 2, 3])
   })
 
   it('handles stores with complex non-function data types', () => {
-    const store = createMockStore({
+    const hot = { data: {} as Record<string, unknown> } as any
+
+    const originalStore = createMockStore({
       map: new Map([['a', 1]]),
       set: new Set([1, 2, 3]),
       nested: { x: { y: 'deep' } },
       action: () => {},
     })
+    createStoreWithHMR(hot, 'complex', () => originalStore as any)
 
-    const hot = createMockHot()
-    preserveStoreOnHMR(hot as any, 'complex', store as any)
+    // HMR re-execution
+    const freshStore = createMockStore({
+      map: new Map(),
+      set: new Set(),
+      nested: { x: { y: '' } },
+      action: () => {},
+    })
+    const result = createStoreWithHMR(hot, 'complex', () => freshStore as any)
 
-    // Snapshot
-    hot.triggerDispose()
-
-    const saved = hot.data['complex'] as Record<string, unknown>
-    expect(saved.map).toBeInstanceOf(Map)
-    expect(saved.set).toBeInstanceOf(Set)
-    expect(saved.nested).toEqual({ x: { y: 'deep' } })
-    expect(saved.action).toBeUndefined()
+    expect(result.getState().map).toBeInstanceOf(Map)
+    expect(result.getState().map).toEqual(new Map([['a', 1]]))
+    expect(result.getState().set).toBeInstanceOf(Set)
+    expect(result.getState().set).toEqual(new Set([1, 2, 3]))
+    expect(result.getState().nested).toEqual({ x: { y: 'deep' } })
   })
 
   it('uses different keys for different stores', () => {
+    const hot = { data: {} as Record<string, unknown> } as any
+
     const store1 = createMockStore({ a: 1 })
     const store2 = createMockStore({ b: 2 })
-    const hot = createMockHot()
+    createStoreWithHMR(hot, 'store1', () => store1 as any)
+    createStoreWithHMR(hot, 'store2', () => store2 as any)
 
-    preserveStoreOnHMR(hot as any, 'store1', store1 as any)
-    preserveStoreOnHMR(hot as any, 'store2', store2 as any)
-
-    hot.triggerDispose()
-
-    expect((hot.data['store1'] as any).a).toBe(1)
-    expect((hot.data['store2'] as any).b).toBe(2)
+    expect(hot.data['__store__store1']).toBe(store1)
+    expect(hot.data['__store__store2']).toBe(store2)
   })
 
-  it('only restores properties that exist in current state', () => {
-    const store = createMockStore({
-      count: 0,
-      update: () => {},
-    })
+  it('does not overwrite data properties with fresh defaults on HMR', () => {
+    const hot = { data: {} as Record<string, unknown> } as any
 
-    const hot = createMockHot()
-    hot.data['store'] = {
-      count: 50,
-      extraField: 'ghost', // This property doesn't exist in current state
-    }
+    const originalFn = vi.fn()
+    const originalStore = createMockStore({ count: 100, action: originalFn })
+    createStoreWithHMR(hot, 'test', () => originalStore as any)
 
-    preserveStoreOnHMR(hot as any, 'store', store as any)
+    // HMR re-execution: fresh store has count: 0 (the default)
+    const freshFn = vi.fn()
+    const freshStore = createMockStore({ count: 0, action: freshFn })
+    const result = createStoreWithHMR(hot, 'test', () => freshStore as any)
 
-    // count should be restored
-    expect(store.getState().count).toBe(50)
-    // extraField gets added to state (since setState does shallow merge)
-    // This is expected behavior — the patch includes it
-    expect((store.getState() as any).extraField).toBe('ghost')
+    // count should NOT be reset to 0 — original's 100 is preserved
+    expect(result.getState().count).toBe(100)
+    // action should be the fresh one
+    expect(result.getState().action).toBe(freshFn)
   })
 })

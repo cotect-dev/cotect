@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { preserveStoreOnHMR } from '@/lib/hmr'
+import { createStoreWithHMR } from '@/lib/hmr'
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug'
 
@@ -21,7 +21,7 @@ interface ConsoleState {
 const MAX_ENTRIES = 1000
 let nextId = 0
 
-export const useConsoleStore = create<ConsoleState>((set) => ({
+export const useConsoleStore = createStoreWithHMR(import.meta.hot, 'console', () => create<ConsoleState>((set) => ({
   entries: [],
   filter: null,
   log: (level, message) =>
@@ -36,7 +36,7 @@ export const useConsoleStore = create<ConsoleState>((set) => ({
     }),
   clear: () => set({ entries: [] }),
   setFilter: (filter) => set({ filter }),
-}))
+})))
 
 const originalConsole = {
   log: console.log.bind(console),
@@ -77,5 +77,3 @@ console.debug = (...args: unknown[]) => {
   originalConsole.debug(...args)
   useConsoleStore.getState().log('debug', formatArgs(args))
 }
-
-preserveStoreOnHMR(import.meta.hot, 'console', useConsoleStore)

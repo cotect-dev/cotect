@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { preserveStoreOnHMR } from '@/lib/hmr'
+import { createStoreWithHMR } from '@/lib/hmr'
 import {
   type Node,
   type Edge,
@@ -263,7 +263,7 @@ function findVerticalNeighbor(
   return bestId
 }
 
-export const useCanvasStore = create<CanvasState>((set, get) => ({
+export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () => create<CanvasState>((set, get) => ({
   nodes: [],
   edges: [],
 
@@ -664,7 +664,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       // Silently ignore preview errors
     }
   },
-}))
+})))
 
 /**
  * Flatten all visible columns into positioned nodes and edges,
@@ -784,5 +784,3 @@ function flattenAndRender(
 
   set({ nodes: allNodes, edges: allEdges })
 }
-
-preserveStoreOnHMR(import.meta.hot, 'canvas', useCanvasStore)

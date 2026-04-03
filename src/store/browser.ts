@@ -6,7 +6,7 @@ import { layoutTree } from '@/components/Canvas/layout'
 import { HIDDEN_DIRECTORIES } from '@/lib/constants'
 import { detectProjectMeta, type ProjectMeta } from '@/services/projectMeta'
 import type { AppNode } from '@/types/nodes'
-import { preserveStoreOnHMR } from '@/lib/hmr'
+import { createStoreWithHMR } from '@/lib/hmr'
 
 export type ViewMode = 'directory' | 'file'
 
@@ -134,7 +134,7 @@ export function generateFileNodes(
   return layoutTree(nodes, edges)
 }
 
-export const useBrowserStore = create<BrowserState>((set, get) => ({
+export const useBrowserStore = createStoreWithHMR(import.meta.hot, 'browser', () => create<BrowserState>((set, get) => ({
   rootPath: '',
   currentPath: '',
   viewMode: 'directory',
@@ -218,6 +218,4 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     if (viewMode === 'file' && fileAnalysis) return generateFileNodes(fileAnalysis, currentPath, siblingAnalyses)
     return { nodes: [], edges: [] }
   },
-}))
-
-preserveStoreOnHMR(import.meta.hot, 'browser', useBrowserStore)
+})))
