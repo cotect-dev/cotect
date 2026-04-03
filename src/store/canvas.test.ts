@@ -1182,68 +1182,113 @@ describe('flattenAndRender', () => {
     expect(state.edges).toEqual([])
   })
 
-  it('offsets preview column Y to match focused node position for directory columns', () => {
-    // Simulate being focused far down in the current (2nd) column,
-    // with a directory preview (3rd) column that should align to the focused Y.
-    const nodesCol0 = [makeSimpleNode('n0')]
-    const nodesCol1 = Array.from({ length: 20 }, (_, i) => makeSimpleNode(`n1-${i}`, 'folder'))
-    const nodesCol2 = [makeSimpleNode('prev0'), makeSimpleNode('prev1')]
+  it('preview column starts at Y=0 when visibleTopY is 0 (viewport at top)', () => {
+    const nodesCol0 = [makeSimpleNode('n0'), makeSimpleNode('n1')]
+    const nodesCol1 = [makeSimpleNode('prev0'), makeSimpleNode('prev1')]
 
-    const col0 = makeColumn('/root', nodesCol0)
-    const col1 = makeColumn('/root/deep', nodesCol1)
-    const col2 = makeColumn('/root/deep/sub', nodesCol2) // directory preview, not 'code'
-
-    // Focus on the last node in col1 (far down the list)
-    const lastId = 'n1-19'
     useCanvasStore.setState({
-      columns: [col0, col1, col2],
-      currentColumnIndex: 1,
-      focusedNodeId: lastId,
+      columns: [makeColumn('/root', nodesCol0), makeColumn('/root/sub', nodesCol1)],
+      currentColumnIndex: 0,
+      focusedNodeId: 'n0',
       hiddenNodeIds: new Set(),
+      visibleTopY: 0,
     })
 
     // Trigger flattenAndRender
     useCanvasStore.getState().toggleHideNode()
 
     const state = useCanvasStore.getState()
-
-    // Find the focused node's rendered Y
-    const focusedRendered = state.nodes.find((n) => n.id === lastId)!
-    const focusedY = focusedRendered.position.y
-
-    // Preview column nodes should start at the focused node's Y, not 0
     const prev0 = state.nodes.find((n) => n.id === 'prev0')!
     const prev1 = state.nodes.find((n) => n.id === 'prev1')!
 
-    expect(prev0.position.y).toBe(focusedY)
-    expect(prev1.position.y).toBe(focusedY + NODE_HEIGHT + NODE_V_GAP)
-    // Verify the offset is significant (not at top)
-    expect(focusedY).toBeGreaterThan(0)
+    expect(prev0.position.y).toBe(0)
+    expect(prev1.position.y).toBe(NODE_HEIGHT + NODE_V_GAP)
   })
 
-  it('offsets preview column Y for file columns too', () => {
-    const nodesCol0 = Array.from({ length: 15 }, (_, i) => makeSimpleNode(`n-${i}`))
-    const nodesCol1 = [makeSimpleNode('filePreview', 'functionNode')]
+  it('preview column offsets to visibleTopY when viewport has scrolled down', () => {
+    const nodesCol0 = Array.from({ length: 20 }, (_, i) => makeSimpleNode(`n-${i}`, 'folder'))
+    const nodesCol1 = [makeSimpleNode('prev0'), makeSimpleNode('prev1')]
 
-    const col0 = makeColumn('/root', nodesCol0)
-    const col1 = makeColumn('/root/app.ts', nodesCol1, 'file')
-
-    const lastId = 'n-14'
+    const scrolledY = 500
     useCanvasStore.setState({
-      columns: [col0, col1],
+      columns: [makeColumn('/root', nodesCol0), makeColumn('/root/sub', nodesCol1)],
       currentColumnIndex: 0,
-      focusedNodeId: lastId,
+      focusedNodeId: 'n-19',
       hiddenNodeIds: new Set(),
+      visibleTopY: scrolledY,
     })
 
     useCanvasStore.getState().toggleHideNode()
 
     const state = useCanvasStore.getState()
-    const focusedRendered = state.nodes.find((n) => n.id === lastId)!
-    const previewNode = state.nodes.find((n) => n.id === 'filePreview')!
+    const prev0 = state.nodes.find((n) => n.id === 'prev0')!
+    const prev1 = state.nodes.find((n) => n.id === 'prev1')!
 
-    expect(previewNode.position.y).toBe(focusedRendered.position.y)
-    expect(previewNode.position.y).toBeGreaterThan(0)
+    expect(prev0.position.y).toBe(scrolledY)
+    expect(prev1.position.y).toBe(scrolledY + NODE_HEIGHT + NODE_V_GAP)
+  })
+
+  it('preview column clamps visibleTopY to 0 when negative', () => {
+    const nodesCol0 = [makeSimpleNode('n0')]
+    const nodesCol1 = [makeSimpleNode('prev0')]
+
+    useCanvasStore.setState({
+      columns: [makeColumn('/root', nodesCol0), makeColumn('/root/sub', nodesCol1)],
+      currentColumnIndex: 0,
+      focusedNodeId: 'n0',
+      hiddenNodeIds: new Set(),
+      visibleTopY: -100, // negative means viewport shows above canvas origin
+    })
+
+    useCanvasStore.getState().toggleHideNode()
+
+    const state = useCanvasStore.getState()
+    const prev0 = state.nodes.find((n) => n.id === 'prev0')!
+    expect(prev0.position.y).toBe(0) // clamped to 0
+  })
+
+  it('current column always starts at Y=0 regardless of visibleTopY', () => {
+    const nodesCol0 = [makeSimpleNode('n0'), makeSimpleNode('n1')]
+
+    useCanvasStore.setState({
+      columns: [makeColumn('/root', nodesCol0)],
+      currentColumnIndex: 0,
+      focusedNodeId: 'n1', // focus on n1 so toggling hide puts n1 in hidden
+      hiddenNodeIds: new Set(),
+      visibleTopY: 400,
+    })
+
+    useCanvasStore.getState().toggleHideNode()
+
+    const state = useCanvasStore.getState()
+    // n0 is visible, not hidden, so it should be first in the column at Y=0
+    const n0 = state.nodes.find((n) => n.id === 'n0')!
+    // Current column is NOT offset — only preview columns are
+    expect(n0.position.y).toBe(0)
+  })
+
+  it('setVisibleTopY re-renders preview column when value changes significantly', () => {
+    const nodesCol0 = [makeSimpleNode('n0')]
+    const nodesCol1 = [makeSimpleNode('prev0')]
+
+    useCanvasStore.setState({
+      columns: [makeColumn('/root', nodesCol0), makeColumn('/root/sub', nodesCol1)],
+      currentColumnIndex: 0,
+      focusedNodeId: 'n0',
+      hiddenNodeIds: new Set(),
+      visibleTopY: 0,
+    })
+
+    // Initial render
+    useCanvasStore.getState().toggleHideNode()
+    let prev0 = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!
+    expect(prev0.position.y).toBe(0)
+
+    // Simulate viewport scrolling down significantly
+    useCanvasStore.getState().setVisibleTopY(300)
+
+    prev0 = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!
+    expect(prev0.position.y).toBe(300)
   })
 })
 

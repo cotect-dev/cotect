@@ -81,7 +81,11 @@ export type CanvasState = {
   // Hidden nodes: node IDs that have been hidden by the user (H key)
   hiddenNodeIds: Set<string>
 
+  // The canvas-Y coordinate at the top of the visible area (kept in sync by the view)
+  visibleTopY: number
+
   // Actions
+  setVisibleTopY: (y: number) => void
   setFocus: (nodeId: string | null) => void
   moveFocus: (direction: 'up' | 'down') => void
   navigateRight: () => Promise<void>
@@ -264,6 +268,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   depthChain: [],
   selectedFunction: null,
   hiddenNodeIds: new Set(),
+  visibleTopY: 0,
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) })
@@ -279,6 +284,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
+
+  setVisibleTopY: (y) => {
+    const prev = get().visibleTopY
+    set({ visibleTopY: y })
+    // Re-render preview column when the visible area shifts meaningfully
+    if (Math.abs(y - prev) > NODE_HEIGHT / 2) {
+      flattenAndRender(get, set)
+    }
+  },
 
   setFocus: (nodeId) => {
     set({ focusedNodeId: nodeId })
@@ -674,9 +688,7 @@ function flattenAndRender(
   const allEdges: Edge[] = []
   let xOffset = 0
 
-  // First pass: position current column to find focused node Y
-  let focusedNodeY = 0
-  const { focusedNodeId, hiddenNodeIds } = get()
+  const { focusedNodeId, hiddenNodeIds, visibleTopY } = get()
 
   for (let i = startIdx; i <= endIdx; i++) {
     const col = columns[i]
@@ -688,11 +700,12 @@ function flattenAndRender(
     const hidden = col.nodes.filter((n) => hiddenNodeIds.has(n.id))
     const orderedNodes = [...visible, ...hidden]
 
-    // For the preview column, align its top with the focused node's Y
-    // position so the content is visible near the current viewport
+    // For the preview column, start at the top of the visible area so
+    // its content is always on-screen regardless of how far down the
+    // user has scrolled in the current column.
     let yStart = 0
-    if (isPreviewCol && focusedNodeId) {
-      yStart = focusedNodeY
+    if (isPreviewCol) {
+      yStart = Math.max(0, visibleTopY)
     }
 
     // Position nodes in this column
@@ -700,11 +713,6 @@ function flattenAndRender(
 
     // Tag nodes: dim non-current columns, mark hidden nodes
     for (const node of positioned) {
-      // Track focused node's Y for aligning the preview column
-      if (node.id === focusedNodeId) {
-        focusedNodeY = node.position.y
-      }
-
       allNodes.push({
         ...node,
         id: node.id,
