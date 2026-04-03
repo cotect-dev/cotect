@@ -1181,6 +1181,70 @@ describe('flattenAndRender', () => {
     expect(state.nodes).toEqual([])
     expect(state.edges).toEqual([])
   })
+
+  it('offsets preview column Y to match focused node position for directory columns', () => {
+    // Simulate being focused far down in the current (2nd) column,
+    // with a directory preview (3rd) column that should align to the focused Y.
+    const nodesCol0 = [makeSimpleNode('n0')]
+    const nodesCol1 = Array.from({ length: 20 }, (_, i) => makeSimpleNode(`n1-${i}`, 'folder'))
+    const nodesCol2 = [makeSimpleNode('prev0'), makeSimpleNode('prev1')]
+
+    const col0 = makeColumn('/root', nodesCol0)
+    const col1 = makeColumn('/root/deep', nodesCol1)
+    const col2 = makeColumn('/root/deep/sub', nodesCol2) // directory preview, not 'code'
+
+    // Focus on the last node in col1 (far down the list)
+    const lastId = 'n1-19'
+    useCanvasStore.setState({
+      columns: [col0, col1, col2],
+      currentColumnIndex: 1,
+      focusedNodeId: lastId,
+      hiddenNodeIds: new Set(),
+    })
+
+    // Trigger flattenAndRender
+    useCanvasStore.getState().toggleHideNode()
+
+    const state = useCanvasStore.getState()
+
+    // Find the focused node's rendered Y
+    const focusedRendered = state.nodes.find((n) => n.id === lastId)!
+    const focusedY = focusedRendered.position.y
+
+    // Preview column nodes should start at the focused node's Y, not 0
+    const prev0 = state.nodes.find((n) => n.id === 'prev0')!
+    const prev1 = state.nodes.find((n) => n.id === 'prev1')!
+
+    expect(prev0.position.y).toBe(focusedY)
+    expect(prev1.position.y).toBe(focusedY + NODE_HEIGHT + NODE_V_GAP)
+    // Verify the offset is significant (not at top)
+    expect(focusedY).toBeGreaterThan(0)
+  })
+
+  it('offsets preview column Y for file columns too', () => {
+    const nodesCol0 = Array.from({ length: 15 }, (_, i) => makeSimpleNode(`n-${i}`))
+    const nodesCol1 = [makeSimpleNode('filePreview', 'functionNode')]
+
+    const col0 = makeColumn('/root', nodesCol0)
+    const col1 = makeColumn('/root/app.ts', nodesCol1, 'file')
+
+    const lastId = 'n-14'
+    useCanvasStore.setState({
+      columns: [col0, col1],
+      currentColumnIndex: 0,
+      focusedNodeId: lastId,
+      hiddenNodeIds: new Set(),
+    })
+
+    useCanvasStore.getState().toggleHideNode()
+
+    const state = useCanvasStore.getState()
+    const focusedRendered = state.nodes.find((n) => n.id === lastId)!
+    const previewNode = state.nodes.find((n) => n.id === 'filePreview')!
+
+    expect(previewNode.position.y).toBe(focusedRendered.position.y)
+    expect(previewNode.position.y).toBeGreaterThan(0)
+  })
 })
 
 // ============================================================================
