@@ -19,6 +19,7 @@ function CanvasFlow() {
   const containerRef = useRef<HTMLDivElement>(null)
   const { nodes, edges, onNodesChange, onEdgesChange, focusedNodeId } = useCanvasStore()
   const reactFlow = useReactFlow()
+  const setVisibleTopY = useCanvasStore((s) => s.setVisibleTopY)
 
   const rootPath = useBrowserStore((s) => s.rootPath)
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
@@ -133,6 +134,16 @@ function CanvasFlow() {
     )
   }, [reactFlow])
 
+  // Keep the store's visibleTopY in sync with the actual viewport so
+  // the preview column can be positioned at the top of the visible area.
+  const handleViewportChange = useCallback(
+    (vp: { x: number; y: number; zoom: number }) => {
+      // Canvas-Y at the top of the screen, clamped to 0 (content never starts above 0)
+      setVisibleTopY(Math.max(0, -vp.y / vp.zoom))
+    },
+    [setVisibleTopY],
+  )
+
   return (
     <>
       <div
@@ -147,6 +158,7 @@ function CanvasFlow() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onViewportChange={handleViewportChange}
           nodeTypes={nodeTypes}
           colorMode="dark"
           proOptions={proOptions}
