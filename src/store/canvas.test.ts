@@ -27,11 +27,6 @@ vi.mock('@/services/treesitter', () => ({
   analyzeFile: (...args: unknown[]) => mockAnalyzeFile(...args),
 }))
 
-const mockDetectProjectMeta = vi.fn()
-vi.mock('@/services/projectMeta', () => ({
-  detectProjectMeta: (...args: unknown[]) => mockDetectProjectMeta(...args),
-}))
-
 import { useCanvasStore, type Column } from './canvas'
 import type { AppNode } from '@/types/nodes'
 
@@ -71,12 +66,12 @@ describe('isTestFile detection (via directory node sorting)', () => {
       { name: 'utils.ts', path: '/proj/utils.ts', isDirectory: false },
       { name: 'app.ts', path: '/proj/app.ts', isDirectory: false },
     ]))
-    mockDetectProjectMeta.mockResolvedValue({ name: 'proj', description: null, version: null, language: null, framework: null })
+
 
     await useCanvasStore.getState().initRoot('/proj')
 
-    // Column 1 is the root directory column
-    const dirCol = useCanvasStore.getState().columns[1]
+    // Column 0 is the root directory column
+    const dirCol = useCanvasStore.getState().columns[0]
     expect(dirCol).toBeDefined()
     const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
     // Regular files come before test files
@@ -90,11 +85,11 @@ describe('isTestFile detection (via directory node sorting)', () => {
       { name: 'src', path: '/proj/src', isDirectory: true },
       { name: 'main.ts', path: '/proj/main.ts', isDirectory: false },
     ]))
-    mockDetectProjectMeta.mockResolvedValue({ name: 'proj', description: null, version: null, language: null, framework: null })
+
 
     await useCanvasStore.getState().initRoot('/proj')
 
-    const dirCol = useCanvasStore.getState().columns[1]
+    const dirCol = useCanvasStore.getState().columns[0]
     const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
     // Folder first, then regular file, then test file
     expect(labels).toEqual(['src', 'main.ts', 'app.spec.ts'])
@@ -112,11 +107,11 @@ describe('isTestFile detection (via directory node sorting)', () => {
       { name: 'jest.config.ts', path: '/p/jest.config.ts', isDirectory: false },
       { name: 'vitest.config.js', path: '/p/vitest.config.js', isDirectory: false },
     ]))
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
 
     await useCanvasStore.getState().initRoot('/p')
 
-    const dirCol = useCanvasStore.getState().columns[1]
+    const dirCol = useCanvasStore.getState().columns[0]
     const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
     // 'regular.ts' should be the only regular file — everything else is a test
     expect(labels[0]).toBe('regular.ts')
@@ -136,11 +131,11 @@ describe('isTestFile detection (via directory node sorting)', () => {
       { name: 'app.ts', path: '/p/app.ts', isDirectory: false },
       { name: 'app.test.ts', path: '/p/app.test.ts', isDirectory: false },
     ]))
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
 
     await useCanvasStore.getState().initRoot('/p')
 
-    const dirCol = useCanvasStore.getState().columns[1]
+    const dirCol = useCanvasStore.getState().columns[0]
     const regular = dirCol.nodes.find((n) => (n.data as Record<string, unknown>).label === 'app.ts')
     const test = dirCol.nodes.find((n) => (n.data as Record<string, unknown>).label === 'app.test.ts')
     expect((regular!.data as Record<string, unknown>).isTestFile).toBeFalsy()
@@ -164,11 +159,11 @@ describe('directory filtering', () => {
       { name: '.git', path: '/p/.git', isDirectory: true },
       { name: 'main.ts', path: '/p/main.ts', isDirectory: false },
     ]))
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
 
     await useCanvasStore.getState().initRoot('/p')
 
-    const dirCol = useCanvasStore.getState().columns[1]
+    const dirCol = useCanvasStore.getState().columns[0]
     const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
     expect(labels).toContain('src')
     expect(labels).toContain('main.ts')
@@ -182,11 +177,11 @@ describe('directory filtering', () => {
       { name: '.gitignore', path: '/p/.gitignore', isDirectory: false },
       { name: '.hidden', path: '/p/.hidden', isDirectory: true },
     ]))
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
 
     await useCanvasStore.getState().initRoot('/p')
 
-    const dirCol = useCanvasStore.getState().columns[1]
+    const dirCol = useCanvasStore.getState().columns[0]
     const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
     expect(labels).toContain('.env')
     expect(labels).toContain('.gitignore')
@@ -343,11 +338,7 @@ describe('initRoot', () => {
     vi.clearAllMocks()
   })
 
-  it('creates meta and root directory columns', async () => {
-    mockDetectProjectMeta.mockResolvedValue({
-      name: 'my-project', description: 'A project', version: '1.0.0',
-      language: 'TypeScript', framework: 'React',
-    })
+  it('creates root directory column', async () => {
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'src', path: '/proj/src', isDirectory: true },
       { name: 'main.ts', path: '/proj/main.ts', isDirectory: false },
@@ -356,17 +347,15 @@ describe('initRoot', () => {
     await useCanvasStore.getState().initRoot('/proj')
 
     const state = useCanvasStore.getState()
-    expect(state.columns).toHaveLength(2)
-    expect(state.columns[0].path).toBe('__meta__')
+    expect(state.columns).toHaveLength(1)
+    expect(state.columns[0].path).toBe('/proj')
     expect(state.columns[0].kind).toBe('directory')
-    expect(state.columns[1].path).toBe('/proj')
-    expect(state.columns[1].kind).toBe('directory')
-    expect(state.currentColumnIndex).toBe(1)
+    expect(state.currentColumnIndex).toBe(0)
     expect(state.depthChain).toEqual(['/proj'])
   })
 
   it('sets focusedNodeId to first directory node', async () => {
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'src', path: '/proj/src', isDirectory: true },
       { name: 'main.ts', path: '/proj/main.ts', isDirectory: false },
@@ -380,34 +369,14 @@ describe('initRoot', () => {
   })
 
   it('handles empty directory', async () => {
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
     mockReadDirectory.mockResolvedValue([])
 
     await useCanvasStore.getState().initRoot('/empty')
 
     const state = useCanvasStore.getState()
-    expect(state.columns[1].nodes).toHaveLength(0)
+    expect(state.columns[0].nodes).toHaveLength(0)
     expect(state.focusedNodeId).toBeNull()
-  })
-
-  it('populates meta node with project metadata', async () => {
-    mockDetectProjectMeta.mockResolvedValue({
-      name: 'cotect', description: 'Code viewer', version: '2.0.0',
-      language: 'TypeScript', framework: 'React',
-    })
-    mockReadDirectory.mockResolvedValue([])
-
-    await useCanvasStore.getState().initRoot('/proj')
-
-    const metaNode = useCanvasStore.getState().columns[0].nodes[0]
-    expect(metaNode.type).toBe('projectMeta')
-    expect(metaNode.id).toBe('__project_meta__')
-    const data = metaNode.data as Record<string, unknown>
-    expect(data.name).toBe('cotect')
-    expect(data.description).toBe('Code viewer')
-    expect(data.version).toBe('2.0.0')
-    expect(data.language).toBe('TypeScript')
-    expect(data.framework).toBe('React')
   })
 
   it('clears selectedFunction on init', async () => {
@@ -417,7 +386,7 @@ describe('initRoot', () => {
         content: '', fullFileContent: '',
       },
     })
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
     mockReadDirectory.mockResolvedValue([])
 
     await useCanvasStore.getState().initRoot('/proj')
@@ -426,7 +395,7 @@ describe('initRoot', () => {
   })
 
   it('handles errors gracefully', async () => {
-    mockDetectProjectMeta.mockRejectedValue(new Error('network error'))
+    mockReadDirectory.mockRejectedValue(new Error('network error'))
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await useCanvasStore.getState().initRoot('/proj')
@@ -437,7 +406,7 @@ describe('initRoot', () => {
   })
 
   it('renders flat nodes and edges via flattenAndRender', async () => {
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'a.ts', path: '/proj/a.ts', isDirectory: false },
       { name: 'b.ts', path: '/proj/b.ts', isDirectory: false },
@@ -446,10 +415,10 @@ describe('initRoot', () => {
     await useCanvasStore.getState().initRoot('/proj')
 
     const state = useCanvasStore.getState()
-    // Should have flat nodes from both visible columns (meta + root)
+    // Should have flat nodes from the root directory column
     expect(state.nodes.length).toBeGreaterThan(0)
-    // Meta column has 1 node, root directory has 2 nodes = 3 total
-    expect(state.nodes).toHaveLength(3)
+    // Root directory has 2 nodes
+    expect(state.nodes).toHaveLength(2)
   })
 })
 
@@ -478,7 +447,7 @@ describe('navigateRight', () => {
   })
 
   it('navigates into a folder', async () => {
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
     mockReadDirectory.mockResolvedValueOnce(makeFSEntries([
       { name: 'src', path: '/proj/src', isDirectory: true },
     ])).mockResolvedValueOnce(makeFSEntries([
@@ -495,12 +464,12 @@ describe('navigateRight', () => {
     await useCanvasStore.getState().navigateRight()
 
     const state = useCanvasStore.getState()
-    expect(state.currentColumnIndex).toBe(2)
+    expect(state.currentColumnIndex).toBe(1)
     expect(state.depthChain).toContain('/proj/src')
   })
 
   it('navigates into a file and builds function nodes', async () => {
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'app.ts', path: '/proj/app.ts', isDirectory: false },
     ]))
@@ -520,8 +489,8 @@ describe('navigateRight', () => {
     await useCanvasStore.getState().navigateRight()
 
     const state = useCanvasStore.getState()
-    expect(state.currentColumnIndex).toBe(2)
-    const fileCol = state.columns[2]
+    expect(state.currentColumnIndex).toBe(1)
+    const fileCol = state.columns[1]
     expect(fileCol).toBeDefined()
     expect(fileCol.kind).toBe('file')
     // Should have both a function and a class node
@@ -596,35 +565,6 @@ describe('navigateRight', () => {
 
     // Should NOT navigate (guard: currentCol.kind !== 'file')
     expect(useCanvasStore.getState().currentColumnIndex).toBe(0)
-  })
-
-  it('navigates right from projectMeta to next column', async () => {
-    const metaNode: AppNode = {
-      id: '__project_meta__', type: 'projectMeta', position: { x: 0, y: 0 },
-      data: { name: 'proj', description: null, version: null, language: null, framework: null },
-    }
-    const fileNode: AppNode = {
-      id: '/proj/app.ts', type: 'file', position: { x: 0, y: 0 },
-      data: { label: 'app.ts', path: '/proj/app.ts' },
-    }
-
-    const metaCol: Column = { path: '__meta__', kind: 'directory', nodes: [metaNode], edges: [] }
-    const rootCol: Column = { path: '/proj', kind: 'directory', nodes: [fileNode], edges: [] }
-
-    useCanvasStore.setState({
-      columns: [metaCol, rootCol],
-      currentColumnIndex: 0,
-      focusedNodeId: '__project_meta__',
-      nodes: [
-        { ...metaNode, data: { ...metaNode.data } } as Node,
-        { ...fileNode, data: { ...fileNode.data } } as Node,
-      ],
-    })
-
-    await useCanvasStore.getState().navigateRight()
-
-    expect(useCanvasStore.getState().currentColumnIndex).toBe(1)
-    expect(useCanvasStore.getState().focusedNodeId).toBe('/proj/app.ts')
   })
 
   it('promotes existing preview column when path matches', async () => {
@@ -976,32 +916,6 @@ describe('updatePreview', () => {
     expect(useCanvasStore.getState().columns).toHaveLength(1)
   })
 
-  it('keeps existing next column for projectMeta preview', async () => {
-    const metaNode: AppNode = {
-      id: '__project_meta__', type: 'projectMeta', position: { x: 0, y: 0 },
-      data: { name: 'proj', description: null, version: null, language: null, framework: null },
-    }
-    const rootNode: AppNode = {
-      id: '/proj/app.ts', type: 'file', position: { x: 0, y: 0 },
-      data: { label: 'app.ts', path: '/proj/app.ts' },
-    }
-
-    useCanvasStore.setState({
-      focusedNodeId: '__project_meta__',
-      columns: [
-        { path: '__meta__', kind: 'directory', nodes: [metaNode], edges: [] },
-        { path: '/proj', kind: 'directory', nodes: [rootNode], edges: [] },
-      ],
-      currentColumnIndex: 0,
-    })
-
-    await useCanvasStore.getState().updatePreview()
-
-    // Should keep the existing root column as preview
-    const state = useCanvasStore.getState()
-    expect(state.columns).toHaveLength(2)
-    expect(state.columns[1].path).toBe('/proj')
-  })
 })
 
 // ============================================================================
@@ -1021,8 +935,8 @@ describe('flattenAndRender', () => {
     return { id, type: type as AppNode['type'], position: { x: 0, y: 0 }, data: { label: id, path: id } as AppNode['data'] }
   }
 
-  it('shows up to 3 columns centered on current', async () => {
-    mockDetectProjectMeta.mockResolvedValue({ name: 'p', description: null, version: null, language: null, framework: null })
+  it('renders all columns regardless of current index', async () => {
+
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'a', path: '/p/a', isDirectory: false },
     ]))
@@ -1049,13 +963,12 @@ describe('flattenAndRender', () => {
 
     const state = useCanvasStore.getState()
     // After navigating left, currentColumnIndex = 1
-    // Visible columns should be [0, 1, 2] (3 columns)
+    // All columns should be rendered (no windowing)
     const nodeIds = state.nodes.map((n) => n.id)
     expect(nodeIds).toContain('n0')
     expect(nodeIds).toContain('n1')
     expect(nodeIds).toContain('n2')
-    // n3 should not be visible
-    expect(nodeIds).not.toContain('n3')
+    expect(nodeIds).toContain('n3')
   })
 
   it('marks nodes with __isCurrent and __columnIndex metadata', async () => {
