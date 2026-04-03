@@ -286,6 +286,50 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
     useCanvasStore.getState().moveFocus('down')
     expect(useCanvasStore.getState().focusedNodeId).toBe('b')
   })
+
+  it('moveFocus wraps down from last node to first node in column', () => {
+    useCanvasStore.setState({
+      nodes: [
+        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
+        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
+        { id: 'c', position: { x: 0, y: 144 }, data: {} } as Node,
+      ],
+      focusedNodeId: 'c',
+    })
+
+    useCanvasStore.getState().moveFocus('down')
+    expect(useCanvasStore.getState().focusedNodeId).toBe('a')
+  })
+
+  it('moveFocus wraps up from first node to last node in column', () => {
+    useCanvasStore.setState({
+      nodes: [
+        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
+        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
+        { id: 'c', position: { x: 0, y: 144 }, data: {} } as Node,
+      ],
+      focusedNodeId: 'a',
+    })
+
+    useCanvasStore.getState().moveFocus('up')
+    expect(useCanvasStore.getState().focusedNodeId).toBe('c')
+  })
+
+  it('moveFocus wraps within own column only, not across columns', () => {
+    useCanvasStore.setState({
+      nodes: [
+        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
+        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
+        { id: 'c', position: { x: NODE_WIDTH + NODE_H_GAP, y: 0 }, data: {} } as Node,
+        { id: 'd', position: { x: NODE_WIDTH + NODE_H_GAP, y: 72 }, data: {} } as Node,
+      ],
+      focusedNodeId: 'b',
+    })
+
+    useCanvasStore.getState().moveFocus('down')
+    // Should wrap to 'a' (top of same column), not jump to 'c' or 'd'
+    expect(useCanvasStore.getState().focusedNodeId).toBe('a')
+  })
 })
 
 // ============================================================================

@@ -298,7 +298,28 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       return
     }
 
-    const nextId = findVerticalNeighbor(nodes, focusedNodeId, direction)
+    let nextId = findVerticalNeighbor(nodes, focusedNodeId, direction)
+
+    // Wrap around: if no neighbor in direction, jump to the opposite end of the column
+    if (!nextId) {
+      const focused = nodes.find((n) => n.id === focusedNodeId)
+      if (focused) {
+        const fx = focused.position.x
+        const sameCol = nodes.filter(
+          (n) => n.id !== focusedNodeId && Math.abs(n.position.x - fx) < NODE_WIDTH * 0.5,
+        )
+        if (sameCol.length > 0) {
+          if (direction === 'down') {
+            // Wrap to topmost node in column
+            nextId = sameCol.reduce((best, n) => (n.position.y < best.position.y ? n : best)).id
+          } else {
+            // Wrap to bottommost node in column
+            nextId = sameCol.reduce((best, n) => (n.position.y > best.position.y ? n : best)).id
+          }
+        }
+      }
+    }
+
     if (nextId) {
       set({ focusedNodeId: nextId })
       get().updatePreview()
