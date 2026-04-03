@@ -1,5 +1,5 @@
 import { createSyncedStore } from './synced'
-import { preserveStoreOnHMR } from '@/lib/hmr'
+import { createStoreWithHMR } from '@/lib/hmr'
 
 export type ModelId = 'qwen3.5-think' | 'qwen3.5-no-think'
 
@@ -30,7 +30,7 @@ interface ChatState {
   clearMessages: () => void
 }
 
-export const useChatStore = createSyncedStore<ChatState>('chat', (set) => ({
+export const useChatStore = createStoreWithHMR(import.meta.hot, 'chat', () => createSyncedStore<ChatState>('chat', (set) => ({
   messages: [],
   isGenerating: false,
   thinkingEnabled: true,
@@ -58,7 +58,7 @@ export const useChatStore = createSyncedStore<ChatState>('chat', (set) => ({
       isThinking: false,
     })),
   }),
-})
+}))
 
 const API_BASE = '/llm/v1'
 
@@ -267,5 +267,3 @@ export async function sendMessage(content: string) {
     setAbortController(null)
   }
 }
-
-preserveStoreOnHMR(import.meta.hot, 'chat', useChatStore)
