@@ -7,7 +7,7 @@ import { nodeTypes } from '@/components/Canvas/nodes'
 import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
 import WindowShell from '@/components/WindowShell'
 import { useCanvasKeyboard } from '@/hooks/useCanvasKeyboard'
-import { NODE_WIDTH, NODE_HEIGHT, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
+import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
 
 const proOptions = { hideAttribution: true }
 
@@ -63,7 +63,9 @@ function CanvasFlow() {
   const leftPanelWidthRef = useRef(leftPanelWidth)
   leftPanelWidthRef.current = leftPanelWidth
 
-  // Set viewport to top-left on actual navigation (not preview updates).
+  // Set viewport so the current column appears right after the left panel.
+  // Previous columns will be behind/under the left panel, reachable by
+  // panning with Space.
   // We read the left-panel width directly from the DOM inside the deferred
   // callback because on startup the ResizeObserver may not have fired yet,
   // leaving leftPanelWidthRef at 0.
@@ -76,8 +78,12 @@ function CanvasFlow() {
       // Keep the ref in sync so the resize-delta effect has a correct baseline
       leftPanelWidthRef.current = panelW
       prevPanelWidth.current = panelW
+      // The current column sits at canvas-X = currentColumnIndex * columnStep.
+      // Offset the viewport so that position maps to screen-X = pad + panelW.
+      const columnStep = NODE_WIDTH + NODE_H_GAP
+      const currentColX = currentColumnIndex * columnStep
       reactFlow.setViewport(
-        { x: CANVAS_PAD_X + panelW, y: CANVAS_PAD_Y, zoom: 1 },
+        { x: CANVAS_PAD_X + panelW - currentColX, y: CANVAS_PAD_Y, zoom: 1 },
         { duration: 200 },
       )
     }, 30)

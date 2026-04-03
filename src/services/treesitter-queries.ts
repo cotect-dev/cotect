@@ -32,7 +32,22 @@ const typescriptConfig: LanguageConfig = {
 const javascriptConfig: LanguageConfig = {
   extensions: ['.js', '.jsx'],
   grammarPath: '/tree-sitter-javascript.wasm',
-  declarationQuery: typescriptConfig.declarationQuery,
+  declarationQuery: `
+    (function_declaration name: (identifier) @name) @decl
+    (export_statement declaration: (function_declaration name: (identifier) @name)) @decl
+    (lexical_declaration
+      (variable_declarator
+        name: (identifier) @name
+        value: (arrow_function)) @decl)
+    (export_statement
+      declaration: (lexical_declaration
+        (variable_declarator
+          name: (identifier) @name
+          value: (arrow_function))) @decl)
+    (class_declaration name: (identifier) @name) @decl
+    (export_statement declaration: (class_declaration name: (identifier) @name)) @decl
+    (method_definition name: (property_identifier) @method_name) @method
+  `,
   importQuery: `
     (import_statement source: (string (string_fragment) @source))
     (call_expression

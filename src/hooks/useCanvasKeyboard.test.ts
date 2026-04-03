@@ -18,13 +18,6 @@ vi.mock('@/services/platform', () => ({
   }),
 }))
 
-// Mock projectMeta
-vi.mock('@/services/projectMeta', () => ({
-  detectProjectMeta: vi.fn().mockResolvedValue({
-    name: 'test', description: null, version: null, language: null, framework: null,
-  }),
-}))
-
 // Mock treesitter
 vi.mock('@/services/treesitter', () => ({
   analyzeFile: vi.fn().mockResolvedValue({ declarations: [], imports: [] }),
