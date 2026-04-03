@@ -14,6 +14,10 @@ const proOptions = { hideAttribution: true }
 // Padding from the edges of the visible area
 const CANVAS_PAD_X = 48
 
+// Initial viewport position — ensures nodes aren't hidden behind the menu bar
+// on the very first render before any effects have a chance to run.
+const defaultViewport = { x: CANVAS_PAD_X, y: CANVAS_PAD_Y, zoom: 1 }
+
 function CanvasFlow() {
   const containerRef = useRef<HTMLDivElement>(null)
   // Narrow selectors — only subscribe to the data ReactFlow actually needs
@@ -59,12 +63,21 @@ function CanvasFlow() {
   const leftPanelWidthRef = useRef(leftPanelWidth)
   leftPanelWidthRef.current = leftPanelWidth
 
-  // Set viewport to top-left on actual navigation (not preview updates)
+  // Set viewport to top-left on actual navigation (not preview updates).
+  // We read the left-panel width directly from the DOM inside the deferred
+  // callback because on startup the ResizeObserver may not have fired yet,
+  // leaving leftPanelWidthRef at 0.
   useEffect(() => {
     prevPanelWidth.current = leftPanelWidthRef.current
     const timer = setTimeout(() => {
+      // Prefer the live DOM measurement — the ref may still be 0 on first mount
+      const panelEl = document.querySelector('[data-zone="left"]')
+      const panelW = panelEl ? panelEl.getBoundingClientRect().width : leftPanelWidthRef.current
+      // Keep the ref in sync so the resize-delta effect has a correct baseline
+      leftPanelWidthRef.current = panelW
+      prevPanelWidth.current = panelW
       reactFlow.setViewport(
-        { x: CANVAS_PAD_X + leftPanelWidthRef.current, y: CANVAS_PAD_Y, zoom: 1 },
+        { x: CANVAS_PAD_X + panelW, y: CANVAS_PAD_Y, zoom: 1 },
         { duration: 200 },
       )
     }, 30)
@@ -168,6 +181,7 @@ function CanvasFlow() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
+          defaultViewport={defaultViewport}
           colorMode="dark"
           proOptions={proOptions}
           zoomOnScroll={false}
