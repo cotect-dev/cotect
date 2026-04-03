@@ -84,6 +84,11 @@ export type CanvasState = {
   // The height of the canvas viewport in pixels (set by the view layer)
   viewportHeight: number
 
+  // Simulated camera Y position (viewport.y), kept in sync with the
+  // pan-to-focus clamping logic so flattenAndRender can position
+  // the preview column without waiting for the actual viewport animation.
+  cameraY: number
+
   // Actions
   setViewportHeight: (h: number) => void
   setFocus: (nodeId: string | null) => void
@@ -269,6 +274,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   selectedFunction: null,
   hiddenNodeIds: new Set(),
   viewportHeight: 0,
+  cameraY: CANVAS_PAD_Y,
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) })
@@ -368,6 +374,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         depthChain: [rootPath],
         focusedNodeId: dirNodes.length > 0 ? dirNodes[0].id : null,
         selectedFunction: null,
+        cameraY: CANVAS_PAD_Y,
       })
 
       // Flatten and position
@@ -427,6 +434,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         depthChain: newChain,
         selectedFunction,
         focusedNodeId: previewCol.nodes.length > 0 ? previewCol.nodes[0].id : null,
+        cameraY: CANVAS_PAD_Y,
       })
 
       flattenAndRender(get, set)
@@ -444,6 +452,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           set({
             currentColumnIndex: currentColumnIndex + 1,
             focusedNodeId: nextCol.nodes.length > 0 ? nextCol.nodes[0].id : null,
+            cameraY: CANVAS_PAD_Y,
           })
           flattenAndRender(get, set)
           get().updatePreview()
@@ -462,6 +471,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           depthChain: newChain,
           selectedFunction: null,
           focusedNodeId: dirNodes.length > 0 ? dirNodes[0].id : null,
+          cameraY: CANVAS_PAD_Y,
         })
 
         flattenAndRender(get, set)
@@ -483,6 +493,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           depthChain: newChain,
           selectedFunction: null,
           focusedNodeId: fileNodes[0]?.id ?? null,
+          cameraY: CANVAS_PAD_Y,
         })
 
         flattenAndRender(get, set)
@@ -508,6 +519,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           depthChain: newChain,
           selectedFunction,
           focusedNodeId: codeNode.id,
+          cameraY: CANVAS_PAD_Y,
         })
 
         flattenAndRender(get, set)
@@ -543,6 +555,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       currentColumnIndex: newIndex,
       selectedFunction: null,
       focusedNodeId: restoreFocusId || (parentCol?.nodes[0]?.id ?? null),
+      cameraY: CANVAS_PAD_Y,
     })
 
     flattenAndRender(get, set)
@@ -681,7 +694,7 @@ function flattenAndRender(
   const allEdges: Edge[] = []
   let xOffset = 0
 
-  const { focusedNodeId, hiddenNodeIds, viewportHeight } = get()
+  const { focusedNodeId, hiddenNodeIds, viewportHeight, cameraY } = get()
 
   // First pass: position the current column to find the focused node's Y.
   // This lets us compute where the camera will be after panning.
@@ -701,19 +714,24 @@ function flattenAndRender(
     }
   }
 
-  // Compute the preview column Y offset: mirror the camera's pan logic.
-  // The camera keeps the focused node visible within [CANVAS_PAD_Y .. viewportHeight - CANVAS_MARGIN].
-  // When the focused node is below the visible area, the camera pans down.
-  // "visibleTop" is the canvas-Y at the top of the screen after panning.
-  let previewYStart = 0
+  // Simulate the camera's clamping behaviour (mirrors the pan-to-focus
+  // effect in Canvas.tsx). The camera only moves when the focused node
+  // would be outside the visible area; otherwise it stays put.
+  let newCameraY = cameraY
   if (viewportHeight > 0) {
-    // The usable vertical space on screen where content is fully visible
-    const usableHeight = viewportHeight - CANVAS_PAD_Y - CANVAS_MARGIN
-    if (focusedNodeY + NODE_HEIGHT > usableHeight) {
-      // Camera has panned — the top of the visible area is offset
-      previewYStart = focusedNodeY + NODE_HEIGHT + CANVAS_MARGIN - viewportHeight + CANVAS_PAD_Y
+    const nodeScreenY = focusedNodeY + newCameraY
+    if (nodeScreenY < CANVAS_MARGIN) {
+      newCameraY = -focusedNodeY + CANVAS_MARGIN
+    } else if (nodeScreenY + NODE_HEIGHT > viewportHeight - CANVAS_MARGIN) {
+      newCameraY = viewportHeight - CANVAS_MARGIN - focusedNodeY - NODE_HEIGHT
     }
   }
+  if (newCameraY !== cameraY) {
+    set({ cameraY: newCameraY })
+  }
+
+  // The visible canvas-Y at the top of the screen
+  const previewYStart = Math.max(0, -newCameraY)
 
   for (let i = startIdx; i <= endIdx; i++) {
     const col = columns[i]
