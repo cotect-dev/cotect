@@ -47,6 +47,8 @@ function resetStore() {
     depthChain: [],
     selectedFunction: null,
     hiddenNodeIds: new Set(),
+    viewportHeight: 0,
+    cameraY: CANVAS_PAD_Y,
   })
 }
 
@@ -1193,6 +1195,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: 'n0',
       hiddenNodeIds: new Set(),
       viewportHeight: 800,
+      cameraY: CANVAS_PAD_Y, // fresh column
     })
 
     // Trigger flattenAndRender
@@ -1218,6 +1221,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: 'n-19',
       hiddenNodeIds: new Set(),
       viewportHeight: viewportH,
+      cameraY: CANVAS_PAD_Y, // fresh column
     })
 
     useCanvasStore.getState().toggleHideNode()
@@ -1225,13 +1229,12 @@ describe('flattenAndRender', () => {
     const state = useCanvasStore.getState()
     const prev0 = state.nodes.find((n) => n.id === 'prev0')!
 
-    // The focused node's Y in the current column (index 19, including hidden n-19 at end)
-    // n-19 is now hidden (toggleHideNode added it), but that doesn't matter for the
-    // focusedNodeY calculation inside flattenAndRender — it walks the ordered list.
-    // After toggling, n-19 is hidden, so ordered = [n-0..n-18, n-19].
-    // n-19 is at index 19: Y = 19 * (NODE_HEIGHT + NODE_V_GAP) = 19 * 72 = 1368
+    // n-19 is now hidden (toggleHideNode added it), ordered = [n-0..n-18, n-19].
+    // n-19 is at index 19: Y = 19 * 72 = 1368
     const focusedY = 19 * (NODE_HEIGHT + NODE_V_GAP)
-    const expectedPreviewY = focusedY + NODE_HEIGHT + CANVAS_MARGIN - viewportH + CANVAS_PAD_Y
+    // Camera clamps: newCameraY = viewportH - CANVAS_MARGIN - focusedY - NODE_HEIGHT
+    const expectedCameraY = viewportH - CANVAS_MARGIN - focusedY - NODE_HEIGHT
+    const expectedPreviewY = Math.max(0, -expectedCameraY)
 
     expect(prev0.position.y).toBe(expectedPreviewY)
     expect(prev0.position.y).toBeGreaterThan(0)
@@ -1247,6 +1250,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: 'n-19',
       hiddenNodeIds: new Set(),
       viewportHeight: 0, // not yet measured
+      cameraY: CANVAS_PAD_Y,
     })
 
     useCanvasStore.getState().toggleHideNode()
@@ -1266,6 +1270,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: 'n1', // focus on n1 so toggling hide puts n1 in hidden
       hiddenNodeIds: new Set(),
       viewportHeight: 200,
+      cameraY: CANVAS_PAD_Y,
     })
 
     useCanvasStore.getState().toggleHideNode()
@@ -1277,42 +1282,85 @@ describe('flattenAndRender', () => {
     expect(n0.position.y).toBe(0)
   })
 
-  it('preview column offset matches camera pan formula exactly', () => {
-    // Verify the preview offset exactly mirrors the camera's pan-to-focus calculation
-    const viewportH = 500
-    // Create enough nodes so the focused node is definitely below the fold
-    const count = 10
-    const nodesCol0 = Array.from({ length: count }, (_, i) => makeSimpleNode(`n-${i}`))
+  it('moving up preserves preview offset when focused node is still visible', () => {
+    // Simulate: scrolled far down, then move up one node. Camera should NOT move.
+    // The preview column offset should stay the same.
+    const viewportH = 600
+    const count = 20
+    const nodesCol0 = Array.from({ length: count }, (_, i) => makeSimpleNode(`n-${i}`, 'folder'))
     const nodesCol1 = [makeSimpleNode('prev0')]
 
-    // Focus on a middle node that's below the usable area
-    const focusIdx = 8
+    // First: focus on the bottom node to let cameraY clamp
     useCanvasStore.setState({
       columns: [makeColumn('/root', nodesCol0), makeColumn('/root/sub', nodesCol1)],
       currentColumnIndex: 0,
-      focusedNodeId: `n-${focusIdx}`,
+      focusedNodeId: `n-${count - 1}`,
       hiddenNodeIds: new Set(),
       viewportHeight: viewportH,
+      cameraY: CANVAS_PAD_Y,
+    })
+
+    // Run flattenAndRender to establish the cameraY at the bottom
+    useCanvasStore.getState().toggleHideNode() // adds n-19 to hidden, triggers flattenAndRender
+    // Undo the hide so all nodes are visible again
+    useCanvasStore.getState().toggleHideNode() // removes n-19 from hidden
+
+    const cameraAfterBottom = useCanvasStore.getState().cameraY
+    const previewYAfterBottom = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!.position.y
+
+    // Now move focus up by one (simulating pressing W)
+    const prevNodeId = `n-${count - 2}`
+    useCanvasStore.setState({ focusedNodeId: prevNodeId })
+    // Re-trigger flattenAndRender (toggleHideNode is our trigger)
+    useCanvasStore.getState().toggleHideNode()
+    useCanvasStore.getState().toggleHideNode()
+
+    const cameraAfterMoveUp = useCanvasStore.getState().cameraY
+    const previewYAfterMoveUp = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!.position.y
+
+    // Camera should NOT have moved — the node above was already visible
+    expect(cameraAfterMoveUp).toBe(cameraAfterBottom)
+    // Preview offset should stay the same
+    expect(previewYAfterMoveUp).toBe(previewYAfterBottom)
+  })
+
+  it('camera clamps upward when focused node is above visible area', () => {
+    // Simulate: scrolled to bottom, then jump focus all the way to top.
+    // Camera should clamp up, and preview should follow.
+    const viewportH = 600
+    const count = 20
+    const nodesCol0 = Array.from({ length: count }, (_, i) => makeSimpleNode(`n-${i}`, 'folder'))
+    const nodesCol1 = [makeSimpleNode('prev0')]
+
+    // First: focus on bottom to clamp camera down
+    useCanvasStore.setState({
+      columns: [makeColumn('/root', nodesCol0), makeColumn('/root/sub', nodesCol1)],
+      currentColumnIndex: 0,
+      focusedNodeId: `n-${count - 1}`,
+      hiddenNodeIds: new Set(),
+      viewportHeight: viewportH,
+      cameraY: CANVAS_PAD_Y,
     })
 
     useCanvasStore.getState().toggleHideNode()
+    useCanvasStore.getState().toggleHideNode()
 
-    // After toggleHideNode, n-8 is hidden and moved to end, but it's at the same
-    // index position (all others visible, then n-8 at end = index 9 after reorder)
-    // Actually: visible = [n-0..n-7, n-9], hidden = [n-8] → ordered index of n-8 is 9
-    const focusedY = 9 * (NODE_HEIGHT + NODE_V_GAP)
-    const usableHeight = viewportH - CANVAS_PAD_Y - CANVAS_MARGIN
-    const needsPan = focusedY + NODE_HEIGHT > usableHeight
+    const cameraAtBottom = useCanvasStore.getState().cameraY
+    expect(cameraAtBottom).toBeLessThan(0) // camera panned way down
 
-    const state = useCanvasStore.getState()
-    const prev0 = state.nodes.find((n) => n.id === 'prev0')!
+    // Now jump focus to the top node
+    useCanvasStore.setState({ focusedNodeId: 'n-0' })
+    useCanvasStore.getState().toggleHideNode()
+    useCanvasStore.getState().toggleHideNode()
 
-    if (needsPan) {
-      const expectedY = focusedY + NODE_HEIGHT + CANVAS_MARGIN - viewportH + CANVAS_PAD_Y
-      expect(prev0.position.y).toBe(expectedY)
-    } else {
-      expect(prev0.position.y).toBe(0)
-    }
+    const cameraAfterJumpUp = useCanvasStore.getState().cameraY
+
+    // Camera should have clamped upward: newCameraY = -focusedNodeY + CANVAS_MARGIN = -0 + 60 = 60
+    expect(cameraAfterJumpUp).toBe(CANVAS_MARGIN)
+
+    const previewY = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!.position.y
+    // visibleTop = max(0, -60) = 0
+    expect(previewY).toBe(0)
   })
 })
 // ============================================================================
