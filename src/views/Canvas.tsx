@@ -7,19 +7,18 @@ import { nodeTypes } from '@/components/Canvas/nodes'
 import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
 import WindowShell from '@/components/WindowShell'
 import { useCanvasKeyboard } from '@/hooks/useCanvasKeyboard'
-import { NODE_WIDTH, NODE_HEIGHT } from '@/lib/constants'
+import { NODE_WIDTH, NODE_HEIGHT, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
 
 const proOptions = { hideAttribution: true }
 
 // Padding from the edges of the visible area
 const CANVAS_PAD_X = 48
-const CANVAS_PAD_Y = 56
 
 function CanvasFlow() {
   const containerRef = useRef<HTMLDivElement>(null)
   const { nodes, edges, onNodesChange, onEdgesChange, focusedNodeId } = useCanvasStore()
   const reactFlow = useReactFlow()
-  const setVisibleTopY = useCanvasStore((s) => s.setVisibleTopY)
+  const setViewportHeight = useCanvasStore((s) => s.setViewportHeight)
 
   const rootPath = useBrowserStore((s) => s.rootPath)
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
@@ -95,7 +94,7 @@ function CanvasFlow() {
     if (!container) return
     const { width: cw, height: ch } = container.getBoundingClientRect()
 
-    const margin = 60
+    const margin = CANVAS_MARGIN
     let newX = viewport.x
     let newY = viewport.y
 
@@ -134,15 +133,20 @@ function CanvasFlow() {
     )
   }, [reactFlow])
 
-  // Keep the store's visibleTopY in sync with the actual viewport so
-  // the preview column can be positioned at the top of the visible area.
-  const handleViewportChange = useCallback(
-    (vp: { x: number; y: number; zoom: number }) => {
-      // Canvas-Y at the top of the screen, clamped to 0 (content never starts above 0)
-      setVisibleTopY(Math.max(0, -vp.y / vp.zoom))
-    },
-    [setVisibleTopY],
-  )
+  // Report container height to the store so flattenAndRender can
+  // compute where the visible area starts for the preview column.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const obs = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setViewportHeight(entry.contentRect.height)
+      }
+    })
+    obs.observe(el)
+    setViewportHeight(el.getBoundingClientRect().height)
+    return () => obs.disconnect()
+  }, [setViewportHeight])
 
   return (
     <>
@@ -158,7 +162,6 @@ function CanvasFlow() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onViewportChange={handleViewportChange}
           nodeTypes={nodeTypes}
           colorMode="dark"
           proOptions={proOptions}
