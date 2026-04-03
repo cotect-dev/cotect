@@ -30,7 +30,8 @@ export interface DragState {
 const DRAG_MOVE_THROTTLE = 50 // ms between drag-move broadcasts
 
 export function usePanelDrag() {
-  const { panels, movePanel, movePanelToTab, moveGroup, moveGroupToTab } = useLayoutStore()
+  // Only subscribe to the data slice we actually render; access actions via getState()
+  const panels = useLayoutStore((s) => s.panels)
   const [dragState, setDragState] = useState<DragState | null>(null)
   const lastDragMoveTs = useRef(0)
   const wasDragOutside = useRef(false)
@@ -238,6 +239,7 @@ export function usePanelDrag() {
         if (!prev) return null
 
         if (prev.overPosition) {
+          const { movePanel, movePanelToTab, moveGroup, moveGroupToTab } = useLayoutStore.getState()
           if (prev.tabIntoGroupKey) {
             if (prev.isGroup && prev.panelIds) {
               moveGroupToTab(prev.panelIds, prev.tabIntoGroupKey)
@@ -266,7 +268,7 @@ export function usePanelDrag() {
       wasDragOutside.current = false
       void platform.ipc.emit('drag-end', { sourceWindow: windowId })
     },
-    [movePanel, movePanelToTab, moveGroup, moveGroupToTab, platform, windowId]
+    [platform, windowId]
   )
 
   const handleDragCancel = useCallback(() => {

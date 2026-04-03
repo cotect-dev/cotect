@@ -16,9 +16,14 @@ const CANVAS_PAD_X = 48
 
 function CanvasFlow() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { nodes, edges, onNodesChange, onEdgesChange, focusedNodeId } = useCanvasStore()
+  // Narrow selectors — only subscribe to the data ReactFlow actually needs
+  const nodes = useCanvasStore((s) => s.nodes)
+  const edges = useCanvasStore((s) => s.edges)
+  const focusedNodeId = useCanvasStore((s) => s.focusedNodeId)
   const reactFlow = useReactFlow()
   const setViewportHeight = useCanvasStore((s) => s.setViewportHeight)
+  const onNodesChange = useCanvasStore((s) => s.onNodesChange)
+  const onEdgesChange = useCanvasStore((s) => s.onEdgesChange)
 
   const rootPath = useBrowserStore((s) => s.rootPath)
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)

@@ -1,35 +1,36 @@
+import { memo, useMemo, useCallback } from 'react'
 import { ChevronRight, Home } from 'lucide-react'
 import { useBrowserStore, useCanvasStore } from '@/store'
 
-export default function Breadcrumbs() {
+export default memo(function Breadcrumbs() {
   const loading = useBrowserStore((s) => s.loading)
   const depthChain = useCanvasStore((s) => s.depthChain)
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
 
-  // Build breadcrumb entries from the depth chain
-  const crumbs = depthChain.map((path, i) => ({
+  // Memoize breadcrumb entries — only recompute when depthChain or currentColumnIndex changes
+  const crumbs = useMemo(() => depthChain.map((path, i) => ({
     path,
     label: path.includes(':') ? path.split(':').pop()! : path.split('/').pop() || path,
     isCurrent: i === currentColumnIndex,
-  }))
+  })), [depthChain, currentColumnIndex])
 
-  function navigateToColumn(targetIndex: number) {
-    if (targetIndex === currentColumnIndex) return
-    if (targetIndex < currentColumnIndex) {
-      // Navigate left repeatedly
-      const steps = currentColumnIndex - targetIndex
+  const navigateToColumn = useCallback((targetIndex: number) => {
+    const current = useCanvasStore.getState().currentColumnIndex
+    if (targetIndex === current) return
+    if (targetIndex < current) {
+      const steps = current - targetIndex
       for (let i = 0; i < steps; i++) {
         useCanvasStore.getState().navigateLeft()
       }
     }
-  }
+  }, [])
 
-  function navigateToRoot() {
-    const steps = currentColumnIndex
+  const navigateToRoot = useCallback(() => {
+    const steps = useCanvasStore.getState().currentColumnIndex
     for (let i = 0; i < steps; i++) {
       useCanvasStore.getState().navigateLeft()
     }
-  }
+  }, [])
 
   return (
     <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
@@ -66,4 +67,4 @@ export default function Breadcrumbs() {
       </div>
     </div>
   )
-}
+})
