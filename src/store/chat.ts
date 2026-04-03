@@ -1,4 +1,5 @@
 import { createSyncedStore } from './synced'
+import { preserveStoreOnHMR } from '@/lib/hmr'
 
 export type ModelId = 'qwen3.5-think' | 'qwen3.5-no-think'
 
@@ -266,3 +267,5 @@ export async function sendMessage(content: string) {
     setAbortController(null)
   }
 }
+
+preserveStoreOnHMR(import.meta.hot, 'chat', useChatStore)

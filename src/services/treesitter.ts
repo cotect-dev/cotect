@@ -147,6 +147,40 @@ export async function analyzeFile(filePath: string, content: string): Promise<Fi
       }
     }
 
-    return { declarations, imports }
+    // Filter out nested (internal) functions: if a declaration's line range
+    // is fully contained within another declaration, it's an inner function
+    // and should not appear as a separate top-level entry.
+    const topLevel = declarations.filter((decl) =>
+      !declarations.some((other) =>
+        other !== decl &&
+        other.startLine <= decl.startLine &&
+        other.endLine >= decl.endLine &&
+        // Exclude exact same range (duplicates handled below)
+        !(other.startLine === decl.startLine && other.endLine === decl.endLine)
+      )
+    )
+
+    // Deduplicate declarations: exported items can match both the exported
+    // and non-exported query patterns, producing two entries with the same name.
+    // Keep the first (outermost) match for each name, which includes the export keyword.
+    const seen = new Map<string, number>()
+    const deduped: Declaration[] = []
+    for (const decl of topLevel) {
+      const existing = seen.get(decl.name)
+      if (existing === undefined) {
+        seen.set(decl.name, deduped.length)
+        deduped.push(decl)
+      } else {
+        // Keep the one that spans more lines (the export-wrapped variant)
+        const prev = deduped[existing]
+        const prevSpan = prev.endLine - prev.startLine
+        const currSpan = decl.endLine - decl.startLine
+        if (currSpan > prevSpan) {
+          deduped[existing] = { ...decl, children: [...prev.children, ...decl.children] }
+        }
+      }
+    }
+
+    return { declarations: deduped, imports }
   })
 }

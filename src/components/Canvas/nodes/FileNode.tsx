@@ -12,6 +12,7 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
   const navigateRight = useCanvasStore((s) => s.navigateRight)
   const parseable = getConfigForFile(data.label) !== null
   const isCurrent = (data as Record<string, unknown>).__isCurrent as boolean | undefined
+  const isHidden = (data as Record<string, unknown>).__isHidden as boolean | undefined
   const isTest = data.isTestFile === true
   const isPreview = id.startsWith('__preview__:')
 
@@ -29,7 +30,7 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
       iconClassName={iconColor}
       label={data.label}
       borderClassName={border}
-      className={`min-w-[150px] ${isCurrent === false || isPreview ? 'opacity-50' : ''} ${isTest ? 'opacity-60' : ''}`}
+      className={`${isHidden ? 'opacity-30' : isCurrent === false || isPreview ? 'opacity-50' : ''} ${isTest ? 'opacity-60' : ''}`}
       focused={focusedNodeId === id}
       onClick={() => setFocus(id)}
       onDoubleClick={parseable && !data.isImport ? () => {

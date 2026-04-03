@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { preserveStoreOnHMR } from '@/lib/hmr'
 
 export interface GitFileStatus {
   path: string
@@ -212,3 +213,5 @@ export function stopGitWatcher(): void {
   watcherCleanup?.()
   watcherCleanup = null
 }
+
+preserveStoreOnHMR(import.meta.hot, 'git', useGitStore)
