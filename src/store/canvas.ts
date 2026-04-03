@@ -295,6 +295,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setFocus: (nodeId) => {
     set({ focusedNodeId: nodeId })
+    // Synchronously update node data (__isFocused flags) so the visual
+    // focus highlight appears immediately — before the async preview loads.
+    flattenAndRender(get, set)
     // Fire-and-forget preview update
     get().updatePreview()
   },
@@ -306,6 +309,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (!focusedNodeId) {
       if (nodes.length > 0) {
         set({ focusedNodeId: nodes[0].id })
+        flattenAndRender(get, set)
         get().updatePreview()
       }
       return
@@ -335,6 +339,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
     if (nextId) {
       set({ focusedNodeId: nextId })
+      flattenAndRender(get, set)
       get().updatePreview()
     }
   },
