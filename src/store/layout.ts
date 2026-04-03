@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { preserveStoreOnHMR } from '@/lib/hmr'
+import { createStoreWithHMR } from '@/lib/hmr'
 import { saveLayout, type PersistedLayout } from '@/services/windowManager'
 
 export type PanelPosition = 'left' | 'right' | 'bottom'
@@ -141,7 +141,7 @@ interface LayoutState extends LayoutSlice {
   setCrossWindowDrag: (drag: CrossWindowDrag | null) => void
 }
 
-export const useLayoutStore = create<LayoutState>((set) => ({
+export const useLayoutStore = createStoreWithHMR(import.meta.hot, 'layout', () => create<LayoutState>((set) => ({
   panels: { left: [], right: [], bottom: [] },
   sizes: { left: [], right: [], bottom: [] },
   activeTab: {},
@@ -258,7 +258,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
     set((state) => ({
       activeTab: { ...state.activeTab, [key]: index },
     })),
-}))
+})))
 
 export function getSerializableLayout(): PersistedLayout {
   const { panels, sizes, activeTab } = useLayoutStore.getState()
@@ -292,5 +292,3 @@ export function stopLayoutPersistence(): void {
     persistUnsub = null
   }
 }
-
-preserveStoreOnHMR(import.meta.hot, 'layout', useLayoutStore)
