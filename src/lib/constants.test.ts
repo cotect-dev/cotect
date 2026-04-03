@@ -6,6 +6,7 @@ import {
   NODE_HEIGHT,
   NODE_H_GAP,
   NODE_V_GAP,
+  HIDDEN_DIRECTORIES,
   DEFAULT_MAIN_LAYOUT,
 } from './constants'
 
@@ -50,5 +51,26 @@ describe('constants', () => {
     expect(allPanelIds).toContain('changes')
     expect(allPanelIds).toContain('chat')
     expect(allPanelIds).toContain('console')
+  })
+
+  it('HIDDEN_DIRECTORIES is a Set with expected entries', () => {
+    expect(HIDDEN_DIRECTORIES).toBeInstanceOf(Set)
+    expect(HIDDEN_DIRECTORIES.size).toBeGreaterThan(0)
+
+    // Critical hidden directories
+    expect(HIDDEN_DIRECTORIES.has('node_modules')).toBe(true)
+    expect(HIDDEN_DIRECTORIES.has('.git')).toBe(true)
+    expect(HIDDEN_DIRECTORIES.has('dist')).toBe(true)
+    expect(HIDDEN_DIRECTORIES.has('build')).toBe(true)
+    expect(HIDDEN_DIRECTORIES.has('target')).toBe(true)
+    expect(HIDDEN_DIRECTORIES.has('__pycache__')).toBe(true)
+    expect(HIDDEN_DIRECTORIES.has('coverage')).toBe(true)
+  })
+
+  it('HIDDEN_DIRECTORIES does not contain common source directories', () => {
+    expect(HIDDEN_DIRECTORIES.has('src')).toBe(false)
+    expect(HIDDEN_DIRECTORIES.has('lib')).toBe(false)
+    expect(HIDDEN_DIRECTORIES.has('app')).toBe(false)
+    expect(HIDDEN_DIRECTORIES.has('public')).toBe(false)
   })
 })
