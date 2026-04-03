@@ -754,7 +754,7 @@ function flattenAndRender(
     // Position nodes in this column
     const positioned = positionColumnNodes(orderedNodes, xOffset, yStart)
 
-    // Tag nodes: dim non-current columns, mark hidden nodes
+    // Tag nodes: dim non-current columns, mark hidden nodes, mark focused node
     for (const node of positioned) {
       allNodes.push({
         ...node,
@@ -764,6 +764,7 @@ function flattenAndRender(
           __columnIndex: i,
           __isCurrent: isCurrentCol,
           __isHidden: hiddenNodeIds.has(node.id),
+          __isFocused: node.id === focusedNodeId,
         },
       } as Node)
     }

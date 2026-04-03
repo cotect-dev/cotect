@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { useGitStore, type GitFileStatus } from '@/store/git'
 import NoGitRepo from '@/components/NoGitRepo'
 
@@ -51,7 +51,7 @@ const statusColors: Record<string, string> = {
   '??': 'text-muted-foreground',
 }
 
-function FileEntry({ file }: { file: GitFileStatus }) {
+const FileEntry = memo(function FileEntry({ file }: { file: GitFileStatus }) {
   return (
     <div className="flex items-center justify-between gap-2 px-2 py-px hover:bg-muted/30 text-xs font-mono">
       <div className="flex items-center gap-1.5 min-w-0">
@@ -66,9 +66,9 @@ function FileEntry({ file }: { file: GitFileStatus }) {
       </div>
     </div>
   )
-}
+})
 
-function TreeEntry({ node, depth }: { node: TreeNode; depth: number }) {
+const TreeEntry = memo(function TreeEntry({ node, depth }: { node: TreeNode; depth: number }) {
   if (node.file) {
     return (
       <div style={{ paddingLeft: depth * 12 }}>
@@ -90,7 +90,7 @@ function TreeEntry({ node, depth }: { node: TreeNode; depth: number }) {
       ))}
     </>
   )
-}
+})
 
 export default function Changes() {
   const isGitRepo = useGitStore((s) => s.isGitRepo)

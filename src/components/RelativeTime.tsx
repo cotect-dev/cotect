@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { memo, useRef, useSyncExternalStore } from 'react'
 import { formatRelativeTime } from '@/lib/time'
 
 let tick = 0
@@ -23,7 +23,20 @@ interface RelativeTimeProps {
   className?: string
 }
 
-export default function RelativeTime({ timestamp, className }: RelativeTimeProps) {
+/**
+ * Only re-renders when the formatted text actually changes.
+ * Without this, 50+ instances in History would all re-render every second.
+ */
+export default memo(function RelativeTime({ timestamp, className }: RelativeTimeProps) {
+  const prevTextRef = useRef('')
   useSyncExternalStore(subscribe, getSnapshot)
-  return <span className={className}>{formatRelativeTime(timestamp)}</span>
-}
+  const text = formatRelativeTime(timestamp)
+
+  // If the formatted text hasn't changed, reuse the previous ref to keep
+  // React's reconciliation from touching the DOM.
+  if (text === prevTextRef.current) {
+    return <span className={className}>{prevTextRef.current}</span>
+  }
+  prevTextRef.current = text
+  return <span className={className}>{text}</span>
+})

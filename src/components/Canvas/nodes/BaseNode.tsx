@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -15,7 +15,7 @@ interface BaseNodeProps {
   children?: ReactNode
 }
 
-export default function BaseNode({ icon: Icon, iconClassName, label, borderClassName = 'border-border', className = '', onClick, onDoubleClick, badge, focused, children }: BaseNodeProps) {
+export default memo(function BaseNode({ icon: Icon, iconClassName, label, borderClassName = 'border-border', className = '', onClick, onDoubleClick, badge, focused, children }: BaseNodeProps) {
   const focusRing = focused ? 'ring-2 ring-primary/60 bg-primary/10 scale-[1.02]' : ''
   return (
     <div
@@ -33,4 +33,4 @@ export default function BaseNode({ icon: Icon, iconClassName, label, borderClass
       <Handle type="target" position={Position.Top} className="opacity-0" />
     </div>
   )
-}
+})
