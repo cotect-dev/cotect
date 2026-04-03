@@ -4,7 +4,7 @@ export const MIN_SIDE_ZONE = 120
 export const MIN_BOTTOM_ZONE = 80
 
 export const NODE_WIDTH = 180
-export const NODE_HEIGHT = 48
+export const NODE_HEIGHT = 56
 export const NODE_H_GAP = 32
 export const NODE_V_GAP = 16
 

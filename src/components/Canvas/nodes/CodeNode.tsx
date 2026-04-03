@@ -24,6 +24,7 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
   const viewRef = useRef<EditorView | null>(null)
   const focusedNodeId = useCanvasStore((s) => s.focusedNodeId)
   const focused = focusedNodeId === id
+  const isHidden = (data as Record<string, unknown>).__isHidden as boolean | undefined
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -142,7 +143,7 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
 
   return (
     <div
-      className={`bg-background/95 backdrop-blur border rounded-lg min-w-[280px] transition-all duration-150 nodrag nopan ${focused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''}`}
+      className={`bg-background/95 backdrop-blur border rounded-lg min-w-[280px] transition-all duration-150 nodrag nopan ${focused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${isHidden ? 'opacity-30' : ''}`}
       style={{ maxWidth: '50vw' }}
     >
       {/* Header */}

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { preserveStoreOnHMR } from '@/lib/hmr'
 import { saveLayout, type PersistedLayout } from '@/services/windowManager'
 
 export type PanelPosition = 'left' | 'right' | 'bottom'
@@ -291,3 +292,5 @@ export function stopLayoutPersistence(): void {
     persistUnsub = null
   }
 }
+
+preserveStoreOnHMR(import.meta.hot, 'layout', useLayoutStore)

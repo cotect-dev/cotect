@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { preserveStoreOnHMR } from '@/lib/hmr'
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug'
 
@@ -76,3 +77,5 @@ console.debug = (...args: unknown[]) => {
   originalConsole.debug(...args)
   useConsoleStore.getState().log('debug', formatArgs(args))
 }
+
+preserveStoreOnHMR(import.meta.hot, 'console', useConsoleStore)

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { preserveStoreOnHMR } from '@/lib/hmr'
 import {
   type Node,
   type Edge,
@@ -77,6 +78,9 @@ export type CanvasState = {
   // Code display state
   selectedFunction: SelectedFunction | null
 
+  // Hidden nodes: node IDs that have been hidden by the user (H key)
+  hiddenNodeIds: Set<string>
+
   // Actions
   setFocus: (nodeId: string | null) => void
   moveFocus: (direction: 'up' | 'down') => void
@@ -84,6 +88,8 @@ export type CanvasState = {
   navigateLeft: () => void
   initRoot: (rootPath: string) => Promise<void>
   clearSelectedFunction: () => void
+  /** Toggle hide/show for the currently focused node. */
+  toggleHideNode: () => void
   /** Load a preview column for the currently focused node (shown to the right). */
   updatePreview: () => Promise<void>
 }
@@ -125,7 +131,7 @@ async function buildFileNodes(filePath: string): Promise<{ nodes: AppNode[]; edg
   const edges: Edge[] = []
 
   for (const decl of analysis.declarations) {
-    const nodeId = `decl:${filePath}:${decl.name}`
+    const nodeId = `decl:${filePath}:${decl.name}:${decl.startLine}`
     if (decl.kind === 'class') {
       nodes.push({
         id: nodeId, type: 'classNode', position: { x: 0, y: 0 },
@@ -139,7 +145,7 @@ async function buildFileNodes(filePath: string): Promise<{ nodes: AppNode[]; edg
     }
 
     for (const method of decl.children) {
-      const methodId = `decl:${filePath}:${decl.name}:${method.name}`
+      const methodId = `decl:${filePath}:${decl.name}:${method.name}:${method.startLine}`
       nodes.push({
         id: methodId, type: 'functionNode', position: { x: 0, y: 0 },
         data: { label: method.name, kind: 'function', startLine: method.startLine, endLine: method.endLine, isMethod: true },
@@ -257,6 +263,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   currentColumnIndex: 0,
   depthChain: [],
   selectedFunction: null,
+  hiddenNodeIds: new Set(),
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) })
@@ -517,6 +524,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   clearSelectedFunction: () => set({ selectedFunction: null }),
 
+  toggleHideNode: () => {
+    const { focusedNodeId, hiddenNodeIds } = get()
+    if (!focusedNodeId) return
+
+    const next = new Set(hiddenNodeIds)
+    if (next.has(focusedNodeId)) {
+      next.delete(focusedNodeId)
+    } else {
+      next.add(focusedNodeId)
+    }
+    set({ hiddenNodeIds: next })
+    flattenAndRender(get, set)
+  },
+
   /**
    * Load a preview column for the currently focused node and place it
    * at columns[currentColumnIndex + 1]. This gives immediate feedback
@@ -634,12 +655,17 @@ function flattenAndRender(
 
   // First pass: position current column to find focused node Y
   let focusedNodeY = 0
-  const { focusedNodeId } = get()
+  const { focusedNodeId, hiddenNodeIds } = get()
 
   for (let i = startIdx; i <= endIdx; i++) {
     const col = columns[i]
     const isCurrentCol = i === currentColumnIndex
     const isPreviewCol = i === currentColumnIndex + 1
+
+    // Sort nodes so hidden ones come last within the column
+    const visible = col.nodes.filter((n) => !hiddenNodeIds.has(n.id))
+    const hidden = col.nodes.filter((n) => hiddenNodeIds.has(n.id))
+    const orderedNodes = [...visible, ...hidden]
 
     // For the preview column, if it's a code column, align its node
     // with the focused node's Y position instead of starting at y=0
@@ -649,9 +675,9 @@ function flattenAndRender(
     }
 
     // Position nodes in this column
-    const positioned = positionColumnNodes(col.nodes, xOffset, yStart)
+    const positioned = positionColumnNodes(orderedNodes, xOffset, yStart)
 
-    // Tag nodes: dim non-current columns
+    // Tag nodes: dim non-current columns, mark hidden nodes
     for (const node of positioned) {
       // Track focused node's Y for aligning the preview column
       if (node.id === focusedNodeId) {
@@ -665,6 +691,7 @@ function flattenAndRender(
           ...node.data,
           __columnIndex: i,
           __isCurrent: isCurrentCol,
+          __isHidden: hiddenNodeIds.has(node.id),
         },
       } as Node)
     }
@@ -679,3 +706,5 @@ function flattenAndRender(
 
   set({ nodes: allNodes, edges: allEdges })
 }
+
+preserveStoreOnHMR(import.meta.hot, 'canvas', useCanvasStore)

@@ -10,13 +10,14 @@ export default memo(function FolderNode({ id, data }: NodeProps<FolderNode>) {
   const setFocus = useCanvasStore((s) => s.setFocus)
   const navigateRight = useCanvasStore((s) => s.navigateRight)
   const isCurrent = (data as Record<string, unknown>).__isCurrent as boolean | undefined
+  const isHidden = (data as Record<string, unknown>).__isHidden as boolean | undefined
 
   return (
     <BaseNode
       icon={Folder}
       iconClassName="text-yellow-500"
       label={data.label}
-      className={`min-w-[150px] ${isCurrent === false ? 'opacity-50' : ''}`}
+      className={`${isHidden ? 'opacity-30' : isCurrent === false ? 'opacity-50' : ''}`}
       focused={focusedNodeId === id}
       onClick={() => setFocus(id)}
       onDoubleClick={() => {

@@ -9,14 +9,15 @@ export default memo(function ProjectMetaNode({ id, data }: NodeProps<ProjectMeta
   const setFocus = useCanvasStore((s) => s.setFocus)
   const focused = focusedNodeId === id
   const isCurrent = (data as Record<string, unknown>).__isCurrent as boolean | undefined
+  const isHidden = (data as Record<string, unknown>).__isHidden as boolean | undefined
 
   return (
     <div
-      className={`bg-background/95 backdrop-blur border border-primary/30 rounded-xl px-4 py-3 min-w-[220px] max-w-[260px] shadow-lg shadow-primary/5 cursor-pointer transition-all duration-150 hover:border-primary/50 ${focused ? 'ring-2 ring-primary/60 bg-primary/10 scale-[1.02]' : ''} ${isCurrent === false ? 'opacity-50' : ''}`}
+      className={`bg-background/95 backdrop-blur border border-primary/30 rounded-xl px-4 py-3 w-[180px] max-w-[180px] overflow-hidden shadow-lg shadow-primary/5 cursor-pointer transition-all duration-150 hover:border-primary/50 ${focused ? 'ring-2 ring-primary/60 bg-primary/10 scale-[1.02]' : ''} ${isHidden ? 'opacity-30' : isCurrent === false ? 'opacity-50' : ''}`}
       onClick={() => setFocus(id)}
     >
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-lg font-bold text-foreground leading-tight">{data.name}</span>
+      <div className="flex items-center gap-2 mb-1 min-w-0 overflow-hidden">
+        <span className="text-base font-bold text-foreground leading-tight truncate">{data.name}</span>
       </div>
       {data.description && (
         <p className="text-xs text-muted-foreground leading-relaxed mb-2 line-clamp-2">
