@@ -1,23 +1,23 @@
-import { useState, useCallback } from 'react'
+import { memo, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { useChatStore, sendMessage } from '@/store/chat'
 
-export default function ChatInput() {
+export default memo(function ChatInput() {
   const [text, setText] = useState('')
-  const {
-    isGenerating, abortController, thinkingEnabled,
-    clearMessages, setThinkingEnabled, messages,
-  } = useChatStore()
-  const hasMessages = messages.length > 0
+  // Narrow selectors — only subscribe to the specific values we render.
+  // Actions are accessed via getState() to avoid extra subscriptions.
+  const isGenerating = useChatStore((s) => s.isGenerating)
+  const thinkingEnabled = useChatStore((s) => s.thinkingEnabled)
+  const hasMessages = useChatStore((s) => s.messages.length > 0)
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim()
-    if (!trimmed || isGenerating) return
+    if (!trimmed || useChatStore.getState().isGenerating) return
     setText('')
     sendMessage(trimmed)
-  }, [text, isGenerating])
+  }, [text])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -29,6 +29,19 @@ export default function ChatInput() {
     [handleSend],
   )
 
+  const handleToggleThinking = useCallback(() => {
+    const store = useChatStore.getState()
+    store.setThinkingEnabled(!store.thinkingEnabled)
+  }, [])
+
+  const handleClear = useCallback(() => {
+    useChatStore.getState().clearMessages()
+  }, [])
+
+  const handleStop = useCallback(() => {
+    useChatStore.getState().abortController?.abort()
+  }, [])
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-1 items-center">
@@ -37,7 +50,7 @@ export default function ChatInput() {
             <Button
               size="sm"
               variant={thinkingEnabled ? 'secondary' : 'ghost'}
-              onClick={() => setThinkingEnabled(!thinkingEnabled)}
+              onClick={handleToggleThinking}
               className="min-w-0 px-2 text-xs"
             />
           }>
@@ -51,7 +64,7 @@ export default function ChatInput() {
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={clearMessages}
+                onClick={handleClear}
                 disabled={isGenerating}
                 className="min-w-0 px-2 text-xs"
               />
@@ -75,7 +88,7 @@ export default function ChatInput() {
           <Button
             size="sm"
             variant="destructive"
-            onClick={() => abortController?.abort()}
+            onClick={handleStop}
             className="shrink-0"
           >
             Stop
@@ -93,4 +106,4 @@ export default function ChatInput() {
       </div>
     </div>
   )
-}
+})

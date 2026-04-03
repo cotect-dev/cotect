@@ -15,7 +15,7 @@ import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
 import { useGitStore } from '@/store/git'
 import RelativeTime from '@/components/RelativeTime'
 import { DEV } from '@/lib/env'
-import { useState } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { GitBranch } from 'lucide-react'
 
 interface TopBarProps {
@@ -29,7 +29,7 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
   const panels = useLayoutStore((s) => s.panels)
   const addPanel = useLayoutStore((s) => s.addPanel)
   const removePanel = useLayoutStore((s) => s.removePanel)
-  const handleOpenFolder = async () => {
+  const handleOpenFolder = useCallback(async () => {
     try {
       const result = await platform.fs.showFolderDialog('Open Project Folder')
       if (result) {
@@ -38,7 +38,7 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
     } catch (err) {
       console.error('Failed to open folder dialog:', err)
     }
-  }
+  }, [platform])
 
   const isMainWindow = platform.windows.getWindowId() === 'main'
   const isGitRepo = useGitStore((s) => s.isGitRepo)
@@ -46,9 +46,9 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
   const totalDeletions = useGitStore((s) => s.status?.total_deletions ?? 0)
   const lastCommitTimestamp = useGitStore((s) => s.lastCommitTimestamp)
 
-  const isPanelVisible = (id: string) => {
+  const isPanelVisible = useCallback((id: string) => {
     return panels.left.some(g => g.includes(id)) || panels.right.some(g => g.includes(id)) || panels.bottom.some(g => g.includes(id))
-  }
+  }, [panels])
 
   return (
     <Menubar className="shrink-0 pointer-events-auto bg-background/80 backdrop-blur-sm">

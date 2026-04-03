@@ -1,10 +1,10 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { memo, useState, useCallback, useRef, useMemo } from 'react'
 import { useGitStore, type GitLogEntry } from '@/store/git'
 import { invoke } from '@tauri-apps/api/core'
 import RelativeTime from '@/components/RelativeTime'
 import NoGitRepo from '@/components/NoGitRepo'
 
-function CommitEntry({ commit }: { commit: GitLogEntry }) {
+const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -41,43 +41,54 @@ function CommitEntry({ commit }: { commit: GitLogEntry }) {
       )}
     </div>
   )
-}
+})
 
 export default function History() {
   const isGitRepo = useGitStore((s) => s.isGitRepo)
   const log = useGitStore((s) => s.log)
   const repoPath = useGitStore((s) => s.repoPath)
-  const [allCommits, setAllCommits] = useState<GitLogEntry[]>([])
+  // Only store *extra* commits loaded via infinite scroll — the base comes from the store.
+  // This eliminates the useEffect sync that caused a redundant render cycle.
+  const [extraCommits, setExtraCommits] = useState<GitLogEntry[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const prevLogRef = useRef(log)
 
-  useEffect(() => {
-    if (log) {
-      setAllCommits(log)
-      setHasMore(log.length >= 50)
+  // Reset extra commits when the base log changes (new git refresh)
+  if (log !== prevLogRef.current) {
+    prevLogRef.current = log
+    if (extraCommits.length > 0) setExtraCommits([])
+    // Re-derive hasMore from the fresh log
+    if (!log || log.length < 50) {
+      if (hasMore) setHasMore(false)
     } else {
-      setAllCommits([])
-      setHasMore(false)
+      if (!hasMore) setHasMore(true)
     }
-  }, [log])
+  }
+
+  const allCommits = useMemo(
+    () => (log ? [...log, ...extraCommits] : extraCommits),
+    [log, extraCommits],
+  )
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !repoPath) return
     setLoadingMore(true)
     try {
+      const currentTotal = (useGitStore.getState().log?.length ?? 0) + extraCommits.length
       const more = await invoke<GitLogEntry[]>('git_log', {
         repoPath,
         limit: 50,
-        skip: allCommits.length,
+        skip: currentTotal,
       })
       if (more.length < 50) setHasMore(false)
-      setAllCommits((prev) => [...prev, ...more])
+      setExtraCommits((prev) => [...prev, ...more])
     } catch {
       setHasMore(false)
     }
     setLoadingMore(false)
-  }, [loadingMore, hasMore, repoPath, allCommits.length])
+  }, [loadingMore, hasMore, repoPath, extraCommits.length])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current

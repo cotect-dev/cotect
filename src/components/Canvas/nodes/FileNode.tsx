@@ -1,18 +1,15 @@
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { FileText, FileCode, FlaskConical } from 'lucide-react'
 import { useCanvasStore } from '@/store'
 import { getConfigForFile } from '@/services/treesitter-queries'
 import type { FileNode } from '@/types/nodes'
 import BaseNode from './BaseNode'
+import { getNodeFlags } from '.'
 
 export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
-  const focusedNodeId = useCanvasStore((s) => s.focusedNodeId)
-  const setFocus = useCanvasStore((s) => s.setFocus)
-  const navigateRight = useCanvasStore((s) => s.navigateRight)
+  const flags = getNodeFlags(data as Record<string, unknown>)
   const parseable = getConfigForFile(data.label) !== null
-  const isCurrent = (data as Record<string, unknown>).__isCurrent as boolean | undefined
-  const isHidden = (data as Record<string, unknown>).__isHidden as boolean | undefined
   const isTest = data.isTestFile === true
   const isPreview = id.startsWith('__preview__:')
 
@@ -24,19 +21,25 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
       ? 'border-yellow-700/40 border-dashed'
       : 'border-border'
 
+  const opacity = flags.isHidden ? 'opacity-30' : (!flags.isCurrent || isPreview) ? 'opacity-50' : ''
+
+  const handleClick = useCallback(() => useCanvasStore.getState().setFocus(id), [id])
+  const handleDoubleClick = useCallback(() => {
+    const store = useCanvasStore.getState()
+    store.setFocus(id)
+    store.navigateRight()
+  }, [id])
+
   return (
     <BaseNode
       icon={icon}
       iconClassName={iconColor}
       label={data.label}
       borderClassName={border}
-      className={`${isHidden ? 'opacity-30' : isCurrent === false || isPreview ? 'opacity-50' : ''} ${isTest ? 'opacity-60' : ''}`}
-      focused={focusedNodeId === id}
-      onClick={() => setFocus(id)}
-      onDoubleClick={parseable && !data.isImport ? () => {
-        setFocus(id)
-        navigateRight()
-      } : undefined}
+      className={`${opacity} ${isTest ? 'opacity-60' : ''}`}
+      focused={flags.isFocused}
+      onClick={handleClick}
+      onDoubleClick={parseable && !data.isImport ? handleDoubleClick : undefined}
     >
       {data.isImport && data.declarationCount != null && (
         <div className="text-xs text-muted-foreground mt-1">{data.declarationCount} declarations</div>

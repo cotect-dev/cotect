@@ -1,3 +1,4 @@
+import { useMemo, useCallback } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useLayoutStore, getPanelLabel, type PanelPosition } from '@/store/layout';
 import PanelArea from './PanelArea';
@@ -34,23 +35,27 @@ export default function DropZone({
 
   const isVertical = position === 'left' || position === 'right';
 
-  const visibleGroups: string[][] = [];
-  const visibleSizes: number[] = [];
-  for (let i = 0; i < groups.length; i++) {
-    if (isGroupDrag && activePanelId && groups[i][0] === activePanelId) {
-      continue;
-    }
-    if (!isGroupDrag && activePanelId && groups[i].includes(activePanelId)) {
-      const remaining = groups[i].filter(id => id !== activePanelId);
-      if (remaining.length > 0) {
-        visibleGroups.push(remaining);
-        visibleSizes.push(sizes[i] ?? 1);
+  // Memoize: filter out the dragged group/panel from visible groups
+  const { visibleGroups, visibleSizes } = useMemo(() => {
+    const vGroups: string[][] = [];
+    const vSizes: number[] = [];
+    for (let i = 0; i < groups.length; i++) {
+      if (isGroupDrag && activePanelId && groups[i][0] === activePanelId) {
+        continue;
       }
-      continue;
+      if (!isGroupDrag && activePanelId && groups[i].includes(activePanelId)) {
+        const remaining = groups[i].filter(id => id !== activePanelId);
+        if (remaining.length > 0) {
+          vGroups.push(remaining);
+          vSizes.push(sizes[i] ?? 1);
+        }
+        continue;
+      }
+      vGroups.push(groups[i]);
+      vSizes.push(sizes[i] ?? 1);
     }
-    visibleGroups.push(groups[i]);
-    visibleSizes.push(sizes[i] ?? 1);
-  }
+    return { visibleGroups: vGroups, visibleSizes: vSizes };
+  }, [groups, sizes, activePanelId, isGroupDrag]);
 
   const showGhost = previewIndex !== null && neighborIndex !== null && !!activePanelId && !tabIntoGroupKey;
 
@@ -110,7 +115,7 @@ export default function DropZone({
 
   const isDragging = !!activePanelId;
 
-  const makeResizeHandler = (leftKey: string, rightKey: string) => {
+  const makeResizeHandler = useCallback((leftKey: string, rightKey: string) => {
     return (pixelLeft: number, pixelRight: number, totalPixelWidth: number) => {
       useLayoutStore.setState(state => {
         const currentGroups = state.panels[position];
@@ -131,7 +136,7 @@ export default function DropZone({
         return { sizes: { ...state.sizes, [position]: newSizes } };
       });
     };
-  };
+  }, [position]);
 
   return (
     <div
