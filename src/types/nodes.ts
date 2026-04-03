@@ -30,14 +30,6 @@ export interface ClassNodeData extends Record<string, unknown> {
   endLine: number
 }
 
-export interface ProjectMetaNodeData extends Record<string, unknown> {
-  name: string
-  description: string | null
-  version: string | null
-  language: string | null
-  framework: string | null
-}
-
 export interface CodeNodeData extends Record<string, unknown> {
   label: string
   filePath: string
@@ -50,7 +42,6 @@ export type FolderNode = Node<FolderNodeData, 'folder'>
 export type FileNode = Node<FileNodeData, 'file'>
 export type FunctionNode = Node<FunctionNodeData, 'functionNode'>
 export type ClassNode = Node<ClassNodeData, 'classNode'>
-export type ProjectMetaNode = Node<ProjectMetaNodeData, 'projectMeta'>
 export type CodeNode = Node<CodeNodeData, 'codeNode'>
 
-export type AppNode = FolderNode | FileNode | FunctionNode | ClassNode | ProjectMetaNode | CodeNode
+export type AppNode = FolderNode | FileNode | FunctionNode | ClassNode | CodeNode
