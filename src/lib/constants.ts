@@ -8,6 +8,10 @@ export const NODE_HEIGHT = 56
 export const NODE_H_GAP = 32
 export const NODE_V_GAP = 16
 
+// Padding from the edges of the canvas visible area
+export const CANVAS_PAD_Y = 56
+export const CANVAS_MARGIN = 60
+
 export const HIDDEN_DIRECTORIES = new Set([
   'node_modules', '__pycache__', 'dist', 'build', 'target', 'coverage',
   '.git', '.svn', '.hg', '.tmp', '.cache', '.next', '.nuxt',
