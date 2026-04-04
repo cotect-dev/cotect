@@ -122,6 +122,14 @@ export const browserPlatform: Platform = {
       throw new Error('Filesystem not available in browser')
     },
 
+    async readFileHead(): Promise<{ content: string; totalBytes: number }> {
+      throw new Error('Filesystem not available in browser')
+    },
+
+    async readBinaryFile(): Promise<Uint8Array> {
+      throw new Error('Filesystem not available in browser')
+    },
+
     async writeFile() {
       throw new Error('Filesystem not available in browser')
     },

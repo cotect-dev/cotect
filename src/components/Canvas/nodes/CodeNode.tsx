@@ -11,6 +11,19 @@ import { getPlatform } from '@/services/platform'
 import type { CodeNode } from '@/types/nodes'
 import { getNodeFlags } from '.'
 
+/**
+ * Global registry of mounted CodeMirror EditorViews.
+ * When the canvas pans (viewport moves), we call requestMeasure() on each
+ * so CodeMirror recalculates which lines are visible and renders them.
+ */
+const editorViews = new Set<EditorView>()
+
+export function notifyCanvasScrolled() {
+  for (const view of editorViews) {
+    view.requestMeasure()
+  }
+}
+
 function getLanguageExt(filePath: string) {
   if (/\.(tsx?)$/.test(filePath)) return javascript({ typescript: true, jsx: true })
   if (/\.(jsx?)$/.test(filePath)) return javascript({ jsx: true })
@@ -26,6 +39,7 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editorHeight, setEditorHeight] = useState<number | undefined>(undefined)
 
   const saveToFile = useCallback(async () => {
     const view = viewRef.current
@@ -33,14 +47,8 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
     setSaving(true)
     try {
       const platform = getPlatform()
-      const newCode = view.state.doc.toString()
-      const fullContent = await platform.fs.readFile(data.filePath)
-      const lines = fullContent.split('\n')
-      // startLine/endLine are 0-indexed (from tree-sitter)
-      const before = lines.slice(0, data.startLine)
-      const after = lines.slice(data.endLine + 1)
-      const updatedContent = [...before, ...newCode.split('\n'), ...after].join('\n')
-      await platform.fs.writeFile(data.filePath, updatedContent)
+      const newContent = view.state.doc.toString()
+      await platform.fs.writeFile(data.filePath, newContent)
       setDirty(false)
       return true
     } catch (err) {
@@ -49,7 +57,7 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
     } finally {
       setSaving(false)
     }
-  }, [data.filePath, data.startLine, data.endLine])
+  }, [data.filePath])
 
   useEffect(() => {
     if (!editorRef.current) return
@@ -62,9 +70,7 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
     const state = EditorState.create({
       doc: data.code,
       extensions: [
-        // No readOnly — the editor is always editable
         lineNumbers({
-          // startLine is 0-indexed, CodeMirror line numbers are 1-indexed
           formatNumber: (n) => String(n + data.startLine),
         }),
         highlightActiveLine(),
@@ -88,11 +94,9 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
             },
           },
           {
-            // Escape blurs the editor and refocuses the canvas container
             key: 'Escape',
             run: (view) => {
               view.contentDOM.blur()
-              // Refocus the canvas container so WASD navigation works
               const container = document.querySelector('[data-canvas-container]') as HTMLElement | null
               container?.focus()
               return true
@@ -127,9 +131,22 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
       state,
       parent: editorRef.current,
     })
+    editorViews.add(viewRef.current)
+
+    // After CodeMirror renders its initial viewport, read the total document
+    // height from its height map so the outer node can be sized to contain
+    // all lines. This lets ReactFlow measure the full node height while
+    // CodeMirror still virtualizes rendering.
+    requestAnimationFrame(() => {
+      if (viewRef.current) {
+        const totalHeight = viewRef.current.contentHeight
+        setEditorHeight(totalHeight)
+      }
+    })
 
     return () => {
       if (viewRef.current) {
+        editorViews.delete(viewRef.current)
         viewRef.current.destroy()
         viewRef.current = null
       }
@@ -137,7 +154,6 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
   }, [data.code, data.filePath, data.startLine]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const lineCount = data.endLine - data.startLine + 1
-  const fileName = data.filePath.split('/').pop() || data.filePath
 
   return (
     <div
@@ -148,10 +164,7 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/30">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs font-medium text-foreground truncate">
-            {data.label}()
-          </span>
-          <span className="text-[10px] text-muted-foreground truncate">
-            {fileName}
+            {data.label}
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -172,7 +185,11 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
       </div>
 
       {/* Editor */}
-      <div ref={editorRef} className="nowheel" />
+      <div
+        ref={editorRef}
+        className="nowheel"
+        style={editorHeight != null ? { height: editorHeight } : undefined}
+      />
 
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
       <Handle type="target" position={Position.Top} className="opacity-0" />

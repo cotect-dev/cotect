@@ -11,8 +11,7 @@ import {
   addEdge,
 } from '@xyflow/react'
 import { getPlatform } from '@/services/platform'
-import { analyzeFile } from '@/services/treesitter'
-import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
+import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN, isImageFile, getImageMimeType, IMAGE_PREVIEW_MAX_BYTES } from '@/lib/constants'
 import type { AppNode } from '@/types/nodes'
 
 /**
@@ -32,23 +31,14 @@ function isTestFile(name: string): boolean {
   return false
 }
 
-export interface SelectedFunction {
-  filePath: string
-  name: string
-  startLine: number
-  endLine: number
-  content: string
-  fullFileContent: string
-}
-
 /**
  * A column represents one level in the navigation hierarchy.
  * Each column has a path and the nodes/edges for that level.
  */
 export interface Column {
   path: string
-  // 'directory' | 'file' | 'code'
-  kind: 'directory' | 'file' | 'code'
+  // 'directory' | 'file'
+  kind: 'directory' | 'file'
   nodes: AppNode[]
   edges: Edge[]
 }
@@ -73,9 +63,6 @@ export type CanvasState = {
   // The full depth chain of paths we've traversed (for breadcrumbs)
   depthChain: string[]
 
-  // Code display state
-  selectedFunction: SelectedFunction | null
-
   // Hidden nodes: node IDs that have been hidden by the user (H key)
   hiddenNodeIds: Set<string>
 
@@ -94,7 +81,6 @@ export type CanvasState = {
   navigateRight: () => Promise<void>
   navigateLeft: () => void
   initRoot: (rootPath: string) => Promise<void>
-  clearSelectedFunction: () => void
   /** Toggle hide/show for the currently focused node. */
   toggleHideNode: () => void
   /** Load a preview column for the currently focused node (shown to the right). */
@@ -118,108 +104,109 @@ async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
   const testFiles = entries.filter((e) => !e.isDirectory && isTestFile(e.name)).sort((a, b) => a.name.localeCompare(b.name))
   const sorted = [...folders, ...regularFiles, ...testFiles]
 
+  // Count children for each folder (fire and forget — counts loaded in parallel)
+  const childCountMap = new Map<string, number>()
+  await Promise.all(
+    folders.map(async (folder) => {
+      try {
+        const children = await platform.fs.readDirectory(folder.path)
+        const visible = children.filter((e) =>
+          !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.'))
+        )
+        childCountMap.set(folder.path, visible.length)
+      } catch {
+        // Ignore unreadable directories
+      }
+    })
+  )
+
   return sorted.map((entry): AppNode =>
     entry.isDirectory
-      ? { id: entry.path, type: 'folder', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isDirectory: true as const } }
+      ? { id: entry.path, type: 'folder', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isDirectory: true as const, childCount: childCountMap.get(entry.path) } }
       : { id: entry.path, type: 'file', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isTestFile: isTestFile(entry.name) } }
   )
 }
 
 /**
- * Build file-level nodes (functions/classes) for a path.
- * If there are no declarations, returns a single code node with the full file content.
+ * Build a single code node containing the full file content.
  */
-async function buildFileNodes(filePath: string): Promise<{ nodes: AppNode[]; edges: Edge[] }> {
+async function buildFileNode(filePath: string): Promise<AppNode> {
   const platform = getPlatform()
   const content = await platform.fs.readFile(filePath)
-  const analysis = await analyzeFile(filePath, content)
+  const fileName = filePath.split('/').pop() || filePath
+  const lineCount = content.split('\n').length
 
-  const nodes: AppNode[] = []
-  const edges: Edge[] = []
-
-  for (const decl of analysis.declarations) {
-    const nodeId = `decl:${filePath}:${decl.name}:${decl.startLine}`
-    if (decl.kind === 'class') {
-      nodes.push({
-        id: nodeId, type: 'classNode', position: { x: 0, y: 0 },
-        data: { label: decl.name, kind: 'class' as const, startLine: decl.startLine, endLine: decl.endLine },
-      })
-    } else {
-      nodes.push({
-        id: nodeId, type: 'functionNode', position: { x: 0, y: 0 },
-        data: { label: decl.name, kind: 'function' as const, startLine: decl.startLine, endLine: decl.endLine },
-      })
-    }
-
-    for (const method of decl.children) {
-      const methodId = `decl:${filePath}:${decl.name}:${method.name}:${method.startLine}`
-      nodes.push({
-        id: methodId, type: 'functionNode', position: { x: 0, y: 0 },
-        data: { label: method.name, kind: 'function', startLine: method.startLine, endLine: method.endLine, isMethod: true },
-      })
-      edges.push({ id: `e-${nodeId}-${methodId}`, source: nodeId, target: methodId, type: 'smoothstep' })
-    }
-  }
-
-  // No declarations found — show the full file content as a single code node
-  if (nodes.length === 0) {
-    const lines = content.split('\n')
-    const fileName = filePath.split('/').pop() || filePath
-    nodes.push({
-      id: `code:${filePath}:__full__`,
-      type: 'codeNode',
-      position: { x: 0, y: 0 },
-      data: {
-        label: fileName,
-        filePath,
-        code: content,
-        startLine: 1,
-        endLine: lines.length,
-      },
-    })
-  }
-
-  return { nodes, edges }
-}
-
-/**
- * Build a code node for a specific function/class.
- */
-async function buildCodeNode(filePath: string, name: string, startLine: number, endLine: number): Promise<{ node: AppNode; selectedFunction: SelectedFunction }> {
-  const platform = getPlatform()
-  const fullFileContent = await platform.fs.readFile(filePath)
-  const lines = fullFileContent.split('\n')
-  // startLine/endLine are 0-indexed (from tree-sitter)
-  const content = lines.slice(startLine, endLine + 1).join('\n')
-
-  const node: AppNode = {
-    id: `code:${filePath}:${name}`,
+  return {
+    id: `code:${filePath}:__full__`,
     type: 'codeNode',
     position: { x: 0, y: 0 },
     data: {
-      label: name,
+      label: fileName,
       filePath,
       code: content,
-      startLine,
-      endLine,
+      startLine: 1,
+      endLine: lineCount,
     },
   }
+}
+
+/**
+ * Build an image preview node for an image file.
+ * Reads the binary content and converts it to a base64 data URL.
+ * Returns null if the image exceeds IMAGE_PREVIEW_MAX_BYTES.
+ */
+async function buildImageNode(filePath: string): Promise<AppNode | null> {
+  const platform = getPlatform()
+  const bytes = await platform.fs.readBinaryFile(filePath)
+  const fileName = filePath.split('/').pop() || filePath
+
+  if (bytes.length > IMAGE_PREVIEW_MAX_BYTES) {
+    return null
+  }
+
+  const mime = getImageMimeType(fileName)
+
+  // Convert bytes to base64
+  let binary = ''
+  const len = bytes.length
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  const base64 = btoa(binary)
+  const dataUrl = `data:${mime};base64,${base64}`
 
   return {
-    node,
-    selectedFunction: { filePath, name, startLine, endLine, content, fullFileContent },
+    id: `image:${filePath}`,
+    type: 'imageNode',
+    position: { x: 0, y: 0 },
+    data: {
+      label: fileName,
+      filePath,
+      dataUrl,
+    },
   }
 }
 
 /**
  * Position nodes within a column at a given X offset.
- * Folders above files, single vertical column.
+ * Uses a smaller gap between nodes of the same type group (folders, files)
+ * and a larger gap at the boundary between type groups.
  */
 function positionColumnNodes(nodes: AppNode[], xOffset: number, yStart: number = 0): AppNode[] {
   let y = yStart
-  return nodes.map((node) => {
+  return nodes.map((node, i) => {
     const positioned = { ...node, position: { x: xOffset, y } }
-    y += NODE_HEIGHT + NODE_V_GAP
+    // Determine the gap after this node
+    const next = nodes[i + 1]
+    let gap = NODE_V_GAP_SMALL
+    if (next) {
+      const thisIsFolder = node.type === 'folder'
+      const nextIsFolder = next.type === 'folder'
+      if (thisIsFolder !== nextIsFolder) {
+        gap = NODE_V_GAP // larger gap at type boundary
+      }
+    }
+    y += NODE_HEIGHT + gap
     return positioned
   })
 }
@@ -269,7 +256,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   columns: [],
   currentColumnIndex: 0,
   depthChain: [],
-  selectedFunction: null,
   hiddenNodeIds: new Set(),
   viewportHeight: 0,
   cameraY: CANVAS_PAD_Y,
@@ -357,7 +343,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         currentColumnIndex: 0,
         depthChain: [rootPath],
         focusedNodeId: dirNodes.length > 0 ? dirNodes[0].id : null,
-        selectedFunction: null,
         cameraY: CANVAS_PAD_Y,
       })
 
@@ -384,45 +369,25 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
     const data = node.data as Record<string, unknown>
 
+    // Only folders and files can be navigated into
+    if (node.type !== 'folder' && node.type !== 'file') return
+
+    const nodeTargetPath = data.path as string
+
     // Check if we already have a preview column loaded for this node
     const previewCol = columns[currentColumnIndex + 1]
-    const nodeTargetPath = node.type === 'folder' || node.type === 'file'
-      ? data.path as string
-      : (node.type === 'functionNode' || node.type === 'classNode')
-        ? `${columns[currentColumnIndex]?.path}:${data.label}`
-        : null
-
-    if (previewCol && nodeTargetPath && previewCol.path === nodeTargetPath) {
+    if (previewCol && previewCol.path === nodeTargetPath) {
       // Promote the existing preview column — no need to re-fetch
       const newChain = [...depthChain.slice(0, currentColumnIndex + 1), nodeTargetPath]
-
-      // Set selectedFunction if entering a code column
-      let selectedFunction = null
-      if (previewCol.kind === 'code' && (node.type === 'functionNode' || node.type === 'classNode')) {
-        const startLine = data.startLine as number
-        const endLine = data.endLine as number
-        const name = data.label as string
-        const filePath = columns[currentColumnIndex]?.path
-        if (filePath) {
-          try {
-            const fullFileContent = await getPlatform().fs.readFile(filePath)
-            const lines = fullFileContent.split('\n')
-            const content = lines.slice(startLine - 1, endLine).join('\n')
-            selectedFunction = { filePath, name, startLine, endLine, content, fullFileContent }
-          } catch { /* ignore */ }
-        }
-      }
 
       set({
         currentColumnIndex: currentColumnIndex + 1,
         depthChain: newChain,
-        selectedFunction,
         focusedNodeId: previewCol.nodes.length > 0 ? previewCol.nodes[0].id : null,
         cameraY: CANVAS_PAD_Y,
       })
 
       flattenAndRender(get, set)
-      // Load preview for the new focus
       get().updatePreview()
       return
     }
@@ -441,7 +406,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           columns: newColumns,
           currentColumnIndex: currentColumnIndex + 1,
           depthChain: newChain,
-          selectedFunction: null,
           focusedNodeId: dirNodes.length > 0 ? dirNodes[0].id : null,
           cameraY: CANVAS_PAD_Y,
         })
@@ -453,9 +417,15 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         const isImport = data.isImport as boolean | undefined
         if (isImport) return
 
-        const { nodes: fileNodes, edges: fileEdges } = await buildFileNodes(path)
-
-        const newColumn: Column = { path, kind: 'file', nodes: fileNodes, edges: fileEdges }
+        const fileName = data.label as string
+        let contentNode: AppNode
+        if (isImageFile(fileName)) {
+          const imageNode = await buildImageNode(path)
+          contentNode = imageNode ?? await buildFileNode(path)
+        } else {
+          contentNode = await buildFileNode(path)
+        }
+        const newColumn: Column = { path, kind: 'file', nodes: [contentNode], edges: [] }
         const newColumns = [...columns.slice(0, currentColumnIndex + 1), newColumn]
         const newChain = [...depthChain.slice(0, currentColumnIndex + 1), path]
 
@@ -463,38 +433,12 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           columns: newColumns,
           currentColumnIndex: currentColumnIndex + 1,
           depthChain: newChain,
-          selectedFunction: null,
-          focusedNodeId: fileNodes[0]?.id ?? null,
+          focusedNodeId: newColumn.nodes[0]?.id ?? null,
           cameraY: CANVAS_PAD_Y,
         })
 
         flattenAndRender(get, set)
         get().updatePreview()
-      } else if (node.type === 'functionNode' || node.type === 'classNode') {
-        const startLine = data.startLine as number
-        const endLine = data.endLine as number
-        const name = data.label as string
-
-        const currentCol = columns[currentColumnIndex]
-        if (!currentCol || currentCol.kind !== 'file') return
-
-        const filePath = currentCol.path
-        const { node: codeNode, selectedFunction } = await buildCodeNode(filePath, name, startLine, endLine)
-
-        const newColumn: Column = { path: `${filePath}:${name}`, kind: 'code', nodes: [codeNode], edges: [] }
-        const newColumns = [...columns.slice(0, currentColumnIndex + 1), newColumn]
-        const newChain = [...depthChain.slice(0, currentColumnIndex + 1), `${filePath}:${name}`]
-
-        set({
-          columns: newColumns,
-          currentColumnIndex: currentColumnIndex + 1,
-          depthChain: newChain,
-          selectedFunction,
-          focusedNodeId: codeNode.id,
-          cameraY: CANVAS_PAD_Y,
-        })
-
-        flattenAndRender(get, set)
       }
     } catch (err) {
       console.error('Failed to navigate right:', err)
@@ -525,7 +469,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
     set({
       currentColumnIndex: newIndex,
-      selectedFunction: null,
       focusedNodeId: restoreFocusId || (parentCol?.nodes[0]?.id ?? null),
       cameraY: CANVAS_PAD_Y,
     })
@@ -534,8 +477,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     // Load preview for the restored focus
     get().updatePreview()
   },
-
-  clearSelectedFunction: () => set({ selectedFunction: null }),
 
   toggleHideNode: () => {
     const { focusedNodeId, hiddenNodeIds } = get()
@@ -591,18 +532,16 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       } else if (node.type === 'file') {
         const path = data.path as string
         const isImport = data.isImport as boolean | undefined
+        const fileName = data.label as string
         if (!isImport) {
-          const { nodes: fileNodes, edges: fileEdges } = await buildFileNodes(path)
-          previewCol = { path, kind: 'file', nodes: fileNodes, edges: fileEdges }
-        }
-      } else if (node.type === 'functionNode' || node.type === 'classNode') {
-        if (currentCol.kind === 'file') {
-          const startLine = data.startLine as number
-          const endLine = data.endLine as number
-          const name = data.label as string
-          const filePath = currentCol.path
-          const { node: codeNode } = await buildCodeNode(filePath, name, startLine, endLine)
-          previewCol = { path: `${filePath}:${name}`, kind: 'code', nodes: [codeNode], edges: [] }
+          let contentNode: AppNode
+          if (isImageFile(fileName)) {
+            const imageNode = await buildImageNode(path)
+            contentNode = imageNode ?? await buildFileNode(path)
+          } else {
+            contentNode = await buildFileNode(path)
+          }
+          previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
         }
       }
 
@@ -660,12 +599,20 @@ function flattenAndRender(
     const hidden = currentCol.nodes.filter((n) => hiddenNodeIds.has(n.id))
     const ordered = [...visible, ...hidden]
     let y = 0
-    for (const node of ordered) {
+    for (let idx = 0; idx < ordered.length; idx++) {
+      const node = ordered[idx]
       if (node.id === focusedNodeId) {
         focusedNodeY = y
         break
       }
-      y += NODE_HEIGHT + NODE_V_GAP
+      const nextNode = ordered[idx + 1]
+      let gap = NODE_V_GAP_SMALL
+      if (nextNode) {
+        const thisIsFolder = node.type === 'folder'
+        const nextIsFolder = nextNode.type === 'folder'
+        if (thisIsFolder !== nextIsFolder) gap = NODE_V_GAP
+      }
+      y += NODE_HEIGHT + gap
     }
   }
 

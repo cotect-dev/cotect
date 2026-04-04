@@ -1,8 +1,9 @@
 import { memo, useCallback } from 'react'
 import type { NodeProps } from '@xyflow/react'
-import { FileText, FileCode, FlaskConical } from 'lucide-react'
+import { FileText, FileCode, FlaskConical, Image } from 'lucide-react'
 import { useCanvasStore } from '@/store'
 import { getConfigForFile } from '@/services/treesitter-queries'
+import { isImageFile } from '@/lib/constants'
 import type { FileNode } from '@/types/nodes'
 import BaseNode from './BaseNode'
 import { getNodeFlags } from '.'
@@ -12,9 +13,10 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
   const parseable = getConfigForFile(data.label) !== null
   const isTest = data.isTestFile === true
   const isPreview = id.startsWith('__preview__:')
+  const isImage = isImageFile(data.label)
 
-  const icon = isTest ? FlaskConical : parseable ? FileCode : FileText
-  const iconColor = isTest ? 'text-yellow-600' : parseable ? 'text-blue-400' : 'text-muted-foreground'
+  const icon = isTest ? FlaskConical : isImage ? Image : parseable ? FileCode : FileText
+  const iconColor = isTest ? 'text-yellow-600' : isImage ? 'text-emerald-400' : parseable ? 'text-blue-400' : 'text-muted-foreground'
   const border = data.isImport
     ? 'border-indigo-500/50 border-dashed'
     : isTest
@@ -30,6 +32,8 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
     store.navigateRight()
   }, [id])
 
+  const canNavigate = (parseable || isImage) && !data.isImport
+
   return (
     <BaseNode
       icon={icon}
@@ -39,7 +43,7 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
       className={`${opacity} ${isTest ? 'opacity-60' : ''}`}
       focused={flags.isFocused}
       onClick={handleClick}
-      onDoubleClick={parseable && !data.isImport ? handleDoubleClick : undefined}
+      onDoubleClick={canNavigate ? handleDoubleClick : undefined}
     >
       {data.isImport && data.declarationCount != null && (
         <div className="text-xs text-muted-foreground mt-1">{data.declarationCount} declarations</div>
