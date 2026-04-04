@@ -363,4 +363,274 @@ mod tests {
         assert!(builder.name.is_empty());
         assert!(builder.arguments.is_empty());
     }
+
+    // ─── Error tracker edge cases ───────────────────────────────────────
+
+    #[test]
+    fn test_tool_error_tracker_zero_limit() {
+        let tracker = ToolErrorTracker::new(0);
+        // With limit 0, no errors are allowed
+        assert!(tracker.limit_reached() == false); // No errors recorded yet
+        assert_eq!(tracker.remaining("read"), 0); // But remaining is 0
+    }
+
+    #[test]
+    fn test_tool_error_tracker_zero_limit_immediate_saturation() {
+        let mut tracker = ToolErrorTracker::new(0);
+        tracker.record_error("read");
+        assert!(tracker.limit_reached());
+    }
+
+    #[test]
+    fn test_tool_error_tracker_many_tools() {
+        let mut tracker = ToolErrorTracker::new(3);
+        tracker.record_error("read");
+        tracker.record_error("write");
+        tracker.record_error("patch");
+        tracker.record_error("shell");
+        tracker.record_error("fetch");
+        // None have hit limit of 3
+        assert!(!tracker.limit_reached());
+        assert_eq!(tracker.remaining("read"), 2);
+
+        // Now push "read" to limit
+        tracker.record_error("read");
+        tracker.record_error("read");
+        assert!(tracker.limit_reached());
+    }
+
+    #[test]
+    fn test_tool_error_tracker_success_after_limit() {
+        let mut tracker = ToolErrorTracker::new(2);
+        tracker.record_error("read");
+        tracker.record_error("read");
+        assert!(tracker.limit_reached());
+
+        // A success on "read" resets it
+        tracker.record_success("read");
+        assert!(!tracker.limit_reached());
+        assert_eq!(tracker.remaining("read"), 2);
+    }
+
+    #[test]
+    fn test_tool_error_tracker_multiple_tools_limit_check() {
+        let mut tracker = ToolErrorTracker::new(2);
+        tracker.record_error("read");
+        tracker.record_error("write");
+        assert!(!tracker.limit_reached()); // Both at 1
+
+        tracker.record_error("write");
+        assert!(tracker.limit_reached()); // Write at 2 >= 2
+        assert_eq!(tracker.remaining("read"), 1);
+        assert_eq!(tracker.remaining("write"), 0);
+    }
+
+    #[test]
+    fn test_tool_error_tracker_remaining_unknown_tool() {
+        let tracker = ToolErrorTracker::new(5);
+        // Never-seen tool should have full budget
+        assert_eq!(tracker.remaining("unknown_tool"), 5);
+    }
+
+    // ─── consume_stream tests ───────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_consume_stream_text_only() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, mut task_rx) = mpsc::channel(32);
+
+        // Simulate LLM sending text deltas
+        tokio::spawn(async move {
+            tx.send(LlmStreamEvent::TextDelta("Hello ".into())).await.ok();
+            tx.send(LlmStreamEvent::TextDelta("world!".into())).await.ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("stop".into()) }).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await.unwrap();
+
+        assert_eq!(result.content, "Hello world!");
+        assert!(result.tool_calls.is_empty());
+        assert_eq!(result.finish_reason.as_deref(), Some("stop"));
+
+        // Check that events were forwarded
+        let mut events = vec![];
+        while let Ok(e) = task_rx.try_recv() {
+            events.push(e);
+        }
+        // Should have 2 partial text events + 1 final text event
+        let text_events: Vec<_> = events.iter().filter(|e| matches!(e, TaskEvent::Text { .. })).collect();
+        assert!(text_events.len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn test_consume_stream_tool_calls() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, _task_rx) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            tx.send(LlmStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("call_1".into()),
+                name: Some("read".into()),
+                arguments_chunk: r#"{"file"#.into(),
+            }).await.ok();
+            tx.send(LlmStreamEvent::ToolCallDelta {
+                index: 0,
+                id: None,
+                name: None,
+                arguments_chunk: r#"_path":"/tmp/test"}"#.into(),
+            }).await.ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await.unwrap();
+
+        assert_eq!(result.tool_calls.len(), 1);
+        assert_eq!(result.tool_calls[0].id, "call_1");
+        assert_eq!(result.tool_calls[0].function.name, "read");
+        assert_eq!(result.tool_calls[0].function.arguments, r#"{"file_path":"/tmp/test"}"#);
+    }
+
+    #[tokio::test]
+    async fn test_consume_stream_multiple_tool_calls() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, _task_rx) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            tx.send(LlmStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("c1".into()),
+                name: Some("read".into()),
+                arguments_chunk: r#"{"file_path":"a.txt"}"#.into(),
+            }).await.ok();
+            tx.send(LlmStreamEvent::ToolCallDelta {
+                index: 1,
+                id: Some("c2".into()),
+                name: Some("shell".into()),
+                arguments_chunk: r#"{"command":"ls"}"#.into(),
+            }).await.ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await.unwrap();
+
+        assert_eq!(result.tool_calls.len(), 2);
+        assert_eq!(result.tool_calls[0].function.name, "read");
+        assert_eq!(result.tool_calls[1].function.name, "shell");
+    }
+
+    #[tokio::test]
+    async fn test_consume_stream_reasoning() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, mut task_rx) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            tx.send(LlmStreamEvent::ReasoningDelta("I think ".into())).await.ok();
+            tx.send(LlmStreamEvent::ReasoningDelta("this is ".into())).await.ok();
+            tx.send(LlmStreamEvent::ReasoningDelta("important.".into())).await.ok();
+            tx.send(LlmStreamEvent::TextDelta("The answer is 42.".into())).await.ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("stop".into()) }).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await.unwrap();
+
+        assert_eq!(result.reasoning, "I think this is important.");
+        assert_eq!(result.content, "The answer is 42.");
+
+        let mut events = vec![];
+        while let Ok(e) = task_rx.try_recv() {
+            events.push(e);
+        }
+        let reasoning_events: Vec<_> = events.iter().filter(|e| matches!(e, TaskEvent::Reasoning { .. })).collect();
+        assert_eq!(reasoning_events.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_consume_stream_error() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, _task_rx) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            tx.send(LlmStreamEvent::TextDelta("partial".into())).await.ok();
+            tx.send(LlmStreamEvent::Error("connection lost".into())).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("connection lost"));
+    }
+
+    #[tokio::test]
+    async fn test_consume_stream_empty_done() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, _task_rx) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            tx.send(LlmStreamEvent::Done { finish_reason: None }).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await.unwrap();
+
+        assert!(result.content.is_empty());
+        assert!(result.tool_calls.is_empty());
+        assert!(result.finish_reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_consume_stream_text_and_tools_mixed() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, _task_rx) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            tx.send(LlmStreamEvent::TextDelta("Let me read ".into())).await.ok();
+            tx.send(LlmStreamEvent::TextDelta("the file.".into())).await.ok();
+            tx.send(LlmStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("c1".into()),
+                name: Some("read".into()),
+                arguments_chunk: r#"{"file_path":"test.txt"}"#.into(),
+            }).await.ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await.unwrap();
+
+        assert_eq!(result.content, "Let me read the file.");
+        assert_eq!(result.tool_calls.len(), 1);
+        assert_eq!(result.tool_calls[0].function.name, "read");
+    }
+
+    // ─── Helper ─────────────────────────────────────────────────────────
+
+    fn make_test_orchestrator(sender: mpsc::Sender<TaskEvent>) -> Orchestrator {
+        let provider = ProviderConfig {
+            id: "test".into(),
+            name: "Test".into(),
+            endpoint: "http://localhost:11434/v1".into(),
+            api_key: None,
+            model: "test-model".into(),
+        };
+        let request = TaskRequest {
+            id: "test-task".into(),
+            prompt: "test".into(),
+            scope: TaskScope {
+                root_path: "/tmp".into(),
+                files: vec![],
+                directory: None,
+                declarations: vec![],
+                description: None,
+            },
+            role: AgentRole::Implement,
+            conversation_id: None,
+        };
+        Orchestrator::new(&provider, &request, sender)
+    }
 }

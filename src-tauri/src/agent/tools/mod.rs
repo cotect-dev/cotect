@@ -264,4 +264,193 @@ mod tests {
         assert!(state.has_read("/project/test.txt").await);
         assert!(!state.has_read("/project/other.txt").await);
     }
+
+    // ─── Integrated tool dispatch tests ─────────────────────────────────
+
+    #[tokio::test]
+    async fn test_execute_tool_read_real_file() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"line one\nline two\n").unwrap();
+        f.flush().unwrap();
+        let path = f.path().to_str().unwrap();
+
+        let tool_call = ToolCall {
+            id: "call_r".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "read".into(),
+                arguments: format!(r#"{{"file_path":"{}"}}"#, path),
+            },
+        };
+        let state = ToolState::new("/tmp".into());
+        let result = execute_tool(&tool_call, &state).await;
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("1: line one"));
+        assert!(output.contains("2: line two"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_write_new_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("written.txt");
+        let path_str = path.to_str().unwrap();
+
+        let tool_call = ToolCall {
+            id: "call_w".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "write".into(),
+                arguments: format!(r#"{{"file_path":"{}","content":"hello dispatch"}}"#, path_str),
+            },
+        };
+        let state = ToolState::new("/tmp".into());
+        let result = execute_tool(&tool_call, &state).await;
+        assert!(result.is_ok());
+        assert!(std::fs::read_to_string(&path).unwrap().contains("hello dispatch"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_shell_echo() {
+        let tool_call = ToolCall {
+            id: "call_s".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "shell".into(),
+                arguments: r#"{"command":"echo dispatched"}"#.into(),
+            },
+        };
+        let state = ToolState::new("/tmp".into());
+        let result = execute_tool(&tool_call, &state).await.unwrap();
+        assert!(result.contains("dispatched"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_search_real_dir() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("target.txt"), "unique_marker_1234\n").unwrap();
+
+        let tool_call = ToolCall {
+            id: "call_fs".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "fs_search".into(),
+                arguments: format!(r#"{{"pattern":"unique_marker_1234","path":"{}"}}"#, dir.path().to_str().unwrap()),
+            },
+        };
+        let state = ToolState::new(dir.path().to_str().unwrap().into());
+        let result = execute_tool(&tool_call, &state).await.unwrap();
+        assert!(result.contains("unique_marker_1234"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_invalid_json_args() {
+        let tool_call = ToolCall {
+            id: "call_bad".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "read".into(),
+                arguments: "not valid json".into(),
+            },
+        };
+        let state = ToolState::new("/tmp".into());
+        let result = execute_tool(&tool_call, &state).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid arguments"));
+    }
+
+    #[tokio::test]
+    async fn test_read_then_patch_workflow() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"original content here\n").unwrap();
+        f.flush().unwrap();
+        let path = f.path().to_str().unwrap();
+
+        let state = ToolState::new("/tmp".into());
+
+        // Step 1: Read the file
+        let read_call = ToolCall {
+            id: "c1".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "read".into(),
+                arguments: format!(r#"{{"file_path":"{}"}}"#, path),
+            },
+        };
+        let read_result = execute_tool(&read_call, &state).await.unwrap();
+        assert!(read_result.contains("original content"));
+
+        // Step 2: Patch the file
+        let patch_call = ToolCall {
+            id: "c2".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "patch".into(),
+                arguments: format!(r#"{{"file_path":"{}","old_string":"original content here","new_string":"modified content here"}}"#, path),
+            },
+        };
+        let patch_result = execute_tool(&patch_call, &state).await.unwrap();
+        assert!(patch_result.contains("Successfully patched"));
+
+        // Verify
+        let on_disk = std::fs::read_to_string(path).unwrap();
+        assert!(on_disk.contains("modified content here"));
+    }
+
+    #[tokio::test]
+    async fn test_read_then_write_workflow() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"old content").unwrap();
+        f.flush().unwrap();
+        let path = f.path().to_str().unwrap();
+
+        let state = ToolState::new("/tmp".into());
+
+        // Read first
+        let read_call = ToolCall {
+            id: "c1".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "read".into(),
+                arguments: format!(r#"{{"file_path":"{}"}}"#, path),
+            },
+        };
+        execute_tool(&read_call, &state).await.unwrap();
+
+        // Then write
+        let write_call = ToolCall {
+            id: "c2".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "write".into(),
+                arguments: format!(r#"{{"file_path":"{}","content":"completely new content"}}"#, path),
+            },
+        };
+        let write_result = execute_tool(&write_call, &state).await.unwrap();
+        assert!(write_result.contains("Successfully wrote"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_state_multiple_reads() {
+        let state = ToolState::new("/project".into());
+        state.mark_read("/project/a.txt").await;
+        state.mark_read("/project/b.txt").await;
+        state.mark_read("/project/c.txt").await;
+
+        assert!(state.has_read("/project/a.txt").await);
+        assert!(state.has_read("/project/b.txt").await);
+        assert!(state.has_read("/project/c.txt").await);
+        assert!(!state.has_read("/project/d.txt").await);
+    }
+
+    #[tokio::test]
+    async fn test_tool_state_duplicate_reads() {
+        let state = ToolState::new("/project".into());
+        state.mark_read("/project/a.txt").await;
+        state.mark_read("/project/a.txt").await; // Idempotent
+        assert!(state.has_read("/project/a.txt").await);
+    }
 }

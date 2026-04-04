@@ -67,3 +67,136 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
 
     Ok(output)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write as IoWrite;
+    use tempfile::NamedTempFile;
+
+    fn make_state() -> Arc<ToolState> {
+        ToolState::new("/tmp".into())
+    }
+
+    fn make_temp_file(content: &str) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+        f.flush().unwrap();
+        f
+    }
+
+    #[tokio::test]
+    async fn read_entire_file_with_line_numbers() {
+        let f = make_temp_file("line one\nline two\nline three\n");
+        let state = make_state();
+        let input = FSReadInput {
+            file_path: f.path().to_str().unwrap().into(),
+            start_line: None,
+            end_line: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("1: line one"));
+        assert!(result.contains("2: line two"));
+        assert!(result.contains("3: line three"));
+        // No range indicator for full file
+        assert!(!result.contains("[Showing lines"));
+    }
+
+    #[tokio::test]
+    async fn read_line_range() {
+        let f = make_temp_file("a\nb\nc\nd\ne\n");
+        let state = make_state();
+        let input = FSReadInput {
+            file_path: f.path().to_str().unwrap().into(),
+            start_line: Some(2),
+            end_line: Some(4),
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("2: b"));
+        assert!(result.contains("3: c"));
+        assert!(result.contains("4: d"));
+        assert!(!result.contains("1: a"));
+        assert!(!result.contains("5: e"));
+        assert!(result.contains("[Showing lines 2-4 of 5]"));
+    }
+
+    #[tokio::test]
+    async fn read_marks_file_as_read() {
+        let f = make_temp_file("hello");
+        let state = make_state();
+        let path = f.path().to_str().unwrap().to_string();
+        assert!(!state.has_read(&path).await);
+
+        let input = FSReadInput { file_path: path.clone(), start_line: None, end_line: None };
+        execute(&input, &state).await.unwrap();
+
+        assert!(state.has_read(&path).await);
+    }
+
+    #[tokio::test]
+    async fn read_nonexistent_file_returns_error() {
+        let state = make_state();
+        let input = FSReadInput {
+            file_path: "/tmp/does_not_exist_at_all.txt".into(),
+            start_line: None,
+            end_line: None,
+        };
+        let result = execute(&input, &state).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Cannot read file"));
+    }
+
+    #[tokio::test]
+    async fn read_start_beyond_end_returns_message() {
+        let f = make_temp_file("one\ntwo\n");
+        let state = make_state();
+        let input = FSReadInput {
+            file_path: f.path().to_str().unwrap().into(),
+            start_line: Some(100),
+            end_line: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("start_line 100 is beyond the end"));
+    }
+
+    #[tokio::test]
+    async fn read_single_line_file() {
+        let f = make_temp_file("only line");
+        let state = make_state();
+        let input = FSReadInput {
+            file_path: f.path().to_str().unwrap().into(),
+            start_line: None,
+            end_line: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("1: only line"));
+    }
+
+    #[tokio::test]
+    async fn read_empty_file() {
+        let f = make_temp_file("");
+        let state = make_state();
+        let input = FSReadInput {
+            file_path: f.path().to_str().unwrap().into(),
+            start_line: None,
+            end_line: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        // Empty file has 0 lines; start_line=1 > total=0
+        assert!(result.contains("start_line 1 is beyond the end"));
+    }
+
+    #[tokio::test]
+    async fn read_end_line_clamped_to_total() {
+        let f = make_temp_file("a\nb\n");
+        let state = make_state();
+        let input = FSReadInput {
+            file_path: f.path().to_str().unwrap().into(),
+            start_line: Some(1),
+            end_line: Some(999),
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("1: a"));
+        assert!(result.contains("2: b"));
+    }
+}

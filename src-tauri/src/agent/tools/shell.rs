@@ -70,3 +70,117 @@ pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<Strin
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn make_state() -> Arc<ToolState> {
+        ToolState::new("/tmp".into())
+    }
+
+    #[tokio::test]
+    async fn shell_echo_captures_stdout() {
+        let state = make_state();
+        let input = ShellInput {
+            command: "echo hello world".into(),
+            cwd: None,
+            description: Some("test echo".into()),
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("hello world"));
+        assert!(result.contains("[exit code: 0]"));
+    }
+
+    #[tokio::test]
+    async fn shell_captures_stderr() {
+        let state = make_state();
+        let input = ShellInput {
+            command: "echo err >&2".into(),
+            cwd: None,
+            description: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("err"));
+    }
+
+    #[tokio::test]
+    async fn shell_nonzero_exit_code() {
+        let state = make_state();
+        let input = ShellInput {
+            command: "echo fail && exit 42".into(),
+            cwd: None,
+            description: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("exit code: 42"));
+    }
+
+    #[tokio::test]
+    async fn shell_uses_cwd() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("marker.txt"), "found").unwrap();
+        let state = make_state();
+
+        let input = ShellInput {
+            command: "cat marker.txt".into(),
+            cwd: Some(dir.path().to_str().unwrap().into()),
+            description: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("found"));
+    }
+
+    #[tokio::test]
+    async fn shell_defaults_to_root_path() {
+        let state = ToolState::new("/tmp".into());
+        let input = ShellInput {
+            command: "pwd".into(),
+            cwd: None,
+            description: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("/tmp"));
+    }
+
+    #[tokio::test]
+    async fn shell_empty_output() {
+        let state = make_state();
+        let input = ShellInput {
+            command: "true".into(),
+            cwd: None,
+            description: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("No output"));
+    }
+
+    #[tokio::test]
+    async fn shell_combined_stdout_and_stderr() {
+        let state = make_state();
+        let input = ShellInput {
+            command: "echo out && echo err >&2".into(),
+            cwd: None,
+            description: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("out"));
+        assert!(result.contains("stderr"));
+        assert!(result.contains("err"));
+    }
+
+    #[tokio::test]
+    async fn shell_multiline_output() {
+        let state = make_state();
+        let input = ShellInput {
+            command: "printf 'line1\\nline2\\nline3\\n'".into(),
+            cwd: None,
+            description: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("line1"));
+        assert!(result.contains("line2"));
+        assert!(result.contains("line3"));
+    }
+}
