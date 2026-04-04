@@ -112,7 +112,9 @@ mod tests {
         scope: TaskScope,
         check: impl Fn(&[TaskEvent], &str) -> (bool, String),
     ) -> EvalResult {
-        let (tx, mut rx) = mpsc::channel::<TaskEvent>(512);
+        use std::io::Write;
+
+        let (tx, rx) = mpsc::channel::<TaskEvent>(512);
 
         let request = TaskRequest {
             id: format!("eval-{name}"),
@@ -124,6 +126,69 @@ mod tests {
 
         let start = Instant::now();
 
+        // Print scenario header
+        eprint!("  {name:<40} ");
+        let _ = std::io::stderr().flush();
+
+        // Spawn event collector that prints dots for each LLM response/tool event
+        let events_handle = tokio::spawn(async move {
+            let mut rx = rx;
+            let mut events = Vec::new();
+            let mut tool_calls = Vec::new();
+            let mut full_text = String::new();
+
+            while let Some(ev) = rx.recv().await {
+                match &ev {
+                    TaskEvent::Text { content, partial } => {
+                        if *partial {
+                            // First text delta of a new response — print dot
+                            if full_text.is_empty() || content.len() < 10 {
+                                eprint!(".");
+                                let _ = std::io::stderr().flush();
+                            }
+                            full_text.push_str(content);
+                        } else {
+                            full_text = content.clone();
+                        }
+                    }
+                    TaskEvent::Reasoning { .. } => {
+                        // Print 'r' for reasoning tokens (first chunk only per turn)
+                        eprint!("r");
+                        let _ = std::io::stderr().flush();
+                    }
+                    TaskEvent::ToolStart { tool_name, .. } => {
+                        eprint!("T({})", tool_name);
+                        let _ = std::io::stderr().flush();
+                        tool_calls.push(tool_name.clone());
+                    }
+                    TaskEvent::ToolEnd { success, .. } => {
+                        if *success {
+                            eprint!("ok ");
+                        } else {
+                            eprint!("ERR ");
+                        }
+                        let _ = std::io::stderr().flush();
+                    }
+                    TaskEvent::Error { message } => {
+                        eprint!("E({}) ", &message[..message.len().min(30)]);
+                        let _ = std::io::stderr().flush();
+                    }
+                    TaskEvent::Complete => {
+                        eprint!(" DONE");
+                        let _ = std::io::stderr().flush();
+                    }
+                    TaskEvent::Interrupted { reason } => {
+                        eprint!(" INT({})", &reason[..reason.len().min(30)]);
+                        let _ = std::io::stderr().flush();
+                    }
+                    _ => {}  // Followup, etc.
+                }
+                events.push(ev);
+            }
+            eprintln!();
+            (events, tool_calls, full_text)
+        });
+
         // Run orchestrator with timeout
         let orch_result = tokio::time::timeout(cfg.timeout, async {
             let mut orch = Orchestrator::new(&cfg.provider(), &request, tx);
@@ -133,34 +198,11 @@ mod tests {
 
         let elapsed = start.elapsed();
 
-        // Collect all events
-        let mut events = Vec::new();
-        while let Ok(ev) = rx.try_recv() {
-            events.push(ev);
-        }
+        // Wait for event collector to finish (it stops when tx is dropped)
+        let (events, tool_calls, full_text) = events_handle.await.unwrap_or_else(|_| {
+            (Vec::new(), Vec::new(), String::new())
+        });
 
-        // Gather stats
-        let mut tool_calls = Vec::new();
-        let mut full_text = String::new();
-
-        for ev in &events {
-            match ev {
-                TaskEvent::Text { content, partial } => {
-                    if !partial {
-                        full_text = content.clone();
-                    } else {
-                        full_text.push_str(content);
-                    }
-                }
-                TaskEvent::ToolStart { tool_name, .. } => {
-                    tool_calls.push(tool_name.clone());
-                }
-                _ => {}
-            }
-        }
-
-        // Turn count from tool starts gives us a rough proxy
-        // The actual turns = number of LLM calls, approximate from events
         let approx_turns = (tool_calls.len() + 1).min(cfg.max_turns);
 
         match orch_result {
@@ -185,14 +227,17 @@ mod tests {
                 error: Some(format!("Orchestrator error: {e}")),
                 output: full_text,
             },
-            Err(_) => EvalResult {
-                scenario: name.into(),
-                passed: false,
-                turns: approx_turns,
-                tool_calls,
-                elapsed,
-                error: Some(format!("Timed out after {}s", cfg.timeout.as_secs())),
-                output: full_text,
+            Err(_) => {
+                eprintln!("  TIMEOUT after {}s", cfg.timeout.as_secs());
+                EvalResult {
+                    scenario: name.into(),
+                    passed: false,
+                    turns: approx_turns,
+                    tool_calls,
+                    elapsed,
+                    error: Some(format!("Timed out after {}s", cfg.timeout.as_secs())),
+                    output: full_text,
+                }
             },
         }
     }
