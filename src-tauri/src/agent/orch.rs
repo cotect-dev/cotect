@@ -99,6 +99,8 @@ impl Orchestrator {
         let mut should_yield = false;
         let mut is_complete = false;
         let mut turn_count = 0;
+        let mut empty_turn_count = 0;
+        const MAX_EMPTY_TURNS: usize = 3;
 
         while !should_yield {
             // 1. Doom loop check
@@ -124,8 +126,69 @@ impl Orchestrator {
             let turn = self.consume_stream(rx).await?;
 
             // 4. Determine completion
-            is_complete = turn.finish_reason.as_deref() == Some("stop") && turn.tool_calls.is_empty();
+            let finish = turn.finish_reason.as_deref();
+            let has_tools = !turn.tool_calls.is_empty();
+            let has_content = !turn.content.trim().is_empty();
+
+            is_complete = (finish == Some("stop") || finish == Some("end_turn")) && !has_tools;
             should_yield = is_complete;
+
+            // Stream-level timeout: the server stopped sending bytes for 60s.
+            // Don't retry — the inference server is stalled.
+            if finish == Some("timeout") {
+                self.sender
+                    .send(TaskEvent::Interrupted {
+                        reason: "LLM server stopped responding (60s idle timeout).".into(),
+                    })
+                    .await
+                    .ok();
+                should_yield = true;
+            }
+
+            // If the model hit its token limit with no tool calls, treat it as
+            // a yield — the model ran out of generation budget. Continuing would
+            // just loop endlessly (common with reasoning-heavy models like Gemma 4).
+            if finish == Some("length") && !has_tools {
+                if has_content {
+                    // Got partial content — treat as complete, user can see what was generated
+                    is_complete = true;
+                    should_yield = true;
+                } else {
+                    // No content, no tools — the model spent everything on reasoning.
+                    // Inject a nudge and allow one more try, but track empty turns.
+                    empty_turn_count += 1;
+                    if empty_turn_count >= MAX_EMPTY_TURNS {
+                        self.sender
+                            .send(TaskEvent::Interrupted {
+                                reason: "Model repeatedly hit token limit without producing output.".into(),
+                            })
+                            .await
+                            .ok();
+                        should_yield = true;
+                    } else {
+                        self.context.inject_system_reminder(
+                            "Your previous response was cut off because it exceeded the token limit. \
+                             Be more concise. Produce your answer directly without extensive reasoning."
+                        );
+                    }
+                }
+            }
+
+            // Track consecutive empty turns (no content, no tools) for any finish reason
+            if !has_tools && !has_content && finish != Some("length") {
+                empty_turn_count += 1;
+                if empty_turn_count >= MAX_EMPTY_TURNS {
+                    self.sender
+                        .send(TaskEvent::Interrupted {
+                            reason: "Model produced no output for multiple consecutive turns.".into(),
+                        })
+                        .await
+                        .ok();
+                    should_yield = true;
+                }
+            } else if has_tools || has_content {
+                empty_turn_count = 0;
+            }
 
             // 5. Execute tool calls sequentially
             if !turn.tool_calls.is_empty() {
