@@ -152,6 +152,27 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
               </MenubarCheckboxItem>
             )
           })}
+          <MenubarSeparator />
+          <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">Agent</div>
+          {PANEL_DEFINITIONS.filter((d) => d.group === 'agent').map((def) => {
+            const visible = isPanelVisible(def.id)
+            return (
+              <MenubarCheckboxItem
+                key={def.id}
+                checked={visible}
+                onCheckedChange={() => {
+                  if (visible) {
+                    removePanel(def.id)
+                  } else {
+                    const isChild = getPlatform().windows.getWindowId() !== 'main'
+                    addPanel(def.id, getEffectivePosition(def.id, isChild))
+                  }
+                }}
+              >
+                {def.label}
+              </MenubarCheckboxItem>
+            )
+          })}
         </MenubarContent>
       </MenubarMenu>
       <div className="flex-1" />
