@@ -114,7 +114,7 @@ mod tests {
     ) -> EvalResult {
         use std::io::Write;
 
-        let (tx, rx) = mpsc::channel::<TaskEvent>(512);
+        let (tx, rx) = mpsc::unbounded_channel::<TaskEvent>();
 
         let request = TaskRequest {
             id: format!("eval-{name}"),
@@ -279,7 +279,7 @@ mod tests {
     // Each scenario tests a specific agent capability.
     // They are #[ignore] so they only run when explicitly requested.
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_simple_question() {
         let cfg = EvalConfig::from_env().expect(
@@ -301,7 +301,7 @@ mod tests {
         assert!(result.passed, "{}", result.error.unwrap_or_default());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_read_file() {
         let cfg = EvalConfig::from_env().expect(
@@ -344,7 +344,7 @@ mod tests {
         assert!(result.passed, "{}", result.error.unwrap_or_default());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_write_file() {
         let cfg = EvalConfig::from_env().expect(
@@ -386,7 +386,7 @@ mod tests {
         assert!(result.passed && file_ok, "passed={} file_ok={file_ok} {}", result.passed, result.error.unwrap_or_default());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_read_then_patch() {
         let cfg = EvalConfig::from_env().expect(
@@ -433,7 +433,7 @@ mod tests {
         assert!(result.passed && file_ok, "passed={} file_ok={file_ok} {}", result.passed, result.error.unwrap_or_default());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_shell_command() {
         let cfg = EvalConfig::from_env().expect(
@@ -466,7 +466,7 @@ mod tests {
         assert!(result.passed, "{}", result.error.unwrap_or_default());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_search_and_report() {
         let cfg = EvalConfig::from_env().expect(
@@ -506,7 +506,7 @@ mod tests {
         assert!(result.passed, "{}", result.error.unwrap_or_default());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_multi_step_implementation() {
         let cfg = EvalConfig::from_env().expect(
@@ -557,7 +557,7 @@ mod tests {
         assert!(result.passed && has_multiply, "passed={} has_multiply={has_multiply} {}", result.passed, result.error.unwrap_or_default());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_error_recovery() {
         let cfg = EvalConfig::from_env().expect(
@@ -602,7 +602,7 @@ mod tests {
         assert!(result.passed && file_ok, "passed={} file_ok={file_ok} {}", result.passed, result.error.unwrap_or_default());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_plan_generation() {
         let cfg = EvalConfig::from_env().expect(
@@ -650,7 +650,7 @@ mod tests {
 
     // ─── Full suite runner ───────────────────────────────────────────────
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn eval_full_suite() {
         let cfg = EvalConfig::from_env().expect(

@@ -45,7 +45,7 @@ pub async fn agent_start_task(
 
     drop(config); // Release the lock
 
-    let (event_tx, mut event_rx) = mpsc::channel::<TaskEvent>(256);
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TaskEvent>();
     let (abort_tx, abort_rx) = oneshot::channel::<()>();
 
     let task_id = request.id.clone();
@@ -58,14 +58,12 @@ pub async fn agent_start_task(
             result = orch.run() => {
                 if let Err(e) = result {
                     let _ = event_tx_orch
-                        .send(TaskEvent::Error { message: e.to_string() })
-                        .await;
+                        .send(TaskEvent::Error { message: e.to_string() });
                 }
             }
             _ = abort_rx => {
                 let _ = event_tx_orch
-                    .send(TaskEvent::Interrupted { reason: "Aborted by user.".into() })
-                    .await;
+                    .send(TaskEvent::Interrupted { reason: "Aborted by user.".into() });
             }
         }
     });
