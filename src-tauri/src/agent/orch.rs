@@ -279,7 +279,15 @@ impl Orchestrator {
         }
 
         // Finalize tool calls from builders (BTreeMap iterates in order)
+        // Deduplicate by (name, arguments) to handle models that emit the same
+        // tool call multiple times in a single response (e.g., Gemma 4 26B)
+        let mut seen_calls = std::collections::HashSet::new();
         for (_, builder) in tool_call_builders {
+            let dedup_key = (builder.name.clone(), builder.arguments.clone());
+            if seen_calls.contains(&dedup_key) {
+                continue;
+            }
+            seen_calls.insert(dedup_key);
             result.tool_calls.push(ToolCall {
                 id: builder.id,
                 call_type: "function".into(),
@@ -288,6 +296,19 @@ impl Orchestrator {
                     arguments: builder.arguments,
                 },
             });
+        }
+
+        // Cap tool calls per turn to prevent runaway models
+        const MAX_TOOL_CALLS_PER_TURN: usize = 5;
+        if result.tool_calls.len() > MAX_TOOL_CALLS_PER_TURN {
+            result.tool_calls.truncate(MAX_TOOL_CALLS_PER_TURN);
+        }
+
+        // If the model emitted both content and tool_calls, discard the content
+        // — it's likely hallucinated (the model guessed the answer before seeing
+        // tool results). This is common with Gemma 4 and similar models.
+        if !result.tool_calls.is_empty() && !result.content.is_empty() {
+            result.content.clear();
         }
 
         // Send final text if any accumulated
@@ -588,6 +609,9 @@ mod tests {
         let (tx, rx) = mpsc::channel(32);
         let (task_tx, _task_rx) = mpsc::channel(32);
 
+        // Simulates a degenerate model that emits both content and tool calls
+        // (e.g., Gemma 4 hallucinating content before tool results arrive).
+        // The orchestrator should discard the hallucinated content.
         tokio::spawn(async move {
             tx.send(LlmStreamEvent::TextDelta("Let me read ".into())).await.ok();
             tx.send(LlmStreamEvent::TextDelta("the file.".into())).await.ok();
@@ -603,9 +627,91 @@ mod tests {
         let orch = make_test_orchestrator(task_tx);
         let result = orch.consume_stream(rx).await.unwrap();
 
-        assert_eq!(result.content, "Let me read the file.");
+        // Content is discarded when tool calls are present
+        assert_eq!(result.content, "");
         assert_eq!(result.tool_calls.len(), 1);
         assert_eq!(result.tool_calls[0].function.name, "read");
+    }
+
+    // ─── Dedup and cap tests ─────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_consume_stream_deduplicates_identical_tool_calls() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, _task_rx) = mpsc::channel(32);
+
+        // Simulates Gemma 4 emitting the same tool call 5 times
+        tokio::spawn(async move {
+            for i in 0..5 {
+                tx.send(LlmStreamEvent::ToolCallDelta {
+                    index: i,
+                    id: Some(format!("call_{i}")),
+                    name: Some("read".into()),
+                    arguments_chunk: r#"{"file_path":"/tmp/test.txt"}"#.into(),
+                }).await.ok();
+            }
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await.unwrap();
+
+        // Should be deduped to 1
+        assert_eq!(result.tool_calls.len(), 1);
+        assert_eq!(result.tool_calls[0].function.name, "read");
+    }
+
+    #[tokio::test]
+    async fn test_consume_stream_keeps_distinct_tool_calls() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, _task_rx) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            tx.send(LlmStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("c1".into()),
+                name: Some("read".into()),
+                arguments_chunk: r#"{"file_path":"a.txt"}"#.into(),
+            }).await.ok();
+            tx.send(LlmStreamEvent::ToolCallDelta {
+                index: 1,
+                id: Some("c2".into()),
+                name: Some("read".into()),
+                arguments_chunk: r#"{"file_path":"b.txt"}"#.into(),
+            }).await.ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await.unwrap();
+
+        // Different arguments — both kept
+        assert_eq!(result.tool_calls.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_consume_stream_caps_tool_calls_at_5() {
+        let (tx, rx) = mpsc::channel(32);
+        let (task_tx, _task_rx) = mpsc::channel(32);
+
+        // 8 distinct tool calls
+        tokio::spawn(async move {
+            for i in 0..8 {
+                tx.send(LlmStreamEvent::ToolCallDelta {
+                    index: i,
+                    id: Some(format!("c{i}")),
+                    name: Some("read".into()),
+                    arguments_chunk: format!(r#"{{"file_path":"file_{i}.txt"}}"#),
+                }).await.ok();
+            }
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+        });
+
+        let orch = make_test_orchestrator(task_tx);
+        let result = orch.consume_stream(rx).await.unwrap();
+
+        // Capped at 5
+        assert_eq!(result.tool_calls.len(), 5);
     }
 
     // ─── Helper ─────────────────────────────────────────────────────────
