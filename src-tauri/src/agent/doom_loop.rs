@@ -148,4 +148,110 @@ mod tests {
         let d = DoomLoopDetector::default();
         assert_eq!(d.check(), None);
     }
+
+    // ─── Edge case tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_threshold_of_1_detects_single_call() {
+        let mut d = DoomLoopDetector::new(1);
+        d.record("read", r#"{"path":"a.txt"}"#);
+        assert_eq!(d.check(), Some(1));
+    }
+
+    #[test]
+    fn test_long_pattern_abcde_repeated() {
+        let mut d = DoomLoopDetector::default(); // threshold=3
+        for _ in 0..3 {
+            d.record("read", r#"{"p":"a"}"#);
+            d.record("write", r#"{"p":"b"}"#);
+            d.record("patch", r#"{"p":"c"}"#);
+            d.record("shell", r#"{"c":"d"}"#);
+            d.record("fetch", r#"{"u":"e"}"#);
+        }
+        assert_eq!(d.check(), Some(3));
+    }
+
+    #[test]
+    fn test_interleaved_non_repeating_no_detection() {
+        let mut d = DoomLoopDetector::default();
+        d.record("read", r#"{"p":"a"}"#);
+        d.record("write", r#"{"p":"b"}"#);
+        d.record("read", r#"{"p":"c"}"#);
+        d.record("write", r#"{"p":"d"}"#);
+        d.record("read", r#"{"p":"e"}"#);
+        d.record("write", r#"{"p":"f"}"#);
+        assert_eq!(d.check(), None);
+    }
+
+    #[test]
+    fn test_alternating_two_tools_detected() {
+        let mut d = DoomLoopDetector::default();
+        for _ in 0..3 {
+            d.record("read", r#"{"p":"same"}"#);
+            d.record("write", r#"{"p":"same"}"#);
+        }
+        assert_eq!(d.check(), Some(3));
+    }
+
+    #[test]
+    fn test_just_below_threshold_not_detected() {
+        let mut d = DoomLoopDetector::new(4);
+        for _ in 0..3 {
+            d.record("read", r#"{"p":"a"}"#);
+        }
+        assert_eq!(d.check(), None);
+    }
+
+    #[test]
+    fn test_exactly_at_threshold() {
+        let mut d = DoomLoopDetector::new(4);
+        for _ in 0..4 {
+            d.record("read", r#"{"p":"a"}"#);
+        }
+        assert_eq!(d.check(), Some(4));
+    }
+
+    #[test]
+    fn test_pattern_broken_by_different_call() {
+        let mut d = DoomLoopDetector::default();
+        d.record("read", r#"{"p":"a"}"#);
+        d.record("read", r#"{"p":"a"}"#);
+        d.record("write", r#"{"p":"b"}"#); // Break the pattern
+        d.record("read", r#"{"p":"a"}"#);
+        d.record("read", r#"{"p":"a"}"#);
+        assert_eq!(d.check(), None); // Only 2 consecutive at end
+    }
+
+    #[test]
+    fn test_same_tool_different_args_no_loop() {
+        let mut d = DoomLoopDetector::default();
+        d.record("read", r#"{"p":"file1.txt"}"#);
+        d.record("read", r#"{"p":"file2.txt"}"#);
+        d.record("read", r#"{"p":"file3.txt"}"#);
+        assert_eq!(d.check(), None);
+    }
+
+    #[test]
+    fn test_higher_threshold_5() {
+        let mut d = DoomLoopDetector::new(5);
+        for _ in 0..4 {
+            d.record("read", r#"{"p":"a"}"#);
+        }
+        assert_eq!(d.check(), None); // 4 < 5
+        d.record("read", r#"{"p":"a"}"#);
+        assert_eq!(d.check(), Some(5)); // 5 >= 5
+    }
+
+    #[test]
+    fn test_multiple_pattern_lengths_checked() {
+        // Pattern of length 2 repeating 3 times, with noise before
+        let mut d = DoomLoopDetector::default();
+        d.record("fetch", r#"{"u":"random"}"#);
+        d.record("shell", r#"{"c":"other"}"#);
+        for _ in 0..3 {
+            d.record("read", r#"{"p":"x"}"#);
+            d.record("write", r#"{"p":"x"}"#);
+        }
+        assert_eq!(d.check(), Some(3));
+    }
 }

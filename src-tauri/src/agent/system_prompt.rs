@@ -175,6 +175,7 @@ fn tool_rules(role: AgentRole) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::types::DeclarationInfo;
 
     #[test]
     fn test_build_system_prompt_includes_all_sections() {
@@ -212,5 +213,217 @@ mod tests {
     fn test_research_role_is_readonly() {
         let prompt = role_instructions(AgentRole::Research);
         assert!(prompt.contains("cannot modify"));
+    }
+
+    // ─── Comprehensive system prompt tests ──────────────────────────────
+
+    #[test]
+    fn test_plan_role_instructions() {
+        let prompt = role_instructions(AgentRole::Plan);
+        assert!(prompt.contains("implementation plan"));
+        assert!(prompt.contains("numbered list"));
+    }
+
+    #[test]
+    fn test_implement_role_has_full_access() {
+        let prompt = tool_rules(AgentRole::Implement);
+        assert!(prompt.contains("full read/write/execute access"));
+    }
+
+    #[test]
+    fn test_research_role_tool_rules_readonly() {
+        let prompt = tool_rules(AgentRole::Research);
+        assert!(prompt.contains("read-only access"));
+    }
+
+    #[test]
+    fn test_plan_role_tool_rules_readonly() {
+        let prompt = tool_rules(AgentRole::Plan);
+        assert!(prompt.contains("read-only access"));
+    }
+
+    #[test]
+    fn test_environment_block_contains_all_fields() {
+        let env = EnvironmentInfo {
+            os: "macos".into(),
+            shell: "/bin/zsh".into(),
+            cwd: "/Users/dev/project".into(),
+            date: "2026-04-04".into(),
+        };
+        let block = environment_block(&env);
+        assert!(block.contains("macos"));
+        assert!(block.contains("/bin/zsh"));
+        assert!(block.contains("/Users/dev/project"));
+        assert!(block.contains("2026-04-04"));
+    }
+
+    #[test]
+    fn test_scope_with_directory() {
+        let scope = TaskScope {
+            root_path: "/project".into(),
+            files: vec![],
+            directory: Some("src/components/".into()),
+            declarations: vec![],
+            description: None,
+        };
+        let block = scope_context_block(&scope, &[]);
+        assert!(block.contains("src/components/"));
+    }
+
+    #[test]
+    fn test_scope_with_declarations() {
+        let scope = TaskScope {
+            root_path: "/project".into(),
+            files: vec![],
+            directory: None,
+            declarations: vec![
+                DeclarationInfo {
+                    name: "UserStore".into(),
+                    kind: "class".into(),
+                    file_path: "src/stores/user.ts".into(),
+                    line: 15,
+                },
+                DeclarationInfo {
+                    name: "fetchData".into(),
+                    kind: "function".into(),
+                    file_path: "src/utils/api.ts".into(),
+                    line: 42,
+                },
+            ],
+            description: None,
+        };
+        let block = scope_context_block(&scope, &[]);
+        assert!(block.contains("class UserStore in src/stores/user.ts [line 15]"));
+        assert!(block.contains("function fetchData in src/utils/api.ts [line 42]"));
+    }
+
+    #[test]
+    fn test_scope_with_description() {
+        let scope = TaskScope {
+            root_path: "/project".into(),
+            files: vec![],
+            directory: None,
+            declarations: vec![],
+            description: Some("The user wants to refactor the auth module".into()),
+        };
+        let block = scope_context_block(&scope, &[]);
+        assert!(block.contains("User Description"));
+        assert!(block.contains("refactor the auth module"));
+    }
+
+    #[test]
+    fn test_scope_with_file_contents() {
+        let scope = TaskScope {
+            root_path: "/project".into(),
+            files: vec!["src/main.rs".into()],
+            directory: None,
+            declarations: vec![],
+            description: None,
+        };
+        let contents = vec![
+            ("src/main.rs".into(), "fn main() {\n    println!(\"hello\");\n}".into()),
+        ];
+        let block = scope_context_block(&scope, &contents);
+        assert!(block.contains("<file path=\"src/main.rs\">"));
+        assert!(block.contains("fn main()"));
+        assert!(block.contains("3 lines"));
+    }
+
+    #[test]
+    fn test_workspace_stats_included_when_present() {
+        let scope = TaskScope {
+            root_path: "/p".into(),
+            files: vec![],
+            directory: None,
+            declarations: vec![],
+            description: None,
+        };
+        let env = EnvironmentInfo {
+            os: "linux".into(),
+            shell: "/bin/bash".into(),
+            cwd: "/p".into(),
+            date: "2026-04-04".into(),
+        };
+        let prompt = build_system_prompt(
+            AgentRole::Implement,
+            &scope,
+            &env,
+            &[],
+            Some("139 files, .ts: 59 (42%), .tsx: 36 (26%)"),
+        );
+        assert!(prompt.contains("139 files"));
+        assert!(prompt.contains(".ts: 59"));
+    }
+
+    #[test]
+    fn test_workspace_stats_omitted_when_none() {
+        let scope = TaskScope {
+            root_path: "/p".into(),
+            files: vec![],
+            directory: None,
+            declarations: vec![],
+            description: None,
+        };
+        let env = EnvironmentInfo {
+            os: "linux".into(),
+            shell: "/bin/bash".into(),
+            cwd: "/p".into(),
+            date: "2026-04-04".into(),
+        };
+        let prompt = build_system_prompt(AgentRole::Implement, &scope, &env, &[], None);
+        assert!(!prompt.contains("## Workspace"));
+    }
+
+    #[test]
+    fn test_all_roles_produce_nonempty_prompts() {
+        let scope = TaskScope {
+            root_path: "/p".into(),
+            files: vec![],
+            directory: None,
+            declarations: vec![],
+            description: None,
+        };
+        let env = EnvironmentInfo {
+            os: "linux".into(),
+            shell: "/bin/bash".into(),
+            cwd: "/p".into(),
+            date: "2026-04-04".into(),
+        };
+        for role in [AgentRole::Implement, AgentRole::Research, AgentRole::Plan] {
+            let prompt = build_system_prompt(role, &scope, &env, &[], None);
+            assert!(!prompt.is_empty());
+            assert!(prompt.contains("Tool Usage Rules"));
+            assert!(prompt.contains("System Information"));
+        }
+    }
+
+    #[test]
+    fn test_scope_with_multiple_files() {
+        let scope = TaskScope {
+            root_path: "/p".into(),
+            files: vec!["a.rs".into(), "b.ts".into(), "c.tsx".into()],
+            directory: None,
+            declarations: vec![],
+            description: None,
+        };
+        let block = scope_context_block(&scope, &[]);
+        assert!(block.contains("- a.rs"));
+        assert!(block.contains("- b.ts"));
+        assert!(block.contains("- c.tsx"));
+    }
+
+    #[test]
+    fn test_empty_scope() {
+        let scope = TaskScope {
+            root_path: "/p".into(),
+            files: vec![],
+            directory: None,
+            declarations: vec![],
+            description: None,
+        };
+        let block = scope_context_block(&scope, &[]);
+        assert!(block.contains("Architecture Context"));
+        assert!(!block.contains("Files in Scope"));
+        assert!(!block.contains("Declarations"));
     }
 }
