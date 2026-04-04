@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 
 use super::types::{FunctionDef, ToolCall, ToolDefinition, AgentRole};
@@ -38,6 +39,11 @@ impl ToolState {
     }
 }
 
+/// Parse JSON arguments into the expected type, returning a consistent error.
+fn parse_args<T: DeserializeOwned>(args: &str) -> Result<T, String> {
+    serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))
+}
+
 /// Execute a tool call and return the result string.
 pub async fn execute_tool(
     tool_call: &ToolCall,
@@ -47,36 +53,12 @@ pub async fn execute_tool(
     let args = &tool_call.function.arguments;
 
     match name {
-        "read" => {
-            let input: fs_read::FSReadInput =
-                serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))?;
-            fs_read::execute(&input, state).await
-        }
-        "write" => {
-            let input: fs_write::FSWriteInput =
-                serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))?;
-            fs_write::execute(&input, state).await
-        }
-        "patch" => {
-            let input: fs_patch::FSPatchInput =
-                serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))?;
-            fs_patch::execute(&input, state).await
-        }
-        "fs_search" => {
-            let input: fs_search::FSSearchInput =
-                serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))?;
-            fs_search::execute(&input, state).await
-        }
-        "shell" => {
-            let input: shell::ShellInput =
-                serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))?;
-            shell::execute(&input, state).await
-        }
-        "fetch" => {
-            let input: fetch::FetchInput =
-                serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))?;
-            fetch::execute(&input).await
-        }
+        "read" => fs_read::execute(&parse_args(args)?, state).await,
+        "write" => fs_write::execute(&parse_args(args)?, state).await,
+        "patch" => fs_patch::execute(&parse_args(args)?, state).await,
+        "fs_search" => fs_search::execute(&parse_args(args)?, state).await,
+        "shell" => shell::execute(&parse_args(args)?, state).await,
+        "fetch" => fetch::execute(&parse_args(args)?).await,
         _ => Err(format!("Unknown tool: {name}")),
     }
 }

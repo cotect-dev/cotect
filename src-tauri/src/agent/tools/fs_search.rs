@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use super::ToolState;
+use crate::agent::utils::truncate_bytes;
 
 const MAX_OUTPUT: usize = 100 * 1024; // 100 KB
 
@@ -64,15 +65,10 @@ async fn try_ripgrep(input: &FSSearchInput, search_path: &str) -> Result<String,
         return Err(format!("ripgrep error: {stderr}"));
     }
 
-    let result = if stdout.len() > MAX_OUTPUT {
-        format!(
-            "{}\n\n[Output truncated at {MAX_OUTPUT} bytes]",
-            &stdout[..MAX_OUTPUT]
-        )
-    } else if stdout.is_empty() {
+    let result = if stdout.is_empty() {
         "No matches found.".into()
     } else {
-        stdout.into_owned()
+        truncate_bytes(&stdout, MAX_OUTPUT, &format!("Output truncated at {MAX_OUTPUT} bytes"))
     };
 
     Ok(result)
@@ -99,12 +95,7 @@ async fn try_grep(input: &FSSearchInput, search_path: &str) -> Result<String, St
 
     if stdout.is_empty() {
         Ok("No matches found.".into())
-    } else if stdout.len() > MAX_OUTPUT {
-        Ok(format!(
-            "{}\n\n[Output truncated at {MAX_OUTPUT} bytes]",
-            &stdout[..MAX_OUTPUT]
-        ))
     } else {
-        Ok(stdout.into_owned())
+        Ok(truncate_bytes(&stdout, MAX_OUTPUT, &format!("Output truncated at {MAX_OUTPUT} bytes")))
     }
 }

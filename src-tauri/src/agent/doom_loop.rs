@@ -21,6 +21,7 @@ impl Default for DoomLoopDetector {
 }
 
 impl DoomLoopDetector {
+    #[allow(dead_code)] // Used in tests
     pub fn new(threshold: usize) -> Self {
         Self {
             history: Vec::new(),

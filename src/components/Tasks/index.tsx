@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useRef, useEffect } from 'react'
+import { memo, useState, useCallback } from 'react'
 import { useTasksStore, type TaskEntry, type TaskStatus } from '@/store/tasks'
 import { useBrowserStore } from '@/store/browser'
 import type { AgentRole } from '@/services/agent'

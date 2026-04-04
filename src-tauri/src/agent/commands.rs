@@ -50,24 +50,20 @@ pub async fn agent_start_task(
 
     let task_id = request.id.clone();
 
-    // Clone what we need for the spawned task
-    let provider_clone = provider.clone();
-    let request_clone = request.clone();
-    let event_tx_clone = event_tx.clone();
-
-    // Spawn the orchestrator
+    // Spawn the orchestrator — move owned values directly (no redundant clones)
+    let event_tx_orch = event_tx.clone();
     tokio::spawn(async move {
-        let mut orch = Orchestrator::new(&provider_clone, &request_clone, event_tx_clone.clone());
+        let mut orch = Orchestrator::new(&provider, &request, event_tx_orch.clone());
         tokio::select! {
             result = orch.run() => {
                 if let Err(e) = result {
-                    let _ = event_tx_clone
+                    let _ = event_tx_orch
                         .send(TaskEvent::Error { message: e.to_string() })
                         .await;
                 }
             }
             _ = abort_rx => {
-                let _ = event_tx_clone
+                let _ = event_tx_orch
                     .send(TaskEvent::Interrupted { reason: "Aborted by user.".into() })
                     .await;
             }

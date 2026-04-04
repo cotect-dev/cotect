@@ -1,9 +1,11 @@
+use std::fmt::Write;
 use std::sync::Arc;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::ToolState;
+use crate::agent::utils::io_err;
 
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 
@@ -25,7 +27,7 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
     // Check file size
     let metadata = tokio::fs::metadata(path)
         .await
-        .map_err(|e| format!("Cannot read file '{path}': {e}"))?;
+        .map_err(|e| io_err("read file", path, e))?;
 
     if metadata.len() > MAX_FILE_SIZE {
         return Err(format!(
@@ -36,7 +38,7 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
 
     let content = tokio::fs::read_to_string(path)
         .await
-        .map_err(|e| format!("Cannot read file '{path}': {e}"))?;
+        .map_err(|e| io_err("read file", path, e))?;
 
     // Mark as read for write/patch enforcement
     state.mark_read(path).await;
@@ -51,16 +53,16 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
         return Ok(format!("File '{path}' has {total} lines; start_line {start} is beyond the end."));
     }
 
-    let mut output = String::with_capacity(content.len() + total * 8);
-    for (i, line) in lines.iter().enumerate() {
-        let line_num = i + 1;
-        if line_num >= start && line_num <= end {
-            output.push_str(&format!("{line_num}: {line}\n"));
-        }
+    // Only iterate the requested slice (0-indexed: start-1 .. end)
+    let slice = &lines[start - 1..end.min(total)];
+    let mut output = String::with_capacity(slice.iter().map(|l| l.len() + 12).sum());
+    for (i, line) in slice.iter().enumerate() {
+        let line_num = start + i;
+        let _ = writeln!(output, "{line_num}: {line}");
     }
 
     if start > 1 || end < total {
-        output.push_str(&format!("\n[Showing lines {start}-{end} of {total}]"));
+        let _ = write!(output, "\n[Showing lines {start}-{end} of {total}]");
     }
 
     Ok(output)
