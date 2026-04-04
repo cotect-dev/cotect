@@ -323,3 +323,77 @@ fn truncate(s: &str, max: usize) -> String {
         format!("{truncated}...")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_truncate_short_string() {
+        assert_eq!(truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_at_boundary() {
+        assert_eq!(truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_long_string() {
+        let result = truncate("hello world", 5);
+        assert_eq!(result, "hello...");
+    }
+
+    #[test]
+    fn test_truncate_empty() {
+        assert_eq!(truncate("", 10), "");
+    }
+
+    #[test]
+    fn test_tool_error_tracker_records_errors() {
+        let mut tracker = ToolErrorTracker::new(3);
+        assert_eq!(tracker.remaining("read"), 3);
+
+        tracker.record_error("read");
+        assert_eq!(tracker.remaining("read"), 2);
+
+        tracker.record_error("read");
+        assert_eq!(tracker.remaining("read"), 1);
+
+        assert!(!tracker.limit_reached());
+
+        tracker.record_error("read");
+        assert_eq!(tracker.remaining("read"), 0);
+        assert!(tracker.limit_reached());
+    }
+
+    #[test]
+    fn test_tool_error_tracker_success_resets() {
+        let mut tracker = ToolErrorTracker::new(3);
+        tracker.record_error("read");
+        tracker.record_error("read");
+        assert_eq!(tracker.remaining("read"), 1);
+
+        tracker.record_success("read");
+        assert_eq!(tracker.remaining("read"), 3);
+    }
+
+    #[test]
+    fn test_tool_error_tracker_independent_tools() {
+        let mut tracker = ToolErrorTracker::new(3);
+        tracker.record_error("read");
+        tracker.record_error("read");
+        tracker.record_error("write");
+        assert_eq!(tracker.remaining("read"), 1);
+        assert_eq!(tracker.remaining("write"), 2);
+        assert_eq!(tracker.remaining("shell"), 3);
+    }
+
+    #[test]
+    fn test_tool_call_builder_default() {
+        let builder = ToolCallBuilder::default();
+        assert!(builder.id.is_empty());
+        assert!(builder.name.is_empty());
+        assert!(builder.arguments.is_empty());
+    }
+}

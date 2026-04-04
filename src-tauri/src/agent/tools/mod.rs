@@ -161,3 +161,125 @@ fn make_def<T: JsonSchema>(name: &str, description: &str) -> ToolDefinition {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_all_definitions_returns_6_tools() {
+        let defs = all_definitions();
+        assert_eq!(defs.len(), 6);
+    }
+
+    #[test]
+    fn test_all_definitions_have_function_type() {
+        for def in all_definitions() {
+            assert_eq!(def.def_type, "function");
+            assert!(!def.function.name.is_empty());
+            assert!(!def.function.description.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_definitions_for_implement_returns_all() {
+        let defs = definitions_for_role(AgentRole::Implement);
+        assert_eq!(defs.len(), 6);
+    }
+
+    #[test]
+    fn test_definitions_for_research_readonly() {
+        let defs = definitions_for_role(AgentRole::Research);
+        let names: Vec<&str> = defs.iter().map(|d| d.function.name.as_str()).collect();
+        assert!(names.contains(&"read"));
+        assert!(names.contains(&"fs_search"));
+        assert!(names.contains(&"fetch"));
+        assert!(!names.contains(&"write"));
+        assert!(!names.contains(&"patch"));
+        assert!(!names.contains(&"shell"));
+    }
+
+    #[test]
+    fn test_definitions_for_plan_readonly() {
+        let defs = definitions_for_role(AgentRole::Plan);
+        let names: Vec<&str> = defs.iter().map(|d| d.function.name.as_str()).collect();
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"read"));
+        assert!(names.contains(&"fs_search"));
+        assert!(names.contains(&"fetch"));
+    }
+
+    #[test]
+    fn test_extract_file_path_from_file_path_key() {
+        let func = super::super::types::FunctionCall {
+            name: "read".into(),
+            arguments: r#"{"file_path": "/tmp/test.txt"}"#.into(),
+        };
+        assert_eq!(extract_file_path(&func), Some("/tmp/test.txt".into()));
+    }
+
+    #[test]
+    fn test_extract_file_path_from_path_key() {
+        let func = super::super::types::FunctionCall {
+            name: "fs_search".into(),
+            arguments: r#"{"pattern": "test", "path": "/src"}"#.into(),
+        };
+        assert_eq!(extract_file_path(&func), Some("/src".into()));
+    }
+
+    #[test]
+    fn test_extract_file_path_missing() {
+        let func = super::super::types::FunctionCall {
+            name: "shell".into(),
+            arguments: r#"{"command": "ls"}"#.into(),
+        };
+        assert_eq!(extract_file_path(&func), None);
+    }
+
+    #[test]
+    fn test_extract_file_path_invalid_json() {
+        let func = super::super::types::FunctionCall {
+            name: "read".into(),
+            arguments: "not json".into(),
+        };
+        assert_eq!(extract_file_path(&func), None);
+    }
+
+    #[test]
+    fn test_tool_schemas_are_valid_json() {
+        for def in all_definitions() {
+            assert!(def.function.parameters.is_object(), "Schema for {} is not an object", def.function.name);
+            // Should not contain $schema key (OpenAI compat)
+            assert!(
+                def.function.parameters.get("$schema").is_none(),
+                "Schema for {} should not have $schema", def.function.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_unknown_tool_returns_error() {
+        let tool_call = super::super::types::ToolCall {
+            id: "call_1".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "nonexistent".into(),
+                arguments: "{}".into(),
+            },
+        };
+        let state = ToolState::new("/tmp".into());
+        let result = execute_tool(&tool_call, &state).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown tool"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_state_read_tracking() {
+        let state = ToolState::new("/project".into());
+        assert!(!state.has_read("/project/test.txt").await);
+
+        state.mark_read("/project/test.txt").await;
+        assert!(state.has_read("/project/test.txt").await);
+        assert!(!state.has_read("/project/other.txt").await);
+    }
+}
