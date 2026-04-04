@@ -99,3 +99,117 @@ async fn try_grep(input: &FSSearchInput, search_path: &str) -> Result<String, St
         Ok(truncate_bytes(&stdout, MAX_OUTPUT, &format!("Output truncated at {MAX_OUTPUT} bytes")))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn make_state_for(path: &str) -> Arc<ToolState> {
+        ToolState::new(path.into())
+    }
+
+    fn setup_search_dir() -> TempDir {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("hello.txt"), "hello world\nfoo bar\nhello again\n").unwrap();
+        std::fs::write(dir.path().join("test.rs"), "fn main() {\n    println!(\"test\");\n}\n").unwrap();
+        std::fs::write(dir.path().join("data.ts"), "export const x = 42;\nexport const y = 99;\n").unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn search_finds_pattern_in_files() {
+        let dir = setup_search_dir();
+        let state = make_state_for(dir.path().to_str().unwrap());
+
+        let input = FSSearchInput {
+            pattern: "hello".into(),
+            path: Some(dir.path().to_str().unwrap().into()),
+            glob: None,
+            context_lines: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("hello world"));
+        assert!(result.contains("hello again"));
+    }
+
+    #[tokio::test]
+    async fn search_no_matches() {
+        let dir = setup_search_dir();
+        let state = make_state_for(dir.path().to_str().unwrap());
+
+        let input = FSSearchInput {
+            pattern: "zzzznonexistent".into(),
+            path: Some(dir.path().to_str().unwrap().into()),
+            glob: None,
+            context_lines: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("No matches found"));
+    }
+
+    #[tokio::test]
+    async fn search_with_glob_filter() {
+        let dir = setup_search_dir();
+        let state = make_state_for(dir.path().to_str().unwrap());
+
+        let input = FSSearchInput {
+            pattern: "export".into(),
+            path: Some(dir.path().to_str().unwrap().into()),
+            glob: Some("*.ts".into()),
+            context_lines: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("export const x"));
+        // Should not match .rs or .txt files
+        assert!(!result.contains("fn main"));
+    }
+
+    #[tokio::test]
+    async fn search_with_context_lines() {
+        let dir = setup_search_dir();
+        let state = make_state_for(dir.path().to_str().unwrap());
+
+        let input = FSSearchInput {
+            pattern: "println".into(),
+            path: Some(dir.path().to_str().unwrap().into()),
+            glob: None,
+            context_lines: Some(1),
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("println"));
+        // Context lines may or may not be shown depending on rg vs grep availability
+    }
+
+    #[tokio::test]
+    async fn search_regex_pattern() {
+        let dir = setup_search_dir();
+        let state = make_state_for(dir.path().to_str().unwrap());
+
+        // Use POSIX-compatible regex that works with both rg and grep -E
+        let input = FSSearchInput {
+            pattern: r"const [a-zA-Z_]+ = [0-9]+".into(),
+            path: Some(dir.path().to_str().unwrap().into()),
+            glob: None,
+            context_lines: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("const x = 42"));
+        assert!(result.contains("const y = 99"));
+    }
+
+    #[tokio::test]
+    async fn search_defaults_to_root_path() {
+        let dir = setup_search_dir();
+        let state = make_state_for(dir.path().to_str().unwrap());
+
+        let input = FSSearchInput {
+            pattern: "foo bar".into(),
+            path: None, // Should use state.root_path
+            glob: None,
+            context_lines: None,
+        };
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("foo bar"));
+    }
+}

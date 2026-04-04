@@ -410,6 +410,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-store",
+ "tempfile",
  "tokio",
  "tokio-stream",
  "uuid",
