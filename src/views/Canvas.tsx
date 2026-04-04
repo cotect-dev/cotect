@@ -8,6 +8,7 @@ import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
 import WindowShell from '@/components/WindowShell'
 import { useCanvasKeyboard } from '@/hooks/useCanvasKeyboard'
 import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
+import { notifyCanvasScrolled } from '@/components/Canvas/nodes/CodeNode'
 
 const proOptions = { hideAttribution: true }
 
@@ -157,6 +158,12 @@ function CanvasFlow() {
     )
   }, [reactFlow])
 
+  // Whenever the canvas viewport moves (scroll, pan, animated navigation),
+  // tell CodeMirror editors to re-measure which lines are visible.
+  const handleViewportChange = useCallback(() => {
+    notifyCanvasScrolled()
+  }, [])
+
   // Report container height to the store so flattenAndRender can
   // compute where the visible area starts for the preview column.
   useEffect(() => {
@@ -203,6 +210,7 @@ function CanvasFlow() {
           disableKeyboardA11y={true}
           minZoom={1}
           maxZoom={1}
+          onViewportChange={handleViewportChange}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#555555" />
         </ReactFlow>

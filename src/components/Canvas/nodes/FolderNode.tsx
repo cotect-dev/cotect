@@ -16,15 +16,19 @@ export default memo(function FolderNode({ id, data }: NodeProps<FolderNode>) {
     store.navigateRight()
   }, [id])
 
+  const count = data.childCount
+
   return (
     <BaseNode
       icon={Folder}
       iconClassName="text-yellow-500"
       label={data.label}
+      borderClassName="border-border border-2"
       className={getNodeOpacity(flags)}
       focused={flags.isFocused}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
+      badge={count != null ? String(count) : undefined}
     />
   )
 })
