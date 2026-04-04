@@ -11,7 +11,7 @@ export interface PanelDefinition {
   fallbackPosition?: PanelPosition
 }
 
-export type PanelGroup = 'git' | 'tools'
+export type PanelGroup = 'git' | 'tools' | 'agent'
 
 export const PANEL_DEFINITIONS: (PanelDefinition & { group: PanelGroup })[] = [
   { id: 'changes', label: 'Changes', defaultPosition: 'left', group: 'git' },
@@ -19,6 +19,8 @@ export const PANEL_DEFINITIONS: (PanelDefinition & { group: PanelGroup })[] = [
   { id: 'branches', label: 'Branches', defaultPosition: 'left', group: 'git' },
   { id: 'chat', label: 'Chat', defaultPosition: 'right', group: 'tools' },
   { id: 'console', label: 'Console', defaultPosition: 'bottom', fallbackPosition: 'right', group: 'tools' },
+  { id: 'tasks', label: 'Tasks', defaultPosition: 'right', group: 'agent' },
+  { id: 'settings', label: 'Settings', defaultPosition: 'right', group: 'agent' },
 ]
 
 const POSITIONS: PanelPosition[] = ['left', 'right', 'bottom']
