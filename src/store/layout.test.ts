@@ -46,8 +46,8 @@ describe('layout store - pure functions', () => {
   })
 
   describe('PANEL_DEFINITIONS', () => {
-    it('has 5 panel definitions', () => {
-      expect(PANEL_DEFINITIONS).toHaveLength(5)
+    it('has 7 panel definitions', () => {
+      expect(PANEL_DEFINITIONS).toHaveLength(7)
     })
 
     it('all panels have required fields', () => {
@@ -55,7 +55,7 @@ describe('layout store - pure functions', () => {
         expect(def.id).toBeTruthy()
         expect(def.label).toBeTruthy()
         expect(['left', 'right', 'bottom']).toContain(def.defaultPosition)
-        expect(['git', 'tools']).toContain(def.group)
+        expect(['git', 'tools', 'agent']).toContain(def.group)
       }
     })
   })
