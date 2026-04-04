@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use super::types::{AgentRole, TaskScope};
 
 /// Environment information for system prompt construction.
@@ -104,42 +106,42 @@ fn scope_context_block(scope: &TaskScope, file_contents: &[(String, String)]) ->
     let mut block = String::from("## Architecture Context\n\n");
 
     if let Some(dir) = &scope.directory {
-        block.push_str(&format!("### Current Focus Directory: {dir}\n\n"));
+        let _ = write!(block, "### Current Focus Directory: {dir}\n\n");
     }
 
     if !scope.files.is_empty() {
         block.push_str("### Files in Scope\n");
         for f in &scope.files {
-            block.push_str(&format!("- {f}\n"));
+            let _ = writeln!(block, "- {f}");
         }
         block.push('\n');
     }
 
-    // Include full file contents for focused files
     for (path, content) in file_contents {
         let line_count = content.lines().count();
-        block.push_str(&format!(
+        let _ = write!(
+            block,
             "### File: {path} ({line_count} lines)\n\n\
              <file path=\"{path}\">\n\
              {content}\n\
              </file>\n\n"
-        ));
+        );
     }
 
-    // Include declarations
     if !scope.declarations.is_empty() {
         block.push_str("### Declarations\n");
         for decl in &scope.declarations {
-            block.push_str(&format!(
-                "- {} {} in {} [line {}]\n",
+            let _ = writeln!(
+                block,
+                "- {} {} in {} [line {}]",
                 decl.kind, decl.name, decl.file_path, decl.line
-            ));
+            );
         }
         block.push('\n');
     }
 
     if let Some(desc) = &scope.description {
-        block.push_str(&format!("### User Description\n{desc}\n\n"));
+        let _ = write!(block, "### User Description\n{desc}\n\n");
     }
 
     block

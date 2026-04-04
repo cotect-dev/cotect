@@ -4,6 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::ToolState;
+use crate::agent::utils::{io_err, read_first_err};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FSPatchInput {
@@ -20,14 +21,12 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
 
     // Read-before-edit enforcement
     if !state.has_read(path).await {
-        return Err(format!(
-            "You must read '{path}' before patching it. Use the read tool first."
-        ));
+        return Err(read_first_err(path, "patching"));
     }
 
     let content = tokio::fs::read_to_string(path)
         .await
-        .map_err(|e| format!("Cannot read file '{path}': {e}"))?;
+        .map_err(|e| io_err("read file", path, e))?;
 
     if input.old_string == input.new_string {
         return Err("old_string and new_string are identical. No change needed.".into());
@@ -43,7 +42,7 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
             let new_content = content.replacen(&input.old_string, &input.new_string, 1);
             tokio::fs::write(path, &new_content)
                 .await
-                .map_err(|e| format!("Cannot write file '{path}': {e}"))?;
+                .map_err(|e| io_err("write file", path, e))?;
             Ok(format!("Successfully patched '{path}'."))
         }
         n => Err(format!(

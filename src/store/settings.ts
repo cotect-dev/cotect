@@ -20,84 +20,69 @@ interface SettingsState {
 }
 
 export const useSettingsStore = createStoreWithHMR(import.meta.hot, 'settings', () =>
-  create<SettingsState>((set, get) => ({
-    config: null,
-    loading: false,
-    testResult: null,
-    testing: false,
-
-    loadConfig: async () => {
-      set({ loading: true })
-      try {
-        const config = await agentService.getConfig()
-        set({ config, loading: false })
-      } catch (err) {
-        console.error('Failed to load agent config:', err)
-        set({ loading: false })
-      }
-    },
-
-    saveConfig: async (config) => {
-      await agentService.setConfig(config)
-      set({ config })
-    },
-
-    addProvider: async (provider) => {
-      const { config } = get()
+  create<SettingsState>((set, get) => {
+    /** Apply a config mutation and persist it. Noop if config isn't loaded. */
+    async function mutateConfig(fn: (config: AgentConfig) => AgentConfig) {
+      const { config, saveConfig } = get()
       if (!config) return
-      const newConfig: AgentConfig = {
-        ...config,
-        providers: [...config.providers, provider],
-      }
-      await get().saveConfig(newConfig)
-    },
+      await saveConfig(fn(config))
+    }
 
-    removeProvider: async (id) => {
-      const { config } = get()
-      if (!config) return
-      const newConfig: AgentConfig = {
-        ...config,
-        providers: config.providers.filter((p) => p.id !== id),
-        active_provider_id:
-          config.active_provider_id === id
-            ? config.providers.find((p) => p.id !== id)?.id ?? ''
-            : config.active_provider_id,
-      }
-      await get().saveConfig(newConfig)
-    },
+    return {
+      config: null,
+      loading: false,
+      testResult: null,
+      testing: false,
 
-    updateProvider: async (id, updates) => {
-      const { config } = get()
-      if (!config) return
-      const newConfig: AgentConfig = {
-        ...config,
-        providers: config.providers.map((p) =>
-          p.id === id ? { ...p, ...updates } : p,
-        ),
-      }
-      await get().saveConfig(newConfig)
-    },
+      loadConfig: async () => {
+        set({ loading: true })
+        try {
+          const config = await agentService.getConfig()
+          set({ config, loading: false })
+        } catch (err) {
+          console.error('Failed to load agent config:', err)
+          set({ loading: false })
+        }
+      },
 
-    setActiveProvider: async (id) => {
-      const { config } = get()
-      if (!config) return
-      const newConfig: AgentConfig = {
-        ...config,
-        active_provider_id: id,
-      }
-      await get().saveConfig(newConfig)
-    },
+      saveConfig: async (config) => {
+        await agentService.setConfig(config)
+        set({ config })
+      },
 
-    testProvider: async (config) => {
-      set({ testing: true, testResult: null })
-      try {
-        const models = await agentService.testConnection(config)
-        set({ testResult: { models }, testing: false })
-      } catch (err) {
-        set({ testResult: { models: [], error: String(err) }, testing: false })
-      }
-    },
+      addProvider: (provider) =>
+        mutateConfig((c) => ({ ...c, providers: [...c.providers, provider] })),
 
-    clearTestResult: () => set({ testResult: null }),
-  })),
+      removeProvider: (id) =>
+        mutateConfig((c) => ({
+          ...c,
+          providers: c.providers.filter((p) => p.id !== id),
+          active_provider_id:
+            c.active_provider_id === id
+              ? c.providers.find((p) => p.id !== id)?.id ?? ''
+              : c.active_provider_id,
+        })),
+
+      updateProvider: (id, updates) =>
+        mutateConfig((c) => ({
+          ...c,
+          providers: c.providers.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+        })),
+
+      setActiveProvider: (id) =>
+        mutateConfig((c) => ({ ...c, active_provider_id: id })),
+
+      testProvider: async (config) => {
+        set({ testing: true, testResult: null })
+        try {
+          const models = await agentService.testConnection(config)
+          set({ testResult: { models }, testing: false })
+        } catch (err) {
+          set({ testResult: { models: [], error: String(err) }, testing: false })
+        }
+      },
+
+      clearTestResult: () => set({ testResult: null }),
+    }
+  }),
 )

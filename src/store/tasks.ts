@@ -98,21 +98,21 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
 
     clearCompleted: () => {
       const { tasks, _listeners } = get()
-      const toRemove = tasks.filter((t) => t.status !== 'running' && t.status !== 'pending')
-      for (const t of toRemove) {
-        _listeners[t.id]?.()
+      const isActive = (t: TaskEntry) => t.status === 'running' || t.status === 'pending'
+      for (const t of tasks) {
+        if (!isActive(t)) _listeners[t.id]?.()
       }
-      const remaining = tasks.filter((t) => t.status === 'running' || t.status === 'pending')
-      const remainingListeners = { ..._listeners }
-      for (const t of toRemove) {
-        delete remainingListeners[t.id]
-      }
-      set({ tasks: remaining, _listeners: remainingListeners })
+      const keepIds = new Set(tasks.filter(isActive).map((t) => t.id))
+      set({
+        tasks: tasks.filter((t) => keepIds.has(t.id)),
+        _listeners: Object.fromEntries(
+          Object.entries(_listeners).filter(([k]) => keepIds.has(k)),
+        ),
+      })
     },
 
     removeTask: (id) => {
-      const { _listeners } = get()
-      _listeners[id]?.()
+      get()._listeners[id]?.()
       set((s) => ({
         tasks: s.tasks.filter((t) => t.id !== id),
         _listeners: Object.fromEntries(
@@ -123,117 +123,85 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
   })),
 )
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Apply a partial update to a single task by id. */
+function updateTask(taskId: string, updater: (task: TaskEntry) => Partial<TaskEntry>) {
+  useTasksStore.setState((s) => ({
+    tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, ...updater(t) } : t)),
+  }))
+}
+
+/** Unsubscribe a task's event listener and remove it from the listener map. */
+function detachListener(taskId: string) {
+  const { _listeners } = useTasksStore.getState()
+  _listeners[taskId]?.()
+  useTasksStore.setState((s) => ({
+    _listeners: Object.fromEntries(
+      Object.entries(s._listeners).filter(([k]) => k !== taskId),
+    ),
+  }))
+}
+
 // ─── Event handler ───────────────────────────────────────────────────────────
 
 function handleTaskEvent(taskId: string, event: TaskEvent) {
-  const { tasks, _listeners } = useTasksStore.getState()
-
-  // Find the task — bail if it's already been removed
+  const { tasks } = useTasksStore.getState()
   if (!tasks.find((t) => t.id === taskId)) return
 
   switch (event.type) {
     case 'text':
-      if (event.partial) {
-        // Streaming delta — append
-        useTasksStore.setState((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === taskId ? { ...t, text: t.text + event.content } : t,
-          ),
-        }))
-      } else {
-        // Full text — replace
-        useTasksStore.setState((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === taskId ? { ...t, text: event.content } : t,
-          ),
-        }))
-      }
+      updateTask(taskId, (t) => ({
+        text: event.partial ? t.text + event.content : event.content,
+      }))
       break
 
     case 'reasoning':
-      useTasksStore.setState((s) => ({
-        tasks: s.tasks.map((t) =>
-          t.id === taskId ? { ...t, reasoning: t.reasoning + event.content } : t,
-        ),
-      }))
+      updateTask(taskId, (t) => ({ reasoning: t.reasoning + event.content }))
       break
 
     case 'tool_start':
-      useTasksStore.setState((s) => ({
-        tasks: s.tasks.map((t) =>
-          t.id === taskId
-            ? {
-                ...t,
-                toolActivity: [
-                  ...t.toolActivity,
-                  {
-                    tool_name: event.tool_name,
-                    file_path: event.file_path,
-                    description: event.description,
-                    timestamp: Date.now(),
-                  },
-                ],
-              }
-            : t,
-        ),
+      updateTask(taskId, (t) => ({
+        toolActivity: [
+          ...t.toolActivity,
+          {
+            tool_name: event.tool_name,
+            file_path: event.file_path,
+            description: event.description,
+            timestamp: Date.now(),
+          },
+        ],
       }))
       break
 
-    case 'tool_end': {
-      useTasksStore.setState((s) => ({
-        tasks: s.tasks.map((t) => {
-          if (t.id !== taskId) return t
-          // Update the last matching tool_start entry
-          const activity = [...t.toolActivity]
-          for (let i = activity.length - 1; i >= 0; i--) {
-            if (activity[i].tool_name === event.tool_name && activity[i].success === undefined) {
-              activity[i] = {
-                ...activity[i],
-                success: event.success,
-                output: event.output,
-              }
-              break
-            }
+    case 'tool_end':
+      updateTask(taskId, (t) => {
+        const activity = [...t.toolActivity]
+        for (let i = activity.length - 1; i >= 0; i--) {
+          if (activity[i].tool_name === event.tool_name && activity[i].success === undefined) {
+            activity[i] = { ...activity[i], success: event.success, output: event.output }
+            break
           }
-          return { ...t, toolActivity: activity }
-        }),
-      }))
+        }
+        return { toolActivity: activity }
+      })
       break
-    }
 
     case 'error':
-      useTasksStore.setState((s) => ({
-        tasks: s.tasks.map((t) =>
-          t.id === taskId ? { ...t, error: event.message } : t,
-        ),
-      }))
+      updateTask(taskId, () => ({ error: event.message }))
       break
 
     case 'complete':
-      _listeners[taskId]?.()
-      useTasksStore.setState((s) => ({
-        tasks: s.tasks.map((t) =>
-          t.id === taskId
-            ? { ...t, status: 'completed' as const, completedAt: Date.now() }
-            : t,
-        ),
-        _listeners: Object.fromEntries(
-          Object.entries(s._listeners).filter(([k]) => k !== taskId),
-        ),
-      }))
+      detachListener(taskId)
+      updateTask(taskId, () => ({ status: 'completed' as const, completedAt: Date.now() }))
       break
 
     case 'interrupted':
-      _listeners[taskId]?.()
-      useTasksStore.setState((s) => ({
-        tasks: s.tasks.map((t) =>
-          t.id === taskId
-            ? { ...t, status: 'interrupted' as const, error: event.reason, completedAt: Date.now() }
-            : t,
-        ),
-        _listeners: Object.fromEntries(
-          Object.entries(s._listeners).filter(([k]) => k !== taskId),
-        ),
+      detachListener(taskId)
+      updateTask(taskId, () => ({
+        status: 'interrupted' as const,
+        error: event.reason,
+        completedAt: Date.now(),
       }))
       break
   }

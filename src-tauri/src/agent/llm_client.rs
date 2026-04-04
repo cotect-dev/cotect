@@ -166,7 +166,7 @@ async fn stream_sse_events(
         // Process complete lines
         while let Some(newline_pos) = buffer.find('\n') {
             let line = buffer[..newline_pos].trim().to_string();
-            buffer = buffer[newline_pos + 1..].to_string();
+            buffer.drain(..=newline_pos);
 
             if line.is_empty() {
                 continue;

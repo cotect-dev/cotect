@@ -1,4 +1,5 @@
 use super::types::{ChatMessage, Role, ToolCall, ToolDefinition};
+use super::utils::truncate_chars;
 
 /// Manages the conversation context (message list + tool definitions).
 /// Handles token estimation and context compaction.
@@ -20,12 +21,12 @@ impl ConversationContext {
         }
     }
 
-    pub fn messages(&self) -> Vec<ChatMessage> {
-        self.messages.clone()
+    pub fn messages(&self) -> &[ChatMessage] {
+        &self.messages
     }
 
-    pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.tool_defs.clone()
+    pub fn tool_definitions(&self) -> &[ToolDefinition] {
+        &self.tool_defs
     }
 
     /// Add a user message.
@@ -89,11 +90,11 @@ impl ConversationContext {
         for msg in &self.messages[mid_start..mid_end] {
             match msg.role {
                 Role::User => {
-                    let preview = truncate_str(&msg.content, 200);
+                    let preview = truncate_chars(&msg.content, 200);
                     summary_parts.push(format!("User: {preview}"));
                 }
                 Role::Assistant => {
-                    let preview = truncate_str(&msg.content, 200);
+                    let preview = truncate_chars(&msg.content, 200);
                     if let Some(calls) = &msg.tool_calls {
                         let tool_names: Vec<&str> =
                             calls.iter().map(|c| c.function.name.as_str()).collect();
@@ -104,7 +105,7 @@ impl ConversationContext {
                     }
                 }
                 Role::Tool => {
-                    let preview = truncate_str(&msg.content, 100);
+                    let preview = truncate_chars(&msg.content, 100);
                     summary_parts.push(format!("Tool result: {preview}"));
                 }
                 Role::System => {}
@@ -124,15 +125,6 @@ impl ConversationContext {
         self.messages.push(system_msg);
         self.messages.push(ChatMessage::user(summary));
         self.messages.extend(tail);
-    }
-}
-
-fn truncate_str(s: &str, max_chars: usize) -> String {
-    if s.len() <= max_chars {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max_chars).collect();
-        format!("{}...", truncated)
     }
 }
 
