@@ -1,6 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::agent::utils::truncate_bytes;
+
 const MAX_RESPONSE: usize = 100 * 1024; // 100 KB
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -38,14 +40,5 @@ pub async fn execute(input: &FetchInput) -> Result<String, String> {
         .await
         .map_err(|e| format!("Failed to read response body: {e}"))?;
 
-    let result = if body.len() > MAX_RESPONSE {
-        format!(
-            "{}\n\n[Response truncated at {MAX_RESPONSE} bytes]",
-            &body[..MAX_RESPONSE]
-        )
-    } else {
-        body
-    };
-
-    Ok(result)
+    Ok(truncate_bytes(&body, MAX_RESPONSE, &format!("Response truncated at {MAX_RESPONSE} bytes")))
 }

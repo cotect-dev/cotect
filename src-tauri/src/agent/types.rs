@@ -122,16 +122,17 @@ impl AgentConfig {
 
 // ─── LLM message types (internal) ───────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
+    #[default]
     System,
     User,
     Assistant,
     Tool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ChatMessage {
     pub role: Role,
     #[serde(default)]
@@ -146,46 +147,23 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     pub fn system(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::System,
-            content: content.into(),
-            tool_calls: None,
-            tool_call_id: None,
-            name: None,
-        }
+        Self { role: Role::System, content: content.into(), ..Default::default() }
     }
 
     pub fn user(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::User,
-            content: content.into(),
-            tool_calls: None,
-            tool_call_id: None,
-            name: None,
-        }
+        Self { role: Role::User, content: content.into(), ..Default::default() }
     }
 
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::Assistant,
-            content: content.into(),
-            tool_calls: None,
-            tool_call_id: None,
-            name: None,
-        }
+        Self { role: Role::Assistant, content: content.into(), ..Default::default() }
     }
 
     pub fn assistant_with_tools(content: impl Into<String>, tool_calls: Vec<ToolCall>) -> Self {
         Self {
             role: Role::Assistant,
             content: content.into(),
-            tool_calls: if tool_calls.is_empty() {
-                None
-            } else {
-                Some(tool_calls)
-            },
-            tool_call_id: None,
-            name: None,
+            tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
+            ..Default::default()
         }
     }
 
@@ -193,9 +171,8 @@ impl ChatMessage {
         Self {
             role: Role::Tool,
             content: content.into(),
-            tool_calls: None,
             tool_call_id: Some(tool_call_id.into()),
-            name: None,
+            ..Default::default()
         }
     }
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -10,6 +10,7 @@ use super::retry::retry_with_backoff;
 use super::system_prompt::{self, EnvironmentInfo};
 use super::tools::{self, ToolState};
 use super::types::*;
+use super::utils::truncate_chars;
 
 /// Tracks per-tool error counts to enforce error budgets.
 #[derive(Debug, Default)]
@@ -109,8 +110,8 @@ impl Orchestrator {
             }
 
             // 2. Call LLM with retry
-            let messages = self.context.messages();
-            let tool_defs = self.context.tool_definitions();
+            let messages = self.context.messages().to_vec();
+            let tool_defs = self.context.tool_definitions().to_vec();
 
             let rx = retry_with_backoff(
                 || self.llm.chat_stream(messages.clone(), Some(tool_defs.clone()), 0.5),
@@ -147,8 +148,8 @@ impl Orchestrator {
                     let result = tools::execute_tool(tool_call, &self.tool_state).await;
 
                     let (success, output_preview) = match &result {
-                        Ok(output) => (true, Some(truncate(output, 500))),
-                        Err(e) => (false, Some(truncate(e, 500))),
+                        Ok(output) => (true, Some(truncate_chars(output, 500))),
+                        Err(e) => (false, Some(truncate_chars(e, 500))),
                     };
 
                     self.sender
@@ -231,7 +232,7 @@ impl Orchestrator {
         mut rx: mpsc::Receiver<LlmStreamEvent>,
     ) -> anyhow::Result<LlmTurnResult> {
         let mut result = LlmTurnResult::default();
-        let mut tool_call_builders: HashMap<usize, ToolCallBuilder> = HashMap::new();
+        let mut tool_call_builders: BTreeMap<usize, ToolCallBuilder> = BTreeMap::new();
 
         while let Some(event) = rx.recv().await {
             match event {
@@ -277,20 +278,16 @@ impl Orchestrator {
             }
         }
 
-        // Finalize tool calls from builders
-        let mut indices: Vec<usize> = tool_call_builders.keys().copied().collect();
-        indices.sort();
-        for idx in indices {
-            if let Some(builder) = tool_call_builders.remove(&idx) {
-                result.tool_calls.push(ToolCall {
-                    id: builder.id,
-                    call_type: "function".into(),
-                    function: FunctionCall {
-                        name: builder.name,
-                        arguments: builder.arguments,
-                    },
-                });
-            }
+        // Finalize tool calls from builders (BTreeMap iterates in order)
+        for (_, builder) in tool_call_builders {
+            result.tool_calls.push(ToolCall {
+                id: builder.id,
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: builder.name,
+                    arguments: builder.arguments,
+                },
+            });
         }
 
         // Send final text if any accumulated
@@ -315,39 +312,9 @@ struct ToolCallBuilder {
     arguments: String,
 }
 
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max).collect();
-        format!("{truncated}...")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_truncate_short_string() {
-        assert_eq!(truncate("hello", 10), "hello");
-    }
-
-    #[test]
-    fn test_truncate_at_boundary() {
-        assert_eq!(truncate("hello", 5), "hello");
-    }
-
-    #[test]
-    fn test_truncate_long_string() {
-        let result = truncate("hello world", 5);
-        assert_eq!(result, "hello...");
-    }
-
-    #[test]
-    fn test_truncate_empty() {
-        assert_eq!(truncate("", 10), "");
-    }
 
     #[test]
     fn test_tool_error_tracker_records_errors() {

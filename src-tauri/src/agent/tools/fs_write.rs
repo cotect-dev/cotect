@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::ToolState;
+use crate::agent::utils::{io_err, read_first_err};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FSWriteInput {
@@ -20,21 +21,19 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
     // Read-before-edit enforcement: reject writes to files not previously read
     let file_exists = tokio::fs::metadata(path).await.is_ok();
     if file_exists && !state.has_read(path).await {
-        return Err(format!(
-            "You must read '{path}' before writing to it. Use the read tool first."
-        ));
+        return Err(read_first_err(path, "writing to"));
     }
 
     // Create parent directories if needed
     if let Some(parent) = Path::new(path).parent() {
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|e| format!("Cannot create directory for '{path}': {e}"))?;
+            .map_err(|e| io_err("create directory for", path, e))?;
     }
 
     tokio::fs::write(path, &input.content)
         .await
-        .map_err(|e| format!("Cannot write file '{path}': {e}"))?;
+        .map_err(|e| io_err("write file", path, e))?;
 
     let line_count = input.content.lines().count();
     Ok(format!("Successfully wrote {line_count} lines to '{path}'."))

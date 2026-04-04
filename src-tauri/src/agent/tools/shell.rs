@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use super::ToolState;
+use crate::agent::utils::truncate_bytes;
 
 const TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_OUTPUT: usize = 100 * 1024; // 100 KB
@@ -44,30 +45,14 @@ pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<Strin
             let mut result = String::new();
 
             if !stdout.is_empty() {
-                let out = if stdout.len() > MAX_OUTPUT {
-                    format!(
-                        "{}\n\n[stdout truncated at {MAX_OUTPUT} bytes]",
-                        &stdout[..MAX_OUTPUT]
-                    )
-                } else {
-                    stdout.into_owned()
-                };
-                result.push_str(&out);
+                result.push_str(&truncate_bytes(&stdout, MAX_OUTPUT, &format!("stdout truncated at {MAX_OUTPUT} bytes")));
             }
 
             if !stderr.is_empty() {
                 if !result.is_empty() {
                     result.push_str("\n\n--- stderr ---\n");
                 }
-                let err = if stderr.len() > MAX_OUTPUT {
-                    format!(
-                        "{}\n\n[stderr truncated at {MAX_OUTPUT} bytes]",
-                        &stderr[..MAX_OUTPUT]
-                    )
-                } else {
-                    stderr.into_owned()
-                };
-                result.push_str(&err);
+                result.push_str(&truncate_bytes(&stderr, MAX_OUTPUT, &format!("stderr truncated at {MAX_OUTPUT} bytes")));
             }
 
             if result.is_empty() {
@@ -76,12 +61,7 @@ pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<Strin
                 result.push_str(&format!("\n\n[exit code: {exit_code}]"));
             }
 
-            if exit_code == 0 {
-                Ok(result)
-            } else {
-                // Return as Ok but with error indication — the LLM should see the output
-                Ok(result)
-            }
+            Ok(result)
         }
         Ok(Err(e)) => Err(format!("Failed to execute command: {e}")),
         Err(_) => Err(format!(

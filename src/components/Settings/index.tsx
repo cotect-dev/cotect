@@ -2,7 +2,10 @@ import { useState, useCallback, useEffect } from 'react'
 import { useSettingsStore } from '@/store/settings'
 import type { ProviderConfig } from '@/services/agent'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+
+const INPUT_CLASS =
+  'h-7 px-2 text-xs rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary'
+const MONO_INPUT_CLASS = `${INPUT_CLASS} font-mono`
 
 // ─── Provider form ───────────────────────────────────────────────────────────
 
@@ -57,7 +60,7 @@ function ProviderForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="My Provider"
-          className="h-7 px-2 text-xs rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          className={INPUT_CLASS}
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -66,7 +69,7 @@ function ProviderForm({
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
           placeholder="http://localhost:11434/v1"
-          className="h-7 px-2 text-xs rounded border border-border bg-background text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+          className={MONO_INPUT_CLASS}
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -76,7 +79,7 @@ function ProviderForm({
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="sk-..."
-          className="h-7 px-2 text-xs rounded border border-border bg-background text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+          className={MONO_INPUT_CLASS}
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -86,7 +89,7 @@ function ProviderForm({
             value={model}
             onChange={(e) => setModel(e.target.value)}
             placeholder="e.g., gpt-4o, llama3.1"
-            className="flex-1 h-7 px-2 text-xs rounded border border-border bg-background text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+            className={`flex-1 ${MONO_INPUT_CLASS}`}
           />
         </div>
       </div>
