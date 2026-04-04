@@ -8,5 +8,6 @@ pub mod doom_loop;
 pub mod retry;
 pub mod system_prompt;
 pub mod commands;
+mod eval;
 
 pub use commands::AgentState;
