@@ -7,7 +7,8 @@
 #
 # Required:
 #   --endpoint URL    OpenAI-compatible API endpoint (e.g., http://localhost:11434/v1)
-#   --model NAME      Model name (e.g., llama3, gpt-4o, claude-sonnet-4-20250514)
+#                     Also accepts LM Studio URLs like http://host:1234/api/v1/models
+#   --model NAME      Model name (e.g., llama3, gpt-4o, google/gemma-4-26b-a4b)
 #
 # Optional:
 #   --api-key KEY     API key / bearer token (omit for local Ollama)
@@ -26,6 +27,9 @@
 #
 #   # OpenAI
 #   ./scripts/eval-model.sh --endpoint https://api.openai.com/v1 --model gpt-4o --api-key sk-...
+#
+#   # LM Studio (accepts /api/v1/models URL directly)
+#   ./scripts/eval-model.sh --endpoint http://localhost:1234/api/v1/models --model google/gemma-4-26b-a4b
 #
 #   # Single scenario
 #   ./scripts/eval-model.sh --endpoint http://localhost:11434/v1 --model llama3 --scenario read_file
@@ -73,6 +77,13 @@ if [[ -z "$ENDPOINT" || -z "$MODEL" ]]; then
     echo "Error: --endpoint and --model are required." >&2
     echo "Run with --help for usage." >&2
     exit 1
+fi
+
+# Normalize endpoint: strip trailing /models, convert /api/v1 → /v1
+ENDPOINT="${ENDPOINT%/}"
+ENDPOINT="${ENDPOINT%/models}"
+if [[ "$ENDPOINT" == */api/v1 ]]; then
+    ENDPOINT="${ENDPOINT%/api/v1}/v1"
 fi
 
 # Export environment variables

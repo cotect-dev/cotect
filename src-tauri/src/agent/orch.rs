@@ -50,7 +50,7 @@ pub struct Orchestrator {
     llm: LlmClient,
     context: ConversationContext,
     tool_state: Arc<ToolState>,
-    sender: mpsc::Sender<TaskEvent>,
+    sender: mpsc::UnboundedSender<TaskEvent>,
     error_tracker: ToolErrorTracker,
     doom_detector: DoomLoopDetector,
     max_turns: usize,
@@ -60,7 +60,7 @@ impl Orchestrator {
     pub fn new(
         provider: &ProviderConfig,
         request: &TaskRequest,
-        sender: mpsc::Sender<TaskEvent>,
+        sender: mpsc::UnboundedSender<TaskEvent>,
     ) -> Self {
         let llm = LlmClient::new(provider);
         let tool_defs = tools::definitions_for_role(request.role);
@@ -116,7 +116,7 @@ impl Orchestrator {
             let tool_defs = self.context.tool_definitions().to_vec();
 
             let rx = retry_with_backoff(
-                || self.llm.chat_stream(messages.clone(), Some(tool_defs.clone()), 0.5),
+                || self.llm.chat_stream(messages.clone(), Some(tool_defs.clone()), 1.0),
                 3,
                 500,
             )
@@ -130,17 +130,19 @@ impl Orchestrator {
             let has_tools = !turn.tool_calls.is_empty();
             let has_content = !turn.content.trim().is_empty();
 
-            is_complete = (finish == Some("stop") || finish == Some("end_turn")) && !has_tools;
+            // "stop", "end_turn", or stream ended cleanly (None) with no tool calls = done
+            is_complete = (finish == Some("stop") || finish == Some("end_turn")
+                || (finish.is_none() && !has_tools))
+                && !has_tools;
             should_yield = is_complete;
 
-            // Stream-level timeout: the server stopped sending bytes for 60s.
+            // Stream-level timeout: the server stopped sending bytes mid-stream.
             // Don't retry — the inference server is stalled.
             if finish == Some("timeout") {
                 self.sender
                     .send(TaskEvent::Interrupted {
-                        reason: "LLM server stopped responding (60s idle timeout).".into(),
+                        reason: "LLM server stopped responding (stream idle timeout).".into(),
                     })
-                    .await
                     .ok();
                 should_yield = true;
             }
@@ -162,7 +164,6 @@ impl Orchestrator {
                             .send(TaskEvent::Interrupted {
                                 reason: "Model repeatedly hit token limit without producing output.".into(),
                             })
-                            .await
                             .ok();
                         should_yield = true;
                     } else {
@@ -182,7 +183,6 @@ impl Orchestrator {
                         .send(TaskEvent::Interrupted {
                             reason: "Model produced no output for multiple consecutive turns.".into(),
                         })
-                        .await
                         .ok();
                     should_yield = true;
                 }
@@ -205,7 +205,6 @@ impl Orchestrator {
                             file_path: file_path.clone(),
                             description: None,
                         })
-                        .await
                         .ok();
 
                     let result = tools::execute_tool(tool_call, &self.tool_state).await;
@@ -222,7 +221,6 @@ impl Orchestrator {
                             success,
                             output: output_preview,
                         })
-                        .await
                         .ok();
 
                     // Build tool result message with error budget info
@@ -258,7 +256,6 @@ impl Orchestrator {
                     .send(TaskEvent::Interrupted {
                         reason: "Too many tool errors. Stopping.".into(),
                     })
-                    .await
                     .ok();
                 should_yield = true;
             }
@@ -270,7 +267,6 @@ impl Orchestrator {
                     .send(TaskEvent::Interrupted {
                         reason: format!("Reached maximum turn limit ({}).", self.max_turns),
                     })
-                    .await
                     .ok();
                 should_yield = true;
             }
@@ -282,7 +278,7 @@ impl Orchestrator {
         }
 
         if is_complete {
-            self.sender.send(TaskEvent::Complete).await.ok();
+            self.sender.send(TaskEvent::Complete).ok();
         }
 
         Ok(())
@@ -292,7 +288,7 @@ impl Orchestrator {
     /// and accumulating tool calls. Returns the full turn result.
     async fn consume_stream(
         &self,
-        mut rx: mpsc::Receiver<LlmStreamEvent>,
+        mut rx: mpsc::UnboundedReceiver<LlmStreamEvent>,
     ) -> anyhow::Result<LlmTurnResult> {
         let mut result = LlmTurnResult::default();
         let mut tool_call_builders: BTreeMap<usize, ToolCallBuilder> = BTreeMap::new();
@@ -306,14 +302,12 @@ impl Orchestrator {
                             content: text,
                             partial: true,
                         })
-                        .await
                         .ok();
                 }
                 LlmStreamEvent::ReasoningDelta(text) => {
                     result.reasoning.push_str(&text);
                     self.sender
                         .send(TaskEvent::Reasoning { content: text })
-                        .await
                         .ok();
                 }
                 LlmStreamEvent::ToolCallDelta {
@@ -381,7 +375,6 @@ impl Orchestrator {
                     content: result.content.clone(),
                     partial: false,
                 })
-                .await
                 .ok();
         }
 
@@ -520,14 +513,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_text_only() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, mut task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, mut task_rx) = mpsc::unbounded_channel();
 
         // Simulate LLM sending text deltas
         tokio::spawn(async move {
-            tx.send(LlmStreamEvent::TextDelta("Hello ".into())).await.ok();
-            tx.send(LlmStreamEvent::TextDelta("world!".into())).await.ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("stop".into()) }).await.ok();
+            tx.send(LlmStreamEvent::TextDelta("Hello ".into())).ok();
+            tx.send(LlmStreamEvent::TextDelta("world!".into())).ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("stop".into()) }).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -549,8 +542,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_tool_calls() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, _task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, _task_rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
             tx.send(LlmStreamEvent::ToolCallDelta {
@@ -558,14 +551,14 @@ mod tests {
                 id: Some("call_1".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file"#.into(),
-            }).await.ok();
+            }).ok();
             tx.send(LlmStreamEvent::ToolCallDelta {
                 index: 0,
                 id: None,
                 name: None,
                 arguments_chunk: r#"_path":"/tmp/test"}"#.into(),
-            }).await.ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+            }).ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -579,8 +572,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_multiple_tool_calls() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, _task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, _task_rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
             tx.send(LlmStreamEvent::ToolCallDelta {
@@ -588,14 +581,14 @@ mod tests {
                 id: Some("c1".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file_path":"a.txt"}"#.into(),
-            }).await.ok();
+            }).ok();
             tx.send(LlmStreamEvent::ToolCallDelta {
                 index: 1,
                 id: Some("c2".into()),
                 name: Some("shell".into()),
                 arguments_chunk: r#"{"command":"ls"}"#.into(),
-            }).await.ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+            }).ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -608,15 +601,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_reasoning() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, mut task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, mut task_rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
-            tx.send(LlmStreamEvent::ReasoningDelta("I think ".into())).await.ok();
-            tx.send(LlmStreamEvent::ReasoningDelta("this is ".into())).await.ok();
-            tx.send(LlmStreamEvent::ReasoningDelta("important.".into())).await.ok();
-            tx.send(LlmStreamEvent::TextDelta("The answer is 42.".into())).await.ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("stop".into()) }).await.ok();
+            tx.send(LlmStreamEvent::ReasoningDelta("I think ".into())).ok();
+            tx.send(LlmStreamEvent::ReasoningDelta("this is ".into())).ok();
+            tx.send(LlmStreamEvent::ReasoningDelta("important.".into())).ok();
+            tx.send(LlmStreamEvent::TextDelta("The answer is 42.".into())).ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("stop".into()) }).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -635,12 +628,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_error() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, _task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, _task_rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
-            tx.send(LlmStreamEvent::TextDelta("partial".into())).await.ok();
-            tx.send(LlmStreamEvent::Error("connection lost".into())).await.ok();
+            tx.send(LlmStreamEvent::TextDelta("partial".into())).ok();
+            tx.send(LlmStreamEvent::Error("connection lost".into())).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -652,11 +645,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_empty_done() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, _task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, _task_rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
-            tx.send(LlmStreamEvent::Done { finish_reason: None }).await.ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: None }).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -669,22 +662,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_text_and_tools_mixed() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, _task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, _task_rx) = mpsc::unbounded_channel();
 
         // Simulates a degenerate model that emits both content and tool calls
         // (e.g., Gemma 4 hallucinating content before tool results arrive).
         // The orchestrator should discard the hallucinated content.
         tokio::spawn(async move {
-            tx.send(LlmStreamEvent::TextDelta("Let me read ".into())).await.ok();
-            tx.send(LlmStreamEvent::TextDelta("the file.".into())).await.ok();
+            tx.send(LlmStreamEvent::TextDelta("Let me read ".into())).ok();
+            tx.send(LlmStreamEvent::TextDelta("the file.".into())).ok();
             tx.send(LlmStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("c1".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file_path":"test.txt"}"#.into(),
-            }).await.ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+            }).ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -700,8 +693,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_deduplicates_identical_tool_calls() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, _task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, _task_rx) = mpsc::unbounded_channel();
 
         // Simulates Gemma 4 emitting the same tool call 5 times
         tokio::spawn(async move {
@@ -711,9 +704,9 @@ mod tests {
                     id: Some(format!("call_{i}")),
                     name: Some("read".into()),
                     arguments_chunk: r#"{"file_path":"/tmp/test.txt"}"#.into(),
-                }).await.ok();
+                }).ok();
             }
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -726,8 +719,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_keeps_distinct_tool_calls() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, _task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, _task_rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
             tx.send(LlmStreamEvent::ToolCallDelta {
@@ -735,14 +728,14 @@ mod tests {
                 id: Some("c1".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file_path":"a.txt"}"#.into(),
-            }).await.ok();
+            }).ok();
             tx.send(LlmStreamEvent::ToolCallDelta {
                 index: 1,
                 id: Some("c2".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file_path":"b.txt"}"#.into(),
-            }).await.ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+            }).ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -754,8 +747,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_consume_stream_caps_tool_calls_at_5() {
-        let (tx, rx) = mpsc::channel(32);
-        let (task_tx, _task_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (task_tx, _task_rx) = mpsc::unbounded_channel();
 
         // 8 distinct tool calls
         tokio::spawn(async move {
@@ -765,9 +758,9 @@ mod tests {
                     id: Some(format!("c{i}")),
                     name: Some("read".into()),
                     arguments_chunk: format!(r#"{{"file_path":"file_{i}.txt"}}"#),
-                }).await.ok();
+                }).ok();
             }
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).await.ok();
+            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -779,7 +772,7 @@ mod tests {
 
     // ─── Helper ─────────────────────────────────────────────────────────
 
-    fn make_test_orchestrator(sender: mpsc::Sender<TaskEvent>) -> Orchestrator {
+    fn make_test_orchestrator(sender: mpsc::UnboundedSender<TaskEvent>) -> Orchestrator {
         let provider = ProviderConfig {
             id: "test".into(),
             name: "Test".into(),

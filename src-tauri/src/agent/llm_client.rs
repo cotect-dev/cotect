@@ -21,16 +21,32 @@ struct ChatCompletionRequest {
     stream: bool,
     temperature: f32,
     max_tokens: u32,
+    /// Controls reasoning/thinking token budget. Set to "none" to disable
+    /// extended thinking on reasoning models (e.g., Gemma 4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct ModelsResponse {
+    /// OpenAI-standard format uses "data", LM Studio uses "models".
+    #[serde(default)]
     data: Vec<ModelEntry>,
+    #[serde(default)]
+    models: Vec<LmStudioModelEntry>,
 }
 
 #[derive(Deserialize)]
 struct ModelEntry {
     id: String,
+}
+
+#[derive(Deserialize)]
+struct LmStudioModelEntry {
+    key: String,
+    /// Only include LLM-type models, not embeddings.
+    #[serde(default)]
+    r#type: Option<String>,
 }
 
 // SSE chunk types for streaming
@@ -72,11 +88,36 @@ struct StreamFunctionDelta {
     arguments: Option<String>,
 }
 
+/// Normalize an endpoint URL to the OpenAI-compatible base path.
+///
+/// Handles common variations:
+/// - Strips trailing `/models` (user may paste the models listing URL)
+/// - Converts LM Studio's `/api/v1` to `/v1` (LM Studio uses `/api/v1` for its
+///   native API but `/v1` for the OpenAI-compatible chat/completions endpoint)
+/// - Strips trailing slashes
+fn normalize_endpoint(raw: &str) -> String {
+    let mut endpoint = raw.trim_end_matches('/').to_string();
+
+    // Strip trailing /models suffix (user may have pasted the models URL)
+    if endpoint.ends_with("/models") {
+        endpoint.truncate(endpoint.len() - "/models".len());
+    }
+
+    // LM Studio serves its native API at /api/v1 but OpenAI-compatible
+    // endpoints at /v1. Rewrite so chat/completions hits the right path.
+    if endpoint.ends_with("/api/v1") {
+        let base = &endpoint[..endpoint.len() - "/api/v1".len()];
+        endpoint = format!("{base}/v1");
+    }
+
+    endpoint
+}
+
 impl LlmClient {
     pub fn new(config: &ProviderConfig) -> Self {
         Self {
             http: Client::new(),
-            endpoint: config.endpoint.trim_end_matches('/').to_string(),
+            endpoint: normalize_endpoint(&config.endpoint),
             api_key: config.api_key.clone(),
             model: config.model.clone(),
         }
@@ -88,7 +129,7 @@ impl LlmClient {
         messages: Vec<ChatMessage>,
         tools: Option<Vec<ToolDefinition>>,
         temperature: f32,
-    ) -> Result<mpsc::Receiver<LlmStreamEvent>> {
+    ) -> Result<mpsc::UnboundedReceiver<LlmStreamEvent>> {
         let url = format!("{}/chat/completions", self.endpoint);
 
         let body = ChatCompletionRequest {
@@ -97,7 +138,8 @@ impl LlmClient {
             tools,
             stream: true,
             temperature,
-            max_tokens: 16384,
+            max_tokens: 2048,
+            reasoning_effort: None,
         };
 
         let mut request = self.http.post(&url).json(&body);
@@ -116,11 +158,11 @@ impl LlmClient {
             bail!("LLM API error {status}: {body}");
         }
 
-        let (tx, rx) = mpsc::channel(256);
+        let (tx, rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
             if let Err(e) = stream_sse_events(response, &tx).await {
-                let _ = tx.send(LlmStreamEvent::Error(e.to_string())).await;
+                let _ = tx.send(LlmStreamEvent::Error(e.to_string()));
             }
         });
 
@@ -128,41 +170,82 @@ impl LlmClient {
     }
 
     /// Fetch available models from the /models endpoint.
+    /// Tries the OpenAI-compatible `/v1/models` first, then falls back to
+    /// LM Studio's native `/api/v1/models` endpoint.
     pub async fn list_models(&self) -> Result<Vec<String>> {
-        let url = format!("{}/models", self.endpoint);
-        let mut request = self.http.get(&url);
-        if let Some(key) = &self.api_key {
-            request = request.bearer_auth(key);
+        // Build fallback URL: replace trailing /v1 with /api/v1
+        let lm_studio_url = if self.endpoint.ends_with("/v1") {
+            let base = &self.endpoint[..self.endpoint.len() - "/v1".len()];
+            format!("{base}/api/v1/models")
+        } else {
+            // No /v1 suffix — skip fallback
+            String::new()
+        };
+
+        let mut urls = vec![format!("{}/models", self.endpoint)];
+        if !lm_studio_url.is_empty() {
+            urls.push(lm_studio_url);
         }
 
-        let resp = request
-            .send()
-            .await
-            .context("Failed to connect to models endpoint")?;
+        let mut last_err = None;
+        for url in &urls {
+            let mut request = self.http.get(url);
+            if let Some(key) = &self.api_key {
+                request = request.bearer_auth(key);
+            }
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            bail!("Models API error {status}: {body}");
+            let resp = match request.send().await {
+                Ok(r) if r.status().is_success() => r,
+                Ok(r) => {
+                    let status = r.status();
+                    let body = r.text().await.unwrap_or_default();
+                    last_err = Some(format!("Models API error {status}: {body}"));
+                    continue;
+                }
+                Err(e) => {
+                    last_err = Some(format!("Failed to connect to models endpoint: {e}"));
+                    continue;
+                }
+            };
+
+            let models: ModelsResponse =
+                resp.json().await.context("Failed to parse models response")?;
+
+            // Merge results from both "data" (OpenAI) and "models" (LM Studio) fields
+            let mut ids: Vec<String> = models.data.into_iter().map(|m| m.id).collect();
+            ids.extend(
+                models
+                    .models
+                    .into_iter()
+                    .filter(|m| m.r#type.as_deref() != Some("embedding"))
+                    .map(|m| m.key),
+            );
+
+            if !ids.is_empty() {
+                return Ok(ids);
+            }
         }
 
-        let models: ModelsResponse = resp.json().await.context("Failed to parse models response")?;
-        Ok(models.data.into_iter().map(|m| m.id).collect())
+        bail!(last_err.unwrap_or_else(|| "No models found".into()))
     }
 }
 
 /// Parse SSE lines from the response body and emit LlmStreamEvents.
-/// Uses a 60-second inactivity timeout — if no bytes arrive for 60s,
-/// the stream is considered dead and a Done event is sent.
+///
+/// Uses a 5-second inactivity timeout — if no bytes arrive for 5s during
+/// an active stream, the connection is considered dead.
+///
+/// Sends events via an unbounded channel so the SSE parser never blocks,
+/// regardless of how fast or slow the consumer drains events.
 async fn stream_sse_events(
     response: reqwest::Response,
-    tx: &mpsc::Sender<LlmStreamEvent>,
+    tx: &mpsc::UnboundedSender<LlmStreamEvent>,
 ) -> Result<()> {
     use tokio_stream::StreamExt;
 
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
-    let idle_timeout = std::time::Duration::from_secs(60);
+    let idle_timeout = std::time::Duration::from_secs(5);
 
     loop {
         let chunk = tokio::time::timeout(idle_timeout, stream.next()).await;
@@ -179,11 +262,10 @@ async fn stream_sse_events(
                 break;
             }
             Err(_) => {
-                // 60s with no bytes — server is stalled
+                // 5s with no bytes — server is stalled
                 tx.send(LlmStreamEvent::Done {
                     finish_reason: Some("timeout".into()),
                 })
-                .await
                 .ok();
                 return Ok(());
             }
@@ -200,6 +282,11 @@ async fn stream_sse_events(
 
             if let Some(data) = line.strip_prefix("data: ") {
                 if data == "[DONE]" {
+                    // Send Done explicitly — don't rely solely on channel close
+                    tx.send(LlmStreamEvent::Done {
+                        finish_reason: None,
+                    })
+                    .ok();
                     return Ok(());
                 }
 
@@ -210,7 +297,6 @@ async fn stream_sse_events(
                             if let Some(text) = &choice.delta.content {
                                 if !text.is_empty() {
                                     tx.send(LlmStreamEvent::TextDelta(text.clone()))
-                                        .await
                                         .ok();
                                 }
                             }
@@ -218,9 +304,10 @@ async fn stream_sse_events(
                             // Reasoning content
                             if let Some(reasoning) = &choice.delta.reasoning_content {
                                 if !reasoning.is_empty() {
-                                    tx.send(LlmStreamEvent::ReasoningDelta(reasoning.clone()))
-                                        .await
-                                        .ok();
+                                    tx.send(
+                                        LlmStreamEvent::ReasoningDelta(reasoning.clone()),
+                                    )
+                                    .ok();
                                 }
                             }
 
@@ -236,7 +323,6 @@ async fn stream_sse_events(
                                             .and_then(|f| f.arguments.clone())
                                             .unwrap_or_default(),
                                     })
-                                    .await
                                     .ok();
                                 }
                             }
@@ -246,7 +332,6 @@ async fn stream_sse_events(
                                 tx.send(LlmStreamEvent::Done {
                                     finish_reason: Some(reason.clone()),
                                 })
-                                .await
                                 .ok();
                             }
                         }
@@ -263,7 +348,6 @@ async fn stream_sse_events(
     tx.send(LlmStreamEvent::Done {
         finish_reason: None,
     })
-    .await
     .ok();
 
     Ok(())
