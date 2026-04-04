@@ -265,3 +265,160 @@ pub struct LlmTurnResult {
     pub tool_calls: Vec<ToolCall>,
     pub finish_reason: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_chat_message_system() {
+        let msg = ChatMessage::system("You are helpful");
+        assert_eq!(msg.role, Role::System);
+        assert_eq!(msg.content, "You are helpful");
+        assert!(msg.tool_calls.is_none());
+        assert!(msg.tool_call_id.is_none());
+    }
+
+    #[test]
+    fn test_chat_message_user() {
+        let msg = ChatMessage::user("Hello");
+        assert_eq!(msg.role, Role::User);
+        assert_eq!(msg.content, "Hello");
+    }
+
+    #[test]
+    fn test_chat_message_assistant() {
+        let msg = ChatMessage::assistant("Hi there");
+        assert_eq!(msg.role, Role::Assistant);
+        assert_eq!(msg.content, "Hi there");
+        assert!(msg.tool_calls.is_none());
+    }
+
+    #[test]
+    fn test_chat_message_assistant_with_tools() {
+        let calls = vec![ToolCall {
+            id: "call_1".into(),
+            call_type: "function".into(),
+            function: FunctionCall {
+                name: "read".into(),
+                arguments: r#"{"file_path": "/test"}"#.into(),
+            },
+        }];
+        let msg = ChatMessage::assistant_with_tools("", calls.clone());
+        assert_eq!(msg.role, Role::Assistant);
+        assert!(msg.tool_calls.is_some());
+        assert_eq!(msg.tool_calls.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_chat_message_assistant_with_empty_tools() {
+        let msg = ChatMessage::assistant_with_tools("text", vec![]);
+        assert!(msg.tool_calls.is_none());
+    }
+
+    #[test]
+    fn test_chat_message_tool_result() {
+        let msg = ChatMessage::tool_result("call_1", "File contents here");
+        assert_eq!(msg.role, Role::Tool);
+        assert_eq!(msg.tool_call_id.as_deref(), Some("call_1"));
+        assert_eq!(msg.content, "File contents here");
+    }
+
+    #[test]
+    fn test_estimated_tokens_text_only() {
+        let msg = ChatMessage::user("Hello world test"); // 16 chars -> 16/4 + 1 = 5
+        let tokens = msg.estimated_tokens();
+        assert!(tokens >= 4 && tokens <= 6);
+    }
+
+    #[test]
+    fn test_estimated_tokens_with_tool_calls() {
+        let msg = ChatMessage::assistant_with_tools(
+            "",
+            vec![ToolCall {
+                id: "c1".into(),
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: "read".into(),
+                    arguments: r#"{"file_path":"/very/long/path/to/file.txt"}"#.into(),
+                },
+            }],
+        );
+        // Should count tool call name + arguments as part of tokens
+        assert!(msg.estimated_tokens() > 1);
+    }
+
+    #[test]
+    fn test_agent_config_default() {
+        let config = AgentConfig::default();
+        assert_eq!(config.providers.len(), 1);
+        assert_eq!(config.providers[0].id, "ollama");
+        assert_eq!(config.active_provider_id, "ollama");
+    }
+
+    #[test]
+    fn test_agent_config_active_provider() {
+        let config = AgentConfig::default();
+        let active = config.active_provider();
+        assert!(active.is_some());
+        assert_eq!(active.unwrap().id, "ollama");
+    }
+
+    #[test]
+    fn test_agent_config_active_provider_missing() {
+        let config = AgentConfig {
+            providers: vec![],
+            active_provider_id: "nonexistent".into(),
+        };
+        assert!(config.active_provider().is_none());
+    }
+
+    #[test]
+    fn test_task_event_serialization() {
+        let event = TaskEvent::Text {
+            content: "hello".into(),
+            partial: true,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains(r#""type":"text""#));
+        assert!(json.contains(r#""partial":true"#));
+    }
+
+    #[test]
+    fn test_task_event_error_serialization() {
+        let event = TaskEvent::Error {
+            message: "something broke".into(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains(r#""type":"error""#));
+    }
+
+    #[test]
+    fn test_task_event_complete_serialization() {
+        let event = TaskEvent::Complete;
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains(r#""type":"complete""#));
+    }
+
+    #[test]
+    fn test_agent_role_serialization() {
+        let role = AgentRole::Implement;
+        let json = serde_json::to_string(&role).unwrap();
+        assert_eq!(json, r#""implement""#);
+    }
+
+    #[test]
+    fn test_agent_role_deserialization() {
+        let role: AgentRole = serde_json::from_str(r#""research""#).unwrap();
+        assert_eq!(role, AgentRole::Research);
+    }
+
+    #[test]
+    fn test_llm_turn_result_default() {
+        let result = LlmTurnResult::default();
+        assert!(result.content.is_empty());
+        assert!(result.reasoning.is_empty());
+        assert!(result.tool_calls.is_empty());
+        assert!(result.finish_reason.is_none());
+    }
+}
