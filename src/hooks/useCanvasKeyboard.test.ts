@@ -42,7 +42,6 @@ describe('useCanvasKeyboard', () => {
       columns: [],
       currentColumnIndex: 0,
       depthChain: [],
-      selectedFunction: null,
       hiddenNodeIds: new Set(),
     })
     vi.clearAllMocks()

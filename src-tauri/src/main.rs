@@ -63,6 +63,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::read_directory,
             commands::read_file_content,
+            commands::read_file_head,
+            commands::read_binary_file,
             commands::is_wayland,
             commands::get_cursor_window,
             commands::get_window_monitor,

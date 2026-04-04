@@ -75,6 +75,10 @@ export interface Platform {
 
   fs: {
     readFile(path: string): Promise<string>
+    /** Read at most maxBytes from the start of a file.
+     *  Returns the content (truncated at a UTF-8 boundary) and total file size. */
+    readFileHead(path: string, maxBytes: number): Promise<{ content: string; totalBytes: number }>
+    readBinaryFile(path: string): Promise<Uint8Array>
     writeFile(path: string, content: string): Promise<void>
     readDirectory(path: string): Promise<FSEntry[]>
     showFolderDialog(title: string): Promise<string | null>

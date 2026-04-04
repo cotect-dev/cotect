@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Node } from '@xyflow/react'
-import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
+import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
 
 // --- Mocks ---
 
@@ -12,19 +12,16 @@ vi.mock('web-tree-sitter', () => ({
 
 const mockReadDirectory = vi.fn()
 const mockReadFile = vi.fn()
+const mockReadBinaryFile = vi.fn()
 
 vi.mock('@/services/platform', () => ({
   getPlatform: () => ({
     fs: {
       readDirectory: mockReadDirectory,
       readFile: mockReadFile,
+      readBinaryFile: mockReadBinaryFile,
     },
   }),
-}))
-
-const mockAnalyzeFile = vi.fn()
-vi.mock('@/services/treesitter', () => ({
-  analyzeFile: (...args: unknown[]) => mockAnalyzeFile(...args),
 }))
 
 import { useCanvasStore, type Column } from './canvas'
@@ -40,7 +37,6 @@ function resetStore() {
     columns: [],
     currentColumnIndex: 0,
     depthChain: [],
-    selectedFunction: null,
     hiddenNodeIds: new Set(),
     viewportHeight: 0,
     cameraY: CANVAS_PAD_Y,
@@ -379,21 +375,6 @@ describe('initRoot', () => {
     expect(state.focusedNodeId).toBeNull()
   })
 
-  it('clears selectedFunction on init', async () => {
-    useCanvasStore.setState({
-      selectedFunction: {
-        filePath: '/old', name: 'old', startLine: 0, endLine: 0,
-        content: '', fullFileContent: '',
-      },
-    })
-
-    mockReadDirectory.mockResolvedValue([])
-
-    await useCanvasStore.getState().initRoot('/proj')
-
-    expect(useCanvasStore.getState().selectedFunction).toBeNull()
-  })
-
   it('handles errors gracefully', async () => {
     mockReadDirectory.mockRejectedValue(new Error('network error'))
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -468,22 +449,15 @@ describe('navigateRight', () => {
     expect(state.depthChain).toContain('/proj/src')
   })
 
-  it('navigates into a file and builds function nodes', async () => {
+  it('navigates into a file and builds code node', async () => {
 
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'app.ts', path: '/proj/app.ts', isDirectory: false },
     ]))
-    mockAnalyzeFile.mockResolvedValue({
-      declarations: [
-        { name: 'doStuff', kind: 'function', startLine: 0, endLine: 5, children: [] },
-        { name: 'MyClass', kind: 'class', startLine: 7, endLine: 20, children: [] },
-      ],
-      imports: [],
-    })
 
     await useCanvasStore.getState().initRoot('/proj')
 
-    // File content for buildFileNodes
+    // File content for buildFileNode
     mockReadFile.mockResolvedValue('const x = 1;\n'.repeat(25))
 
     await useCanvasStore.getState().navigateRight()
@@ -493,10 +467,9 @@ describe('navigateRight', () => {
     const fileCol = state.columns[1]
     expect(fileCol).toBeDefined()
     expect(fileCol.kind).toBe('file')
-    // Should have both a function and a class node
-    const types = fileCol.nodes.map((n) => n.type)
-    expect(types).toContain('functionNode')
-    expect(types).toContain('classNode')
+    // Should have a single full-file code node
+    expect(fileCol.nodes).toHaveLength(1)
+    expect(fileCol.nodes[0].type).toBe('codeNode')
   })
 
   it('blocks navigation into import file nodes', async () => {
@@ -517,53 +490,6 @@ describe('navigateRight', () => {
     await useCanvasStore.getState().navigateRight()
 
     // Should NOT have navigated
-    expect(useCanvasStore.getState().currentColumnIndex).toBe(0)
-  })
-
-  it('navigates into function node and builds code node', async () => {
-    const funcNode: AppNode = {
-      id: 'decl:/proj/app.ts:doStuff:0', type: 'functionNode', position: { x: 0, y: 0 },
-      data: { label: 'doStuff', kind: 'function', startLine: 0, endLine: 2 },
-    }
-
-    const fileCol: Column = { path: '/proj/app.ts', kind: 'file', nodes: [funcNode], edges: [] }
-    useCanvasStore.setState({
-      columns: [fileCol],
-      currentColumnIndex: 0,
-      focusedNodeId: funcNode.id,
-      nodes: [{ ...funcNode, data: { ...funcNode.data } } as Node],
-    })
-
-    mockReadFile.mockResolvedValue('function doStuff() {\n  return 1\n}\n')
-
-    await useCanvasStore.getState().navigateRight()
-
-    const state = useCanvasStore.getState()
-    expect(state.currentColumnIndex).toBe(1)
-    expect(state.columns[1].kind).toBe('code')
-    expect(state.selectedFunction).toBeDefined()
-    expect(state.selectedFunction!.name).toBe('doStuff')
-    expect(state.selectedFunction!.content).toBe('function doStuff() {\n  return 1\n}')
-  })
-
-  it('does not navigate into function node from non-file column', async () => {
-    const funcNode: AppNode = {
-      id: 'decl:/proj/app.ts:doStuff:0', type: 'functionNode', position: { x: 0, y: 0 },
-      data: { label: 'doStuff', kind: 'function', startLine: 0, endLine: 2 },
-    }
-
-    // Column kind is 'directory', not 'file'
-    const dirCol: Column = { path: '/proj', kind: 'directory', nodes: [funcNode], edges: [] }
-    useCanvasStore.setState({
-      columns: [dirCol],
-      currentColumnIndex: 0,
-      focusedNodeId: funcNode.id,
-      nodes: [{ ...funcNode, data: { ...funcNode.data } } as Node],
-    })
-
-    await useCanvasStore.getState().navigateRight()
-
-    // Should NOT navigate (guard: currentCol.kind !== 'file')
     expect(useCanvasStore.getState().currentColumnIndex).toBe(0)
   })
 
@@ -669,23 +595,6 @@ describe('navigateLeft', () => {
     expect(useCanvasStore.getState().focusedNodeId).toBe('node1')
   })
 
-  it('clears selectedFunction on navigate left', () => {
-    useCanvasStore.setState({
-      columns: [
-        { path: '/proj', kind: 'directory', nodes: [], edges: [] },
-        { path: '/proj/src', kind: 'directory', nodes: [], edges: [] },
-      ],
-      currentColumnIndex: 1,
-      selectedFunction: {
-        filePath: '/proj/app.ts', name: 'fn', startLine: 0, endLine: 5,
-        content: 'code', fullFileContent: 'all code',
-      },
-    })
-
-    useCanvasStore.getState().navigateLeft()
-
-    expect(useCanvasStore.getState().selectedFunction).toBeNull()
-  })
 })
 
 // ============================================================================
@@ -721,22 +630,6 @@ describe('toggleHideNode', () => {
     })
     useCanvasStore.getState().toggleHideNode()
     expect(useCanvasStore.getState().hiddenNodeIds.has('node1')).toBe(false)
-  })
-})
-
-// ============================================================================
-// Tests for clearSelectedFunction
-// ============================================================================
-describe('clearSelectedFunction', () => {
-  it('clears the selected function', () => {
-    useCanvasStore.setState({
-      selectedFunction: {
-        filePath: '/f', name: 'fn', startLine: 0, endLine: 5,
-        content: 'code', fullFileContent: 'all',
-      },
-    })
-    useCanvasStore.getState().clearSelectedFunction()
-    expect(useCanvasStore.getState().selectedFunction).toBeNull()
   })
 })
 
@@ -799,10 +692,6 @@ describe('updatePreview', () => {
     })
 
     mockReadFile.mockResolvedValue('function hello() {}')
-    mockAnalyzeFile.mockResolvedValue({
-      declarations: [{ name: 'hello', kind: 'function', startLine: 0, endLine: 0, children: [] }],
-      imports: [],
-    })
 
     await useCanvasStore.getState().updatePreview()
 
@@ -875,44 +764,6 @@ describe('updatePreview', () => {
     await useCanvasStore.getState().updatePreview()
 
     // Should have trimmed — no preview for import nodes
-    expect(useCanvasStore.getState().columns).toHaveLength(1)
-  })
-
-  it('loads preview for function node in file column', async () => {
-    const funcNode: AppNode = {
-      id: 'decl:/proj/app.ts:doStuff:0', type: 'functionNode', position: { x: 0, y: 0 },
-      data: { label: 'doStuff', kind: 'function', startLine: 0, endLine: 2 },
-    }
-    useCanvasStore.setState({
-      focusedNodeId: funcNode.id,
-      columns: [{ path: '/proj/app.ts', kind: 'file', nodes: [funcNode], edges: [] }],
-      currentColumnIndex: 0,
-    })
-
-    mockReadFile.mockResolvedValue('function doStuff() {\n  return 1\n}\nconst x = 2')
-
-    await useCanvasStore.getState().updatePreview()
-
-    const state = useCanvasStore.getState()
-    expect(state.columns).toHaveLength(2)
-    expect(state.columns[1].kind).toBe('code')
-  })
-
-  it('does not load preview for function node in non-file column', async () => {
-    const funcNode: AppNode = {
-      id: 'decl:/proj/app.ts:doStuff:0', type: 'functionNode', position: { x: 0, y: 0 },
-      data: { label: 'doStuff', kind: 'function', startLine: 0, endLine: 2 },
-    }
-    useCanvasStore.setState({
-      focusedNodeId: funcNode.id,
-      // Column kind is 'directory', not 'file'
-      columns: [{ path: '/proj', kind: 'directory', nodes: [funcNode], edges: [] }],
-      currentColumnIndex: 0,
-    })
-
-    await useCanvasStore.getState().updatePreview()
-
-    // Should have trimmed — no preview available for function in directory column
     expect(useCanvasStore.getState().columns).toHaveLength(1)
   })
 
@@ -1119,7 +970,7 @@ describe('flattenAndRender', () => {
     const prev1 = state.nodes.find((n) => n.id === 'prev1')!
 
     expect(prev0.position.y).toBe(0)
-    expect(prev1.position.y).toBe(NODE_HEIGHT + NODE_V_GAP)
+    expect(prev1.position.y).toBe(NODE_HEIGHT + NODE_V_GAP_SMALL)
   })
 
   it('preview column offsets when focused node is far down the list', () => {
@@ -1143,8 +994,8 @@ describe('flattenAndRender', () => {
     const prev0 = state.nodes.find((n) => n.id === 'prev0')!
 
     // n-19 is now hidden (toggleHideNode added it), ordered = [n-0..n-18, n-19].
-    // n-19 is at index 19: Y = 19 * 72 = 1368
-    const focusedY = 19 * (NODE_HEIGHT + NODE_V_GAP)
+    // n-19 is at index 19 (all folders, so small gap): Y = 19 * (56 + 4) = 1140
+    const focusedY = 19 * (NODE_HEIGHT + NODE_V_GAP_SMALL)
     // Camera clamps: newCameraY = viewportH - CANVAS_MARGIN - focusedY - NODE_HEIGHT
     const expectedCameraY = viewportH - CANVAS_MARGIN - focusedY - NODE_HEIGHT
     const expectedPreviewY = Math.max(0, -expectedCameraY + CANVAS_PAD_Y)
@@ -1299,7 +1150,6 @@ describe('buildFileNodes', () => {
     })
 
     mockReadFile.mockResolvedValue('{\n  "key": "value"\n}\n')
-    mockAnalyzeFile.mockResolvedValue({ declarations: [], imports: [] })
 
     await useCanvasStore.getState().navigateRight()
 
@@ -1312,174 +1162,6 @@ describe('buildFileNodes', () => {
     expect(data.code).toBe('{\n  "key": "value"\n}\n')
   })
 
-  it('creates edges from class to method nodes', async () => {
-    const fileNode: AppNode = {
-      id: '/proj/app.ts', type: 'file', position: { x: 0, y: 0 },
-      data: { label: 'app.ts', path: '/proj/app.ts' },
-    }
-
-    useCanvasStore.setState({
-      columns: [{ path: '/proj', kind: 'directory', nodes: [fileNode], edges: [] }],
-      currentColumnIndex: 0,
-      focusedNodeId: '/proj/app.ts',
-      nodes: [{ ...fileNode, data: { ...fileNode.data } } as Node],
-    })
-
-    mockReadFile.mockResolvedValue('class Foo { bar() {} baz() {} }')
-    mockAnalyzeFile.mockResolvedValue({
-      declarations: [{
-        name: 'Foo', kind: 'class', startLine: 0, endLine: 10,
-        children: [
-          { name: 'bar', kind: 'function', startLine: 1, endLine: 3, children: [] },
-          { name: 'baz', kind: 'function', startLine: 5, endLine: 7, children: [] },
-        ],
-      }],
-      imports: [],
-    })
-
-    await useCanvasStore.getState().navigateRight()
-
-    const state = useCanvasStore.getState()
-    const fileCol = state.columns[1]
-    // 1 class + 2 methods = 3 nodes
-    expect(fileCol.nodes).toHaveLength(3)
-    // Should have 2 edges (class -> bar, class -> baz)
-    expect(fileCol.edges).toHaveLength(2)
-    for (const edge of fileCol.edges) {
-      expect(edge.source).toContain('Foo')
-    }
-  })
-})
-
-// ============================================================================
-// Tests for buildCodeNode line extraction
-// ============================================================================
-describe('buildCodeNode line extraction', () => {
-  beforeEach(() => {
-    resetStore()
-    vi.clearAllMocks()
-  })
-
-  it('extracts correct lines using 0-indexed startLine/endLine', async () => {
-    const funcNode: AppNode = {
-      id: 'decl:/proj/app.ts:myFunc:2', type: 'functionNode', position: { x: 0, y: 0 },
-      data: { label: 'myFunc', kind: 'function', startLine: 2, endLine: 4 },
-    }
-
-    useCanvasStore.setState({
-      columns: [{ path: '/proj/app.ts', kind: 'file', nodes: [funcNode], edges: [] }],
-      currentColumnIndex: 0,
-      focusedNodeId: funcNode.id,
-      nodes: [{ ...funcNode, data: { ...funcNode.data } } as Node],
-    })
-
-    // Lines: 0='import x', 1='', 2='function myFunc() {', 3='  return 1', 4='}', 5='export default myFunc'
-    mockReadFile.mockResolvedValue('import x\n\nfunction myFunc() {\n  return 1\n}\nexport default myFunc')
-
-    await useCanvasStore.getState().navigateRight()
-
-    const state = useCanvasStore.getState()
-    expect(state.selectedFunction).toBeDefined()
-    // 0-indexed: slice(2, 5) = lines 2, 3, 4
-    expect(state.selectedFunction!.content).toBe('function myFunc() {\n  return 1\n}')
-    expect(state.selectedFunction!.startLine).toBe(2)
-    expect(state.selectedFunction!.endLine).toBe(4)
-    expect(state.selectedFunction!.fullFileContent).toBe('import x\n\nfunction myFunc() {\n  return 1\n}\nexport default myFunc')
-  })
-
-  it('handles function at start of file (startLine 0)', async () => {
-    const funcNode: AppNode = {
-      id: 'decl:/proj/app.ts:main:0', type: 'functionNode', position: { x: 0, y: 0 },
-      data: { label: 'main', kind: 'function', startLine: 0, endLine: 1 },
-    }
-
-    useCanvasStore.setState({
-      columns: [{ path: '/proj/app.ts', kind: 'file', nodes: [funcNode], edges: [] }],
-      currentColumnIndex: 0,
-      focusedNodeId: funcNode.id,
-      nodes: [{ ...funcNode, data: { ...funcNode.data } } as Node],
-    })
-
-    mockReadFile.mockResolvedValue('function main() {\n  return 0\n}\n')
-
-    await useCanvasStore.getState().navigateRight()
-
-    const state = useCanvasStore.getState()
-    expect(state.selectedFunction!.content).toBe('function main() {\n  return 0')
-  })
-})
-
-// ============================================================================
-// Tests for promotion path line indexing bug
-// ============================================================================
-describe('navigateRight promotion path line indexing', () => {
-  beforeEach(() => {
-    resetStore()
-    vi.clearAllMocks()
-  })
-
-  it('should extract same content via promotion as via fresh buildCodeNode', async () => {
-    // This test verifies whether the promotion path (lines 389-391 in canvas.ts)
-    // uses the same indexing as buildCodeNode (line 186).
-    // buildCodeNode: lines.slice(startLine, endLine + 1) — treats as 0-indexed
-    // promotion: lines.slice(startLine - 1, endLine) — treats as 1-indexed
-    // These produce DIFFERENT content for the same function, which is a bug.
-
-    const funcNode: AppNode = {
-      id: 'decl:/proj/app.ts:myFunc:2', type: 'functionNode', position: { x: 0, y: 0 },
-      data: { label: 'myFunc', kind: 'function', startLine: 2, endLine: 4 },
-    }
-    const codeNode: AppNode = {
-      id: 'code:/proj/app.ts:myFunc', type: 'codeNode', position: { x: 0, y: 0 },
-      data: { label: 'myFunc', filePath: '/proj/app.ts', code: 'function myFunc() {\n  return 1\n}', startLine: 2, endLine: 4 },
-    }
-
-    // Pre-existing preview column with code
-    const fileCol: Column = { path: '/proj/app.ts', kind: 'file', nodes: [funcNode], edges: [] }
-    const previewCol: Column = { path: '/proj/app.ts:myFunc', kind: 'code', nodes: [codeNode], edges: [] }
-
-    useCanvasStore.setState({
-      columns: [fileCol, previewCol],
-      currentColumnIndex: 0,
-      depthChain: ['/proj/app.ts'],
-      focusedNodeId: funcNode.id,
-      nodes: [
-        { ...funcNode, data: { ...funcNode.data } } as Node,
-      ],
-    })
-
-    // File content for the promotion path to re-read
-    const fileContent = 'import x\n\nfunction myFunc() {\n  return 1\n}\nexport default myFunc'
-    mockReadFile.mockResolvedValue(fileContent)
-
-    await useCanvasStore.getState().navigateRight()
-
-    const state = useCanvasStore.getState()
-    expect(state.selectedFunction).toBeDefined()
-
-    // The correct content (from buildCodeNode, 0-indexed) should be:
-    // lines.slice(2, 5) = ['function myFunc() {', '  return 1', '}']
-    const expectedContent = 'function myFunc() {\n  return 1\n}'
-
-    // The promotion path uses lines.slice(startLine - 1, endLine) = slice(1, 4)
-    // = ['', 'function myFunc() {', '  return 1']
-    // This is WRONG — it's off by one line from the correct result.
-    // This test documents the bug: the promotion path content differs from
-    // the fresh buildCodeNode content.
-
-    // What we WANT (correct behavior):
-    // expect(state.selectedFunction!.content).toBe(expectedContent)
-
-    // What actually happens (the bug):
-    const promotionContent = state.selectedFunction!.content
-    const lines = fileContent.split('\n')
-    const buggyContent = lines.slice(2 - 1, 4).join('\n') // slice(1, 4) = wrong
-    const correctContent = lines.slice(2, 4 + 1).join('\n') // slice(2, 5) = correct
-
-    // Document that promotion produces the buggy content, not the correct one
-    expect(promotionContent).toBe(buggyContent)
-    expect(buggyContent).not.toBe(correctContent) // Bug confirmed: they differ
-  })
 })
 
 // ============================================================================

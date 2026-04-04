@@ -156,6 +156,16 @@ export const tauriPlatform: Platform = {
       return invoke<string>('read_file_content', { filePath: path })
     },
 
+    async readFileHead(path: string, maxBytes: number): Promise<{ content: string; totalBytes: number }> {
+      const result = await invoke<{ content: string; total_bytes: number }>('read_file_head', { filePath: path, maxBytes })
+      return { content: result.content, totalBytes: result.total_bytes }
+    },
+
+    async readBinaryFile(path: string): Promise<Uint8Array> {
+      const arr = await invoke<number[]>('read_binary_file', { filePath: path })
+      return new Uint8Array(arr)
+    },
+
     async writeFile(path: string, content: string): Promise<void> {
       const { writeTextFile } = await import('@tauri-apps/plugin-fs')
       await writeTextFile(path, content)

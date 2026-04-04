@@ -59,6 +59,57 @@ pub fn read_file_content(file_path: String) -> Result<String, String> {
     fs::read_to_string(&file_path).map_err(|e| e.to_string())
 }
 
+/// Read at most `max_bytes` from the beginning of a file.
+/// Returns the content as a UTF-8 string (truncated at a valid char boundary)
+/// plus the total file size in bytes so the caller knows whether truncation occurred.
+#[derive(Serialize)]
+pub struct FileHead {
+    content: String,
+    total_bytes: u64,
+}
+
+#[tauri::command]
+pub fn read_file_head(file_path: String, max_bytes: u64) -> Result<FileHead, String> {
+    use std::io::Read;
+
+    let metadata = fs::metadata(&file_path).map_err(|e| e.to_string())?;
+    let total_bytes = metadata.len();
+
+    let file = fs::File::open(&file_path).map_err(|e| e.to_string())?;
+    let limit = std::cmp::min(total_bytes, max_bytes);
+    let mut buf = vec![0u8; limit as usize];
+    let mut reader = std::io::BufReader::new(file);
+    reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
+
+    // Truncate to valid UTF-8 boundary
+    let content = match std::str::from_utf8(&buf) {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            let valid_up_to = e.valid_up_to();
+            String::from_utf8_lossy(&buf[..valid_up_to]).to_string()
+        }
+    };
+
+    Ok(FileHead {
+        content,
+        total_bytes,
+    })
+}
+
+#[tauri::command]
+pub fn read_binary_file(file_path: String) -> Result<Vec<u8>, String> {
+    const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+    let metadata = fs::metadata(&file_path).map_err(|e| e.to_string())?;
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(format!(
+            "File too large ({:.1} MB). Maximum supported size is {:.0} MB.",
+            metadata.len() as f64 / (1024.0 * 1024.0),
+            MAX_FILE_SIZE as f64 / (1024.0 * 1024.0),
+        ));
+    }
+    fs::read(&file_path).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn is_wayland() -> bool {
     std::env::var("WAYLAND_DISPLAY").is_ok()
