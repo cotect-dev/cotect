@@ -152,6 +152,8 @@ impl LlmClient {
 }
 
 /// Parse SSE lines from the response body and emit LlmStreamEvents.
+/// Uses a 60-second inactivity timeout — if no bytes arrive for 60s,
+/// the stream is considered dead and a Done event is sent.
 async fn stream_sse_events(
     response: reqwest::Response,
     tx: &mpsc::Sender<LlmStreamEvent>,
@@ -160,10 +162,32 @@ async fn stream_sse_events(
 
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
+    let idle_timeout = std::time::Duration::from_secs(60);
 
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.context("Stream read error")?;
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
+    loop {
+        let chunk = tokio::time::timeout(idle_timeout, stream.next()).await;
+
+        match chunk {
+            Ok(Some(Ok(bytes))) => {
+                buffer.push_str(&String::from_utf8_lossy(&bytes));
+            }
+            Ok(Some(Err(e))) => {
+                return Err(anyhow::anyhow!("Stream read error: {e}"));
+            }
+            Ok(None) => {
+                // Stream ended normally
+                break;
+            }
+            Err(_) => {
+                // 60s with no bytes — server is stalled
+                tx.send(LlmStreamEvent::Done {
+                    finish_reason: Some("timeout".into()),
+                })
+                .await
+                .ok();
+                return Ok(());
+            }
+        }
 
         // Process complete lines
         while let Some(newline_pos) = buffer.find('\n') {
