@@ -20,6 +20,7 @@ struct ChatCompletionRequest {
     tools: Option<Vec<ToolDefinition>>,
     stream: bool,
     temperature: f32,
+    max_tokens: u32,
 }
 
 #[derive(Deserialize)]
@@ -96,6 +97,7 @@ impl LlmClient {
             tools,
             stream: true,
             temperature,
+            max_tokens: 16384,
         };
 
         let mut request = self.http.post(&url).json(&body);
