@@ -1,8 +1,9 @@
 use anyhow::{Context, Result, bail};
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tokio::sync::mpsc;
 
+use super::adapter::{self, ModelAdapter};
 use super::types::{ChatMessage, LlmStreamEvent, ProviderConfig, ToolDefinition};
 
 pub struct LlmClient {
@@ -10,21 +11,7 @@ pub struct LlmClient {
     endpoint: String,
     api_key: Option<String>,
     model: String,
-}
-
-#[derive(Serialize)]
-struct ChatCompletionRequest {
-    model: String,
-    messages: Vec<ChatMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<ToolDefinition>>,
-    stream: bool,
-    temperature: f32,
-    max_tokens: u32,
-    /// Controls reasoning/thinking token budget. Set to "none" to disable
-    /// extended thinking on reasoning models (e.g., Gemma 4).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<String>,
+    adapter: Box<dyn ModelAdapter>,
 }
 
 #[derive(Deserialize)]
@@ -47,45 +34,6 @@ struct LmStudioModelEntry {
     /// Only include LLM-type models, not embeddings.
     #[serde(default)]
     r#type: Option<String>,
-}
-
-// SSE chunk types for streaming
-#[derive(Deserialize)]
-struct StreamChunk {
-    choices: Vec<StreamChoice>,
-}
-
-#[derive(Deserialize)]
-struct StreamChoice {
-    delta: StreamDelta,
-    finish_reason: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-struct StreamDelta {
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    reasoning_content: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<StreamToolCallDelta>>,
-}
-
-#[derive(Deserialize)]
-struct StreamToolCallDelta {
-    index: usize,
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    function: Option<StreamFunctionDelta>,
-}
-
-#[derive(Deserialize, Default)]
-struct StreamFunctionDelta {
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    arguments: Option<String>,
 }
 
 /// Normalize an endpoint URL to the OpenAI-compatible base path.
@@ -113,13 +61,28 @@ fn normalize_endpoint(raw: &str) -> String {
     endpoint
 }
 
+/// Strip a trailing `/v1`, `/api/v1`, or `/openai/v1` from an endpoint so a
+/// [`EndpointScope::ServerRoot`](crate::agent::adapter::EndpointScope::ServerRoot)
+/// adapter path (like `/completion`) lands at the server root.
+fn strip_v1_suffix(endpoint: &str) -> String {
+    let trimmed = endpoint.trim_end_matches('/');
+    for suffix in &["/openai/v1", "/api/v1", "/v1"] {
+        if trimmed.ends_with(suffix) {
+            return trimmed[..trimmed.len() - suffix.len()].to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
 impl LlmClient {
     pub fn new(config: &ProviderConfig) -> Self {
+        let format = config.resolved_format();
         Self {
             http: Client::new(),
             endpoint: normalize_endpoint(&config.endpoint),
             api_key: config.api_key.clone(),
             model: config.model.clone(),
+            adapter: adapter::build_adapter(format),
         }
     }
 
@@ -130,17 +93,27 @@ impl LlmClient {
         tools: Option<Vec<ToolDefinition>>,
         temperature: f32,
     ) -> Result<mpsc::UnboundedReceiver<LlmStreamEvent>> {
-        let url = format!("{}/chat/completions", self.endpoint);
-
-        let body = ChatCompletionRequest {
-            model: self.model.clone(),
-            messages,
-            tools,
-            stream: true,
-            temperature,
-            max_tokens: 2048,
-            reasoning_effort: None,
+        let base = match self.adapter.endpoint_scope() {
+            adapter::EndpointScope::OpenAICompat => self.endpoint.clone(),
+            adapter::EndpointScope::ServerRoot => strip_v1_suffix(&self.endpoint),
         };
+        let url = format!("{}{}", base, self.adapter.endpoint_path());
+
+        let tools_slice = tools.as_deref().unwrap_or(&[]);
+        let body =
+            self.adapter
+                .build_request_body(&self.model, &messages, tools_slice, temperature, 16384);
+
+        // Debug: dump request body when COTECT_DEBUG_REQUESTS is set.
+        if std::env::var("COTECT_DEBUG_REQUESTS").is_ok() {
+            if let Ok(json) = serde_json::to_string_pretty(&body) {
+                eprintln!(
+                    "\n━━━ LLM REQUEST [{}] ━━━\n{}\n━━━━━━━━━━━━━━━━━━",
+                    self.adapter.name(),
+                    json
+                );
+            }
+        }
 
         let mut request = self.http.post(&url).json(&body);
         if let Some(key) = &self.api_key {
@@ -159,9 +132,10 @@ impl LlmClient {
         }
 
         let (tx, rx) = mpsc::unbounded_channel();
+        let parser = self.adapter.new_stream_parser();
 
         tokio::spawn(async move {
-            if let Err(e) = stream_sse_events(response, &tx).await {
+            if let Err(e) = stream_sse_events(response, parser, &tx).await {
                 let _ = tx.send(LlmStreamEvent::Error(e.to_string()));
             }
         });
@@ -230,22 +204,26 @@ impl LlmClient {
     }
 }
 
-/// Parse SSE lines from the response body and emit LlmStreamEvents.
+/// Parse SSE lines from the response body and emit [`LlmStreamEvent`]s via
+/// the supplied adapter's [`super::adapter::StreamParser`].
 ///
-/// Uses a 5-second inactivity timeout — if no bytes arrive for 5s during
-/// an active stream, the connection is considered dead.
+/// Uses a 30-second inactivity timeout — if no bytes arrive for 30s during
+/// an active stream, the connection is considered dead. Reasoning-heavy
+/// models (e.g., Gemma 4) may take 10-20s of silent thinking between
+/// generated tokens, so shorter timeouts are too aggressive.
 ///
 /// Sends events via an unbounded channel so the SSE parser never blocks,
 /// regardless of how fast or slow the consumer drains events.
 async fn stream_sse_events(
     response: reqwest::Response,
+    mut parser: Box<dyn adapter::StreamParser>,
     tx: &mpsc::UnboundedSender<LlmStreamEvent>,
 ) -> Result<()> {
     use tokio_stream::StreamExt;
 
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
-    let idle_timeout = std::time::Duration::from_secs(5);
+    let idle_timeout = std::time::Duration::from_secs(30);
 
     loop {
         let chunk = tokio::time::timeout(idle_timeout, stream.next()).await;
@@ -262,7 +240,7 @@ async fn stream_sse_events(
                 break;
             }
             Err(_) => {
-                // 5s with no bytes — server is stalled
+                // Idle timeout — server stalled
                 tx.send(LlmStreamEvent::Done {
                     finish_reason: Some("timeout".into()),
                 })
@@ -281,74 +259,23 @@ async fn stream_sse_events(
             }
 
             if let Some(data) = line.strip_prefix("data: ") {
-                if data == "[DONE]" {
-                    // Send Done explicitly — don't rely solely on channel close
-                    tx.send(LlmStreamEvent::Done {
-                        finish_reason: None,
-                    })
-                    .ok();
-                    return Ok(());
+                let is_done_marker = data == "[DONE]";
+                let events = parser.process_sse_data(data);
+                for event in events {
+                    tx.send(event).ok();
                 }
-
-                match serde_json::from_str::<StreamChunk>(data) {
-                    Ok(chunk) => {
-                        for choice in &chunk.choices {
-                            // Text content
-                            if let Some(text) = &choice.delta.content {
-                                if !text.is_empty() {
-                                    tx.send(LlmStreamEvent::TextDelta(text.clone()))
-                                        .ok();
-                                }
-                            }
-
-                            // Reasoning content
-                            if let Some(reasoning) = &choice.delta.reasoning_content {
-                                if !reasoning.is_empty() {
-                                    tx.send(
-                                        LlmStreamEvent::ReasoningDelta(reasoning.clone()),
-                                    )
-                                    .ok();
-                                }
-                            }
-
-                            // Tool call deltas
-                            if let Some(tool_calls) = &choice.delta.tool_calls {
-                                for tc in tool_calls {
-                                    let func = tc.function.as_ref();
-                                    tx.send(LlmStreamEvent::ToolCallDelta {
-                                        index: tc.index,
-                                        id: tc.id.clone(),
-                                        name: func.and_then(|f| f.name.clone()),
-                                        arguments_chunk: func
-                                            .and_then(|f| f.arguments.clone())
-                                            .unwrap_or_default(),
-                                    })
-                                    .ok();
-                                }
-                            }
-
-                            // Finish reason
-                            if let Some(reason) = &choice.finish_reason {
-                                tx.send(LlmStreamEvent::Done {
-                                    finish_reason: Some(reason.clone()),
-                                })
-                                .ok();
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        // Skip unparseable SSE chunks — common with some providers
-                    }
+                if is_done_marker {
+                    // Hit [DONE] marker — parser has emitted its Done event.
+                    return Ok(());
                 }
             }
         }
     }
 
-    // Stream ended without [DONE] — send a Done event anyway
-    tx.send(LlmStreamEvent::Done {
-        finish_reason: None,
-    })
-    .ok();
+    // Stream ended without [DONE] — let the parser flush any final state.
+    for event in parser.finalize() {
+        tx.send(event).ok();
+    }
 
     Ok(())
 }

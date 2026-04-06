@@ -54,6 +54,7 @@ pub struct Orchestrator {
     error_tracker: ToolErrorTracker,
     doom_detector: DoomLoopDetector,
     max_turns: usize,
+    tool_call_counter: usize,
 }
 
 impl Orchestrator {
@@ -91,6 +92,7 @@ impl Orchestrator {
             error_tracker: ToolErrorTracker::new(5),
             doom_detector: DoomLoopDetector::default(),
             max_turns: 100,
+            tool_call_counter: 0,
         }
     }
 
@@ -103,11 +105,22 @@ impl Orchestrator {
         const MAX_EMPTY_TURNS: usize = 3;
 
         while !should_yield {
-            // 1. Doom loop check
+            // 1. Doom loop check — warn at 3 repetitions, abort at 5
             if let Some(count) = self.doom_detector.check() {
+                if count >= 5 {
+                    self.sender
+                        .send(TaskEvent::Interrupted {
+                            reason: format!(
+                                "Doom loop detected: same tool call pattern repeated {count} times. Stopping."
+                            ),
+                        })
+                        .ok();
+                    break;
+                }
                 self.context.inject_system_reminder(&format!(
                     "You have repeated the same tool call pattern {count} times. \
-                     You are stuck in a loop. Try a completely different approach."
+                     You are stuck in a loop. Try a completely different approach — \
+                     for example, use the write tool to rewrite the whole file instead of patching."
                 ));
             }
 
@@ -123,7 +136,16 @@ impl Orchestrator {
             .await?;
 
             // 3. Consume stream, forwarding deltas to frontend
-            let turn = self.consume_stream(rx).await?;
+            let mut turn = self.consume_stream(rx).await?;
+
+            // 3b. Remap tool call IDs to simple sequential format (call_N).
+            // Some servers (OpenAI, llama.cpp) generate 32-char random alphanumeric
+            // IDs that some models (Gemma 4) echo back as text when confused by
+            // tool-call templates. Short, predictable IDs reduce this confusion.
+            for tool_call in turn.tool_calls.iter_mut() {
+                self.tool_call_counter += 1;
+                tool_call.id = format!("call_{}", self.tool_call_counter);
+            }
 
             // 4. Determine completion
             let finish = turn.finish_reason.as_deref();
@@ -227,6 +249,9 @@ impl Orchestrator {
                     let tool_result_text = match result {
                         Ok(output) => {
                             self.error_tracker.record_success(&tool_call.function.name);
+                            // After a successful tool call, compact any prior __format_error__
+                            // round-trips out of context to keep conversation clean.
+                            self.context.compact_format_errors();
                             output
                         }
                         Err(e) => {
@@ -245,10 +270,15 @@ impl Orchestrator {
                     self.doom_detector
                         .record(&tool_call.function.name, &tool_call.function.arguments);
                 }
-            } else {
-                // No tool calls — add assistant text to context
+            } else if has_content {
+                // Text-only turn — add assistant text to context
                 self.context.append_assistant(&turn.content, &turn.reasoning);
             }
+            // else: empty turn (no content, no tools) — skip appending.
+            // Appending an empty assistant message would cause the next request to
+            // have a trailing assistant message, which some servers reject as a
+            // "prefill" (e.g. Gemma 4 with enable_thinking: 400 Bad Request).
+            // The empty_turn_count tracker above already handles bailing out.
 
             // 7. Error budget check
             if self.error_tracker.limit_reached() {
@@ -779,6 +809,7 @@ mod tests {
             endpoint: "http://localhost:11434/v1".into(),
             api_key: None,
             model: "test-model".into(),
+            format: None,
         };
         let request = TaskRequest {
             id: "test-task".into(),

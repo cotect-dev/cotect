@@ -152,6 +152,9 @@ fn tool_rules(role: AgentRole) -> String {
 
     rules.push_str(
         "- Always read a file before modifying it (write or patch). Blind modifications will be rejected.\n\
+         - The read tool prefixes each line with its line number as `<N>: <line>` — these prefixes are NOT part of the file content. When constructing patch `old_string` values, use only the raw line text without the `<N>: ` prefix.\n\
+         - The patch tool requires `old_string` to match the file content EXACTLY (including whitespace and indentation). If a patch fails with \"not found\", re-read the file to check the exact bytes, and strip any line-number prefixes from what you copy.\n\
+         - If the same text appears multiple times in the file, patch will reject the call; add surrounding context lines to `old_string` until it is unique.\n\
          - When searching, prefer specific patterns over broad ones.\n\
          - When executing shell commands, provide a clear description of what the command does.\n\
          - Make targeted, minimal changes rather than rewriting entire files.\n"
