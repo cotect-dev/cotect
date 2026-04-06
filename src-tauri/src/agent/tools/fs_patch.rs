@@ -4,6 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::ToolState;
+use super::fs_read::resolve_path;
 use crate::agent::utils::{io_err, read_first_err};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -17,7 +18,9 @@ pub struct FSPatchInput {
 }
 
 pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<String, String> {
-    let path = &input.file_path;
+    let resolved = resolve_path(&input.file_path, &state.root_path);
+    let path_owned = resolved.to_string_lossy().to_string();
+    let path = path_owned.as_str();
 
     // Read-before-edit enforcement
     if !state.has_read(path).await {
@@ -35,9 +38,20 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
     // Count occurrences
     let count = content.matches(&input.old_string).count();
     match count {
-        0 => Err(format!(
-            "The old_string was not found in '{path}'. Make sure you're using the exact text from the file."
-        )),
+        0 => {
+            // Helpful hint: if old_string starts with a line-number prefix like `12: `,
+            // the model likely copied the `N: ` display format from the `read` tool.
+            let prefix_hint = if looks_like_line_prefixed(&input.old_string) {
+                "\nHINT: Your old_string appears to start with a line-number prefix like `12: ` — \
+                 that prefix is added by the `read` tool for display only and is NOT part of the \
+                 actual file content. Strip the `N: ` prefix and retry."
+            } else {
+                ""
+            };
+            Err(format!(
+                "The old_string was not found in '{path}'. Make sure you're using the exact text from the file.{prefix_hint}"
+            ))
+        }
         1 => {
             let new_content = content.replacen(&input.old_string, &input.new_string, 1);
             tokio::fs::write(path, &new_content)
@@ -50,6 +64,26 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
              Provide more surrounding context to make it unique."
         )),
     }
+}
+
+/// Returns true if `s` looks like it starts with a `N: ` line-number prefix from the `read` tool
+/// (e.g. `1: foo`, `  12: bar`). Detection is conservative: it only fires when the very first
+/// non-whitespace characters are digits followed by `: `.
+fn looks_like_line_prefixed(s: &str) -> bool {
+    let trimmed = s.trim_start();
+    let mut chars = trimmed.chars();
+    let mut saw_digit = false;
+    while let Some(c) = chars.next() {
+        if c.is_ascii_digit() {
+            saw_digit = true;
+            continue;
+        }
+        if saw_digit && c == ':' {
+            return chars.next() == Some(' ');
+        }
+        return false;
+    }
+    false
 }
 
 #[cfg(test)]
