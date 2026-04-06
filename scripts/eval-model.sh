@@ -101,7 +101,7 @@ if [[ -n "$SCENARIO" ]]; then
 elif $RUN_ALL; then
     CARGO_ARGS+=("eval_" -- --ignored --nocapture)
 else
-    CARGO_ARGS+=("eval_full_suite" -- --ignored --nocapture)
+    CARGO_ARGS+=("eval_suite" -- --ignored --nocapture)
 fi
 
 if $VERBOSE; then

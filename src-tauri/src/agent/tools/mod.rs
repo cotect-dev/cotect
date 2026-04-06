@@ -53,6 +53,19 @@ pub async fn execute_tool(
     let args = &tool_call.function.arguments;
 
     match name {
+        "__format_error__" => {
+            // Tool-call parse failed in the adapter layer.
+            // The arguments field contains the raw malformed text.
+            // Return a clear error explaining the required format.
+            Err(format!(
+                "Tool call could not be parsed. Your output was:\n\
+                 {args}\n\n\
+                 Tool calls MUST use valid JSON with double-quoted strings. \
+                 Correct format inside <|tool_call>...<tool_call|> tags:\n\
+                 {{\"name\": \"tool_name\", \"arguments\": {{\"param\": \"value\"}}}}\n\n\
+                 Please retry with properly quoted JSON arguments."
+            ))
+        }
         "read" => fs_read::execute(&parse_args(args)?, state).await,
         "write" => fs_write::execute(&parse_args(args)?, state).await,
         "patch" => fs_patch::execute(&parse_args(args)?, state).await,
@@ -80,18 +93,26 @@ pub fn all_definitions() -> Vec<ToolDefinition> {
     vec![
         make_def::<fs_read::FSReadInput>(
             "read",
-            "Read a file from the filesystem. Returns the file content with line numbers. \
+            "Read a file from the filesystem. Returns the file content with each line prefixed by its \
+             1-indexed line number in the format `N: <content>` (e.g. `1: first line\\n2: second line`). \
+             The `N: ` prefix is added by this tool for your reference ONLY — it is NOT part of the \
+             actual file content. When using `patch` or `write` afterwards, you MUST strip these \
+             prefixes: target only the raw content after `N: ` in your old_string/content arguments. \
              You can optionally specify start_line and end_line to read a specific range.",
         ),
         make_def::<fs_write::FSWriteInput>(
             "write",
             "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. \
-             You MUST read the file first before writing to it.",
+             You MUST read the file first before writing to it. The `content` parameter is written \
+             verbatim — do NOT include the `N: ` line-number prefixes that the `read` tool shows you; \
+             those are display-only and not part of the actual file.",
         ),
         make_def::<fs_patch::FSPatchInput>(
             "patch",
             "Replace an exact string in a file. The old_string must appear exactly once in the file. \
-             You MUST read the file first before patching it.",
+             You MUST read the file first before patching it. The `old_string` and `new_string` \
+             parameters must NOT contain the `N: ` line-number prefixes that the `read` tool shows — \
+             those are display-only and not part of the file's actual content.",
         ),
         make_def::<fs_search::FSSearchInput>(
             "fs_search",

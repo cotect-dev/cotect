@@ -35,7 +35,14 @@ impl ConversationContext {
     }
 
     /// Add an assistant response (text only, no tool calls).
+    /// Empty/whitespace-only content is ignored — appending an empty assistant
+    /// message would leave a trailing assistant turn in the conversation, which
+    /// some servers reject as a "prefill" (e.g. Gemma 4 with enable_thinking:
+    /// 400 Bad Request "Assistant response prefill is incompatible with enable_thinking").
     pub fn append_assistant(&mut self, content: &str, _reasoning: &str) {
+        if content.trim().is_empty() {
+            return;
+        }
         self.messages.push(ChatMessage::assistant(content));
     }
 
@@ -51,7 +58,42 @@ impl ConversationContext {
             .push(ChatMessage::tool_result(tool_call_id, result));
     }
 
-    /// Inject a system reminder into the conversation (for doom loop warnings, etc.)
+    /// Remove failed tool-call format error round-trips from context.
+    /// When a tool call fails to parse (emitted as `__format_error__`), the conversation
+    /// contains: [assistant(tool_calls=[__format_error__]), tool(error message)].
+    /// After the model retries successfully, these failed attempts are noise — remove them
+    /// to keep context clean and avoid confusing the model.
+    pub fn compact_format_errors(&mut self) {
+        // Walk backwards through messages looking for __format_error__ tool calls.
+        // Each failed attempt is a pair: assistant(with __format_error__ tool_calls) + tool(error result).
+        // We need to remove both messages in each pair.
+        let mut indices_to_remove: Vec<usize> = Vec::new();
+
+        for (i, msg) in self.messages.iter().enumerate() {
+            if msg.role == Role::Assistant {
+                if let Some(calls) = &msg.tool_calls {
+                    if calls.iter().any(|c| c.function.name == "__format_error__") {
+                        indices_to_remove.push(i);
+                        // The next message should be the tool result for this error
+                        if i + 1 < self.messages.len()
+                            && self.messages[i + 1].role == Role::Tool
+                        {
+                            indices_to_remove.push(i + 1);
+                        }
+                    }
+                }
+            }
+        }
+
+        if !indices_to_remove.is_empty() {
+            // Remove in reverse order to keep indices valid
+            indices_to_remove.sort_unstable();
+            indices_to_remove.dedup();
+            for &i in indices_to_remove.iter().rev() {
+                self.messages.remove(i);
+            }
+        }
+    }
     pub fn inject_system_reminder(&mut self, content: &str) {
         self.messages.push(ChatMessage::user(format!(
             "<system_reminder>\n{}\n</system_reminder>",
@@ -337,5 +379,59 @@ mod tests {
         assert_eq!(ctx.messages().len(), 4); // system + user + 2 reminders
         assert!(ctx.messages()[2].content.contains("Reminder 1"));
         assert!(ctx.messages()[3].content.contains("Reminder 2"));
+    }
+
+    #[test]
+    fn test_compact_format_errors_removes_failed_attempts() {
+        let mut ctx = ConversationContext::new("system".into(), vec![]);
+        ctx.append_user("Do something");
+
+        // Add a __format_error__ tool call + error result (failed parse attempt)
+        let error_calls = vec![super::super::types::ToolCall {
+            id: "call_1".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "__format_error__".into(),
+                arguments: "raw malformed content".into(),
+            },
+        }];
+        ctx.append_assistant_with_tools("", error_calls);
+        ctx.append_tool_result("call_1", "Error: Tool call could not be parsed...");
+
+        // Add a successful tool call + result (retry worked)
+        let good_calls = vec![super::super::types::ToolCall {
+            id: "call_2".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "read".into(),
+                arguments: r#"{"file_path":"/tmp/x.txt"}"#.into(),
+            },
+        }];
+        ctx.append_assistant_with_tools("I'll read that.", good_calls);
+        ctx.append_tool_result("call_2", "File contents");
+
+        // Before compaction: system + user + error_asst + error_tool + good_asst + good_tool = 6
+        assert_eq!(ctx.messages().len(), 6);
+
+        ctx.compact_format_errors();
+
+        // After: system + user + good_asst + good_tool = 4 (error pair removed)
+        assert_eq!(ctx.messages().len(), 4);
+        assert_eq!(ctx.messages()[0].role, Role::System);
+        assert_eq!(ctx.messages()[1].role, Role::User);
+        assert_eq!(ctx.messages()[2].role, Role::Assistant);
+        assert_eq!(ctx.messages()[2].content, "I'll read that.");
+        assert_eq!(ctx.messages()[3].role, Role::Tool);
+        assert_eq!(ctx.messages()[3].content, "File contents");
+    }
+
+    #[test]
+    fn test_compact_format_errors_noop_without_errors() {
+        let mut ctx = ConversationContext::new("system".into(), vec![]);
+        ctx.append_user("hello");
+        ctx.append_assistant("world", "");
+        let before = ctx.messages().len();
+        ctx.compact_format_errors();
+        assert_eq!(ctx.messages().len(), before);
     }
 }

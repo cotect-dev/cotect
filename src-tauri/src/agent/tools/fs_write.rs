@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::ToolState;
+use super::fs_read::resolve_path;
 use crate::agent::utils::{io_err, read_first_err};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -16,7 +17,9 @@ pub struct FSWriteInput {
 }
 
 pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<String, String> {
-    let path = &input.file_path;
+    let resolved = resolve_path(&input.file_path, &state.root_path);
+    let path_owned = resolved.to_string_lossy().to_string();
+    let path = path_owned.as_str();
 
     // Read-before-edit enforcement: reject writes to files not previously read
     let file_exists = tokio::fs::metadata(path).await.is_ok();
@@ -36,7 +39,44 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
         .map_err(|e| io_err("write file", path, e))?;
 
     let line_count = input.content.lines().count();
-    Ok(format!("Successfully wrote {line_count} lines to '{path}'."))
+    let warning = if looks_like_line_numbered_dump(&input.content) {
+        "\nWARNING: The content you wrote appears to have `N: ` line-number prefixes on most lines. \
+         These prefixes come from the `read` tool's display format and are NOT part of the actual \
+         file content. The file was written VERBATIM as you provided it, so it now contains those \
+         prefixes as literal text. You probably want to re-write this file without the `N: ` prefixes."
+    } else {
+        ""
+    };
+    Ok(format!("Successfully wrote {line_count} lines to '{path}'.{warning}"))
+}
+
+/// Returns true if most non-empty lines in `s` look like `N: <content>` (the read tool's display
+/// format). Used to warn the model when it accidentally writes content with line-number prefixes.
+fn looks_like_line_numbered_dump(s: &str) -> bool {
+    let lines: Vec<&str> = s.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.len() < 2 {
+        return false;
+    }
+    let prefixed = lines.iter().filter(|l| line_has_number_prefix(l)).count();
+    // Trigger if ≥ 80% of non-empty lines look prefixed.
+    prefixed * 5 >= lines.len() * 4
+}
+
+fn line_has_number_prefix(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let mut chars = trimmed.chars();
+    let mut saw_digit = false;
+    while let Some(c) = chars.next() {
+        if c.is_ascii_digit() {
+            saw_digit = true;
+            continue;
+        }
+        if saw_digit && c == ':' {
+            return chars.next() == Some(' ');
+        }
+        return false;
+    }
+    false
 }
 
 #[cfg(test)]

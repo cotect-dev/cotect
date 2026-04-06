@@ -89,6 +89,11 @@ pub struct ProviderConfig {
     #[serde(default)]
     pub api_key: Option<String>,
     pub model: String,
+    /// Wire format / chat template to use when talking to the model.
+    /// `None` means auto-detect from the model identifier — see
+    /// [`crate::agent::adapter::detect_format`].
+    #[serde(default)]
+    pub format: Option<crate::agent::adapter::PromptFormat>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +111,7 @@ impl Default for AgentConfig {
                 endpoint: "http://localhost:11434/v1".into(),
                 api_key: None,
                 model: String::new(),
+                format: None,
             }],
             active_provider_id: "ollama".into(),
         }
@@ -117,6 +123,16 @@ impl AgentConfig {
         self.providers
             .iter()
             .find(|p| p.id == self.active_provider_id)
+    }
+}
+
+impl ProviderConfig {
+    /// Resolve the prompt format to use: either the explicit
+    /// [`Self::format`] override, or the auto-detected format based on
+    /// [`Self::model`].
+    pub fn resolved_format(&self) -> crate::agent::adapter::PromptFormat {
+        self.format
+            .unwrap_or_else(|| crate::agent::adapter::detect_format(&self.model))
     }
 }
 

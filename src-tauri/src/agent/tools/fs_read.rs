@@ -1,4 +1,5 @@
 use std::fmt::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use schemars::JsonSchema;
@@ -21,8 +22,21 @@ pub struct FSReadInput {
     pub end_line: Option<u32>,
 }
 
+/// Resolve a user-supplied path against the task's root_path if relative.
+pub(super) fn resolve_path(raw: &str, root_path: &str) -> PathBuf {
+    let p = Path::new(raw);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        Path::new(root_path).join(p)
+    }
+}
+
 pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<String, String> {
-    let path = &input.file_path;
+    let resolved = resolve_path(&input.file_path, &state.root_path);
+    let path_buf = resolved.clone();
+    let path = path_buf.to_string_lossy().to_string();
+    let path = path.as_str();
 
     // Check file size
     let metadata = tokio::fs::metadata(path)

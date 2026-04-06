@@ -25,13 +25,27 @@ pub struct FSSearchInput {
 }
 
 pub async fn execute(input: &FSSearchInput, state: &Arc<ToolState>) -> Result<String, String> {
-    let search_path = input.path.as_deref().unwrap_or(&state.root_path);
+    let search_path = match input.path.as_deref() {
+        Some(p) => {
+            // Resolve relative paths against root_path (same as read/write/patch)
+            let path = std::path::Path::new(p);
+            if path.is_absolute() {
+                p.to_string()
+            } else {
+                std::path::Path::new(&state.root_path)
+                    .join(path)
+                    .to_string_lossy()
+                    .to_string()
+            }
+        }
+        None => state.root_path.clone(),
+    };
 
     // Try ripgrep first, fall back to grep
-    let result = try_ripgrep(input, search_path).await;
+    let result = try_ripgrep(input, &search_path).await;
     match result {
         Ok(output) => Ok(output),
-        Err(_) => try_grep(input, search_path).await,
+        Err(_) => try_grep(input, &search_path).await,
     }
 }
 
