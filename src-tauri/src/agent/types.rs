@@ -56,6 +56,9 @@ pub enum TaskEvent {
         file_path: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         description: Option<String>,
+        /// Raw JSON arguments passed to the tool (for debugging / transcripts).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        arguments: Option<String>,
     },
     ToolEnd {
         tool_name: String,
