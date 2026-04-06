@@ -15,9 +15,7 @@
 #   --max-turns N     Max agent turns per scenario (default: 20)
 #   --timeout SECS    Seconds before a scenario times out (default: 120)
 #   --scenario NAME   Run a single scenario instead of the full suite
-#                     Available: simple_question, read_file, write_file,
-#                     read_then_patch, shell_command, search_and_report,
-#                     multi_step_implementation, error_recovery, plan_generation
+#                     Use a substring match, e.g.: --scenario bugfix, --scenario refactor_rename
 #   --all             Run all individual scenarios (not just the suite runner)
 #   --verbose         Show full cargo test output (--nocapture)
 #

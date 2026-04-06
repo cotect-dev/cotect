@@ -10,9 +10,9 @@
 //!
 //! Filter env vars (optional):
 //!   COTECT_EVAL_FILTER       — substring match on scenario id
-//!   COTECT_EVAL_CATEGORY     — one of: reasoning, read, write, patch,
-//!                               search, shell, workflow, recovery,
-//!                               understanding, planning
+//!   COTECT_EVAL_CATEGORY     — one of: bugfix, refactor, implement, patch,
+//!                               understanding, search, cross_file,
+//!                               error_handling, recovery, planning
 //!   COTECT_EVAL_DIFFICULTY   — easy | medium | hard
 //!   COTECT_EVAL_MAX_TURNS    — per-scenario turn cap (default: 25)
 //!   COTECT_EVAL_TIMEOUT      — per-scenario timeout seconds (default: 120)
@@ -20,6 +20,8 @@
 //!   COTECT_EVAL_LIMIT        — only run first N matching scenarios
 //!   COTECT_EVAL_FORMAT       — prompt format: auto (default) | plain | gemma |
 //!                              llama3 | qwen | chatml | openai
+//!   COTECT_EVAL_TRANSCRIPTS  — directory for per-scenario transcript .md files
+//!   COTECT_EVAL_KEEP_DIRS    — 1 or true to preserve temp dirs for inspection
 //!
 //! Environment-only tuning — no code changes needed to try new prompts.
 
@@ -52,6 +54,7 @@ struct EvalConfig {
     limit: Option<usize>,
     transcript_dir: Option<std::path::PathBuf>,
     format_override: Option<super::adapter::PromptFormat>,
+    keep_dirs: bool,
 }
 
 impl EvalConfig {
@@ -79,6 +82,7 @@ impl EvalConfig {
         let format_override = std::env::var("COTECT_EVAL_FORMAT")
             .ok()
             .and_then(|v| parse_format_override(&v));
+        let keep_dirs = std::env::var("COTECT_EVAL_KEEP_DIRS").ok().map_or(false, |v| v == "1" || v == "true");
 
         if let Some(ref d) = transcript_dir {
             let _ = std::fs::create_dir_all(d);
@@ -97,6 +101,7 @@ impl EvalConfig {
             limit,
             transcript_dir,
             format_override,
+            keep_dirs,
         })
     }
 
@@ -132,46 +137,46 @@ fn parse_format_override(s: &str) -> Option<super::adapter::PromptFormat> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Category {
-    Reasoning,
-    Read,
-    Write,
+    Bugfix,
+    Refactor,
+    Implement,
     Patch,
-    Search,
-    Shell,
-    Workflow,
-    Recovery,
     Understanding,
+    Search,
+    CrossFile,
+    ErrorHandling,
+    Recovery,
     Planning,
 }
 
 impl Category {
     fn parse(s: String) -> Option<Self> {
         match s.to_lowercase().as_str() {
-            "reasoning" => Some(Self::Reasoning),
-            "read" => Some(Self::Read),
-            "write" => Some(Self::Write),
+            "bugfix" | "bug" => Some(Self::Bugfix),
+            "refactor" => Some(Self::Refactor),
+            "implement" | "impl" => Some(Self::Implement),
             "patch" => Some(Self::Patch),
+            "understanding" | "understand" => Some(Self::Understanding),
             "search" => Some(Self::Search),
-            "shell" => Some(Self::Shell),
-            "workflow" => Some(Self::Workflow),
+            "cross_file" | "crossfile" | "cross-file" => Some(Self::CrossFile),
+            "error_handling" | "errorhandling" | "error-handling" | "errh" => Some(Self::ErrorHandling),
             "recovery" => Some(Self::Recovery),
-            "understanding" => Some(Self::Understanding),
-            "planning" => Some(Self::Planning),
+            "planning" | "plan" => Some(Self::Planning),
             _ => None,
         }
     }
 
     fn label(self) -> &'static str {
         match self {
-            Self::Reasoning => "reasoning",
-            Self::Read => "read",
-            Self::Write => "write",
+            Self::Bugfix => "bugfix",
+            Self::Refactor => "refactor",
+            Self::Implement => "implement",
             Self::Patch => "patch",
-            Self::Search => "search",
-            Self::Shell => "shell",
-            Self::Workflow => "workflow",
-            Self::Recovery => "recovery",
             Self::Understanding => "understanding",
+            Self::Search => "search",
+            Self::CrossFile => "cross_file",
+            Self::ErrorHandling => "error_handling",
+            Self::Recovery => "recovery",
             Self::Planning => "planning",
         }
     }
@@ -511,9 +516,10 @@ fn build_transcript(
     failed_checks: &[String],
     elapsed: Duration,
     interrupted: &Option<String>,
+    dir: &Path,
 ) -> String {
     use std::fmt::Write as _;
-    let mut s = String::with_capacity(8192);
+    let mut s = String::with_capacity(16384);
 
     let status = if passed { "PASS" } else { "FAIL" };
     let _ = writeln!(s, "# {} — {}", spec.id, status);
@@ -570,13 +576,23 @@ fn build_transcript(
             TaskEvent::Reasoning { .. } => {
                 // Skipped — see consolidated "Reasoning" section above.
             }
-            TaskEvent::ToolStart { tool_name, file_path, description } => {
-                let _ = writeln!(s, "**{i}. Tool start: `{}`**  file={:?}  desc={:?}\n", tool_name, file_path, description);
+            TaskEvent::ToolStart { tool_name, file_path, description, arguments } => {
+                let _ = writeln!(s, "**{i}. Tool start: `{}`**  file={:?}  desc={:?}", tool_name, file_path, description);
+                if let Some(args) = arguments {
+                    // Pretty-print JSON arguments if possible, otherwise raw
+                    let display = serde_json::from_str::<serde_json::Value>(args)
+                        .ok()
+                        .and_then(|v| serde_json::to_string_pretty(&v).ok())
+                        .unwrap_or_else(|| args.clone());
+                    let _ = writeln!(s, "\n```json\n{}\n```\n", display);
+                } else {
+                    let _ = writeln!(s);
+                }
             }
             TaskEvent::ToolEnd { tool_name, success, output, file_path: _ } => {
                 let marker = if *success { "OK" } else { "ERR" };
                 let out = output.as_deref().unwrap_or("");
-                let out = truncate_for_transcript(out, 1500);
+                let out = truncate_for_transcript(out, 4000);
                 let _ = writeln!(s, "**{i}. Tool end: `{}` [{marker}]**\n```\n{}\n```\n", tool_name, out);
             }
             TaskEvent::Error { message } => {
@@ -594,7 +610,48 @@ fn build_transcript(
         }
     }
 
+    // Final file contents — dump all files in the temp dir for post-mortem analysis
+    let _ = writeln!(s, "## Final Files\n");
+    if let Ok(entries) = collect_files_recursive(dir) {
+        if entries.is_empty() {
+            let _ = writeln!(s, "_No files in temp directory._\n");
+        }
+        for entry in entries {
+            let rel = entry.strip_prefix(dir).unwrap_or(&entry);
+            let _ = writeln!(s, "### `{}`\n", rel.display());
+            match std::fs::read_to_string(&entry) {
+                Ok(content) => {
+                    let content = truncate_for_transcript(&content, 8000);
+                    let _ = writeln!(s, "```\n{}\n```\n", content);
+                }
+                Err(e) => {
+                    let _ = writeln!(s, "_Could not read: {}_\n", e);
+                }
+            }
+        }
+    }
+
     s
+}
+
+/// Recursively collect all files under `dir`, sorted.
+fn collect_files_recursive(dir: &Path) -> std::io::Result<Vec<std::path::PathBuf>> {
+    let mut files = Vec::new();
+    fn walk(dir: &Path, files: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, files)?;
+            } else {
+                files.push(path);
+            }
+        }
+        Ok(())
+    }
+    walk(dir, &mut files)?;
+    files.sort();
+    Ok(files)
 }
 
 fn truncate_for_transcript(s: &str, max_chars: usize) -> String {
@@ -708,7 +765,17 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
             (ok, failures, outcome.interrupted.clone())
         }
         Ok(Err(e)) => (false, vec![format!("orch error: {e}")], outcome.interrupted.clone()),
-        Err(_) => (false, vec![format!("timeout {}s", cfg.timeout.as_secs())], Some("timeout".into())),
+        Err(_) => {
+            // Timeout — still evaluate file-based checks since files may already
+            // be written to disk. Skip the Completed check (scenario didn't finish).
+            let timeout_checks: Vec<Check> = setup.checks.iter()
+                .filter(|c| !matches!(c, Check::Completed))
+                .cloned()
+                .collect();
+            let (ok, mut failures) = evaluate_checks(&timeout_checks, &outcome, &dir_path);
+            failures.insert(0, format!("timeout {}s", cfg.timeout.as_secs()));
+            (ok && failures.len() <= 1, failures, Some("timeout".into()))
+        }
     };
 
     let status = if passed { "PASS" } else { "FAIL" };
@@ -737,9 +804,15 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         let transcript_path = tdir.join(format!("{}.md", spec.id));
         let transcript = build_transcript(
             spec, &setup.prompt, &setup.scope_files, &outcome,
-            passed, &failed_checks, elapsed, &interrupted,
+            passed, &failed_checks, elapsed, &interrupted, &dir_path,
         );
         let _ = std::fs::write(&transcript_path, transcript);
+    }
+
+    // Optionally preserve the temp directory for manual inspection
+    if cfg.keep_dirs {
+        let kept = dir.keep(); // prevents cleanup
+        eprintln!("    kept dir: {}", kept.display());
     }
 
     EvalResult {
@@ -772,9 +845,9 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
 
     // By category
     let cats = [
-        Category::Reasoning, Category::Read, Category::Write, Category::Patch,
-        Category::Search, Category::Shell, Category::Workflow, Category::Recovery,
-        Category::Understanding, Category::Planning,
+        Category::Bugfix, Category::Refactor, Category::Implement, Category::Patch,
+        Category::Understanding, Category::Search, Category::CrossFile,
+        Category::ErrorHandling, Category::Recovery, Category::Planning,
     ];
     println!("\nBy category:");
     for cat in cats {
@@ -824,10 +897,10 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Scenario definitions — 100 total, defined in eval_scenarios.rs
+// Scenario definitions — 100 total, split by category under eval_scenarios/
 // ────────────────────────────────────────────────────────────────────────
 
-#[path = "eval_scenarios.rs"]
+#[path = "eval_scenarios/mod.rs"]
 mod eval_scenarios;
 
 use eval_scenarios::make_scenarios;
@@ -913,15 +986,15 @@ async fn run_category(cat: Category) {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_reasoning() { run_category(Category::Reasoning).await; }
+async fn eval_category_bugfix() { run_category(Category::Bugfix).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_read() { run_category(Category::Read).await; }
+async fn eval_category_refactor() { run_category(Category::Refactor).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_write() { run_category(Category::Write).await; }
+async fn eval_category_implement() { run_category(Category::Implement).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
@@ -929,23 +1002,23 @@ async fn eval_category_patch() { run_category(Category::Patch).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
+async fn eval_category_understanding() { run_category(Category::Understanding).await; }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
 async fn eval_category_search() { run_category(Category::Search).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_shell() { run_category(Category::Shell).await; }
+async fn eval_category_cross_file() { run_category(Category::CrossFile).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_workflow() { run_category(Category::Workflow).await; }
+async fn eval_category_error_handling() { run_category(Category::ErrorHandling).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn eval_category_recovery() { run_category(Category::Recovery).await; }
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore]
-async fn eval_category_understanding() { run_category(Category::Understanding).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]

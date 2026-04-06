@@ -226,6 +226,7 @@ impl Orchestrator {
                             tool_name: tool_call.function.name.clone(),
                             file_path: file_path.clone(),
                             description: None,
+                            arguments: Some(tool_call.function.arguments.clone()),
                         })
                         .ok();
 
