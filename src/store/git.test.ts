@@ -289,7 +289,7 @@ describe('startGitWatcher / stopGitWatcher', () => {
     expect(mockInvoke).toHaveBeenCalledWith('watch_path', { path: '/repo/.git', id: 'git', recursive: false })
     expect(mockInvoke).toHaveBeenCalledWith('watch_path', { path: '/repo', id: 'source', recursive: false })
     expect(mockInvoke).toHaveBeenCalledWith('watch_path', { path: '/repo/src', id: 'source-src', recursive: true })
-    expect(mockInvoke).toHaveBeenCalledWith('watch_path', { path: '/repo/src-tauri/src', id: 'source-rs', recursive: true })
+    expect(mockInvoke).toHaveBeenCalledWith('watch_path', { path: '/repo/tauri/src', id: 'source-rs', recursive: true })
   })
 
   it('does not set up file watchers for non-main window', () => {

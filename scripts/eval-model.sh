@@ -122,7 +122,7 @@ echo ""
 
 # Navigate to the Tauri crate and run
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CRATE_DIR="$SCRIPT_DIR/../src-tauri"
+CRATE_DIR="$SCRIPT_DIR/../tauri"
 
 cd "$CRATE_DIR"
 cargo "${CARGO_ARGS[@]}"
