@@ -65,7 +65,14 @@ impl Orchestrator {
     ) -> Self {
         let llm = LlmClient::new(provider);
         let tool_defs = tools::definitions_for_role(request.role);
-        let tool_state = ToolState::new(request.scope.root_path.clone());
+        let tool_state = if request.scope.blocked_files.is_empty() {
+            ToolState::new(request.scope.root_path.clone())
+        } else {
+            ToolState::with_blocked_files(
+                request.scope.root_path.clone(),
+                request.scope.blocked_files.clone(),
+            )
+        };
 
         // Build system prompt with scope context
         let env = EnvironmentInfo {
@@ -94,6 +101,12 @@ impl Orchestrator {
             max_turns: 100,
             tool_call_counter: 0,
         }
+    }
+
+    /// Override the maximum number of LLM turns before the loop is forcefully stopped.
+    #[allow(dead_code)]
+    pub fn set_max_turns(&mut self, max_turns: usize) {
+        self.max_turns = max_turns;
     }
 
     /// Run the orchestration loop until completion, interruption, or error.
@@ -821,6 +834,7 @@ mod tests {
                 directory: None,
                 declarations: vec![],
                 description: None,
+                blocked_files: vec![],
             },
             role: AgentRole::Implement,
             conversation_id: None,

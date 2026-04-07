@@ -344,8 +344,19 @@ impl GemmaStreamParser {
     }
 
     /// Flush remaining buffer content at end of stream.
-    /// If no structured tool calls were received, attempt fallback parsing.
+    /// If no structured tool calls were received, attempt fallback parsing
+    /// from either the text buffer or accumulated raw tool-call tokens.
     fn flush_remaining(&mut self, events: &mut Vec<LlmStreamEvent>) {
+        // First check accumulated_text — raw tool-call tokens that were
+        // stripped from content during streaming but saved for fallback.
+        if !self.accumulated_text.is_empty() && !self.has_structured_tool_calls {
+            let acc = std::mem::take(&mut self.accumulated_text);
+            if contains_tool_call_pattern(&acc) {
+                self.try_fallback_tool_parse(&acc, events);
+                // Still flush any remaining text_buffer below
+            }
+        }
+
         if self.text_buffer.is_empty() {
             return;
         }

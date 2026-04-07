@@ -12,6 +12,10 @@ pub struct TaskScope {
     pub declarations: Vec<DeclarationInfo>,
     #[serde(default)]
     pub description: Option<String>,
+    /// Files the agent is not allowed to read (eval-only).
+    /// The read tool returns an error message instead of content.
+    #[serde(default)]
+    pub blocked_files: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

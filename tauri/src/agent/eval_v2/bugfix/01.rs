@@ -154,7 +154,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(format!(
             "The LRU cache in {} is broken — eviction doesn't work correctly \
              and the cache sometimes holds more items than its capacity allows.\n\n\
              Step 1: Read the code, identify all bugs, and apply your fixes \
@@ -166,18 +166,12 @@ if __name__ == "__main__":
             vec![
                 complete(),
                 succeeded("shell"),
-                // Primary: the test suite must pass
+                // Primary: the test suite must pass — it exercises eviction,
+                // promotion, capacity, and ordering so any correct fix will pass.
                 run_has("python3 test_lru.py", &["ALL_TESTS_PASSED"]),
-                // Secondary guards: the three bugs should be fixed
-                // 1. get() must promote key in _order (remove+append pattern)
-                file_has("lru_cache.py", &["self._order.remove(key)", "self._order.append(key)"]),
-                // 2. Capacity check must use >=
-                file_has("lru_cache.py", &[">="]),
-                file_lacks("lru_cache.py", &["len(self._store) > self.capacity"]),
-                // 3. _evict must pop(0), not pop()
-                file_has("lru_cache.py", &["pop(0)"]),
             ]),
-            vec![cache_file, test_file])
+            vec![cache_file]),
+            vec![test_file])
     }
     v.push(scen!("v2_bugfix_01_lru_cache", Category::Bugfix, Difficulty::Hard, I, setup));
 }

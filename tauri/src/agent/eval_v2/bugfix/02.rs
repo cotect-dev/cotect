@@ -213,7 +213,7 @@ if __name__ == "__main__":
         // Prompt points to scheduler.py — but the root cause is in task.py.
         // The model may fix either file: flipping __lt__ in task.py
         // or negating priority in scheduler.py's heappush. Both are valid.
-        with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(format!(
             "The task scheduler in {} isn't ordering tasks correctly — \
              low-priority tasks like email sending are executed before \
              critical tasks like payment processing.\n\n\
@@ -231,7 +231,8 @@ if __name__ == "__main__":
             // All three source files in scope. The prompt still points at
             // scheduler.py as the culprit — the model must trace into task.py
             // to find the real bug.
-            vec![scheduler_file, runner_file, task_file])
+            vec![scheduler_file, runner_file, task_file]),
+            vec![test_file])
     }
     v.push(scen!("v2_bugfix_02_cross_file_scheduler", Category::Bugfix, Difficulty::Hard, I, setup));
 }

@@ -184,6 +184,7 @@ mod tests {
             directory: Some("src/".into()),
             declarations: vec![],
             description: None,
+            blocked_files: vec![],
         };
         let env = EnvironmentInfo {
             os: "linux".into(),
@@ -264,6 +265,7 @@ mod tests {
             directory: Some("src/components/".into()),
             declarations: vec![],
             description: None,
+            blocked_files: vec![],
         };
         let block = scope_context_block(&scope, &[]);
         assert!(block.contains("src/components/"));
@@ -290,6 +292,7 @@ mod tests {
                 },
             ],
             description: None,
+            blocked_files: vec![],
         };
         let block = scope_context_block(&scope, &[]);
         assert!(block.contains("class UserStore in src/stores/user.ts [line 15]"));
@@ -304,6 +307,7 @@ mod tests {
             directory: None,
             declarations: vec![],
             description: Some("The user wants to refactor the auth module".into()),
+            blocked_files: vec![],
         };
         let block = scope_context_block(&scope, &[]);
         assert!(block.contains("User Description"));
@@ -318,6 +322,7 @@ mod tests {
             directory: None,
             declarations: vec![],
             description: None,
+            blocked_files: vec![],
         };
         let contents = vec![
             ("src/main.rs".into(), "fn main() {\n    println!(\"hello\");\n}".into()),
@@ -336,6 +341,7 @@ mod tests {
             directory: None,
             declarations: vec![],
             description: None,
+            blocked_files: vec![],
         };
         let env = EnvironmentInfo {
             os: "linux".into(),
@@ -362,6 +368,7 @@ mod tests {
             directory: None,
             declarations: vec![],
             description: None,
+            blocked_files: vec![],
         };
         let env = EnvironmentInfo {
             os: "linux".into(),
@@ -381,6 +388,7 @@ mod tests {
             directory: None,
             declarations: vec![],
             description: None,
+            blocked_files: vec![],
         };
         let env = EnvironmentInfo {
             os: "linux".into(),
@@ -404,6 +412,7 @@ mod tests {
             directory: None,
             declarations: vec![],
             description: None,
+            blocked_files: vec![],
         };
         let block = scope_context_block(&scope, &[]);
         assert!(block.contains("- a.rs"));
@@ -419,6 +428,7 @@ mod tests {
             directory: None,
             declarations: vec![],
             description: None,
+            blocked_files: vec![],
         };
         let block = scope_context_block(&scope, &[]);
         assert!(block.contains("Architecture Context"));
