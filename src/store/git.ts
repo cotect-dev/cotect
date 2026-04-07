@@ -187,7 +187,7 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
     cleanups.push(() => { invoke('unwatch_path', { id: 'source' }).catch(() => {}) })
     invoke('watch_path', { path: `${repoPath}/src`, id: 'source-src', recursive: true }).catch(() => {})
     cleanups.push(() => { invoke('unwatch_path', { id: 'source-src' }).catch(() => {}) })
-    invoke('watch_path', { path: `${repoPath}/src-tauri/src`, id: 'source-rs', recursive: true }).catch(() => {})
+    invoke('watch_path', { path: `${repoPath}/tauri/src`, id: 'source-rs', recursive: true }).catch(() => {})
     cleanups.push(() => { invoke('unwatch_path', { id: 'source-rs' }).catch(() => {}) })
 
     let unlisten: UnlistenFn | null = null
