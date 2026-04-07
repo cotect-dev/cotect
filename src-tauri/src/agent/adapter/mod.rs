@@ -46,6 +46,7 @@ use super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
 pub mod openai_compat;
 pub mod plain;
 pub mod gemma;
+pub mod qwen;
 
 // ─── PromptFormat enum ──────────────────────────────────────────────────────
 
@@ -258,7 +259,7 @@ pub fn build_adapter(format: PromptFormat) -> Box<dyn ModelAdapter> {
         PromptFormat::Gemma => Box::new(gemma::GemmaAdapter),
         // TODO(phase 2): replace these fall-throughs with real adapters.
         PromptFormat::Llama3 => Box::new(openai_compat::OpenAICompatAdapter),
-        PromptFormat::Qwen => Box::new(openai_compat::OpenAICompatAdapter),
+        PromptFormat::Qwen => Box::new(qwen::QwenAdapter),
         PromptFormat::ChatML => Box::new(openai_compat::OpenAICompatAdapter),
     }
 }
@@ -348,6 +349,7 @@ mod tests {
         // Phase 2 status: Plain and Gemma are native, others fall through to OpenAICompat.
         assert_eq!(build_adapter(PromptFormat::Plain).name(), "plain");
         assert_eq!(build_adapter(PromptFormat::Gemma).name(), "gemma");
+        assert_eq!(build_adapter(PromptFormat::Qwen).name(), "qwen");
         assert_eq!(
             build_adapter(PromptFormat::OpenAICompat).name(),
             "openai_compat"
@@ -355,7 +357,6 @@ mod tests {
         // Unimplemented native formats still fall through.
         for format in [
             PromptFormat::Llama3,
-            PromptFormat::Qwen,
             PromptFormat::ChatML,
         ] {
             assert_eq!(build_adapter(format).name(), "openai_compat");
