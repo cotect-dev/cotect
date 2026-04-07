@@ -1,11 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod agent;
 mod commands;
 mod git;
 mod synced_state;
 mod watcher;
 
 use std::fs;
+use std::sync::Arc;
 use tauri::Manager;
 
 /// Synchronously persist the alive child window list before exit —
@@ -60,6 +62,7 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .manage(watcher::WatcherState::new())
         .manage(synced_state::SyncedStateStore::new())
+        .manage(Arc::new(agent::AgentState::new()))
         .invoke_handler(tauri::generate_handler![
             commands::read_directory,
             commands::read_file_content,
@@ -80,6 +83,11 @@ fn main() {
             synced_state::set_synced_state,
             synced_state::get_synced_state,
             synced_state::clear_synced_state,
+            agent::commands::agent_start_task,
+            agent::commands::agent_abort,
+            agent::commands::agent_get_config,
+            agent::commands::agent_set_config,
+            agent::commands::agent_test_connection,
         ])
         .setup(|app| {
             synced_state::start_batch_broadcaster(app.handle().clone());
