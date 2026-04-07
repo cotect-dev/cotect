@@ -391,7 +391,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(format!(
             "The event-sourcing system has subtle bugs that surface under specific \
              conditions. The bugs interact — you may need to fix one to see the \
              next clearly.\n\n\
@@ -405,18 +405,13 @@ if __name__ == "__main__":
             vec![
                 complete(),
                 succeeded("shell"),
-                // Primary: all tests must pass
+                // Primary: all tests must pass — they cover independent store sequences,
+                // same-timestamp event handling, datetime snapshot roundtrips,
+                // full system integration, and store isolation.
                 run_has("python3 test_system.py", &["ALL_TESTS_PASSED"]),
-                // Bug 1: _seq must be an instance variable, not class variable
-                file_lacks("event_store.py", &["_seq = 0\n\n    def __init__"]),
-                file_has("event_store.py", &["self._seq"]),
-                // Bug 2: timestamp dedup must be removed or fixed
-                file_lacks("projector.py", &["if ts in self._seen_timestamps:\n            return"]),
-                // Bug 3: snapshot must handle datetime distinctly from date
-                file_has("snapshot.py", &["datetime"]),
-                file_lacks("snapshot.py", &["date.fromisoformat(obj[\"value\"].split(\"T\")[0])"]),
             ]),
-            vec![store_file, projector_file, snapshot_file, system_file])
+            vec![store_file, projector_file, snapshot_file, system_file]),
+            vec![test_file])
     }
     v.push(scen!("v2_bugfix_05_diabolical_eventsource", Category::Bugfix, Difficulty::Hard, I, setup));
 }

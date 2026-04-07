@@ -102,7 +102,7 @@ impl LlmClient {
         let tools_slice = tools.as_deref().unwrap_or(&[]);
         let body =
             self.adapter
-                .build_request_body(&self.model, &messages, tools_slice, temperature, 16384);
+                .build_request_body(&self.model, &messages, tools_slice, temperature, 65536);
 
         // Debug: dump request body when COTECT_DEBUG_REQUESTS is set.
         if std::env::var("COTECT_DEBUG_REQUESTS").is_ok() {

@@ -196,7 +196,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(format!(
             "The permission system is broken: editors are being denied access to \
              edit posts, while viewers can somehow edit. The role hierarchy seems \
              inverted for some roles.\n\n\
@@ -209,23 +209,13 @@ if __name__ == "__main__":
             vec![
                 complete(),
                 succeeded("shell"),
-                // Primary: the test suite must pass
+                // Primary: the test suite must pass — it comprehensively covers
+                // admin/editor/viewer/guest access levels, role hierarchy ordering,
+                // and correct permission grants/denials across all route handlers.
                 run_has("python3 test_permissions.py", &["ALL_TESTS_PASSED"]),
-                // The fix should be in _role_level: viewer=10, editor=20
-                file_has("permissions.py", &["\"viewer\""]),
-                file_has("permissions.py", &["\"editor\""]),
-                // Routes should NOT be changed — they're consistently using
-                // the legacy naming convention and work with the current API
-                file_has("routes.py", &[
-                    "check_access(user[\"role\"], \"viewer\")",
-                    "check_access(user[\"role\"], \"editor\")",
-                ]),
-                // The obvious-wrong-fix check: parameter names should NOT be swapped
-                file_has("permissions.py", &[
-                    "def check_access(required_role: str, user_role: str)",
-                ]),
             ]),
-            vec![perms_file, routes_file])
+            vec![perms_file, routes_file]),
+            vec![test_file])
     }
     v.push(scen!("v2_bugfix_04_adversarial_perms", Category::Bugfix, Difficulty::Hard, I, setup));
 }
