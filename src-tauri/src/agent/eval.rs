@@ -1,5 +1,5 @@
-//! Elaborate model evaluation harness: 100 scenarios across 10 categories
-//! and 3 difficulty tiers. The goal is to stress-test an agentic model's
+//! Elaborate model evaluation harness: 125 scenarios across 10 categories
+//! and 3 difficulty tiers (plus 25 "extra hard" scenarios). The goal is to stress-test an agentic model's
 //! ability to reason, use tools, recover from errors, and complete multi-
 //! step workflows.
 //!
@@ -296,6 +296,15 @@ pub(super) enum Check {
     /// The last integer found in the output must equal this value.
     /// Useful for numeric answers where the model may reason before answering.
     LastNumberEquals(i64),
+    /// Run a shell command in the temp dir. Pass if exit code == 0.
+    /// Fields: (command, timeout_seconds).
+    RunExitOk(String, u64),
+    /// Run a shell command in the temp dir. Pass if stdout+stderr contains all needles.
+    /// Fields: (command, timeout_seconds, needles).
+    RunOutputContains(String, u64, Vec<String>),
+    /// Run a shell command in the temp dir. Pass if stdout+stderr does NOT contain any needle.
+    /// Fields: (command, timeout_seconds, needles).
+    RunOutputLacks(String, u64, Vec<String>),
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -476,7 +485,88 @@ fn evaluate_one_check(check: &Check, outcome: &RunOutcome, dir: &Path) -> Option
                 None => Some(format!("no number found in output, expected {}", expected)),
             }
         }
+        Check::RunExitOk(cmd, timeout_secs) => {
+            run_check_shell(cmd, *timeout_secs, dir, |_output, code| {
+                if code != 0 {
+                    Some(format!("command `{}` exited with code {}", cmd_preview(cmd), code))
+                } else { None }
+            })
+        }
+        Check::RunOutputContains(cmd, timeout_secs, needles) => {
+            run_check_shell(cmd, *timeout_secs, dir, |output, code| {
+                if code != 0 {
+                    return Some(format!("command `{}` exited with code {} (expected 0). output: {}",
+                        cmd_preview(cmd), code, output_preview(&output)));
+                }
+                let missing: Vec<&str> = needles.iter()
+                    .filter(|n| !contains_ci(&output, n))
+                    .map(|s| s.as_str()).collect();
+                if !missing.is_empty() {
+                    Some(format!("command `{}` output missing: {:?}. got: {}",
+                        cmd_preview(cmd), missing, output_preview(&output)))
+                } else { None }
+            })
+        }
+        Check::RunOutputLacks(cmd, timeout_secs, needles) => {
+            run_check_shell(cmd, *timeout_secs, dir, |output, code| {
+                if code != 0 {
+                    return Some(format!("command `{}` exited with code {} (expected 0). output: {}",
+                        cmd_preview(cmd), code, output_preview(&output)));
+                }
+                let found: Vec<&str> = needles.iter()
+                    .filter(|n| contains_ci(&output, n))
+                    .map(|s| s.as_str()).collect();
+                if !found.is_empty() {
+                    Some(format!("command `{}` output contains forbidden: {:?}",
+                        cmd_preview(cmd), found))
+                } else { None }
+            })
+        }
     }
+}
+
+/// Execute a shell command in the temp directory and apply a checker function.
+fn run_check_shell(
+    cmd: &str,
+    timeout_secs: u64,
+    dir: &Path,
+    checker: impl FnOnce(String, i32) -> Option<String>,
+) -> Option<String> {
+    use std::process::Command;
+    let child = Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+    match child {
+        Ok(child) => {
+            let result = child.wait_with_output();
+            match result {
+                Ok(output) => {
+                    let combined = format!(
+                        "{}{}",
+                        String::from_utf8_lossy(&output.stdout),
+                        String::from_utf8_lossy(&output.stderr),
+                    );
+                    let code = output.status.code().unwrap_or(-1);
+                    let _ = timeout_secs; // timeout enforced by the overall scenario timeout
+                    checker(combined, code)
+                }
+                Err(e) => Some(format!("failed to wait for `{}`: {}", cmd_preview(cmd), e)),
+            }
+        }
+        Err(e) => Some(format!("failed to run `{}`: {}", cmd_preview(cmd), e)),
+    }
+}
+
+fn cmd_preview(cmd: &str) -> String {
+    if cmd.len() > 80 { format!("{}...", &cmd[..77]) } else { cmd.to_string() }
+}
+
+fn output_preview(output: &str) -> String {
+    if output.len() > 200 { format!("{}...", &output[..197]) } else { output.to_string() }
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -713,35 +803,48 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         let mut reasoning_text = String::new();
         let mut interrupted: Option<String> = None;
         let mut completed = false;
+        let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(10));
+        heartbeat.tick().await; // consume the immediate first tick
 
-        while let Some(ev) = rx.recv().await {
-            match &ev {
-                TaskEvent::Text { content, partial } => {
-                    if *partial { full_text.push_str(content); } else { full_text = content.clone(); }
+        loop {
+            tokio::select! {
+                ev = rx.recv() => {
+                    let Some(ev) = ev else { break };
+                    match &ev {
+                        TaskEvent::Text { content, partial } => {
+                            if *partial { full_text.push_str(content); } else { full_text = content.clone(); }
+                        }
+                        TaskEvent::Reasoning { content } => {
+                            reasoning_text.push_str(content);
+                        }
+                        TaskEvent::ToolStart { tool_name, .. } => {
+                            tool_calls.push(tool_name.clone());
+                            eprint!(".{}", &tool_name[..3.min(tool_name.len())]);
+                            let _ = std::io::stderr().flush();
+                            heartbeat.reset();
+                        }
+                        TaskEvent::ToolEnd { success, output, .. } => {
+                            if !*success {
+                                eprint!("!");
+                                if let Some(out) = output {
+                                    let preview: String = out.chars().take(100).collect();
+                                    eprint!("[{}]", preview.replace('\n', " "));
+                                }
+                                let _ = std::io::stderr().flush();
+                            }
+                            heartbeat.reset();
+                        }
+                        TaskEvent::Complete => { completed = true; }
+                        TaskEvent::Interrupted { reason } => { interrupted = Some(reason.clone()); }
+                        _ => {}
+                    }
+                    events.push(ev);
                 }
-                TaskEvent::Reasoning { content } => {
-                    reasoning_text.push_str(content);
-                }
-                TaskEvent::ToolStart { tool_name, .. } => {
-                    tool_calls.push(tool_name.clone());
-                    eprint!(".{}", &tool_name[..3.min(tool_name.len())]);
+                _ = heartbeat.tick() => {
+                    eprint!("~");
                     let _ = std::io::stderr().flush();
                 }
-                TaskEvent::ToolEnd { success, output, .. } => {
-                    if !*success {
-                        eprint!("!");
-                        if let Some(out) = output {
-                            let preview: String = out.chars().take(100).collect();
-                            eprint!("[{}]", preview.replace('\n', " "));
-                        }
-                        let _ = std::io::stderr().flush();
-                    }
-                }
-                TaskEvent::Complete => { completed = true; }
-                TaskEvent::Interrupted { reason } => { interrupted = Some(reason.clone()); }
-                _ => {}
             }
-            events.push(ev);
         }
         RunOutcome { events, tool_calls, full_text, reasoning_text, interrupted, completed }
     });
@@ -897,7 +1000,7 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Scenario definitions — 100 total, split by category under eval_scenarios/
+// Scenario definitions — 125 total, split by category under eval_scenarios/
 // ────────────────────────────────────────────────────────────────────────
 
 #[path = "eval_scenarios/mod.rs"]
@@ -937,7 +1040,7 @@ async fn eval_suite() {
     let total = scenarios.len();
 
     println!("\n{}", "=".repeat(78));
-    println!("COTECT EVAL SUITE — 100 scenarios");
+    println!("COTECT EVAL SUITE — 125 scenarios");
     println!("  model      : {}", cfg.model);
     println!("  endpoint   : {}", cfg.endpoint);
     println!("  style      : {}", cfg.system_style.label());
@@ -1023,3 +1126,23 @@ async fn eval_category_recovery() { run_category(Category::Recovery).await; }
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn eval_category_planning() { run_category(Category::Planning).await; }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn eval_extra_hard() {
+    let Some(mut cfg) = EvalConfig::from_env() else {
+        panic!("Set COTECT_EVAL_ENDPOINT and COTECT_EVAL_MODEL");
+    };
+    cfg.filter = Some("xhard".into());
+    let scenarios = collect_scenarios(&cfg);
+    let total = scenarios.len();
+
+    println!("\nExtra-hard suite — {} scenarios\n", total);
+    let mut results = Vec::with_capacity(total);
+    for (i, spec) in scenarios.iter().enumerate() {
+        eprint!("[{:>3}/{}] ", i + 1, total);
+        let r = run_scenario(&cfg, spec).await;
+        results.push(r);
+    }
+    print_report(&cfg, &results);
+}
