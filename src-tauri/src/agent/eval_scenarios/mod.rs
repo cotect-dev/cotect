@@ -1,6 +1,8 @@
-//! Scenario registry for the eval harness — 100 scenarios across 10 categories.
+//! Scenario registry for the eval harness — 125 scenarios across 10 categories.
 //!
 //! Each category lives in its own submodule for maintainability.
+//! The `extra_hard` module adds 25 devious scenarios designed to challenge
+//! even frontier models with multi-step reasoning, red herrings, and gotchas.
 //! See `eval.rs` for the runner, check types, and report logic.
 
 mod bugfix;
@@ -13,6 +15,8 @@ mod cross_file;
 mod error_handling;
 mod recovery;
 mod planning;
+mod extra_hard;
+mod v2_bugfix;
 
 use std::path::Path;
 
@@ -99,6 +103,30 @@ pub(crate) fn file_lines(path: &str, min: usize, max: usize) -> Check {
     Check::FileLineCount(path.into(), min, max)
 }
 
+/// Run a command in the temp dir; pass if exit code == 0.
+#[allow(dead_code)]
+pub(crate) fn run_ok(cmd: &str) -> Check {
+    Check::RunExitOk(cmd.into(), 30)
+}
+
+/// Run a command in the temp dir with custom timeout; pass if exit code == 0.
+#[allow(dead_code)]
+pub(crate) fn run_ok_t(cmd: &str, timeout: u64) -> Check {
+    Check::RunExitOk(cmd.into(), timeout)
+}
+
+/// Run a command in the temp dir; pass if exit == 0 AND output contains all needles.
+#[allow(dead_code)]
+pub(crate) fn run_has(cmd: &str, needles: &[&str]) -> Check {
+    Check::RunOutputContains(cmd.into(), 30, needles.iter().map(|s| s.to_string()).collect())
+}
+
+/// Run a command in the temp dir; pass if exit == 0 AND output does NOT contain any needle.
+#[allow(dead_code)]
+pub(crate) fn run_lacks(cmd: &str, needles: &[&str]) -> Check {
+    Check::RunOutputLacks(cmd.into(), 30, needles.iter().map(|s| s.to_string()).collect())
+}
+
 /// Absolute path under the temp dir.
 pub(crate) fn ap(dir: &Path, rel: &str) -> String {
     dir.join(rel).to_string_lossy().into_owned()
@@ -124,7 +152,7 @@ pub(crate) use scen;
 // ────────────────────────────────────────────────────────────────────────
 
 pub(super) fn make_scenarios() -> Vec<ScenarioSpec> {
-    let mut v = Vec::with_capacity(100);
+    let mut v = Vec::with_capacity(125);
     bugfix::scenarios(&mut v);
     refactor::scenarios(&mut v);
     implement::scenarios(&mut v);
@@ -135,5 +163,7 @@ pub(super) fn make_scenarios() -> Vec<ScenarioSpec> {
     error_handling::scenarios(&mut v);
     recovery::scenarios(&mut v);
     planning::scenarios(&mut v);
+    extra_hard::scenarios(&mut v);
+    v2_bugfix::scenarios(&mut v);
     v
 }
