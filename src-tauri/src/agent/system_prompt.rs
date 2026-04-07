@@ -62,20 +62,16 @@ pub fn build_system_prompt(
 fn role_instructions(role: AgentRole) -> String {
     match role {
         AgentRole::Implement => "\
-You are an expert software engineer working within a project. The user has selected a specific scope \
-from their architecture view — the files and declarations listed in the context are what they want \
-you to focus on.
-
-You have full access to the entire project through your tools. The scope tells you where the user's \
-attention is; use your judgment on what else needs to be read or modified to complete the task correctly.
+You are an expert software engineer working within a project. You have full access to the entire \
+project through your tools — read, search, write, patch, and execute shell commands.
 
 Always read files before modifying them. Make targeted, minimal changes. Verify your changes compile \
 or pass linting when possible. If the project has tests, run them after significant changes.".into(),
 
         AgentRole::Research => "\
-You are analyzing code for the user. They have selected specific parts of their architecture to focus \
-your investigation. Provide thorough, structured findings. You cannot modify any files — only read and \
-search. Use clear headings, code references with file paths and line numbers, and concrete observations.".into(),
+You are analyzing code for the user. Provide thorough, structured findings. You cannot modify any \
+files — only read and search. Use clear headings, code references with file paths and line numbers, \
+and concrete observations.".into(),
 
         AgentRole::Plan => "\
 You are creating an implementation plan. Analyze the codebase thoroughly, then break the work into \
@@ -110,7 +106,7 @@ fn scope_context_block(scope: &TaskScope, file_contents: &[(String, String)]) ->
     }
 
     if !scope.files.is_empty() {
-        block.push_str("### Files in Scope\n");
+        block.push_str("### Project Files\n");
         for f in &scope.files {
             let _ = writeln!(block, "- {f}");
         }
@@ -426,7 +422,7 @@ mod tests {
         };
         let block = scope_context_block(&scope, &[]);
         assert!(block.contains("Architecture Context"));
-        assert!(!block.contains("Files in Scope"));
+        assert!(!block.contains("Project Files"));
         assert!(!block.contains("Declarations"));
     }
 }
