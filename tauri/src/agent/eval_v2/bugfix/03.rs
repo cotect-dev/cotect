@@ -238,7 +238,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(format!(
             "The message relay system is corrupting messages during storage. \
              Short messages seem to work fine, but longer messages come back \
              garbled after a store-and-forward cycle. Additionally, some message \
@@ -252,16 +252,13 @@ if __name__ == "__main__":
             vec![
                 complete(),
                 succeeded("shell"),
-                // Primary: the full test suite must pass
+                // Primary: the full test suite must pass — it covers short/long
+                // message roundtrips, batch encoding, path resolution with extensions,
+                // multi-dot filenames, and full relay integration.
                 run_has("python3 test_relay.py", &["ALL_TESTS_PASSED"]),
-                // Bug 1: endianness must be consistent (both little-endian)
-                // Check that the actual unpack calls use '<I', not '>I'
-                file_lacks("protocol.py", &["struct.unpack('>I'"]),
-                file_has("protocol.py", &["'<I'"]),
-                // Bug 2: normalize must not strip extensions blindly
-                file_lacks("config.py", &["cleaned = cleaned[:dot_pos]"]),
             ]),
-            vec![relay_file, protocol_file, config_file])
+            vec![relay_file, protocol_file, config_file]),
+            vec![test_file])
     }
     v.push(scen!("v2_bugfix_03_cross_domain_relay", Category::Bugfix, Difficulty::Hard, I, setup));
 }

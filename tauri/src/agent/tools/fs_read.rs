@@ -38,6 +38,18 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
     let path = path_buf.to_string_lossy().to_string();
     let path = path.as_str();
 
+    // Check blocked files list (eval sandboxing).
+    // Return Ok (not Err) so this doesn't eat into the error budget —
+    // the model shouldn't be penalized for discovering a restriction.
+    if state.blocked_files.iter().any(|b| path_buf.ends_with(b) || &path_buf == b) {
+        return Ok(
+            "This file is part of the test harness and cannot be read during evaluation. \
+             You can still run it (e.g. `python3 <filename>`) to see test results. \
+             Focus on the source code files listed in your project scope."
+                .to_string(),
+        );
+    }
+
     // Check file size
     let metadata = tokio::fs::metadata(path)
         .await

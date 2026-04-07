@@ -24,6 +24,30 @@ pub struct ShellInput {
 }
 
 pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<String, String> {
+    // Cheat detection: flag when a shell command appears to read a blocked file.
+    // We don't block the command — just prepend a marker to the output so
+    // it shows up in transcripts without breaking the progress line.
+    let mut cheat_flag = false;
+    if !state.blocked_files.is_empty() {
+        let read_cmds = [
+            "cat ", "head ", "tail ", "less ", "more ", "grep ",
+            "egrep ", "fgrep ", "awk ", "sed ", "bat ", "strings ",
+        ];
+        let cmd = input.command.as_str();
+        for blocked in &state.blocked_files {
+            let name = blocked
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if name.is_empty() || !cmd.contains(&name) {
+                continue;
+            }
+            if read_cmds.iter().any(|rc| cmd.contains(rc)) {
+                cheat_flag = true;
+            }
+        }
+    }
+
     let cwd = input.cwd.as_deref().unwrap_or(&state.root_path);
 
     let result = tokio::time::timeout(TIMEOUT, async {
@@ -59,6 +83,10 @@ pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<Strin
                 result = format!("Command completed with exit code {exit_code}. No output.");
             } else {
                 result.push_str(&format!("\n\n[exit code: {exit_code}]"));
+            }
+
+            if cheat_flag {
+                result.insert_str(0, "[EVAL CHEAT DETECTED] Model used shell to read a blocked test file.\n\n");
             }
 
             Ok(result)

@@ -1,4 +1,4 @@
-//! Scenario registry for the eval harness — 125 scenarios across 10 categories.
+//! Scenario registry for the eval harness — scenarios across multiple categories.
 //!
 //! Each category lives in its own submodule for maintainability.
 //! The `extra_hard` module adds 25 devious scenarios designed to challenge
@@ -17,6 +17,9 @@ mod recovery;
 mod planning;
 mod extra_hard;
 mod v2_bugfix;
+mod v2_refactor;
+mod v2_patch;
+mod v2_implement;
 
 use std::path::Path;
 
@@ -30,7 +33,7 @@ use super::{Category, Check, Difficulty, ScenarioSpec, SetupResult};
 
 /// Build a bare `SetupResult` with only a prompt.
 pub(crate) fn pf(prompt: impl Into<String>) -> SetupResult {
-    SetupResult { prompt: prompt.into(), scope_files: vec![], checks: vec![] }
+    SetupResult { prompt: prompt.into(), scope_files: vec![], checks: vec![], blocked_files: vec![] }
 }
 
 pub(crate) fn with_checks(mut s: SetupResult, checks: Vec<Check>) -> SetupResult {
@@ -40,6 +43,11 @@ pub(crate) fn with_checks(mut s: SetupResult, checks: Vec<Check>) -> SetupResult
 
 pub(crate) fn with_scope(mut s: SetupResult, files: Vec<String>) -> SetupResult {
     s.scope_files = files;
+    s
+}
+
+pub(crate) fn with_blocked(mut s: SetupResult, files: Vec<String>) -> SetupResult {
+    s.blocked_files = files;
     s
 }
 
@@ -165,5 +173,8 @@ pub(super) fn make_scenarios() -> Vec<ScenarioSpec> {
     planning::scenarios(&mut v);
     extra_hard::scenarios(&mut v);
     v2_bugfix::scenarios(&mut v);
+    v2_refactor::scenarios(&mut v);
+    v2_patch::scenarios(&mut v);
+    v2_implement::scenarios(&mut v);
     v
 }

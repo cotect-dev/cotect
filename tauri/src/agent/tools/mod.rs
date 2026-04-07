@@ -20,12 +20,23 @@ use super::types::{FunctionDef, ToolCall, ToolDefinition, AgentRole};
 pub struct ToolState {
     pub read_files: Mutex<HashSet<PathBuf>>,
     pub root_path: String,
+    /// Absolute paths the agent is not allowed to read (eval-only).
+    pub blocked_files: Vec<PathBuf>,
 }
 
 impl ToolState {
     pub fn new(root_path: String) -> Arc<Self> {
         Arc::new(Self {
             read_files: Mutex::new(HashSet::new()),
+            root_path,
+            blocked_files: Vec::new(),
+        })
+    }
+
+    pub fn with_blocked_files(root_path: String, blocked_files: Vec<String>) -> Arc<Self> {
+        Arc::new(Self {
+            read_files: Mutex::new(HashSet::new()),
+            blocked_files: blocked_files.into_iter().map(PathBuf::from).collect(),
             root_path,
         })
     }

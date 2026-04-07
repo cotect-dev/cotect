@@ -255,6 +255,7 @@ pub(super) struct SetupResult {
     pub(super) prompt: String,
     pub(super) scope_files: Vec<String>,
     pub(super) checks: Vec<Check>,
+    pub(super) blocked_files: Vec<String>,
 }
 
 pub(super) struct ScenarioSpec {
@@ -318,6 +319,8 @@ struct EvalResult {
     category: Category,
     difficulty: Difficulty,
     passed: bool,
+    /// Whether the first shell test run already passed (None if no test run detected).
+    first_try: Option<bool>,
     turns: usize,
     tool_calls: Vec<String>,
     elapsed: Duration,
@@ -345,6 +348,20 @@ fn used_tool(events: &[TaskEvent], name: &str) -> bool {
 
 fn tool_succeeded(events: &[TaskEvent], name: &str) -> bool {
     events.iter().any(|e| matches!(e, TaskEvent::ToolEnd { tool_name, success, .. } if tool_name == name && *success))
+}
+
+/// Check whether the first shell execution that produced test-like output
+/// already contained ALL_TESTS_PASSED — i.e. the model fixed it on the
+/// first try without needing to iterate.
+fn first_shell_passed(events: &[TaskEvent]) -> Option<bool> {
+    for ev in events {
+        if let TaskEvent::ToolEnd { tool_name, output: Some(out), .. } = ev {
+            if tool_name == "shell" && (out.contains("ALL_TESTS_PASSED") || out.contains("assert") || out.contains("Traceback")) {
+                return Some(out.contains("ALL_TESTS_PASSED"));
+            }
+        }
+    }
+    None // no test-like shell run found
 }
 
 fn contains_ci(hay: &str, needle: &str) -> bool {
@@ -603,6 +620,7 @@ fn build_transcript(
     scope_files: &[String],
     outcome: &RunOutcome,
     passed: bool,
+    first_try: Option<bool>,
     failed_checks: &[String],
     elapsed: Duration,
     interrupted: &Option<String>,
@@ -612,7 +630,7 @@ fn build_transcript(
     let mut s = String::with_capacity(16384);
 
     let status = if passed { "PASS" } else { "FAIL" };
-    let _ = writeln!(s, "# {} — {}", spec.id, status);
+    let _ = writeln!(s, "# {} \u{2014} {}", spec.id, status);
     let _ = writeln!(s);
     let _ = writeln!(s, "- **category**: {}", spec.category.label());
     let _ = writeln!(s, "- **difficulty**: {:?}", spec.difficulty);
@@ -621,6 +639,14 @@ fn build_transcript(
     let _ = writeln!(s, "- **tool calls**: {}", outcome.tool_calls.len());
     let _ = writeln!(s, "- **tools used**: {:?}", outcome.tool_calls);
     let _ = writeln!(s, "- **completed**: {}", outcome.completed);
+    if passed {
+        let ft_label = match first_try {
+            Some(true) => "yes",
+            Some(false) => "no",
+            None => "n/a",
+        };
+        let _ = writeln!(s, "- **1st try**: {}", ft_label);
+    }
     if let Some(r) = interrupted {
         let _ = writeln!(s, "- **interrupted**: {}", r);
     }
@@ -631,7 +657,6 @@ fn build_transcript(
         }
     }
     let _ = writeln!(s);
-
     // User prompt
     let _ = writeln!(s, "## User Prompt\n\n```\n{}\n```\n", prompt);
 
@@ -772,6 +797,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         directory: None,
         declarations: vec![],
         description: None,
+        blocked_files: setup.blocked_files.clone(),
     };
 
     let final_prompt = user_prompt_with_style(cfg.system_style, &setup.prompt);
@@ -823,13 +849,9 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                             let _ = std::io::stderr().flush();
                             heartbeat.reset();
                         }
-                        TaskEvent::ToolEnd { success, output, .. } => {
+                        TaskEvent::ToolEnd { success, .. } => {
                             if !*success {
                                 eprint!("!");
-                                if let Some(out) = output {
-                                    let preview: String = out.chars().take(100).collect();
-                                    eprint!("[{}]", preview.replace('\n', " "));
-                                }
                                 let _ = std::io::stderr().flush();
                             }
                             heartbeat.reset();
@@ -851,6 +873,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
 
     let orch_result = tokio::time::timeout(cfg.timeout, async {
         let mut orch = Orchestrator::new(&cfg.provider(), &request, tx);
+        orch.set_max_turns(cfg.max_turns);
         orch.run().await
     }).await;
 
@@ -881,24 +904,24 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         }
     };
 
-    let status = if passed { "PASS" } else { "FAIL" };
-    eprint!(" {} {:>5.1}s {:>2}t", status, elapsed.as_secs_f64(), outcome.tool_calls.len());
-    if !passed {
-        if let Some(first) = failed_checks.first() {
-            let s: String = first.chars().take(50).collect();
-            eprint!(" ({})", s);
+    let first_try = first_shell_passed(&outcome.events);
+    let status = if passed {
+        match first_try {
+            Some(true) => "\x1b[32mPASS\x1b[0m \x1b[36m1st try\x1b[0m",
+            _ => "\x1b[32mPASS\x1b[0m",
         }
-        // Also show a short output preview for failed tests
-        let preview: String = outcome.full_text.chars().take(120).collect();
-        if !preview.is_empty() {
-            eprint!(" out={:?}", preview.replace('\n', " "));
+    } else { "\x1b[31mFAIL\x1b[0m" };
+    eprintln!(" {} {:>5.1}s {:>2}t", status, elapsed.as_secs_f64(), outcome.tool_calls.len());
+    if !passed {
+        for reason in &failed_checks {
+            let s: String = reason.chars().take(100).collect();
+            eprintln!("             \x1b[31m> {}\x1b[0m", s);
         }
     }
     if let Some(reason) = &interrupted {
-        let s: String = reason.chars().take(40).collect();
-        eprint!(" INT({})", s);
+        let s: String = reason.chars().take(60).collect();
+        eprintln!("             > interrupted: {}", s);
     }
-    eprintln!();
 
     let output_preview: String = outcome.full_text.chars().take(300).collect();
 
@@ -907,7 +930,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         let transcript_path = tdir.join(format!("{}.md", spec.id));
         let transcript = build_transcript(
             spec, &setup.prompt, &setup.scope_files, &outcome,
-            passed, &failed_checks, elapsed, &interrupted, &dir_path,
+            passed, first_try, &failed_checks, elapsed, &interrupted, &dir_path,
         );
         let _ = std::fs::write(&transcript_path, transcript);
     }
@@ -915,7 +938,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     // Optionally preserve the temp directory for manual inspection
     if cfg.keep_dirs {
         let kept = dir.keep(); // prevents cleanup
-        eprintln!("    kept dir: {}", kept.display());
+        eprintln!("             dir: {}", kept.display());
     }
 
     EvalResult {
@@ -923,6 +946,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         category: spec.category,
         difficulty: spec.difficulty,
         passed,
+        first_try,
         turns: approx_turns,
         tool_calls: outcome.tool_calls,
         elapsed,
@@ -957,9 +981,11 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
         let cat_results: Vec<&EvalResult> = results.iter().filter(|r| r.category == cat).collect();
         if cat_results.is_empty() { continue; }
         let p = cat_results.iter().filter(|r| r.passed).count();
+        let ft = cat_results.iter().filter(|r| r.passed && r.first_try == Some(true)).count();
         let t = cat_results.len();
         let pct = (p as f64 / t as f64) * 100.0;
-        println!("  {:>14}  {}/{}  ({:>5.1}%)", cat.label(), p, t, pct);
+        let ft_str = if ft > 0 { format!("  ({} 1st try)", ft) } else { String::new() };
+        println!("  {:>14}  {}/{}  ({:>5.1}%){}", cat.label(), p, t, pct, ft_str);
     }
 
     // By difficulty
@@ -968,9 +994,11 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
         let d_results: Vec<&EvalResult> = results.iter().filter(|r| r.difficulty == diff).collect();
         if d_results.is_empty() { continue; }
         let p = d_results.iter().filter(|r| r.passed).count();
+        let ft = d_results.iter().filter(|r| r.passed && r.first_try == Some(true)).count();
         let t = d_results.len();
         let pct = (p as f64 / t as f64) * 100.0;
-        println!("  {:>14}  {}/{}  ({:>5.1}%)", format!("{:?}", diff), p, t, pct);
+        let ft_str = if ft > 0 { format!("  ({} 1st try)", ft) } else { String::new() };
+        println!("  {:>14}  {}/{}  ({:>5.1}%){}", format!("{:?}", diff), p, t, pct, ft_str);
     }
 
     // Failed
@@ -987,11 +1015,16 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
         }
     }
 
+    let first_try_count = results.iter()
+        .filter(|r| r.passed && r.first_try == Some(true))
+        .count();
+
     println!("\n{}", "─".repeat(78));
     println!(
-        "Score: {}/{} ({:.1}%)  total {:.1}s  tools {}  avg {:.1}s/scenario",
+        "Score: {}/{} ({:.1}%)  1st try: {}  total {:.1}s  tools {}  avg {:.1}s/scenario",
         passed, total,
         (passed as f64 / total as f64) * 100.0,
+        first_try_count,
         total_time.as_secs_f64(),
         total_tools,
         total_time.as_secs_f64() / total.max(1) as f64,
