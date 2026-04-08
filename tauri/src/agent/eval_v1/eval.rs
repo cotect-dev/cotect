@@ -1077,7 +1077,7 @@ async fn eval_suite() {
     let total = scenarios.len();
 
     println!("\n{}", "=".repeat(78));
-    println!("COTECT EVAL SUITE — 125 scenarios");
+    println!("COTECT EVAL SUITE — {} scenarios", total);
     println!("  model      : {}", cfg.model);
     println!("  endpoint   : {}", cfg.endpoint);
     println!("  style      : {}", cfg.system_style.label());
