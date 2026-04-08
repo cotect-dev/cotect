@@ -99,6 +99,6 @@ export function listenToTask(
     callback(e.payload)
   })
   return () => {
-    promise.then((fn) => fn())
+    promise.then((fn) => fn()).catch(() => {})
   }
 }

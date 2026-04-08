@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::ToolState;
 use super::fs_read::resolve_path;
+use super::MAX_FILE_SIZE;
 use crate::agent::utils::{io_err, line_has_number_prefix, read_first_err};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -36,7 +37,7 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
     let meta = tokio::fs::metadata(path)
         .await
         .map_err(|e| format!("Cannot access {path}: {e}"))?;
-    if meta.len() > 10 * 1024 * 1024 {
+    if meta.len() > MAX_FILE_SIZE {
         return Err(format!("{path}: file too large to patch ({} bytes)", meta.len()));
     }
 

@@ -6,6 +6,7 @@ import type { AgentConfig, ProviderConfig } from '@/services/agent'
 interface SettingsState {
   config: AgentConfig | null
   loading: boolean
+  error: string | null
   testResult: { models: string[]; error?: string } | null
   testing: boolean
 
@@ -31,18 +32,19 @@ export const useSettingsStore = createStoreWithHMR(import.meta.hot, 'settings', 
     return {
       config: null,
       loading: false,
+      error: null,
       testResult: null,
       testing: false,
 
       loadConfig: async () => {
         if (get().config) return
-        set({ loading: true })
+        set({ loading: true, error: null })
         try {
           const config = await agentService.getConfig()
-          set({ config, loading: false })
+          set({ config, loading: false, error: null })
         } catch (err) {
           console.error('Failed to load agent config:', err)
-          set({ loading: false })
+          set({ loading: false, error: String(err) })
         }
       },
 

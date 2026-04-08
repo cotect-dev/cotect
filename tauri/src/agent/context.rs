@@ -39,7 +39,7 @@ impl ConversationContext {
     /// message would leave a trailing assistant turn in the conversation, which
     /// some servers reject as a "prefill" (e.g. Gemma 4 with enable_thinking:
     /// 400 Bad Request "Assistant response prefill is incompatible with enable_thinking").
-    pub fn append_assistant(&mut self, content: &str, _reasoning: &str) {
+    pub fn append_assistant(&mut self, content: &str) {
         if content.trim().is_empty() {
             return;
         }
@@ -86,8 +86,8 @@ impl ConversationContext {
         }
 
         if !indices_to_remove.is_empty() {
-            // Remove in reverse order to keep indices valid
-            indices_to_remove.sort_unstable();
+            // Remove in reverse order to keep indices valid.
+            // Indices are already sorted from forward iteration; just dedup.
             indices_to_remove.dedup();
             for &i in indices_to_remove.iter().rev() {
                 self.messages.remove(i);
@@ -187,7 +187,7 @@ mod tests {
         // Add 20 messages
         for i in 0..20 {
             ctx.append_user(&format!("user message {i}"));
-            ctx.append_assistant(&format!("assistant message {i}"), "");
+            ctx.append_assistant(&format!("assistant message {i}"));
         }
         let before_len = ctx.messages.len(); // 1 system + 40 user/assistant = 41
         assert_eq!(before_len, 41);
@@ -204,7 +204,7 @@ mod tests {
     fn test_compact_noop_when_small() {
         let mut ctx = ConversationContext::new("system".into(), vec![]);
         ctx.append_user("hello");
-        ctx.append_assistant("world", "");
+        ctx.append_assistant("world");
         let before = ctx.messages.len();
         ctx.compact();
         assert_eq!(ctx.messages.len(), before);
@@ -229,7 +229,7 @@ mod tests {
         ctx.append_user("What is 2+2?");
         assert_eq!(ctx.messages().len(), 2);
 
-        ctx.append_assistant("4", "");
+        ctx.append_assistant("4");
         assert_eq!(ctx.messages().len(), 3);
 
         ctx.append_user("And 3+3?");
@@ -271,7 +271,7 @@ mod tests {
         // Add many early messages
         for i in 0..20 {
             ctx.append_user(&format!("request {i}"));
-            ctx.append_assistant(&format!("response {i}"), "");
+            ctx.append_assistant(&format!("response {i}"));
         }
 
         // Add tool call + result at the end
@@ -320,7 +320,7 @@ mod tests {
         // Add final messages to fill the tail
         for i in 0..6 {
             ctx.append_user(&format!("late request {i}"));
-            ctx.append_assistant(&format!("late response {i}"), "");
+            ctx.append_assistant(&format!("late response {i}"));
         }
 
         ctx.compact();
@@ -340,7 +340,7 @@ mod tests {
         let after_user = ctx.estimated_tokens();
         assert!(after_user > initial);
 
-        ctx.append_assistant("an equally long response with plenty of content", "");
+        ctx.append_assistant("an equally long response with plenty of content");
         let after_assistant = ctx.estimated_tokens();
         assert!(after_assistant > after_user);
     }
@@ -429,7 +429,7 @@ mod tests {
     fn test_compact_format_errors_noop_without_errors() {
         let mut ctx = ConversationContext::new("system".into(), vec![]);
         ctx.append_user("hello");
-        ctx.append_assistant("world", "");
+        ctx.append_assistant("world");
         let before = ctx.messages().len();
         ctx.compact_format_errors();
         assert_eq!(ctx.messages().len(), before);

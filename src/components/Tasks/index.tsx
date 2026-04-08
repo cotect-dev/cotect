@@ -1,6 +1,5 @@
 import { memo, useState, useCallback, useEffect } from 'react'
 import { useTasksStore, type TaskEntry, type TaskStatus } from '@/store/tasks'
-import { useShallow } from 'zustand/react/shallow'
 import { useBrowserStore } from '@/store/browser'
 import type { AgentRole } from '@/services/agent'
 import { Button } from '@/components/ui/button'
@@ -36,7 +35,7 @@ function ToolActivityList({ task }: { task: TaskEntry }) {
   return (
     <div className="flex flex-col gap-0.5 mt-1">
       {recent.map((a, i) => (
-        <div key={i} className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+        <div key={`${a.tool_name}-${a.timestamp}-${i}`} className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
           <span className={a.success === undefined ? 'text-blue-400' : a.success ? 'text-green-400' : 'text-red-400'}>
             {a.success === undefined ? '...' : a.success ? 'ok' : 'err'}
           </span>
@@ -114,6 +113,8 @@ const TaskCard = memo(function TaskCard({ task }: { task: TaskEntry }) {
         <div>
           <button
             onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-label={expanded ? 'Hide task output' : 'Show task output'}
             className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
           >
             {expanded ? 'Hide output' : 'Show output'}
@@ -209,7 +210,7 @@ function NewTaskForm() {
 // ─── Main panel ──────────────────────────────────────────────────────────────
 
 export default function Tasks() {
-  const tasks = useTasksStore(useShallow((s) => s.tasks))
+  const tasks = useTasksStore((s) => s.tasks)
   const clearCompleted = useTasksStore((s) => s.clearCompleted)
 
   const hasCompleted = tasks.some((t) => t.status !== 'running' && t.status !== 'pending')

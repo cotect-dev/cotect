@@ -7,9 +7,6 @@ use crate::agent::utils::truncate_bytes;
 pub struct FetchInput {
     /// The URL to fetch.
     pub url: String,
-    /// If true, return raw content without processing.
-    #[serde(default)]
-    pub raw: Option<bool>,
 }
 
 pub async fn execute(input: &FetchInput) -> Result<String, String> {

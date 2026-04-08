@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::ToolState;
 use crate::agent::utils::io_err;
 
-const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+use super::MAX_FILE_SIZE;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FSReadInput {

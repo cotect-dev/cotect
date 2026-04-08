@@ -13,6 +13,7 @@ describe('useSettingsStore', () => {
     useSettingsStore.setState({
       config: null,
       loading: false,
+      error: null,
       testResult: null,
       testing: false,
     })
@@ -53,6 +54,35 @@ describe('useSettingsStore', () => {
 
       expect(useSettingsStore.getState().config).toBeNull()
       expect(useSettingsStore.getState().loading).toBe(false)
+    })
+
+    it('sets error field when loadConfig fails', async () => {
+      vi.mocked(agentService.getConfig).mockRejectedValue(new Error('Connection refused'))
+
+      await useSettingsStore.getState().loadConfig()
+
+      expect(useSettingsStore.getState().error).toBe('Error: Connection refused')
+      expect(useSettingsStore.getState().config).toBeNull()
+    })
+
+    it('clears error on successful reload', async () => {
+      // First load fails
+      vi.mocked(agentService.getConfig).mockRejectedValue(new Error('Connection refused'))
+      await useSettingsStore.getState().loadConfig()
+      expect(useSettingsStore.getState().error).toBe('Error: Connection refused')
+
+      // Reset mock to succeed and clear config so loadConfig runs again
+      const config: agentService.AgentConfig = {
+        providers: [{ id: 'p1', name: 'Test', endpoint: 'http://localhost', model: 'gpt-4' }],
+        active_provider_id: 'p1',
+      }
+      vi.mocked(agentService.getConfig).mockResolvedValue(config)
+      useSettingsStore.setState({ config: null })
+
+      await useSettingsStore.getState().loadConfig()
+
+      expect(useSettingsStore.getState().error).toBeNull()
+      expect(useSettingsStore.getState().config).toEqual(config)
     })
 
     it('skips IPC call when config is already loaded', async () => {

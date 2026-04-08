@@ -33,7 +33,10 @@ pub async fn execute(input: &FSSearchInput, state: &Arc<ToolState>) -> Result<St
     let result = try_ripgrep(input, &search_path).await;
     match result {
         Ok(output) => Ok(output),
-        Err(_) => try_grep(input, &search_path).await,
+        Err(rg_err) => {
+            eprintln!("ripgrep failed, falling back to grep: {rg_err}");
+            try_grep(input, &search_path).await
+        }
     }
 }
 
@@ -81,6 +84,7 @@ async fn try_grep(input: &FSSearchInput, search_path: &str) -> Result<String, St
     cmd.arg("-rn")
         .arg("--color=never")
         .arg("-E")
+        .arg("-m").arg("100")
         .arg(&input.pattern)
         .arg(search_path);
 
