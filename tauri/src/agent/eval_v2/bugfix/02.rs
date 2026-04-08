@@ -219,7 +219,7 @@ if __name__ == "__main__":
              critical tasks like payment processing.\n\n\
              Step 1: Read the code and any related files to find the root cause.\n\
              Step 2: Apply your fix.\n\
-             Step 3: Run `python3 verify_scheduling.py` to verify. If tests \
+             Step 3: Run the existing `python3 verify_scheduling.py` to verify. If tests \
              fail, read the errors and iterate until they pass.",
             scheduler_file)),
             vec![

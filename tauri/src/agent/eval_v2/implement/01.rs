@@ -266,7 +266,7 @@ if __name__ == "__main__":
              the TODO comment.\n\n\
              Step 1: Read the code and implement the `search()` method \
              WITHOUT running the code first.\n\
-             Step 2: Run `python3 test_inventory.py` to check your work.\n\
+             Step 2: Run the existing `python3 test_inventory.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              implementation, and re-run until all tests pass.",
             inv_file)),

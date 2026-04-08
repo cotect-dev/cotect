@@ -202,7 +202,7 @@ if __name__ == "__main__":
              inverted for some roles.\n\n\
              Step 1: Read {} and {} carefully. Identify the root cause and \
              apply your fix WITHOUT running the code first.\n\
-             Step 2: Run `python3 test_permissions.py` to check your work.\n\
+             Step 2: Run the existing `python3 test_permissions.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              fix, and re-run until all tests pass.",
             perms_file, routes_file)),

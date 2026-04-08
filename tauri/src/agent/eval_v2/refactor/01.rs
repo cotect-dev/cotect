@@ -232,7 +232,7 @@ if __name__ == "__main__":
              Remove any dead code you find.\n\n\
              Step 1: Read the code and plan your refactoring.\n\
              Step 2: Apply changes WITHOUT running the code first.\n\
-             Step 3: Run `python3 test_rate_limiter.py` to verify your refactoring \
+             Step 3: Run the existing `python3 test_rate_limiter.py` to verify your refactoring \
              didn't break anything. If tests fail, iterate until they pass.",
             limiter_file)),
             vec![

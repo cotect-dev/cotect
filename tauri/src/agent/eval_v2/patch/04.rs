@@ -325,7 +325,7 @@ if __name__ == "__main__":
              Step 1: Read all source files and identify every profile-specific \
              reference to `user_name`.\n\
              Step 2: Apply surgical patches WITHOUT running the code first.\n\
-             Step 3: Run `python3 test_entities.py` to verify. If tests fail, \
+             Step 3: Run the existing `python3 test_entities.py` to verify. If tests fail, \
              read the errors and iterate until all tests pass.",
         )),
             vec![

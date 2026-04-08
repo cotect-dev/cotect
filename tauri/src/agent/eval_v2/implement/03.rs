@@ -311,7 +311,7 @@ if __name__ == "__main__":
              invalidate affected cache entries.\n\n\
              Step 1: Read all source files, then implement the caching \
              WITHOUT running the code first.\n\
-             Step 2: Run `python3 test_service.py` to check your work.\n\
+             Step 2: Run the existing `python3 test_service.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              implementation, and re-run until all tests pass.",
             service_file)),

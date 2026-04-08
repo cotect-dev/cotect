@@ -233,7 +233,7 @@ if __name__ == "__main__":
              purpose and its callers depend on it returning a plain string.\n\n\
              Step 1: Read all source files and trace every call to `format_entry()`.\n\
              Step 2: Apply coordinated patches WITHOUT running the code first.\n\
-             Step 3: Run `python3 test_report.py` to verify. If tests fail, \
+             Step 3: Run the existing `python3 test_report.py` to verify. If tests fail, \
              read the errors and iterate until all tests pass.",
         )),
             vec![

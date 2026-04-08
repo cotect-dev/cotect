@@ -245,7 +245,7 @@ if __name__ == "__main__":
              file paths are wrong — files are being saved without their extensions.\n\n\
              Step 1: Read all source files, identify every bug, and apply \
              your fixes WITHOUT running the code first.\n\
-             Step 2: Run `python3 test_relay.py` to check your work.\n\
+             Step 2: Run the existing `python3 test_relay.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              fixes, and re-run until all tests pass.",
         )),

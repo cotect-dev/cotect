@@ -320,7 +320,7 @@ if __name__ == "__main__":
              pipeline's _debug_headers method.\n\n\
              Step 1: Read all source files and trace the context flow.\n\
              Step 2: Apply coordinated patches WITHOUT running the code first.\n\
-             Step 3: Run `python3 test_pipeline.py` to verify. If tests fail, \
+             Step 3: Run the existing `python3 test_pipeline.py` to verify. If tests fail, \
              read the errors and iterate until all tests pass.",
         )),
             vec![

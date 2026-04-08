@@ -333,7 +333,7 @@ if __name__ == "__main__":
              that watches store keys and recomputes when they change.\n\n\
              Step 1: Read both files and implement the required methods \
              WITHOUT running the code first.\n\
-             Step 2: Run `python3 test_observer.py` to check your work.\n\
+             Step 2: Run the existing `python3 test_observer.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              implementation, and re-run until all tests pass.",
             store_file, computed_file)),

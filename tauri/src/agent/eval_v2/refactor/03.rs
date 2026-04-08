@@ -282,7 +282,7 @@ if __name__ == "__main__":
              - Remove any unnecessary preprocessing or normalization methods.\n\n\
              Step 1: Read all files and plan your refactoring.\n\
              Step 2: Apply changes WITHOUT running the code first.\n\
-             Step 3: Run `python3 test_metrics.py` to verify. If tests fail, \
+             Step 3: Run the existing `python3 test_metrics.py` to verify. If tests fail, \
              reconsider what you removed — some 'unnecessary' code may be important.",
         )),
             vec![

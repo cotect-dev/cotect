@@ -21,6 +21,7 @@ mod v2_refactor;
 mod v2_patch;
 mod v2_implement;
 mod v2_testing;
+mod v2_cross_file;
 
 use std::path::Path;
 
@@ -178,5 +179,6 @@ pub(super) fn make_scenarios() -> Vec<ScenarioSpec> {
     v2_patch::scenarios(&mut v);
     v2_implement::scenarios(&mut v);
     v2_testing::scenarios(&mut v);
+    v2_cross_file::scenarios(&mut v);
     v
 }
