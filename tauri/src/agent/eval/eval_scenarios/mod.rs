@@ -1,9 +1,8 @@
-//! Scenario registry for the eval harness — scenarios across multiple categories.
+//! Scenario registry for the eval harness — 100 scenarios across multiple categories.
 //!
 //! Each category lives in its own submodule for maintainability.
-//! The `hard` module adds 25 devious scenarios designed to challenge
-//! even frontier models with multi-step reasoning, red herrings, and gotchas.
-//! The `extra_hard_*` modules add 30 expert-level scenarios across six categories.
+//! The `hard` module has 25 scenarios with red herrings, gotchas, and multi-step reasoning.
+//! The `extra_hard_*` modules in `extra_hard/` add 30 expert-level scenarios.
 //! See `eval.rs` for the runner, check types, and report logic.
 
 mod bugfix;

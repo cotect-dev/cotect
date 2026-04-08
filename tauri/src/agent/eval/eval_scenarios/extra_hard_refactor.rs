@@ -1,23 +1,23 @@
-//! Extra-hard implement scenarios — pulled in from eval_v2/implement/*.rs via #[path].
+//! Extra-hard refactor scenarios.
 
 // Re-export everything the child scenario files need.
 // They use `use super::*;` and we're their `super`.
 #[allow(unused_imports)]
 pub(crate) use super::*;
 
-#[path = "../../eval_v2/implement/01.rs"]
+#[path = "extra_hard/refactor_01.rs"]
 mod _01;
 
-#[path = "../../eval_v2/implement/02.rs"]
+#[path = "extra_hard/refactor_02.rs"]
 mod _02;
 
-#[path = "../../eval_v2/implement/03.rs"]
+#[path = "extra_hard/refactor_03.rs"]
 mod _03;
 
-#[path = "../../eval_v2/implement/04.rs"]
+#[path = "extra_hard/refactor_04.rs"]
 mod _04;
 
-#[path = "../../eval_v2/implement/05.rs"]
+#[path = "extra_hard/refactor_05.rs"]
 mod _05;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
