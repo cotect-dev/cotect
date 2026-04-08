@@ -162,7 +162,7 @@ pub(crate) use scen;
 // ────────────────────────────────────────────────────────────────────────
 
 pub(super) fn make_scenarios() -> Vec<ScenarioSpec> {
-    let mut v = Vec::with_capacity(200);
+    let mut v = Vec::with_capacity(100);
     bugfix::scenarios(&mut v);
     refactor::scenarios(&mut v);
     implement::scenarios(&mut v);
