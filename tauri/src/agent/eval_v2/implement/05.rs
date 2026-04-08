@@ -368,5 +368,5 @@ if __name__ == "__main__":
             vec![request_file, handlers_file, app_file, middleware_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_implement_05_middleware_pipeline", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_implement_05_middleware_pipeline", Category::Implement, Difficulty::Hard, I, setup));
 }

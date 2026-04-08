@@ -217,5 +217,5 @@ if __name__ == "__main__":
             vec![perms_file, routes_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_bugfix_04_adversarial_perms", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_bugfix_04_adversarial_perms", Category::Bugfix, Difficulty::Hard, I, setup));
 }

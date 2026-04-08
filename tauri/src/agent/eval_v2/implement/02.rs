@@ -382,5 +382,5 @@ if __name__ == "__main__":
             vec![task_file, board_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_implement_02_task_serialization", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_implement_02_task_serialization", Category::Implement, Difficulty::Hard, I, setup));
 }

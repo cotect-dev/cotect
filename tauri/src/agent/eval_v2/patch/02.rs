@@ -322,5 +322,5 @@ if __name__ == "__main__":
             vec![schema_file, queries_file, models_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_patch_02_surgical_decimal_migration", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_patch_02_surgical_decimal_migration", Category::Patch, Difficulty::Hard, I, setup));
 }

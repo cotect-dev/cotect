@@ -248,5 +248,5 @@ if __name__ == "__main__":
             vec![formatter_file, renderer_file, exporter_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_patch_03_return_type_cascade", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_patch_03_return_type_cascade", Category::Patch, Difficulty::Hard, I, setup));
 }

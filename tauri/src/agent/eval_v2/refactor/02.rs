@@ -268,5 +268,5 @@ if __name__ == "__main__":
             vec![ring_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_refactor_02_already_optimal", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_refactor_02_already_optimal", Category::Refactor, Difficulty::Hard, I, setup));
 }

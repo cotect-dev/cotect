@@ -309,5 +309,5 @@ else:
                  ap(dir, "test_cart.py")]),
             vec![discount_fixed, cart_fixed, runner, product_buggy, discount_buggy, cart_buggy])
     }
-    v.push(scen!("v2_testing_03_shopping_cart", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_testing_03_shopping_cart", Category::Testing, Difficulty::Hard, I, setup));
 }

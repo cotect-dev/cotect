@@ -413,5 +413,5 @@ if __name__ == "__main__":
             vec![store_file, projector_file, snapshot_file, system_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_bugfix_05_diabolical_eventsource", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_bugfix_05_diabolical_eventsource", Category::Bugfix, Difficulty::Hard, I, setup));
 }

@@ -346,5 +346,5 @@ if __name__ == "__main__":
             vec![logger_file, auth_file, api_file, jobs_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_cross_file_04_add_parameter", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_cross_file_04_add_parameter", Category::CrossFile, Difficulty::Hard, I, setup));
 }

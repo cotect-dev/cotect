@@ -206,5 +206,5 @@ else:
             vec![src_file.clone(), ap(dir, "test_strutil.py")]),
             vec![fixed_file, runner, buggy_copy])
     }
-    v.push(scen!("v2_testing_01_string_util", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_testing_01_string_util", Category::Testing, Difficulty::Hard, I, setup));
 }
