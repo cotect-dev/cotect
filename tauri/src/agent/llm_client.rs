@@ -102,7 +102,7 @@ impl LlmClient {
         let tools_slice = tools.as_deref().unwrap_or(&[]);
         let body =
             self.adapter
-                .build_request_body(&self.model, &messages, tools_slice, temperature, 65536);
+                .build_request_body(&self.model, &messages, tools_slice, temperature, std::env::var("COTECT_MAX_TOKENS").ok().and_then(|v| v.parse().ok()).unwrap_or(65536));
 
         // Debug: dump request body when COTECT_DEBUG_REQUESTS is set.
         if std::env::var("COTECT_DEBUG_REQUESTS").is_ok() {
@@ -223,7 +223,9 @@ async fn stream_sse_events(
 
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
-    let idle_timeout = std::time::Duration::from_secs(30);
+    let idle_timeout = std::time::Duration::from_secs(
+        std::env::var("COTECT_STREAM_IDLE_TIMEOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(60)
+    );
 
     loop {
         let chunk = tokio::time::timeout(idle_timeout, stream.next()).await;
