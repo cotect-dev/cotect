@@ -147,6 +147,7 @@ pub(super) enum Category {
     ErrorHandling,
     Recovery,
     Planning,
+    Testing,
 }
 
 impl Category {
@@ -162,6 +163,7 @@ impl Category {
             "error_handling" | "errorhandling" | "error-handling" | "errh" => Some(Self::ErrorHandling),
             "recovery" => Some(Self::Recovery),
             "planning" | "plan" => Some(Self::Planning),
+            "testing" | "test" => Some(Self::Testing),
             _ => None,
         }
     }
@@ -178,6 +180,7 @@ impl Category {
             Self::ErrorHandling => "error_handling",
             Self::Recovery => "recovery",
             Self::Planning => "planning",
+            Self::Testing => "testing",
         }
     }
 }
@@ -975,6 +978,7 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
         Category::Bugfix, Category::Refactor, Category::Implement, Category::Patch,
         Category::Understanding, Category::Search, Category::CrossFile,
         Category::ErrorHandling, Category::Recovery, Category::Planning,
+        Category::Testing,
     ];
     println!("\nBy category:");
     for cat in cats {
@@ -1159,6 +1163,10 @@ async fn eval_category_recovery() { run_category(Category::Recovery).await; }
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn eval_category_planning() { run_category(Category::Planning).await; }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn eval_category_testing() { run_category(Category::Testing).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
