@@ -173,5 +173,5 @@ if __name__ == "__main__":
             vec![cache_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_bugfix_01_lru_cache", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_bugfix_01_lru_cache", Category::Bugfix, Difficulty::Hard, I, setup));
 }

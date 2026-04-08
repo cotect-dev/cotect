@@ -1,4 +1,4 @@
-//! Eval v2 refactor scenarios — pulled in from eval_v2/refactor/*.rs via #[path].
+//! Extra-hard refactor scenarios — pulled in from eval_v2/refactor/*.rs via #[path].
 
 // Re-export everything the child scenario files need.
 // They use `use super::*;` and we're their `super`.

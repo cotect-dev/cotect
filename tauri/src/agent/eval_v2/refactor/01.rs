@@ -246,5 +246,5 @@ if __name__ == "__main__":
             vec![limiter_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_refactor_01_deceptive_dead_code", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_refactor_01_deceptive_dead_code", Category::Refactor, Difficulty::Hard, I, setup));
 }

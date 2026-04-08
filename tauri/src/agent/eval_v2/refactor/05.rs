@@ -339,5 +339,5 @@ if __name__ == "__main__":
             vec![pipeline_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_refactor_05_god_class_decomposition", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_refactor_05_god_class_decomposition", Category::Refactor, Difficulty::Hard, I, setup));
 }

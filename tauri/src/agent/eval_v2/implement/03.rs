@@ -323,5 +323,5 @@ if __name__ == "__main__":
             vec![config_file, repo_file, service_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_implement_03_caching_layer", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_implement_03_caching_layer", Category::Implement, Difficulty::Hard, I, setup));
 }

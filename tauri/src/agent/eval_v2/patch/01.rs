@@ -238,5 +238,5 @@ if __name__ == "__main__":
             vec![client_file, auth_file, parser_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_patch_01_api_version_migration", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_patch_01_api_version_migration", Category::Patch, Difficulty::Hard, I, setup));
 }

@@ -306,5 +306,5 @@ if __name__ == "__main__":
             vec![source_file, transformer_file, aggregator_file, reporter_file, models_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_cross_file_01_return_type_cascade", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_cross_file_01_return_type_cascade", Category::CrossFile, Difficulty::Hard, I, setup));
 }

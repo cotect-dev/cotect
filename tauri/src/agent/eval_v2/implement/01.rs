@@ -278,5 +278,5 @@ if __name__ == "__main__":
             vec![inv_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_implement_01_inventory_search", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_implement_01_inventory_search", Category::Implement, Difficulty::Hard, I, setup));
 }

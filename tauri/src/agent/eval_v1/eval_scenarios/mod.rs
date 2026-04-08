@@ -1,8 +1,9 @@
 //! Scenario registry for the eval harness — scenarios across multiple categories.
 //!
 //! Each category lives in its own submodule for maintainability.
-//! The `extra_hard` module adds 25 devious scenarios designed to challenge
+//! The `hard` module adds 25 devious scenarios designed to challenge
 //! even frontier models with multi-step reasoning, red herrings, and gotchas.
+//! The `extra_hard_*` modules add 30 expert-level scenarios across six categories.
 //! See `eval.rs` for the runner, check types, and report logic.
 
 mod bugfix;
@@ -15,13 +16,13 @@ mod cross_file;
 mod error_handling;
 mod recovery;
 mod planning;
-mod extra_hard;
-mod v2_bugfix;
-mod v2_refactor;
-mod v2_patch;
-mod v2_implement;
-mod v2_testing;
-mod v2_cross_file;
+mod hard;
+mod extra_hard_bugfix;
+mod extra_hard_refactor;
+mod extra_hard_patch;
+mod extra_hard_implement;
+mod extra_hard_testing;
+mod extra_hard_cross_file;
 
 use std::path::Path;
 
@@ -173,12 +174,12 @@ pub(super) fn make_scenarios() -> Vec<ScenarioSpec> {
     error_handling::scenarios(&mut v);
     recovery::scenarios(&mut v);
     planning::scenarios(&mut v);
-    extra_hard::scenarios(&mut v);
-    v2_bugfix::scenarios(&mut v);
-    v2_refactor::scenarios(&mut v);
-    v2_patch::scenarios(&mut v);
-    v2_implement::scenarios(&mut v);
-    v2_testing::scenarios(&mut v);
-    v2_cross_file::scenarios(&mut v);
+    hard::scenarios(&mut v);
+    extra_hard_bugfix::scenarios(&mut v);
+    extra_hard_refactor::scenarios(&mut v);
+    extra_hard_patch::scenarios(&mut v);
+    extra_hard_implement::scenarios(&mut v);
+    extra_hard_testing::scenarios(&mut v);
+    extra_hard_cross_file::scenarios(&mut v);
     v
 }

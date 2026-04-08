@@ -345,5 +345,5 @@ if __name__ == "__main__":
             vec![store_file, computed_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_implement_04_observer_pattern", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_implement_04_observer_pattern", Category::Implement, Difficulty::Hard, I, setup));
 }
