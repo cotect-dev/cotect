@@ -5,9 +5,8 @@ use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use super::ToolState;
+use super::fs_read::resolve_path;
 use crate::agent::utils::truncate_bytes;
-
-const MAX_OUTPUT: usize = 100 * 1024; // 100 KB
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FSSearchInput {
@@ -26,18 +25,7 @@ pub struct FSSearchInput {
 
 pub async fn execute(input: &FSSearchInput, state: &Arc<ToolState>) -> Result<String, String> {
     let search_path = match input.path.as_deref() {
-        Some(p) => {
-            // Resolve relative paths against root_path (same as read/write/patch)
-            let path = std::path::Path::new(p);
-            if path.is_absolute() {
-                p.to_string()
-            } else {
-                std::path::Path::new(&state.root_path)
-                    .join(path)
-                    .to_string_lossy()
-                    .to_string()
-            }
-        }
+        Some(p) => resolve_path(p, &state.root_path).to_string_lossy().to_string(),
         None => state.root_path.clone(),
     };
 
@@ -82,7 +70,7 @@ async fn try_ripgrep(input: &FSSearchInput, search_path: &str) -> Result<String,
     let result = if stdout.is_empty() {
         "No matches found.".into()
     } else {
-        truncate_bytes(&stdout, MAX_OUTPUT, &format!("Output truncated at {MAX_OUTPUT} bytes"))
+        truncate_bytes(&stdout, super::MAX_OUTPUT, &format!("Output truncated at {} bytes", super::MAX_OUTPUT))
     };
 
     Ok(result)
@@ -110,7 +98,7 @@ async fn try_grep(input: &FSSearchInput, search_path: &str) -> Result<String, St
     if stdout.is_empty() {
         Ok("No matches found.".into())
     } else {
-        Ok(truncate_bytes(&stdout, MAX_OUTPUT, &format!("Output truncated at {MAX_OUTPUT} bytes")))
+        Ok(truncate_bytes(&stdout, super::MAX_OUTPUT, &format!("Output truncated at {} bytes", super::MAX_OUTPUT)))
     }
 }
 

@@ -15,10 +15,10 @@
 //! Qwen), the corresponding native adapter gives the model a cleaner
 //! prompt without OpenAI protocol overhead.
 
-use serde::{Deserialize, Serialize};
-
 use super::super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
-use super::{ModelAdapter, StreamParser};
+use super::{
+    ChatCompletionRequest, ModelAdapter, StreamChunk, StreamParser,
+};
 
 /// OpenAI-compatible wire format adapter (the legacy default).
 pub struct OpenAICompatAdapter;
@@ -60,63 +60,6 @@ impl ModelAdapter for OpenAICompatAdapter {
     fn new_stream_parser(&self) -> Box<dyn StreamParser> {
         Box::new(OpenAICompatParser::default())
     }
-}
-
-// ─── Request body ───────────────────────────────────────────────────────────
-
-#[derive(Serialize)]
-struct ChatCompletionRequest {
-    model: String,
-    messages: Vec<ChatMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<ToolDefinition>>,
-    stream: bool,
-    temperature: f32,
-    max_tokens: u32,
-    /// Controls reasoning/thinking token budget. Set to `"none"` to disable
-    /// extended thinking on reasoning models.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<String>,
-}
-
-// ─── SSE chunk types ────────────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-struct StreamChunk {
-    choices: Vec<StreamChoice>,
-}
-
-#[derive(Deserialize)]
-struct StreamChoice {
-    delta: StreamDelta,
-    finish_reason: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-struct StreamDelta {
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    reasoning_content: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<StreamToolCallDelta>>,
-}
-
-#[derive(Deserialize)]
-struct StreamToolCallDelta {
-    index: usize,
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    function: Option<StreamFunctionDelta>,
-}
-
-#[derive(Deserialize, Default)]
-struct StreamFunctionDelta {
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    arguments: Option<String>,
 }
 
 // ─── Stream parser ──────────────────────────────────────────────────────────

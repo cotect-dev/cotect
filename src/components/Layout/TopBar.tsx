@@ -15,7 +15,7 @@ import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
 import { useGitStore } from '@/store/git'
 import RelativeTime from '@/components/RelativeTime'
 import { DEV } from '@/lib/env'
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, Fragment } from 'react'
 import { GitBranch } from 'lucide-react'
 
 interface TopBarProps {
@@ -49,6 +49,12 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
   const isPanelVisible = useCallback((id: string) => {
     return panels.left.some(g => g.includes(id)) || panels.right.some(g => g.includes(id)) || panels.bottom.some(g => g.includes(id))
   }, [panels])
+
+  const panelGroups = useMemo(() => [
+    { group: 'git' as const, label: 'Git' },
+    { group: 'tools' as const, label: 'Tools' },
+    { group: 'agent' as const, label: 'Agent' },
+  ], [])
 
   return (
     <Menubar className="shrink-0 pointer-events-auto bg-background/80 backdrop-blur-sm">
@@ -111,68 +117,31 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
             New Window
           </MenubarItem>
           <MenubarSeparator />
-          <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">Git</div>
-          {PANEL_DEFINITIONS.filter((d) => d.group === 'git').map((def) => {
-            const visible = isPanelVisible(def.id)
-            return (
-              <MenubarCheckboxItem
-                key={def.id}
-                checked={visible}
-                onCheckedChange={() => {
-                  if (visible) {
-                    removePanel(def.id)
-                  } else {
-                    const isChild = getPlatform().windows.getWindowId() !== 'main'
-                    addPanel(def.id, getEffectivePosition(def.id, isChild))
-                  }
-                }}
-              >
-                {def.label}
-              </MenubarCheckboxItem>
-            )
-          })}
-          <MenubarSeparator />
-          <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">Tools</div>
-          {PANEL_DEFINITIONS.filter((d) => d.group === 'tools').map((def) => {
-            const visible = isPanelVisible(def.id)
-            return (
-              <MenubarCheckboxItem
-                key={def.id}
-                checked={visible}
-                onCheckedChange={() => {
-                  if (visible) {
-                    removePanel(def.id)
-                  } else {
-                    const isChild = getPlatform().windows.getWindowId() !== 'main'
-                    addPanel(def.id, getEffectivePosition(def.id, isChild))
-                  }
-                }}
-              >
-                {def.label}
-              </MenubarCheckboxItem>
-            )
-          })}
-          <MenubarSeparator />
-          <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">Agent</div>
-          {PANEL_DEFINITIONS.filter((d) => d.group === 'agent').map((def) => {
-            const visible = isPanelVisible(def.id)
-            return (
-              <MenubarCheckboxItem
-                key={def.id}
-                checked={visible}
-                onCheckedChange={() => {
-                  if (visible) {
-                    removePanel(def.id)
-                  } else {
-                    const isChild = getPlatform().windows.getWindowId() !== 'main'
-                    addPanel(def.id, getEffectivePosition(def.id, isChild))
-                  }
-                }}
-              >
-                {def.label}
-              </MenubarCheckboxItem>
-            )
-          })}
+          {panelGroups.map(({ group, label }, i) => (
+            <Fragment key={group}>
+              {i > 0 && <MenubarSeparator />}
+              <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">{label}</div>
+              {PANEL_DEFINITIONS.filter((d) => d.group === group).map((def) => {
+                const visible = isPanelVisible(def.id)
+                return (
+                  <MenubarCheckboxItem
+                    key={def.id}
+                    checked={visible}
+                    onCheckedChange={() => {
+                      if (visible) {
+                        removePanel(def.id)
+                      } else {
+                        const isChild = getPlatform().windows.getWindowId() !== 'main'
+                        addPanel(def.id, getEffectivePosition(def.id, isChild))
+                      }
+                    }}
+                  >
+                    {def.label}
+                  </MenubarCheckboxItem>
+                )
+              })}
+            </Fragment>
+          ))}
         </MenubarContent>
       </MenubarMenu>
       <div className="flex-1" />

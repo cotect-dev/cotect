@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::agent::utils::truncate_bytes;
 
-const MAX_RESPONSE: usize = 100 * 1024; // 100 KB
-
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FetchInput {
     /// The URL to fetch.
@@ -40,5 +38,5 @@ pub async fn execute(input: &FetchInput) -> Result<String, String> {
         .await
         .map_err(|e| format!("Failed to read response body: {e}"))?;
 
-    Ok(truncate_bytes(&body, MAX_RESPONSE, &format!("Response truncated at {MAX_RESPONSE} bytes")))
+    Ok(truncate_bytes(&body, super::MAX_OUTPUT, &format!("Response truncated at {} bytes", super::MAX_OUTPUT)))
 }

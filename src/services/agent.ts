@@ -44,6 +44,7 @@ export interface ProviderConfig {
   endpoint: string
   api_key?: string
   model: string
+  format?: string
 }
 
 export interface AgentConfig {
@@ -94,15 +95,10 @@ export function listenToTask(
   taskId: string,
   callback: (event: TaskEvent) => void,
 ): () => void {
-  let unlisten: UnlistenFn | null = null
-
-  listen<TaskEvent>(`agent-task-event:${taskId}`, (e) => {
+  const promise = listen<TaskEvent>(`agent-task-event:${taskId}`, (e) => {
     callback(e.payload)
-  }).then((fn) => {
-    unlisten = fn
   })
-
   return () => {
-    unlisten?.()
+    promise.then((fn) => fn())
   }
 }

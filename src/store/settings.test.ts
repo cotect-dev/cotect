@@ -54,6 +54,25 @@ describe('useSettingsStore', () => {
       expect(useSettingsStore.getState().config).toBeNull()
       expect(useSettingsStore.getState().loading).toBe(false)
     })
+
+    it('skips IPC call when config is already loaded', async () => {
+      const config: agentService.AgentConfig = {
+        providers: [{ id: 'p1', name: 'Test', endpoint: 'http://localhost', model: 'gpt-4' }],
+        active_provider_id: 'p1',
+      }
+      vi.mocked(agentService.getConfig).mockResolvedValue(config)
+
+      // First load — should call getConfig
+      await useSettingsStore.getState().loadConfig()
+      expect(agentService.getConfig).toHaveBeenCalledTimes(1)
+
+      // Reset mock call count
+      vi.mocked(agentService.getConfig).mockClear()
+
+      // Second load — config already present, should skip IPC
+      await useSettingsStore.getState().loadConfig()
+      expect(agentService.getConfig).not.toHaveBeenCalled()
+    })
   })
 
   describe('saveConfig', () => {

@@ -5,6 +5,11 @@ pub mod fs_search;
 pub mod shell;
 pub mod fetch;
 
+#[cfg(test)]
+pub(crate) mod test_helpers;
+
+pub const MAX_OUTPUT: usize = 100 * 1024; // 100 KB
+
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
