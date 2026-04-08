@@ -367,6 +367,20 @@ fn first_shell_passed(events: &[TaskEvent]) -> Option<bool> {
     None // no test-like shell run found
 }
 
+/// Returns true if no tool call failed (no `success: false` in ToolEnd events).
+fn all_tools_succeeded(events: &[TaskEvent]) -> bool {
+    !events.iter().any(|e| matches!(e, TaskEvent::ToolEnd { success, .. } if !success))
+}
+
+/// Determine "1st try": for test-running scenarios use shell output heuristic,
+/// otherwise check that no tool calls failed during the run.
+fn determine_first_try(events: &[TaskEvent]) -> Option<bool> {
+    match first_shell_passed(events) {
+        some @ Some(_) => some,
+        None => Some(all_tools_succeeded(events)),
+    }
+}
+
 fn contains_ci(hay: &str, needle: &str) -> bool {
     hay.to_lowercase().contains(&needle.to_lowercase())
 }
@@ -907,7 +921,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         }
     };
 
-    let first_try = first_shell_passed(&outcome.events);
+    let first_try = if passed { determine_first_try(&outcome.events) } else { None };
     let status = if passed {
         match first_try {
             Some(true) => "\x1b[32mPASS\x1b[0m \x1b[36m1st try\x1b[0m",
