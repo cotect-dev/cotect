@@ -326,15 +326,17 @@ class PaymentProcessor:
         balance = self.client.balance.retrieve()
         return {"available": balance.available, "pending": balance.pending}
 "#).unwrap();
+        let p = ap(dir, "src/payment.py");
         let d = dir.to_string_lossy().into_owned();
-        with_checks(pf(format!(
+        with_scope(with_checks(pf(format!(
             "Read the payment code in {d}/src/ and create a comprehensive testing plan. \
              Cover: unit tests with mocks, integration tests, edge cases, error scenarios, \
              and how to test without hitting the real Stripe API. At least 5 detailed steps.")),
             vec![complete(), succeeded("read"),
                  oc_all(&["1.", "2.", "3.", "4.", "5."]),
                  oc_any(&["mock", "stub", "fake"]),
-                 oc_any(&["unit", "integration", "test"])])
+                 oc_any(&["unit", "integration", "test"])]),
+            vec![p])
     }
     v.push(scen!("plan_testing_strategy", Category::Planning, Difficulty::Hard, P, s_plan_testing_strategy));
 }
