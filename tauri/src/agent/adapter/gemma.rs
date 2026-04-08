@@ -169,8 +169,12 @@ impl StreamParser for GemmaStreamParser {
         self.flush_remaining(&mut events);
         if !self.done_emitted {
             self.done_emitted = true;
+            // Stream ended without [DONE] or finish_reason — this is an
+            // abnormal termination (server crashed, KV cache exhausted, etc.).
+            // Report as "stream_ended" so the orchestrator can distinguish
+            // this from a genuine model completion and retry the turn.
             events.push(LlmStreamEvent::Done {
-                finish_reason: Some("stop".to_string()),
+                finish_reason: Some("stream_ended".to_string()),
             });
         }
         events
@@ -289,7 +293,7 @@ impl GemmaStreamParser {
         if !self.accumulated_text.is_empty() && !self.has_structured_tool_calls {
             let acc = std::mem::take(&mut self.accumulated_text);
             if contains_tool_call_pattern(&acc) {
-                self.try_fallback_tool_parse(&acc, events);
+                self.parse_all_tool_calls(&acc, events);
                 // Still flush any remaining text_buffer below
             }
         }
@@ -304,7 +308,7 @@ impl GemmaStreamParser {
         // Check for fallback tool parsing BEFORE stripping tool tokens,
         // so we can still extract call:NAME{args} content from the raw text
         if !self.has_structured_tool_calls && contains_tool_call_pattern(&text) {
-            self.try_fallback_tool_parse(&text, events);
+            self.parse_all_tool_calls(&text, events);
             return;
         }
 
@@ -314,32 +318,98 @@ impl GemmaStreamParser {
         }
     }
 
-    /// Try to parse a tool call from raw text content (fallback when server
+    /// Parse all tool calls from raw text content (fallback when server
     /// doesn't provide structured tool_calls).
-    fn try_fallback_tool_parse(&mut self, text: &str, events: &mut Vec<LlmStreamEvent>) {
-        // Extract content between <|tool_call> and <tool_call|> if present
-        let tc_content = if let Some(start) = text.find("<|tool_call>") {
-            let after = &text[start + "<|tool_call>".len()..];
-            if let Some(end) = after.find("<tool_call|>") {
-                after[..end].trim()
+    /// Gemma can emit multiple `<|tool_call>...<tool_call|>` blocks or
+    /// multiple `call:NAME{args}` patterns in a single response.
+    fn parse_all_tool_calls(&mut self, text: &str, events: &mut Vec<LlmStreamEvent>) {
+        let mut remaining = text;
+        let mut found_any = false;
+
+        // First, try to extract all <|tool_call>...<tool_call|> blocks
+        while let Some(start) = remaining.find("<|tool_call>") {
+            let after = &remaining[start + "<|tool_call>".len()..];
+            let (tc_content, rest) = if let Some(end) = after.find("<tool_call|>") {
+                (&after[..end], &after[end + "<tool_call|>".len()..])
             } else {
-                after.trim()
+                // No closing tag — try parsing the rest
+                (after.trim(), "")
+            };
+
+            let tc_content = tc_content.trim();
+            if !tc_content.is_empty() {
+                found_any = true;
+                self.emit_single_tool_call(tc_content, events);
             }
-        } else if let Some(call_pos) = text.find("call:") {
-            // Raw call:NAME{args} without wrapper tags — extract just the call portion
-            text[call_pos..].trim()
-        } else {
+
+            remaining = rest;
+        }
+
+        if found_any {
+            return;
+        }
+
+        // No <|tool_call> tags found — try bare call:NAME{args} patterns
+        remaining = text;
+        while let Some(call_pos) = remaining.find("call:") {
+            let call_text = &remaining[call_pos..];
+            // Find the end of this call — look for the closing brace
+            if let Some(brace_start) = call_text.find('{') {
+                let after_brace = &call_text[brace_start + 1..];
+                let mut depth = 1i32;
+                let mut in_string = false;
+                let mut escape_next = false;
+                let mut end_pos = after_brace.len();
+                for (i, c) in after_brace.char_indices() {
+                    if escape_next {
+                        escape_next = false;
+                        continue;
+                    }
+                    if c == '\\' && in_string {
+                        escape_next = true;
+                        continue;
+                    }
+                    if c == '"' {
+                        in_string = !in_string;
+                    }
+                    if !in_string {
+                        if c == '{' { depth += 1; }
+                        else if c == '}' {
+                            depth -= 1;
+                            if depth == 0 {
+                                end_pos = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+                let tc_content = &call_text[..brace_start + 1 + end_pos];
+                found_any = true;
+                self.emit_single_tool_call(tc_content.trim(), events);
+                remaining = &remaining[call_pos + brace_start + 1 + end_pos..];
+            } else {
+                // No brace found — try the whole rest
+                found_any = true;
+                self.emit_single_tool_call(call_text.trim(), events);
+                break;
+            }
+        }
+
+        if !found_any {
             // Not a tool call, just emit as text
+            let text = text.trim();
             if !text.is_empty() {
                 events.push(LlmStreamEvent::TextDelta(text.to_string()));
             }
-            return;
-        };
+        }
+    }
 
+    /// Try to parse and emit a single tool call from content.
+    fn emit_single_tool_call(&mut self, content: &str, events: &mut Vec<LlmStreamEvent>) {
         let idx = self.fallback_tool_index;
         self.fallback_tool_index += 1;
 
-        match parse_gemma_tool_call(tc_content) {
+        match parse_gemma_tool_call(content) {
             Ok((name, args_json)) => {
                 events.push(LlmStreamEvent::ToolCallDelta {
                     index: idx,
@@ -349,7 +419,7 @@ impl GemmaStreamParser {
                 });
             }
             Err(parse_err) => {
-                events.push(emit_format_error(idx, tc_content, &parse_err));
+                events.push(emit_format_error(idx, content, &parse_err));
             }
         }
     }
@@ -964,6 +1034,37 @@ mod tests {
         assert!(e2.iter().any(|e| matches!(
             e, LlmStreamEvent::ToolCallDelta { name: Some(n), .. } if n == "shell"
         )));
+    }
+
+    #[test]
+    fn fallback_parse_multiple_tool_calls_tagged() {
+        let mut parser = GemmaStreamParser::new();
+        // Model emits two tool calls as raw tokens (no structured tool_calls)
+        let _e1 = parser.process_sse_data(
+            r#"{"choices":[{"delta":{"content":"<|tool_call>call:read{file_path: \"/a.txt\"}<tool_call|><|tool_call>call:read{file_path: \"/b.txt\"}<tool_call|>"},"finish_reason":null}]}"#,
+        );
+        let e2 = parser.process_sse_data(
+            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        );
+        let tool_calls: Vec<_> = e2
+            .iter()
+            .filter(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. }))
+            .collect();
+        assert_eq!(tool_calls.len(), 2, "Should parse both tool calls from tagged blocks");
+    }
+
+    #[test]
+    fn fallback_parse_multiple_bare_tool_calls() {
+        let mut parser = GemmaStreamParser::new();
+        // Simulate model emitting bare call: patterns in text buffer (not accumulated via tags)
+        parser.text_buffer = "call:read{file_path: \"/a.txt\"}\ncall:read{file_path: \"/b.txt\"}".into();
+        let mut events = Vec::new();
+        parser.flush_remaining(&mut events);
+        let tool_calls: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. }))
+            .collect();
+        assert_eq!(tool_calls.len(), 2, "Should parse both bare call: patterns");
     }
 
     #[test]

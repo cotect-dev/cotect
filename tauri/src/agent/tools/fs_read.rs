@@ -78,6 +78,9 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
         return Ok(format!("File '{path}' has {total} lines; start_line {start} is beyond the end."));
     }
 
+    // Clamp end to be at least start (model may pass end_line < start_line)
+    let end = end.max(start);
+
     // Only iterate the requested slice (0-indexed: start-1 .. end)
     let slice = &lines[start - 1..end.min(total)];
     let mut output = String::with_capacity(slice.iter().map(|l| l.len() + 12).sum());
@@ -211,5 +214,19 @@ mod tests {
         let result = execute(&input, &state).await.unwrap();
         assert!(result.contains("1: a"));
         assert!(result.contains("2: b"));
+    }
+
+    #[tokio::test]
+    async fn read_end_line_before_start_line_does_not_panic() {
+        let f = make_temp_file("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
+        let state = make_state();
+        let input = FSReadInput {
+            file_path: f.path().to_str().unwrap().into(),
+            start_line: Some(8),
+            end_line: Some(3),
+        };
+        // Should not panic — end_line is clamped to start_line
+        let result = execute(&input, &state).await.unwrap();
+        assert!(result.contains("8: h"));
     }
 }
