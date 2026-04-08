@@ -3,11 +3,12 @@ use std::fmt::Display;
 /// Truncate a string at a char boundary, appending "..." if truncated.
 /// Safe for all UTF-8 strings.
 pub fn truncate_chars(s: &str, max_chars: usize) -> String {
-    if s.len() <= max_chars {
-        return s.to_string();
-    }
     let truncated: String = s.chars().take(max_chars).collect();
-    format!("{truncated}...")
+    if truncated.len() == s.len() {
+        truncated
+    } else {
+        format!("{truncated}...")
+    }
 }
 
 /// Truncate a string at a safe UTF-8 byte boundary, appending a label if truncated.
@@ -24,6 +25,26 @@ pub fn truncate_bytes(s: &str, max_bytes: usize, label: &str) -> String {
 /// Format a filesystem I/O error consistently.
 pub fn io_err(verb: &str, path: &str, e: impl Display) -> String {
     format!("Cannot {verb} '{path}': {e}")
+}
+
+/// Returns true if `line` looks like it starts with a `N: ` line-number prefix
+/// from the `read` tool (e.g. `1: foo`, `  12: bar`). Detection is conservative:
+/// it only fires when the very first non-whitespace characters are digits followed by `: `.
+pub fn line_has_number_prefix(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let mut chars = trimmed.chars();
+    let mut saw_digit = false;
+    while let Some(c) = chars.next() {
+        if c.is_ascii_digit() {
+            saw_digit = true;
+            continue;
+        }
+        if saw_digit && c == ':' {
+            return chars.next() == Some(' ');
+        }
+        return false;
+    }
+    false
 }
 
 /// Format the "must read before edit" error.

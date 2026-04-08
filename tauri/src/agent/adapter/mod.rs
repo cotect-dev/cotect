@@ -40,6 +40,7 @@
 //! model-aware templating server-side.
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
 
@@ -261,6 +262,120 @@ pub fn build_adapter(format: PromptFormat) -> Box<dyn ModelAdapter> {
         PromptFormat::Llama3 => Box::new(openai_compat::OpenAICompatAdapter),
         PromptFormat::Qwen => Box::new(qwen::QwenAdapter),
         PromptFormat::ChatML => Box::new(openai_compat::OpenAICompatAdapter),
+    }
+}
+
+// ─── Shared SSE chunk types ─────────────────────────────────────────────────
+
+#[derive(Deserialize, Default)]
+pub(crate) struct StreamChunk {
+    pub choices: Vec<StreamChoice>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct StreamChoice {
+    pub delta: StreamDelta,
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+pub(crate) struct StreamDelta {
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<StreamToolCallDelta>>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct StreamToolCallDelta {
+    pub index: usize,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub function: Option<StreamFunctionDelta>,
+}
+
+#[derive(Deserialize, Default)]
+pub(crate) struct StreamFunctionDelta {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub arguments: Option<String>,
+}
+
+// ─── Shared request body ────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub(crate) struct ChatCompletionRequest {
+    pub model: String,
+    pub messages: Vec<ChatMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<ToolDefinition>>,
+    pub stream: bool,
+    pub temperature: f32,
+    pub max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+}
+
+// ─── Shared helper functions ────────────────────────────────────────────────
+
+/// Build a standard OpenAI-compat request body for chat completions.
+pub(crate) fn build_openai_request_body(
+    model: &str,
+    messages: &[ChatMessage],
+    tools: &[ToolDefinition],
+    temperature: f32,
+    max_tokens: u32,
+) -> serde_json::Value {
+    let body = ChatCompletionRequest {
+        model: model.to_string(),
+        messages: messages.to_vec(),
+        tools: if tools.is_empty() { None } else { Some(tools.to_vec()) },
+        stream: true,
+        temperature,
+        max_tokens,
+        reasoning_effort: None,
+    };
+    serde_json::to_value(&body).unwrap_or(serde_json::Value::Null)
+}
+
+/// How much of `buffer` can we safely emit without splitting a potential tag?
+pub(crate) fn safe_emit_len(buffer: &str, tag: &str) -> usize {
+    let len = buffer.len();
+    if len == 0 {
+        return 0;
+    }
+    for i in (1..=tag.len().min(len)).rev() {
+        if buffer.ends_with(&tag[..i]) {
+            return len - i;
+        }
+    }
+    len
+}
+
+/// Safe emit length checking multiple potential tags.
+pub(crate) fn safe_emit_len_multi(buffer: &str, tags: &[&str]) -> usize {
+    let mut min = buffer.len();
+    for tag in tags {
+        min = min.min(safe_emit_len(buffer, tag));
+    }
+    min
+}
+
+/// Emit a format-error sentinel tool call delta when fallback parsing fails.
+pub(crate) fn emit_format_error(idx: usize, content: &str, err: &str) -> LlmStreamEvent {
+    let truncated = if content.len() > 200 { &content[..200] } else { content };
+    LlmStreamEvent::ToolCallDelta {
+        index: idx,
+        id: Some(format!("call_{}", idx + 1)),
+        name: Some("__format_error__".to_string()),
+        arguments_chunk: json!({
+            "raw": truncated,
+            "error": err
+        }).to_string(),
     }
 }
 

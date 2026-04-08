@@ -261,11 +261,27 @@ impl Orchestrator {
 
                     // Build tool result message with error budget info
                     let tool_result_text = match result {
-                        Ok(output) => {
+                        Ok(mut output) => {
                             self.error_tracker.record_success(&tool_call.function.name);
                             // After a successful tool call, compact any prior __format_error__
                             // round-trips out of context to keep conversation clean.
                             self.context.compact_format_errors();
+
+                            // When a shell command exits with a non-zero code, append a
+                            // nudge so the model knows it should keep iterating instead
+                            // of giving up and producing a final text-only response.
+                            if tool_call.function.name == "shell" {
+                                if let Some(code) = extract_shell_exit_code(&output) {
+                                    if code != 0 {
+                                        output.push_str(
+                                            "\n\n[NOTE: The command exited with a non-zero code. \
+                                             Analyze the output above, fix the underlying issue, \
+                                             and re-run the command.]"
+                                        );
+                                    }
+                                }
+                            }
+
                             output
                         }
                         Err(e) => {
@@ -433,6 +449,30 @@ struct ToolCallBuilder {
     arguments: String,
 }
 
+/// Extract the exit code from a shell tool result string.
+/// The shell tool embeds the exit code as `[exit code: N]` or
+/// `Command completed with exit code N. No output.`.
+fn extract_shell_exit_code(output: &str) -> Option<i32> {
+    // Try `[exit code: N]` first (most common format)
+    if let Some(idx) = output.rfind("[exit code: ") {
+        let after = &output[idx + 12..];
+        if let Some(end) = after.find(']') {
+            if let Ok(code) = after[..end].trim().parse::<i32>() {
+                return Some(code);
+            }
+        }
+    }
+    // Fallback: `Command completed with exit code N.`
+    if let Some(idx) = output.find("Command completed with exit code ") {
+        let after = &output[idx + 33..];
+        let num: String = after.chars().take_while(|c| c.is_ascii_digit() || *c == '-').collect();
+        if let Ok(code) = num.parse::<i32>() {
+            return Some(code);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -551,6 +591,44 @@ mod tests {
         let tracker = ToolErrorTracker::new(5);
         // Never-seen tool should have full budget
         assert_eq!(tracker.remaining("unknown_tool"), 5);
+    }
+
+    // ─── extract_shell_exit_code tests ────────────────────────────────────
+
+    #[test]
+    fn test_extract_exit_code_bracket_format() {
+        let output = "some output\n\n[exit code: 0]";
+        assert_eq!(extract_shell_exit_code(output), Some(0));
+    }
+
+    #[test]
+    fn test_extract_exit_code_nonzero() {
+        let output = "Traceback...\n\n--- stderr ---\nerror\n\n[exit code: 1]";
+        assert_eq!(extract_shell_exit_code(output), Some(1));
+    }
+
+    #[test]
+    fn test_extract_exit_code_high_value() {
+        let output = "fail\n\n[exit code: 42]";
+        assert_eq!(extract_shell_exit_code(output), Some(42));
+    }
+
+    #[test]
+    fn test_extract_exit_code_no_output_format() {
+        let output = "Command completed with exit code 0. No output.";
+        assert_eq!(extract_shell_exit_code(output), Some(0));
+    }
+
+    #[test]
+    fn test_extract_exit_code_no_output_nonzero() {
+        let output = "Command completed with exit code 127. No output.";
+        assert_eq!(extract_shell_exit_code(output), Some(127));
+    }
+
+    #[test]
+    fn test_extract_exit_code_none_for_unknown_format() {
+        let output = "just some random text without exit codes";
+        assert_eq!(extract_shell_exit_code(output), None);
     }
 
     // ─── consume_stream tests ───────────────────────────────────────────

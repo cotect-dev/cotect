@@ -1,4 +1,4 @@
-NAMES="bugfix_off_by_one refactor_rename_variable refactor_strings_to_enum impl_event_emitter impl_rest_router patch_add_logging patch_js_to_typescript understand_merge_sort_complexity understand_timed_cache search_find_callers cross_fix_circular_import errh_retry_backoff"
+NAMES="bugfix_missing_await refactor_callbacks_to_async refactor_strings_to_enum impl_iterators impl_rest_router patch_add_logging patch_js_to_typescript understand_pipeline_trace search_find_callers cross_fix_circular_import errh_retry_backoff errh_typed_errors_ts"
 
 for s in $NAMES; do
   COTECT_EVAL_ENDPOINT=http://server.local:8080/v1 \

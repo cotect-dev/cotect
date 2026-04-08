@@ -13,7 +13,6 @@ describe('useTasksStore', () => {
   beforeEach(() => {
     useTasksStore.setState({
       tasks: [],
-      _listeners: {},
     })
     vi.clearAllMocks()
   })
@@ -89,6 +88,25 @@ describe('useTasksStore', () => {
     })
   })
 
+  describe('task status transitions', () => {
+    it('transitions task from pending to running after startTask', async () => {
+      vi.mocked(agentService.startTask).mockResolvedValue(undefined)
+
+      useTasksStore.getState().createTask('t1', 'Fix bug', 'implement', {
+        root_path: '/project',
+        files: [],
+      })
+
+      // Immediately after creation, the task should be pending
+      expect(useTasksStore.getState().tasks[0].status).toBe('pending')
+
+      // After startTask resolves, the task should transition to running
+      await vi.waitFor(() => {
+        expect(useTasksStore.getState().tasks[0].status).toBe('running')
+      })
+    })
+  })
+
   describe('abortTask', () => {
     it('calls agentService.abortTask', () => {
       vi.mocked(agentService.abortTask).mockResolvedValue(undefined)
@@ -107,7 +125,6 @@ describe('useTasksStore', () => {
           { id: 't2', prompt: 'B', role: 'implement', status: 'running', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
           { id: 't3', prompt: 'C', role: 'implement', status: 'errored', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
         ],
-        _listeners: {},
       })
 
       useTasksStore.getState().clearCompleted()
@@ -123,7 +140,6 @@ describe('useTasksStore', () => {
           { id: 't1', prompt: 'A', role: 'implement', status: 'pending', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
           { id: 't2', prompt: 'B', role: 'implement', status: 'completed', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
         ],
-        _listeners: {},
       })
 
       useTasksStore.getState().clearCompleted()
@@ -136,12 +152,23 @@ describe('useTasksStore', () => {
     it('calls unlisten for removed tasks', () => {
       const unlisten1 = vi.fn()
       const unlisten2 = vi.fn()
+
+      // Create tasks via createTask so listeners are registered in the module-level map
+      vi.mocked(agentService.startTask).mockResolvedValue(undefined)
+      let callCount = 0
+      vi.mocked(agentService.listenToTask).mockImplementation((_id, _cb) => {
+        callCount++
+        return callCount === 1 ? unlisten1 : unlisten2
+      })
+
+      useTasksStore.getState().createTask('t1', 'A', 'implement', { root_path: '/p', files: [] })
+      useTasksStore.getState().createTask('t2', 'B', 'implement', { root_path: '/p', files: [] })
+
+      // Mark t1 as completed so clearCompleted will remove it; t2 stays running
       useTasksStore.setState({
-        tasks: [
-          { id: 't1', prompt: 'A', role: 'implement', status: 'completed', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
-          { id: 't2', prompt: 'B', role: 'implement', status: 'running', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
-        ],
-        _listeners: { t1: unlisten1, t2: unlisten2 },
+        tasks: useTasksStore.getState().tasks.map((t) =>
+          t.id === 't1' ? { ...t, status: 'completed' as const } : { ...t, status: 'running' as const }
+        ),
       })
 
       useTasksStore.getState().clearCompleted()
@@ -153,21 +180,25 @@ describe('useTasksStore', () => {
   describe('removeTask', () => {
     it('removes a specific task', () => {
       const unlisten = vi.fn()
+
+      // Create task via createTask to register listener in the module-level map
+      vi.mocked(agentService.startTask).mockResolvedValue(undefined)
+      vi.mocked(agentService.listenToTask).mockImplementation((_id, _cb) => unlisten)
+
+      useTasksStore.getState().createTask('t1', 'A', 'implement', { root_path: '/p', files: [] })
       useTasksStore.setState({
         tasks: [
-          { id: 't1', prompt: 'A', role: 'implement', status: 'completed', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
-          { id: 't2', prompt: 'B', role: 'implement', status: 'completed', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
+          ...useTasksStore.getState().tasks,
+          { id: 't2', prompt: 'B', role: 'implement' as const, status: 'completed' as const, text: '', reasoning: '', toolActivity: [], createdAt: 0 },
         ],
-        _listeners: { t1: unlisten },
       })
 
       useTasksStore.getState().removeTask('t1')
 
-      const { tasks, _listeners } = useTasksStore.getState()
+      const { tasks } = useTasksStore.getState()
       expect(tasks).toHaveLength(1)
       expect(tasks[0].id).toBe('t2')
       expect(unlisten).toHaveBeenCalled()
-      expect(_listeners['t1']).toBeUndefined()
     })
   })
 
@@ -270,6 +301,45 @@ describe('useTasksStore', () => {
       expect(task.error).toBe('LLM API error 401')
     })
 
+    it('error event sets error message without changing status', () => {
+      const cb = getEventCallback()
+
+      // Wait for the task to become running
+      useTasksStore.setState({
+        tasks: useTasksStore.getState().tasks.map((t) =>
+          t.id === 't1' ? { ...t, status: 'running' as const } : t
+        ),
+      })
+
+      cb({ type: 'error', message: 'Rate limit exceeded' })
+
+      const task = useTasksStore.getState().tasks[0]
+      expect(task.status).toBe('running')
+      expect(task.error).toBe('Rate limit exceeded')
+    })
+
+    it('handles followup event by storing question and options', () => {
+      const cb = getEventCallback()
+      cb({ type: 'followup', question: 'Which file should I modify?', options: ['src/a.ts', 'src/b.ts'] })
+
+      const task = useTasksStore.getState().tasks[0]
+      expect(task.lastFollowup).toEqual({
+        question: 'Which file should I modify?',
+        options: ['src/a.ts', 'src/b.ts'],
+      })
+    })
+
+    it('handles followup event without options', () => {
+      const cb = getEventCallback()
+      cb({ type: 'followup', question: 'What should I do next?' })
+
+      const task = useTasksStore.getState().tasks[0]
+      expect(task.lastFollowup).toEqual({
+        question: 'What should I do next?',
+        options: undefined,
+      })
+    })
+
     it('handles complete event', () => {
       const cb = getEventCallback()
       cb({ type: 'text', content: 'Done!', partial: false })
@@ -293,7 +363,7 @@ describe('useTasksStore', () => {
     it('ignores events for unknown task ids', () => {
       const cb = getEventCallback()
       // Remove the task so events should be ignored
-      useTasksStore.setState({ tasks: [], _listeners: {} })
+      useTasksStore.setState({ tasks: [] })
       // This should not throw
       cb({ type: 'text', content: 'ghost', partial: true })
     })

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::ToolState;
 use super::fs_read::resolve_path;
-use crate::agent::utils::{io_err, read_first_err};
+use crate::agent::utils::{io_err, line_has_number_prefix, read_first_err};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FSPatchInput {
@@ -22,9 +22,22 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
     let path_owned = resolved.to_string_lossy().to_string();
     let path = path_owned.as_str();
 
+    // Block patches to protected files (eval sandboxing)
+    if state.blocked_files.iter().any(|b| resolved.ends_with(b) || &resolved == b) {
+        return Err(format!("Access denied: {path} is a protected file"));
+    }
+
     // Read-before-edit enforcement
     if !state.has_read(path).await {
         return Err(read_first_err(path, "patching"));
+    }
+
+    // File-size guard
+    let meta = tokio::fs::metadata(path)
+        .await
+        .map_err(|e| format!("Cannot access {path}: {e}"))?;
+    if meta.len() > 10 * 1024 * 1024 {
+        return Err(format!("{path}: file too large to patch ({} bytes)", meta.len()));
     }
 
     let content = tokio::fs::read_to_string(path)
@@ -35,83 +48,41 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
         return Err("old_string and new_string are identical. No change needed.".into());
     }
 
-    // Count occurrences
-    let count = content.matches(&input.old_string).count();
-    match count {
-        0 => {
-            // Helpful hint: if old_string starts with a line-number prefix like `12: `,
-            // the model likely copied the `N: ` display format from the `read` tool.
-            let prefix_hint = if looks_like_line_prefixed(&input.old_string) {
-                "\nHINT: Your old_string appears to start with a line-number prefix like `12: ` — \
-                 that prefix is added by the `read` tool for display only and is NOT part of the \
-                 actual file content. Strip the `N: ` prefix and retry."
-            } else {
-                ""
-            };
-            Err(format!(
-                "The old_string was not found in '{path}'. Make sure you're using the exact text from the file.{prefix_hint}"
-            ))
-        }
-        1 => {
-            let new_content = content.replacen(&input.old_string, &input.new_string, 1);
-            tokio::fs::write(path, &new_content)
-                .await
-                .map_err(|e| io_err("write file", path, e))?;
-            Ok(format!("Successfully patched '{path}'."))
-        }
-        n => Err(format!(
-            "The old_string appears {n} times in '{path}'. It must appear exactly once. \
+    // Find occurrences with early exit
+    let mut matches = content.match_indices(&input.old_string);
+    let first = matches.next();
+    if first.is_none() {
+        // Helpful hint: if old_string starts with a line-number prefix like `12: `,
+        // the model likely copied the `N: ` display format from the `read` tool.
+        let prefix_hint = if line_has_number_prefix(&input.old_string) {
+            "\nHINT: Your old_string appears to start with a line-number prefix like `12: ` — \
+             that prefix is added by the `read` tool for display only and is NOT part of the \
+             actual file content. Strip the `N: ` prefix and retry."
+        } else {
+            ""
+        };
+        return Err(format!(
+            "The old_string was not found in '{path}'. Make sure you're using the exact text from the file.{prefix_hint}"
+        ));
+    }
+    if matches.next().is_some() {
+        return Err(format!(
+            "The old_string appears more than once in '{path}'. It must appear exactly once. \
              Provide more surrounding context to make it unique."
-        )),
+        ));
     }
-}
 
-/// Returns true if `s` looks like it starts with a `N: ` line-number prefix from the `read` tool
-/// (e.g. `1: foo`, `  12: bar`). Detection is conservative: it only fires when the very first
-/// non-whitespace characters are digits followed by `: `.
-fn looks_like_line_prefixed(s: &str) -> bool {
-    let trimmed = s.trim_start();
-    let mut chars = trimmed.chars();
-    let mut saw_digit = false;
-    while let Some(c) = chars.next() {
-        if c.is_ascii_digit() {
-            saw_digit = true;
-            continue;
-        }
-        if saw_digit && c == ':' {
-            return chars.next() == Some(' ');
-        }
-        return false;
-    }
-    false
+    let new_content = content.replacen(&input.old_string, &input.new_string, 1);
+    tokio::fs::write(path, &new_content)
+        .await
+        .map_err(|e| io_err("write file", path, e))?;
+    Ok(format!("Successfully patched '{path}'."))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as IoWrite;
-    use tempfile::NamedTempFile;
-    use crate::agent::tools::fs_read;
-
-    fn make_state() -> Arc<ToolState> {
-        ToolState::new("/tmp".into())
-    }
-
-    fn make_temp_file(content: &str) -> NamedTempFile {
-        let mut f = NamedTempFile::new().unwrap();
-        f.write_all(content.as_bytes()).unwrap();
-        f.flush().unwrap();
-        f
-    }
-
-    async fn read_file(state: &Arc<ToolState>, path: &str) {
-        let input = fs_read::FSReadInput {
-            file_path: path.into(),
-            start_line: None,
-            end_line: None,
-        };
-        fs_read::execute(&input, state).await.unwrap();
-    }
+    use crate::agent::tools::test_helpers::{make_state, make_temp_file, read_file};
 
     #[tokio::test]
     async fn patch_single_occurrence_succeeds() {
@@ -163,7 +134,7 @@ mod tests {
         let result = execute(&input, &state).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("3 times"));
+        assert!(err.contains("more than once"));
         assert!(err.contains("exactly once"));
     }
 

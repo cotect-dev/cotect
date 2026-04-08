@@ -35,6 +35,7 @@ export const useSettingsStore = createStoreWithHMR(import.meta.hot, 'settings', 
       testing: false,
 
       loadConfig: async () => {
+        if (get().config) return
         set({ loading: true })
         try {
           const config = await agentService.getConfig()

@@ -25,14 +25,13 @@ export interface TaskEntry {
   reasoning: string
   toolActivity: ToolActivity[]
   error?: string
+  lastFollowup?: { question: string; options?: string[] }
   createdAt: number
   completedAt?: number
 }
 
 interface TasksState {
   tasks: TaskEntry[]
-  /** Track active event listeners so we can clean up */
-  _listeners: Record<string, () => void>
 
   createTask: (id: string, prompt: string, role: AgentRole, scope: agentService.TaskScope) => void
   abortTask: (id: string) => void
@@ -40,12 +39,15 @@ interface TasksState {
   removeTask: (id: string) => void
 }
 
+// ─── Listener management (module-level, outside Zustand state) ──────────────
+
+const taskListeners = new Map<string, () => void>()
+
 // ─── Store ───────────────────────────────────────────────────────────────────
 
 export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
   create<TasksState>((set, get) => ({
     tasks: [],
-    _listeners: {},
 
     createTask: (id, prompt, role, scope) => {
       const entry: TaskEntry = {
@@ -86,9 +88,7 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
         handleTaskEvent(id, event)
       })
 
-      set((s) => ({
-        _listeners: { ...s._listeners, [id]: unlisten },
-      }))
+      taskListeners.set(id, unlisten)
     },
 
     abortTask: (id) => {
@@ -97,27 +97,24 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
     },
 
     clearCompleted: () => {
-      const { tasks, _listeners } = get()
+      const { tasks } = get()
       const isActive = (t: TaskEntry) => t.status === 'running' || t.status === 'pending'
       for (const t of tasks) {
-        if (!isActive(t)) _listeners[t.id]?.()
+        if (!isActive(t)) {
+          taskListeners.get(t.id)?.()
+          taskListeners.delete(t.id)
+        }
       }
-      const keepIds = new Set(tasks.filter(isActive).map((t) => t.id))
       set({
-        tasks: tasks.filter((t) => keepIds.has(t.id)),
-        _listeners: Object.fromEntries(
-          Object.entries(_listeners).filter(([k]) => keepIds.has(k)),
-        ),
+        tasks: tasks.filter((t) => isActive(t)),
       })
     },
 
     removeTask: (id) => {
-      get()._listeners[id]?.()
+      taskListeners.get(id)?.()
+      taskListeners.delete(id)
       set((s) => ({
         tasks: s.tasks.filter((t) => t.id !== id),
-        _listeners: Object.fromEntries(
-          Object.entries(s._listeners).filter(([k]) => k !== id),
-        ),
       }))
     },
   })),
@@ -134,13 +131,8 @@ function updateTask(taskId: string, updater: (task: TaskEntry) => Partial<TaskEn
 
 /** Unsubscribe a task's event listener and remove it from the listener map. */
 function detachListener(taskId: string) {
-  const { _listeners } = useTasksStore.getState()
-  _listeners[taskId]?.()
-  useTasksStore.setState((s) => ({
-    _listeners: Object.fromEntries(
-      Object.entries(s._listeners).filter(([k]) => k !== taskId),
-    ),
-  }))
+  taskListeners.get(taskId)?.()
+  taskListeners.delete(taskId)
 }
 
 // ─── Event handler ───────────────────────────────────────────────────────────
@@ -185,6 +177,12 @@ function handleTaskEvent(taskId: string, event: TaskEvent) {
         }
         return { toolActivity: activity }
       })
+      break
+
+    case 'followup':
+      updateTask(taskId, () => ({
+        lastFollowup: { question: event.question, options: event.options },
+      }))
       break
 
     case 'error':

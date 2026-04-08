@@ -9,7 +9,7 @@ use super::ToolState;
 use crate::agent::utils::truncate_bytes;
 
 const TIMEOUT: Duration = Duration::from_secs(120);
-const MAX_OUTPUT: usize = 100 * 1024; // 100 KB
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ShellInput {
@@ -69,14 +69,14 @@ pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<Strin
             let mut result = String::new();
 
             if !stdout.is_empty() {
-                result.push_str(&truncate_bytes(&stdout, MAX_OUTPUT, &format!("stdout truncated at {MAX_OUTPUT} bytes")));
+                result.push_str(&truncate_bytes(&stdout, super::MAX_OUTPUT, &format!("stdout truncated at {} bytes", super::MAX_OUTPUT)));
             }
 
             if !stderr.is_empty() {
                 if !result.is_empty() {
                     result.push_str("\n\n--- stderr ---\n");
                 }
-                result.push_str(&truncate_bytes(&stderr, MAX_OUTPUT, &format!("stderr truncated at {MAX_OUTPUT} bytes")));
+                result.push_str(&truncate_bytes(&stderr, super::MAX_OUTPUT, &format!("stderr truncated at {} bytes", super::MAX_OUTPUT)));
             }
 
             if result.is_empty() {
@@ -103,10 +103,7 @@ pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<Strin
 mod tests {
     use super::*;
     use tempfile::TempDir;
-
-    fn make_state() -> Arc<ToolState> {
-        ToolState::new("/tmp".into())
-    }
+    use crate::agent::tools::test_helpers::make_state;
 
     #[tokio::test]
     async fn shell_echo_captures_stdout() {

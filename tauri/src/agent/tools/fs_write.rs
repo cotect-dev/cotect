@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::ToolState;
 use super::fs_read::resolve_path;
-use crate::agent::utils::{io_err, read_first_err};
+use crate::agent::utils::{io_err, line_has_number_prefix, read_first_err};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FSWriteInput {
@@ -20,6 +20,11 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
     let resolved = resolve_path(&input.file_path, &state.root_path);
     let path_owned = resolved.to_string_lossy().to_string();
     let path = path_owned.as_str();
+
+    // Block writes to protected files (eval sandboxing)
+    if state.blocked_files.iter().any(|b| resolved.ends_with(b) || &resolved == b) {
+        return Err(format!("Access denied: {path} is a protected file"));
+    }
 
     // Read-before-edit enforcement: reject writes to files not previously read
     let file_exists = tokio::fs::metadata(path).await.is_ok();
@@ -62,40 +67,12 @@ fn looks_like_line_numbered_dump(s: &str) -> bool {
     prefixed * 5 >= lines.len() * 4
 }
 
-fn line_has_number_prefix(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    let mut chars = trimmed.chars();
-    let mut saw_digit = false;
-    while let Some(c) = chars.next() {
-        if c.is_ascii_digit() {
-            saw_digit = true;
-            continue;
-        }
-        if saw_digit && c == ':' {
-            return chars.next() == Some(' ');
-        }
-        return false;
-    }
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as IoWrite;
-    use tempfile::{NamedTempFile, TempDir};
+    use tempfile::TempDir;
     use crate::agent::tools::fs_read;
-
-    fn make_state() -> Arc<ToolState> {
-        ToolState::new("/tmp".into())
-    }
-
-    fn make_temp_file(content: &str) -> NamedTempFile {
-        let mut f = NamedTempFile::new().unwrap();
-        f.write_all(content.as_bytes()).unwrap();
-        f.flush().unwrap();
-        f
-    }
+    use crate::agent::tools::test_helpers::{make_state, make_temp_file};
 
     #[tokio::test]
     async fn write_new_file_succeeds() {
