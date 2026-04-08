@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
-import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { emit, listen } from '@tauri-apps/api/event'
 import { createStoreWithHMR } from '@/lib/hmr'
 
 export interface GitFileStatus {
@@ -169,8 +169,7 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
   const cleanups: (() => void)[] = []
 
   // All windows listen for cross-window sync
-  let unlistenSync: UnlistenFn | null = null
-  listen('git-sync', (event) => {
+  const syncListenPromise = listen('git-sync', (event) => {
     const payload = event.payload as GitSyncPayload
     if (payload.source !== currentWindowId) {
       useGitStore.setState({
@@ -183,8 +182,8 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
         lastCommitTimestamp: payload.lastCommitTimestamp,
       })
     }
-  }).then((fn) => { unlistenSync = fn })
-  cleanups.push(() => { unlistenSync?.() })
+  })
+  cleanups.push(() => { syncListenPromise.then(fn => fn()).catch(() => {}) })
 
   // Only main window runs git commands and broadcasts
   if (isMain) {
@@ -200,14 +199,14 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
     invoke('watch_path', { path: `${repoPath}/tauri/src`, id: 'source-rs', recursive: true }).catch(() => {})
     cleanups.push(() => { invoke('unwatch_path', { id: 'source-rs' }).catch(() => {}) })
 
-    let unlisten: UnlistenFn | null = null
-    listen('fs-changed', (event) => {
+    const GIT_WATCH_IDS = new Set(['git', 'source', 'source-src', 'source-rs'])
+    const fsListenPromise = listen('fs-changed', (event) => {
       const payload = event.payload as { id: string }
-      if (payload.id === 'git' || payload.id === 'source' || payload.id === 'source-src' || payload.id === 'source-rs') {
+      if (GIT_WATCH_IDS.has(payload.id)) {
         useGitStore.getState().refresh()
       }
-    }).then((fn) => { unlisten = fn })
-    cleanups.push(() => { unlisten?.() })
+    })
+    cleanups.push(() => { fsListenPromise.then(fn => fn()).catch(() => {}) })
 
     const onFocus = () => { useGitStore.getState().refresh() }
     window.addEventListener('focus', onFocus)

@@ -17,7 +17,8 @@
 
 use super::super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
 use super::{
-    ChatCompletionRequest, ModelAdapter, StreamChunk, StreamParser,
+    ModelAdapter, StreamChunk, StreamParser,
+    build_openai_request_body,
 };
 
 /// OpenAI-compatible wire format adapter (the legacy default).
@@ -40,21 +41,7 @@ impl ModelAdapter for OpenAICompatAdapter {
         temperature: f32,
         max_tokens: u32,
     ) -> serde_json::Value {
-        let body = ChatCompletionRequest {
-            model: model.to_string(),
-            messages: messages.to_vec(),
-            tools: if tools.is_empty() {
-                None
-            } else {
-                Some(tools.to_vec())
-            },
-            stream: true,
-            temperature,
-            max_tokens,
-            reasoning_effort: None,
-        };
-
-        serde_json::to_value(&body).unwrap_or(serde_json::Value::Null)
+        build_openai_request_body(model, messages, tools, temperature, max_tokens)
     }
 
     fn new_stream_parser(&self) -> Box<dyn StreamParser> {
@@ -305,7 +292,7 @@ mod tests {
         );
         let events = p.finalize();
         assert_eq!(events.len(), 1);
-        matches!(events[0], LlmStreamEvent::Done { .. });
+        assert!(matches!(events[0], LlmStreamEvent::Done { .. }));
     }
 
     #[test]

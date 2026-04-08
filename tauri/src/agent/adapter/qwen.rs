@@ -27,6 +27,7 @@ use super::super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
 use super::{
     ModelAdapter, StreamChunk, StreamParser,
     build_openai_request_body, emit_format_error, safe_emit_len, safe_emit_len_multi,
+    strip_paired_blocks, strip_tag_pairs,
 };
 
 // ─── Adapter ────────────────────────────────────────────────────────────────
@@ -479,58 +480,16 @@ fn extract_balanced_json(input: &str) -> Option<String> {
 
 /// Strip `<think>...</think>` blocks from text.
 fn strip_thinking(text: &str) -> String {
-    let mut result = String::new();
-    let mut remaining = text;
-    loop {
-        let Some(start) = remaining.find("<think>") else {
-            break;
-        };
-        result.push_str(&remaining[..start]);
-        let after = &remaining[start + "<think>".len()..];
-        if let Some(end) = after.find("</think>") {
-            remaining = &after[end + "</think>".len()..];
-            // Skip leading newline after </think>
-            remaining = remaining.strip_prefix('\n').unwrap_or(remaining);
-        } else {
-            // Unclosed tag — discard the rest
-            return result;
-        }
-    }
-    result.push_str(remaining);
-    result
+    strip_paired_blocks(text, "<think>", "</think>", true)
 }
 
 /// Strip raw Qwen tool-call tokens from text.
 /// Removes `<tool_call>...</tool_call>` and `<tool_response>...</tool_response>`.
 fn strip_raw_tool_tokens(text: &str) -> String {
-    let mut result = String::new();
-    let mut remaining = text;
-
-    loop {
-        // Find next raw token
-        let tc_pos = remaining.find("<tool_call>");
-        let tr_pos = remaining.find("<tool_response>");
-
-        let (pos, open_tag, close_tag) = match (tc_pos, tr_pos) {
-            (Some(a), Some(b)) if a <= b => (a, "<tool_call>", "</tool_call>"),
-            (Some(_), Some(b)) => (b, "<tool_response>", "</tool_response>"),
-            (Some(a), None) => (a, "<tool_call>", "</tool_call>"),
-            (None, Some(b)) => (b, "<tool_response>", "</tool_response>"),
-            (None, None) => break,
-        };
-
-        result.push_str(&remaining[..pos]);
-        let after = &remaining[pos + open_tag.len()..];
-        if let Some(end) = after.find(close_tag) {
-            remaining = &after[end + close_tag.len()..];
-        } else {
-            // Unclosed tag — discard the rest
-            return result;
-        }
-    }
-
-    result.push_str(remaining);
-    result
+    strip_tag_pairs(text, &[
+        ("<tool_call>", "</tool_call>"),
+        ("<tool_response>", "</tool_response>"),
+    ])
 }
 
 /// Check if text contains a tool-call pattern that needs fallback parsing.

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSettingsStore } from '@/store/settings'
 import type { ProviderConfig } from '@/services/agent'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ function ProviderForm({
   const [apiKey, setApiKey] = useState(initial?.api_key ?? '')
   const [model, setModel] = useState(initial?.model ?? '')
 
+  const stableId = useRef(initial?.id ?? crypto.randomUUID())
   const testProvider = useSettingsStore((s) => s.testProvider)
   const testResult = useSettingsStore((s) => s.testResult)
   const testing = useSettingsStore((s) => s.testing)
@@ -34,29 +35,30 @@ function ProviderForm({
 
   const handleTest = useCallback(() => {
     testProvider({
-      id: initial?.id ?? crypto.randomUUID(),
+      id: stableId.current,
       name: name || 'Test',
       endpoint,
       api_key: apiKey || undefined,
       model: model || '',
     })
-  }, [name, endpoint, apiKey, model, initial?.id, testProvider])
+  }, [name, endpoint, apiKey, model, testProvider])
 
   const handleSave = useCallback(() => {
     onSave({
-      id: initial?.id ?? crypto.randomUUID(),
+      id: stableId.current,
       name: name || 'Provider',
       endpoint,
       api_key: apiKey || undefined,
       model,
     })
-  }, [name, endpoint, apiKey, model, initial?.id, onSave])
+  }, [name, endpoint, apiKey, model, onSave])
 
   return (
     <div className="flex flex-col gap-2 p-2 rounded-lg border border-border bg-card">
       <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] text-muted-foreground font-medium">Name</label>
+        <label htmlFor="provider-name" className="text-[10px] text-muted-foreground font-medium">Name</label>
         <input
+          id="provider-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="My Provider"
@@ -64,8 +66,9 @@ function ProviderForm({
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] text-muted-foreground font-medium">Endpoint</label>
+        <label htmlFor="provider-endpoint" className="text-[10px] text-muted-foreground font-medium">Endpoint</label>
         <input
+          id="provider-endpoint"
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
           placeholder="http://localhost:11434/v1"
@@ -73,9 +76,11 @@ function ProviderForm({
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] text-muted-foreground font-medium">API Key (optional)</label>
+        <label htmlFor="provider-api-key" className="text-[10px] text-muted-foreground font-medium">API Key (optional)</label>
         <input
+          id="provider-api-key"
           type="password"
+          autoComplete="off"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="sk-..."
@@ -83,9 +88,10 @@ function ProviderForm({
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] text-muted-foreground font-medium">Model</label>
+        <label htmlFor="provider-model" className="text-[10px] text-muted-foreground font-medium">Model</label>
         <div className="flex gap-1">
           <input
+            id="provider-model"
             value={model}
             onChange={(e) => setModel(e.target.value)}
             placeholder="e.g., gpt-4o, llama3.1"
@@ -216,6 +222,7 @@ function ProviderCard({ provider, isActive }: { provider: ProviderConfig; isActi
 export default function Settings() {
   const config = useSettingsStore((s) => s.config)
   const loading = useSettingsStore((s) => s.loading)
+  const error = useSettingsStore((s) => s.error)
   const loadConfig = useSettingsStore((s) => s.loadConfig)
   const addProvider = useSettingsStore((s) => s.addProvider)
   const [adding, setAdding] = useState(false)
@@ -225,6 +232,16 @@ export default function Settings() {
   }, [loadConfig])
 
   if (loading || !config) {
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-2 text-xs text-muted-foreground">
+          <span className="text-red-400">Failed to load configuration: {error}</span>
+          <Button size="sm" variant="secondary" onClick={() => loadConfig()} className="h-7 text-xs">
+            Retry
+          </Button>
+        </div>
+      )
+    }
     return (
       <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
         Loading configuration...

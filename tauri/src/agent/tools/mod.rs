@@ -9,6 +9,7 @@ pub mod fetch;
 pub(crate) mod test_helpers;
 
 pub const MAX_OUTPUT: usize = 100 * 1024; // 100 KB
+pub const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 
 use std::collections::HashSet;
 use std::path::PathBuf;
