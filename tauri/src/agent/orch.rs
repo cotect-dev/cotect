@@ -225,81 +225,13 @@ impl Orchestrator {
                 empty_turn_count = 0;
             }
 
-            // 5. Execute tool calls sequentially
+            // 5. Execute tool calls (parallel for read-only, sequential for mutating)
             if !turn.tool_calls.is_empty() {
                 // Add assistant message with tool calls to context
                 self.context
                     .append_assistant_with_tools(&turn.content, turn.tool_calls.clone());
 
-                for tool_call in &turn.tool_calls {
-                    let file_path = tools::extract_file_path(&tool_call.function);
-
-                    self.sender
-                        .send(TaskEvent::ToolStart {
-                            tool_name: tool_call.function.name.clone(),
-                            file_path: file_path.clone(),
-                            description: None,
-                            arguments: Some(tool_call.function.arguments.clone()),
-                        })
-                        .ok();
-
-                    let result = tools::execute_tool(tool_call, &self.tool_state).await;
-
-                    let (success, output_preview) = match &result {
-                        Ok(output) => (true, Some(truncate_chars(output, 500))),
-                        Err(e) => (false, Some(truncate_chars(e, 500))),
-                    };
-
-                    self.sender
-                        .send(TaskEvent::ToolEnd {
-                            tool_name: tool_call.function.name.clone(),
-                            file_path: file_path.clone(),
-                            success,
-                            output: output_preview,
-                        })
-                        .ok();
-
-                    // Build tool result message with error budget info
-                    let tool_result_text = match result {
-                        Ok(mut output) => {
-                            self.error_tracker.record_success(&tool_call.function.name);
-                            // After a successful tool call, compact any prior __format_error__
-                            // round-trips out of context to keep conversation clean.
-                            self.context.compact_format_errors();
-
-                            // When a shell command exits with a non-zero code, append a
-                            // nudge so the model knows it should keep iterating instead
-                            // of giving up and producing a final text-only response.
-                            if tool_call.function.name == "shell" {
-                                if let Some(code) = extract_shell_exit_code(&output) {
-                                    if code != 0 {
-                                        output.push_str(
-                                            "\n\n[NOTE: The command exited with a non-zero code. \
-                                             Analyze the output above, fix the underlying issue, \
-                                             and re-run the command.]"
-                                        );
-                                    }
-                                }
-                            }
-
-                            output
-                        }
-                        Err(e) => {
-                            self.error_tracker.record_error(&tool_call.function.name);
-                            let remaining = self.error_tracker.remaining(&tool_call.function.name);
-                            format!(
-                                "Error: {e}\n\n<retry attempts_left=\"{remaining}\" max=\"{}\"/>",
-                                self.error_tracker.limit
-                            )
-                        }
-                    };
-
-                    self.context
-                        .append_tool_result(&tool_call.id, &tool_result_text);
-
-                    self.doom_detector
-                        .record(&tool_call.function.name, &tool_call.function.arguments);
-                }
+                self.execute_tool_calls(&turn.tool_calls).await;
             } else if has_content {
                 // Text-only turn — add assistant text to context
                 self.context.append_assistant(&turn.content);
@@ -342,6 +274,173 @@ impl Orchestrator {
         }
 
         Ok(())
+    }
+
+    /// Execute tool calls with a parallel-first strategy: read-only tools run
+    /// concurrently, while mutating tools run sequentially afterward.
+    async fn execute_tool_calls(&mut self, tool_calls: &[ToolCall]) {
+        let (readonly, mutating): (Vec<_>, Vec<_>) = tool_calls
+            .iter()
+            .partition(|tc| is_read_only_tool(&tc.function.name));
+
+        // Execute read-only tools in parallel
+        if !readonly.is_empty() {
+            self.execute_tools_parallel(&readonly).await;
+        }
+
+        // Execute mutating tools sequentially
+        for tool_call in &mutating {
+            self.execute_single_tool(tool_call).await;
+        }
+    }
+
+    /// Execute a batch of read-only tool calls concurrently.
+    async fn execute_tools_parallel(&mut self, tool_calls: &[&ToolCall]) {
+        // Emit all ToolStart events first
+        for tc in tool_calls {
+            let file_path = tools::extract_file_path(&tc.function);
+            self.sender
+                .send(TaskEvent::ToolStart {
+                    tool_name: tc.function.name.clone(),
+                    file_path,
+                    description: None,
+                    arguments: Some(tc.function.arguments.clone()),
+                })
+                .ok();
+        }
+
+        // Execute all in parallel
+        let state = self.tool_state.clone();
+        let futures: Vec<_> = tool_calls
+            .iter()
+            .map(|tc| {
+                let tc_clone = (*tc).clone();
+                let state = state.clone();
+                async move {
+                    let result = tools::execute_tool(&tc_clone, &state).await;
+                    (tc_clone, result)
+                }
+            })
+            .collect();
+
+        let results = futures::future::join_all(futures).await;
+
+        // Process results and emit ToolEnd events
+        let mut any_success = false;
+        for (tool_call, result) in &results {
+            let file_path = tools::extract_file_path(&tool_call.function);
+            let (success, output_preview) = match result {
+                Ok(output) => (true, Some(truncate_chars(output, 500))),
+                Err(e) => (false, Some(truncate_chars(e, 500))),
+            };
+
+            self.sender
+                .send(TaskEvent::ToolEnd {
+                    tool_name: tool_call.function.name.clone(),
+                    file_path,
+                    success,
+                    output: output_preview,
+                })
+                .ok();
+
+            let tool_result_text = match result {
+                Ok(output) => {
+                    self.error_tracker.record_success(&tool_call.function.name);
+                    any_success = true;
+                    output.clone()
+                }
+                Err(e) => {
+                    self.error_tracker.record_error(&tool_call.function.name);
+                    let remaining = self.error_tracker.remaining(&tool_call.function.name);
+                    format!(
+                        "Error: {e}\n\n<retry attempts_left=\"{remaining}\" max=\"{}\"/>",
+                        self.error_tracker.limit
+                    )
+                }
+            };
+
+            self.context
+                .append_tool_result(&tool_call.id, &tool_result_text);
+
+            self.doom_detector
+                .record(&tool_call.function.name, &tool_call.function.arguments);
+        }
+
+        // Compact format errors after all parallel results are processed
+        if any_success {
+            self.context.compact_format_errors();
+        }
+    }
+
+    /// Execute a single (mutating) tool call sequentially.
+    async fn execute_single_tool(&mut self, tool_call: &ToolCall) {
+        let file_path = tools::extract_file_path(&tool_call.function);
+
+        self.sender
+            .send(TaskEvent::ToolStart {
+                tool_name: tool_call.function.name.clone(),
+                file_path: file_path.clone(),
+                description: None,
+                arguments: Some(tool_call.function.arguments.clone()),
+            })
+            .ok();
+
+        let result = tools::execute_tool(tool_call, &self.tool_state).await;
+
+        let (success, output_preview) = match &result {
+            Ok(output) => (true, Some(truncate_chars(output, 500))),
+            Err(e) => (false, Some(truncate_chars(e, 500))),
+        };
+
+        self.sender
+            .send(TaskEvent::ToolEnd {
+                tool_name: tool_call.function.name.clone(),
+                file_path,
+                success,
+                output: output_preview,
+            })
+            .ok();
+
+        // Build tool result message with error budget info
+        let tool_result_text = match result {
+            Ok(mut output) => {
+                self.error_tracker.record_success(&tool_call.function.name);
+                // After a successful tool call, compact any prior __format_error__
+                // round-trips out of context to keep conversation clean.
+                self.context.compact_format_errors();
+
+                // When a shell command exits with a non-zero code, append a
+                // nudge so the model knows it should keep iterating instead
+                // of giving up and producing a final text-only response.
+                if tool_call.function.name == "shell" {
+                    if let Some(code) = extract_shell_exit_code(&output) {
+                        if code != 0 {
+                            output.push_str(
+                                "\n\n[NOTE: The command exited with a non-zero code. \
+                                 Analyze the output above, fix the underlying issue, \
+                                 and re-run the command.]",
+                            );
+                        }
+                    }
+                }
+
+                output
+            }
+            Err(e) => {
+                self.error_tracker.record_error(&tool_call.function.name);
+                let remaining = self.error_tracker.remaining(&tool_call.function.name);
+                format!(
+                    "Error: {e}\n\n<retry attempts_left=\"{remaining}\" max=\"{}\"/>",
+                    self.error_tracker.limit
+                )
+            }
+        };
+
+        self.context
+            .append_tool_result(&tool_call.id, &tool_result_text);
+
+        self.doom_detector
+            .record(&tool_call.function.name, &tool_call.function.arguments);
     }
 
     /// Consume the LLM stream, forwarding text/reasoning to the UI sender
@@ -447,6 +546,11 @@ struct ToolCallBuilder {
     id: String,
     name: String,
     arguments: String,
+}
+
+/// Returns `true` for tools that only read state and can safely run in parallel.
+fn is_read_only_tool(name: &str) -> bool {
+    matches!(name, "read" | "fs_search" | "fetch")
 }
 
 /// Extract the exit code from a shell tool result string.
@@ -890,6 +994,147 @@ mod tests {
 
         // Capped at 5
         assert_eq!(result.tool_calls.len(), 5);
+    }
+
+    // ─── is_read_only_tool tests ──────────────────────────────────────
+
+    #[test]
+    fn test_is_read_only_tool_classifies_correctly() {
+        assert!(is_read_only_tool("read"));
+        assert!(is_read_only_tool("fs_search"));
+        assert!(is_read_only_tool("fetch"));
+        assert!(!is_read_only_tool("write"));
+        assert!(!is_read_only_tool("patch"));
+        assert!(!is_read_only_tool("shell"));
+        assert!(!is_read_only_tool("__format_error__"));
+        assert!(!is_read_only_tool("unknown_tool"));
+    }
+
+    // ─── Parallel tool execution tests ──────────────────────────────────
+
+    #[tokio::test]
+    async fn test_execute_tools_parallel_reads_concurrently() {
+        use std::io::Write;
+        let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+        let mut orch = make_test_orchestrator(task_tx);
+
+        // Create two temp files
+        let mut f1 = tempfile::NamedTempFile::new().unwrap();
+        f1.write_all(b"file one content\n").unwrap();
+        f1.flush().unwrap();
+        let mut f2 = tempfile::NamedTempFile::new().unwrap();
+        f2.write_all(b"file two content\n").unwrap();
+        f2.flush().unwrap();
+
+        let tool_calls = vec![
+            ToolCall {
+                id: "call_1".into(),
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: "read".into(),
+                    arguments: format!(r#"{{"file_path":"{}"}}"#, f1.path().to_str().unwrap()),
+                },
+            },
+            ToolCall {
+                id: "call_2".into(),
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: "read".into(),
+                    arguments: format!(r#"{{"file_path":"{}"}}"#, f2.path().to_str().unwrap()),
+                },
+            },
+        ];
+
+        // Set up context (must have assistant message before tool results)
+        orch.context.append_assistant_with_tools("reading files", tool_calls.clone());
+
+        let refs: Vec<&ToolCall> = tool_calls.iter().collect();
+        orch.execute_tools_parallel(&refs).await;
+
+        // Collect all task events
+        let mut events = vec![];
+        while let Ok(e) = task_rx.try_recv() {
+            events.push(e);
+        }
+
+        // Should have 2 ToolStart + 2 ToolEnd events
+        let starts: Vec<_> = events.iter().filter(|e| matches!(e, TaskEvent::ToolStart { .. })).collect();
+        let ends: Vec<_> = events.iter().filter(|e| matches!(e, TaskEvent::ToolEnd { .. })).collect();
+        assert_eq!(starts.len(), 2);
+        assert_eq!(ends.len(), 2);
+
+        // Both should succeed
+        for e in &ends {
+            if let TaskEvent::ToolEnd { success, .. } = e {
+                assert!(success);
+            }
+        }
+
+        // Context should have 2 tool result messages
+        let tool_msgs: Vec<_> = orch.context.messages().iter()
+            .filter(|m| m.role == super::super::types::Role::Tool)
+            .collect();
+        assert_eq!(tool_msgs.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_calls_partitions_correctly() {
+        use std::io::Write;
+        let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+        let mut orch = make_test_orchestrator(task_tx);
+
+        // Create a temp file for read
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"original content").unwrap();
+        f.flush().unwrap();
+        let path = f.path().to_str().unwrap().to_string();
+
+        // Mark the file as read so write succeeds
+        orch.tool_state.mark_read(&path).await;
+
+        let tool_calls = vec![
+            ToolCall {
+                id: "call_1".into(),
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: "read".into(),
+                    arguments: format!(r#"{{"file_path":"{}"}}"#, path),
+                },
+            },
+            ToolCall {
+                id: "call_2".into(),
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: "write".into(),
+                    arguments: format!(r#"{{"file_path":"{}","content":"new content"}}"#, path),
+                },
+            },
+        ];
+
+        orch.context.append_assistant_with_tools("mixed tools", tool_calls.clone());
+        orch.execute_tool_calls(&tool_calls).await;
+
+        // Collect events
+        let mut events = vec![];
+        while let Ok(e) = task_rx.try_recv() {
+            events.push(e);
+        }
+
+        // Should have 2 starts and 2 ends (1 read + 1 write)
+        let starts: Vec<_> = events.iter().filter(|e| matches!(e, TaskEvent::ToolStart { .. })).collect();
+        let ends: Vec<_> = events.iter().filter(|e| matches!(e, TaskEvent::ToolEnd { .. })).collect();
+        assert_eq!(starts.len(), 2);
+        assert_eq!(ends.len(), 2);
+
+        // Read should execute before write (parallel read first, then sequential write)
+        let start_names: Vec<String> = events.iter().filter_map(|e| match e {
+            TaskEvent::ToolStart { tool_name, .. } => Some(tool_name.clone()),
+            _ => None,
+        }).collect();
+        // read ToolStart should come before write ToolStart
+        let read_pos = start_names.iter().position(|n| n == "read").unwrap();
+        let write_pos = start_names.iter().position(|n| n == "write").unwrap();
+        assert!(read_pos < write_pos, "Read-only tool should execute before mutating tool");
     }
 
     // ─── Helper ─────────────────────────────────────────────────────────
