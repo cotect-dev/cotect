@@ -153,10 +153,7 @@ fn tool_rules(role: AgentRole) -> String {
          - If the same text appears multiple times in the file, patch will reject the call; add surrounding context lines to `old_string` until it is unique.\n\
          - When searching, prefer specific patterns over broad ones.\n\
          - When executing shell commands, provide a clear description of what the command does.\n\
-         - Make targeted, minimal changes rather than rewriting entire files.\n\
-         - You can call multiple tools in a single response. Read-only tools (read, fs_search, fetch) \
-         execute in parallel for faster results. When you need to read several files or search multiple \
-         patterns, emit all tool calls at once rather than one per turn.\n"
+         - Make targeted, minimal changes rather than rewriting entire files.\n"
     );
 
     match role {
