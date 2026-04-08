@@ -116,7 +116,10 @@ impl StreamParser for OpenAICompatParser {
             Vec::new()
         } else {
             self.done_emitted = true;
-            vec![LlmStreamEvent::Done { finish_reason: None }]
+            // Stream ended without [DONE] or finish_reason — abnormal termination.
+            vec![LlmStreamEvent::Done {
+                finish_reason: Some("stream_ended".to_string()),
+            }]
         }
     }
 }

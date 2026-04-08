@@ -115,7 +115,9 @@ impl Orchestrator {
         let mut is_complete = false;
         let mut turn_count = 0;
         let mut empty_turn_count = 0;
+        let mut stream_timeout_count = 0;
         const MAX_EMPTY_TURNS: usize = 3;
+        const MAX_STREAM_TIMEOUTS: usize = 2;
 
         while !should_yield {
             // 1. Doom loop check — warn at 3 repetitions, abort at 5
@@ -171,15 +173,36 @@ impl Orchestrator {
                 && !has_tools;
             should_yield = is_complete;
 
-            // Stream-level timeout: the server stopped sending bytes mid-stream.
-            // Don't retry — the inference server is stalled.
-            if finish == Some("timeout") {
-                self.sender
-                    .send(TaskEvent::Interrupted {
-                        reason: "LLM server stopped responding (stream idle timeout).".into(),
-                    })
-                    .ok();
-                should_yield = true;
+            // Stream-level problems: idle timeout or abnormal stream termination.
+            // "timeout"      — no bytes arrived for COTECT_STREAM_IDLE_TIMEOUT seconds.
+            // "stream_ended" — HTTP stream closed without [DONE] marker (server crash,
+            //                  KV cache exhaustion, inference error, etc.).
+            // Both are transient — retry a few times before giving up.
+            if finish == Some("timeout") || finish == Some("stream_ended") {
+                stream_timeout_count += 1;
+                let kind = if finish == Some("timeout") {
+                    "stream idle timeout"
+                } else {
+                    "stream terminated without completion"
+                };
+                if stream_timeout_count >= MAX_STREAM_TIMEOUTS {
+                    self.sender
+                        .send(TaskEvent::Interrupted {
+                            reason: format!(
+                                "LLM server stopped responding ({kind}, giving up after {stream_timeout_count} retries)."
+                            ),
+                        })
+                        .ok();
+                    should_yield = true;
+                } else {
+                    // Don't append anything to context — just retry the same turn.
+                    // The server may have stalled during reasoning; a fresh request
+                    // with the same messages often succeeds.
+                    continue;
+                }
+            } else {
+                // Any successful response resets the stream timeout counter.
+                stream_timeout_count = 0;
             }
 
             // If the model hit its token limit with no tool calls, treat it as

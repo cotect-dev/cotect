@@ -483,8 +483,9 @@ impl StreamParser for PlainStreamParser {
             events.push(LlmStreamEvent::TextDelta(text));
         }
         if !self.done_emitted {
+            // Stream ended without [DONE] or finish_reason — abnormal termination.
             events.push(LlmStreamEvent::Done {
-                finish_reason: Some("stop".to_string()),
+                finish_reason: Some("stream_ended".to_string()),
             });
             self.done_emitted = true;
         }

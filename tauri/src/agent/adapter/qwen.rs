@@ -169,8 +169,12 @@ impl StreamParser for QwenStreamParser {
         self.flush_remaining(&mut events);
         if !self.done_emitted {
             self.done_emitted = true;
+            // Stream ended without [DONE] or finish_reason — this is an
+            // abnormal termination (server crashed, KV cache exhausted, etc.).
+            // Report as "stream_ended" so the orchestrator can distinguish
+            // this from a genuine model completion and retry the turn.
             events.push(LlmStreamEvent::Done {
-                finish_reason: Some("stop".to_string()),
+                finish_reason: Some("stream_ended".to_string()),
             });
         }
         events
