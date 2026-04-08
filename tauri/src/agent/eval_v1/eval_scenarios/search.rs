@@ -6,79 +6,7 @@ use crate::agent::types::AgentRole::Research as R;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Easy ────────────────────────────────────────────────────────────
-
-    fn s_find_todos(dir: &Path) -> SetupResult {
-        std::fs::create_dir_all(dir.join("src")).ok();
-        std::fs::write(dir.join("src/auth.py"), "# TODO: add password hashing\ndef login(user, pw): pass\n").unwrap();
-        std::fs::write(dir.join("src/api.py"), "def get_data(): return []\n# TODO: implement pagination\n# TODO: add caching\n").unwrap();
-        std::fs::write(dir.join("src/models.py"), "class User: pass\n").unwrap();
-        let d = dir.to_string_lossy().into_owned();
-        with_checks(pf(format!(
-            "Search all files under {d} for TODO comments. List each TODO with its file. \
-             How many TODOs are there total? State your final answer as the last number in your reply.")),
-            vec![complete(), succeeded("fs_search"), num(3),
-                 oc_all(&["password", "pagination", "caching"])])
-    }
-    v.push(scen!("search_find_todos", Category::Search, Difficulty::Easy, R, s_find_todos));
-
-    fn s_find_function_def(dir: &Path) -> SetupResult {
-        std::fs::create_dir_all(dir.join("lib")).ok();
-        std::fs::write(dir.join("lib/math.ts"), "export function add(a: number, b: number) { return a + b; }\nexport function multiply(a: number, b: number) { return a * b; }\n").unwrap();
-        std::fs::write(dir.join("lib/string.ts"), "export function capitalize(s: string) { return s[0].toUpperCase() + s.slice(1); }\n").unwrap();
-        std::fs::write(dir.join("lib/array.ts"), "export function flatten<T>(arr: T[][]): T[] { return arr.flat(); }\nexport function unique<T>(arr: T[]): T[] { return [...new Set(arr)]; }\n").unwrap();
-        let d = dir.to_string_lossy().into_owned();
-        with_checks(pf(format!(
-            "Search {d} for all exported functions. List every function name you find.")),
-            vec![complete(), succeeded("fs_search"),
-                 oc_all(&["add", "multiply", "capitalize", "flatten", "unique"])])
-    }
-    v.push(scen!("search_exported_functions", Category::Search, Difficulty::Easy, R, s_find_function_def));
-
-    fn s_find_hardcoded_secrets(dir: &Path) -> SetupResult {
-        std::fs::create_dir_all(dir.join("config")).ok();
-        std::fs::write(dir.join("config/db.py"), "DB_URL = 'postgres://user:password123@prod-db:5432/myapp'\n").unwrap();
-        std::fs::write(dir.join("config/api.py"), "API_KEY = 'sk-live-abc123def456'\nBASE_URL = 'https://api.example.com'\n").unwrap();
-        std::fs::write(dir.join("config/settings.py"), "DEBUG = False\nLOG_LEVEL = 'INFO'\n").unwrap();
-        let d = dir.to_string_lossy().into_owned();
-        with_checks(pf(format!(
-            "Search {d} for hardcoded secrets (API keys, passwords, credentials). \
-             Report which files contain secrets and what kind of secret each is.")),
-            vec![complete(), succeeded("fs_search"),
-                 oc_all(&["db.py", "api.py"]),
-                 oc_any(&["password", "credential", "secret", "API_KEY", "DB_URL"])])
-    }
-    v.push(scen!("search_hardcoded_secrets", Category::Search, Difficulty::Easy, R, s_find_hardcoded_secrets));
-
     // ── Medium ──────────────────────────────────────────────────────────
-
-    fn s_unused_imports(dir: &Path) -> SetupResult {
-        std::fs::create_dir_all(dir.join("src")).ok();
-        std::fs::write(dir.join("src/main.py"), "\
-import os\nimport sys\nimport json\nimport re\n\ndef run():\n    data = json.loads('{}')\n    print(os.getcwd())\n").unwrap();
-        let d = dir.to_string_lossy().into_owned();
-        with_checks(pf(format!(
-            "Search the Python files under {d} and identify which imports are unused. \
-             `run()` uses `json` and `os` but not the others. List the unused imports.")),
-            vec![complete(), succeeded("fs_search"),
-                 oc_all(&["sys", "re"]),
-                 oc_any(&["unused", "not used"])])
-    }
-    v.push(scen!("search_unused_imports", Category::Search, Difficulty::Medium, R, s_unused_imports));
-
-    fn s_find_console_logs(dir: &Path) -> SetupResult {
-        std::fs::create_dir_all(dir.join("src")).ok();
-        std::fs::write(dir.join("src/app.ts"), "export function init() {\n  console.log('app started');\n  setup();\n}\n").unwrap();
-        std::fs::write(dir.join("src/api.ts"), "export async function fetch() {\n  console.log('fetching...');\n  console.warn('deprecated');\n  return [];\n}\n").unwrap();
-        std::fs::write(dir.join("src/utils.ts"), "export function format(s: string) {\n  return s.trim();\n}\n").unwrap();
-        std::fs::write(dir.join("src/debug.ts"), "console.log('debug1');\nconsole.log('debug2');\nconsole.error('test error');\n").unwrap();
-        let d = dir.to_string_lossy().into_owned();
-        with_checks(pf(format!(
-            "Search {d} for all `console.log` calls (not console.warn or console.error). \
-             How many `console.log` calls are there total? State your final answer as the last number in your reply.")),
-            vec![complete(), succeeded("fs_search"), num(4)])
-    }
-    v.push(scen!("search_console_logs", Category::Search, Difficulty::Medium, R, s_find_console_logs));
 
     fn s_find_callers(dir: &Path) -> SetupResult {
         std::fs::create_dir_all(dir.join("src")).ok();
