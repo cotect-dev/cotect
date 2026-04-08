@@ -1,5 +1,6 @@
-import { memo, useState, useCallback } from 'react'
+import { memo, useState, useCallback, useEffect } from 'react'
 import { useTasksStore, type TaskEntry, type TaskStatus } from '@/store/tasks'
+import { useShallow } from 'zustand/react/shallow'
 import { useBrowserStore } from '@/store/browser'
 import type { AgentRole } from '@/services/agent'
 import { Button } from '@/components/ui/button'
@@ -59,11 +60,18 @@ const TaskCard = memo(function TaskCard({ task }: { task: TaskEntry }) {
   const removeTask = useTasksStore((s) => s.removeTask)
   const [expanded, setExpanded] = useState(false)
 
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (task.status !== 'running') return
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [task.status])
+
   const isActive = task.status === 'running' || task.status === 'pending'
   const elapsed = task.completedAt
     ? formatDuration(task.completedAt - task.createdAt)
     : task.status === 'running'
-      ? formatDuration(Date.now() - task.createdAt)
+      ? formatDuration(now - task.createdAt)
       : null
 
   return (
@@ -201,7 +209,7 @@ function NewTaskForm() {
 // ─── Main panel ──────────────────────────────────────────────────────────────
 
 export default function Tasks() {
-  const tasks = useTasksStore((s) => s.tasks)
+  const tasks = useTasksStore(useShallow((s) => s.tasks))
   const clearCompleted = useTasksStore((s) => s.clearCompleted)
 
   const hasCompleted = tasks.some((t) => t.status !== 'running' && t.status !== 'pending')

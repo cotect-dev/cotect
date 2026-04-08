@@ -112,5 +112,21 @@ describe('agent service', () => {
       // Note: unlisten is set async, so we verify the returned function exists
       expect(typeof unsubscribe).toBe('function')
     })
+
+    it('cleanup function calls unlisten after promise resolves', async () => {
+      const unlisten = vi.fn()
+      vi.mocked(listen).mockResolvedValue(unlisten)
+
+      const callback = vi.fn()
+      const cleanup = agent.listenToTask('task-99', callback)
+
+      // Call cleanup — this internally calls promise.then(fn => fn())
+      cleanup()
+
+      // Wait for the listen promise to resolve and the unlisten to be called
+      await vi.waitFor(() => {
+        expect(unlisten).toHaveBeenCalled()
+      })
+    })
   })
 })

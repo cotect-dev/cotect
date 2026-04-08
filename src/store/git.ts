@@ -53,6 +53,16 @@ interface GitState {
   setRepoPath: (path: string) => void
 }
 
+const failedGitState = (gitError: GitError): Partial<GitState> => ({
+  initialized: true,
+  isGitRepo: false,
+  gitError,
+  status: null,
+  log: null,
+  branch: null,
+  lastCommitTimestamp: null,
+})
+
 export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => create<GitState>((set, get) => ({
   repoPath: '',
   initialized: false,
@@ -81,20 +91,20 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
       if (status.status === 'rejected') {
         const err = String(status.reason)
         if (err.includes('GIT_NOT_FOUND')) {
-          const state = { initialized: true, isGitRepo: false, gitError: 'GIT_NOT_FOUND' as GitError, status: null, log: null, branch: null, lastCommitTimestamp: null }
+          const state = failedGitState('GIT_NOT_FOUND')
           set({ ...state, loading: false })
           broadcastGitState(state)
           return
         }
         if (err.includes('NOT_A_REPO')) {
-          const state = { initialized: true, isGitRepo: false, gitError: 'NOT_A_REPO' as GitError, status: null, log: null, branch: null, lastCommitTimestamp: null }
+          const state = failedGitState('NOT_A_REPO')
           set({ ...state, loading: false })
           broadcastGitState(state)
           return
         }
         // Unknown error from git_status — don't fall through to success path
         console.error('Git status failed with unknown error:', err)
-        set({ initialized: true, isGitRepo: false, gitError: null, status: null, log: null, branch: null, lastCommitTimestamp: null, loading: false })
+        set({ ...failedGitState(null), loading: false })
         return
       }
 

@@ -22,11 +22,13 @@
 //!   rejects with a helpful error message, prompting the model to retry with
 //!   correct JSON.
 
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
-use super::{ModelAdapter, StreamParser};
+use super::{
+    ModelAdapter, StreamChunk, StreamParser,
+    build_openai_request_body, emit_format_error, safe_emit_len, safe_emit_len_multi,
+};
 
 // ─── Adapter ────────────────────────────────────────────────────────────────
 
@@ -49,78 +51,12 @@ impl ModelAdapter for GemmaAdapter {
         temperature: f32,
         max_tokens: u32,
     ) -> Value {
-        let body = ChatCompletionRequest {
-            model: model.to_string(),
-            messages: messages.to_vec(),
-            tools: if tools.is_empty() {
-                None
-            } else {
-                Some(tools.to_vec())
-            },
-            stream: true,
-            temperature,
-            max_tokens,
-        };
-
-        serde_json::to_value(&body).unwrap_or(Value::Null)
+        build_openai_request_body(model, messages, tools, temperature, max_tokens)
     }
 
     fn new_stream_parser(&self) -> Box<dyn StreamParser> {
         Box::new(GemmaStreamParser::new())
     }
-}
-
-// ─── Request body (same as OpenAI) ──────────────────────────────────────────
-
-#[derive(Serialize)]
-struct ChatCompletionRequest {
-    model: String,
-    messages: Vec<ChatMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<ToolDefinition>>,
-    stream: bool,
-    temperature: f32,
-    max_tokens: u32,
-}
-
-// ─── SSE chunk types (OpenAI format) ────────────────────────────────────────
-
-#[derive(Deserialize)]
-struct StreamChunk {
-    choices: Vec<StreamChoice>,
-}
-
-#[derive(Deserialize)]
-struct StreamChoice {
-    delta: StreamDelta,
-    finish_reason: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-struct StreamDelta {
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    reasoning_content: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<StreamToolCallDelta>>,
-}
-
-#[derive(Deserialize)]
-struct StreamToolCallDelta {
-    index: usize,
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    function: Option<StreamFunctionDelta>,
-}
-
-#[derive(Deserialize, Default)]
-struct StreamFunctionDelta {
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    arguments: Option<String>,
 }
 
 // ─── Stream parser ──────────────────────────────────────────────────────────
@@ -412,21 +348,7 @@ impl GemmaStreamParser {
                 });
             }
             Err(parse_err) => {
-                let raw_preview = if tc_content.len() > 200 {
-                    format!("{}...", &tc_content[..200])
-                } else {
-                    tc_content.to_string()
-                };
-                events.push(LlmStreamEvent::ToolCallDelta {
-                    index: idx,
-                    id: Some(format!("call_{}", idx + 1)),
-                    name: Some("__format_error__".to_string()),
-                    arguments_chunk: json!({
-                        "raw": raw_preview,
-                        "error": parse_err,
-                    })
-                    .to_string(),
-                });
+                events.push(emit_format_error(idx, tc_content, &parse_err));
             }
         }
     }
@@ -683,14 +605,28 @@ fn parse_quoted_string(
 
 fn collect_until_matching_brace(chars: &mut std::iter::Peekable<std::str::Chars>) -> String {
     let mut s = String::new();
-    let mut depth = 1;
+    let mut depth = 1i32;
+    let mut in_string = false;
+    let mut escape_next = false;
     while let Some(c) = chars.next() {
-        if c == '{' {
-            depth += 1;
-        } else if c == '}' {
-            depth -= 1;
-            if depth == 0 {
-                break;
+        if escape_next {
+            escape_next = false;
+            s.push(c);
+            continue;
+        }
+        if c == '\\' && in_string {
+            escape_next = true;
+            s.push(c);
+            continue;
+        }
+        if c == '"' {
+            in_string = !in_string;
+        }
+        if !in_string {
+            if c == '{' { depth += 1; }
+            else if c == '}' {
+                depth -= 1;
+                if depth == 0 { break; }
             }
         }
         s.push(c);
@@ -782,29 +718,6 @@ fn strip_raw_tool_tokens(text: &str) -> String {
 /// Check if text contains a tool-call pattern that needs fallback parsing.
 fn contains_tool_call_pattern(text: &str) -> bool {
     text.contains("<|tool_call>") || text.contains("call:")
-}
-
-/// How much of `buffer` can we safely emit without splitting a potential tag?
-fn safe_emit_len(buffer: &str, tag: &str) -> usize {
-    let len = buffer.len();
-    if len == 0 {
-        return 0;
-    }
-    for i in (1..=tag.len().min(len)).rev() {
-        if buffer.ends_with(&tag[..i]) {
-            return len - i;
-        }
-    }
-    len
-}
-
-/// Safe emit length checking multiple potential tags.
-fn safe_emit_len_multi(buffer: &str, tags: &[&str]) -> usize {
-    let mut min = buffer.len();
-    for tag in tags {
-        min = min.min(safe_emit_len(buffer, tag));
-    }
-    min
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────

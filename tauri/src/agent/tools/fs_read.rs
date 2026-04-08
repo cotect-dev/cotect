@@ -34,14 +34,13 @@ pub(super) fn resolve_path(raw: &str, root_path: &str) -> PathBuf {
 
 pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<String, String> {
     let resolved = resolve_path(&input.file_path, &state.root_path);
-    let path_buf = resolved.clone();
-    let path = path_buf.to_string_lossy().to_string();
+    let path = resolved.to_string_lossy().to_string();
     let path = path.as_str();
 
     // Check blocked files list (eval sandboxing).
     // Return Ok (not Err) so this doesn't eat into the error budget —
     // the model shouldn't be penalized for discovering a restriction.
-    if state.blocked_files.iter().any(|b| path_buf.ends_with(b) || &path_buf == b) {
+    if state.blocked_files.iter().any(|b| resolved.ends_with(b) || &resolved == b) {
         return Ok(
             "This file is part of the test harness and cannot be read during evaluation. \
              You can still run it (e.g. `python3 <filename>`) to see test results. \
@@ -97,19 +96,7 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as IoWrite;
-    use tempfile::NamedTempFile;
-
-    fn make_state() -> Arc<ToolState> {
-        ToolState::new("/tmp".into())
-    }
-
-    fn make_temp_file(content: &str) -> NamedTempFile {
-        let mut f = NamedTempFile::new().unwrap();
-        f.write_all(content.as_bytes()).unwrap();
-        f.flush().unwrap();
-        f
-    }
+    use crate::agent::tools::test_helpers::{make_state, make_temp_file};
 
     #[tokio::test]
     async fn read_entire_file_with_line_numbers() {
