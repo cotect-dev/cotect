@@ -302,7 +302,7 @@ impl Orchestrator {
                 }
             } else if has_content {
                 // Text-only turn — add assistant text to context
-                self.context.append_assistant(&turn.content, &turn.reasoning);
+                self.context.append_assistant(&turn.content);
             }
             // else: empty turn (no content, no tools) — skip appending.
             // Appending an empty assistant message would cause the next request to

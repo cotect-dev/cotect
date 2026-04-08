@@ -1,14 +1,28 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 /// Doom loop detector — identifies when the agent is stuck in repetitive tool call patterns.
 ///
 /// Detects two types of loops:
 /// 1. Consecutive identical calls: [A,A,A] — same tool with same arguments
 /// 2. Repeating patterns: [A,B,C][A,B,C][A,B,C] — sequence of calls repeating
 ///
-/// Adapted from Forge Code's doom_loop.rs pattern.
+/// Arguments are stored as hashes to avoid unbounded memory growth from
+/// tool calls that contain entire file contents (e.g., write tool).
+/// History is capped at `MAX_HISTORY` entries.
 #[derive(Debug, Clone)]
 pub struct DoomLoopDetector {
-    history: Vec<(String, String)>, // (tool_name, arguments_json)
+    history: Vec<(String, u64)>, // (tool_name, arguments_hash)
     threshold: usize,
+}
+
+/// Maximum number of entries retained in the history ring.
+const MAX_HISTORY: usize = 30;
+
+fn hash_string(s: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    s.hash(&mut hasher);
+    hasher.finish()
 }
 
 impl Default for DoomLoopDetector {
@@ -32,7 +46,12 @@ impl DoomLoopDetector {
     /// Record a tool call in the history.
     pub fn record(&mut self, tool_name: &str, arguments: &str) {
         self.history
-            .push((tool_name.to_string(), arguments.to_string()));
+            .push((tool_name.to_string(), hash_string(arguments)));
+        // Cap history to avoid unbounded growth.
+        if self.history.len() > MAX_HISTORY {
+            let excess = self.history.len() - MAX_HISTORY;
+            self.history.drain(..excess);
+        }
     }
 
     /// Check for repeating patterns. Returns Some(repetition_count) if a loop is detected.
@@ -252,6 +271,56 @@ mod tests {
             d.record("read", r#"{"p":"x"}"#);
             d.record("write", r#"{"p":"x"}"#);
         }
+        assert_eq!(d.check(), Some(3));
+    }
+
+    // ─── Hash-based detection & history cap tests ────────────────────────
+
+    #[test]
+    fn test_same_tool_and_args_detected_via_hash() {
+        // Same tool+args combo should be detected as stuck
+        let mut d = DoomLoopDetector::default();
+        let big_content = "x".repeat(10_000); // large arg to verify hashing works
+        for _ in 0..3 {
+            d.record("write", &big_content);
+        }
+        assert_eq!(d.check(), Some(3));
+    }
+
+    #[test]
+    fn test_different_args_produce_different_hashes() {
+        let h1 = hash_string(r#"{"path":"a.txt","content":"hello"}"#);
+        let h2 = hash_string(r#"{"path":"a.txt","content":"world"}"#);
+        assert_ne!(h1, h2, "Different arguments must produce different hashes");
+    }
+
+    #[test]
+    fn test_history_cap_at_max() {
+        let mut d = DoomLoopDetector::default();
+        for i in 0..50 {
+            d.record(&format!("tool_{}", i), &format!("args_{}", i));
+        }
+        // History should be capped at MAX_HISTORY (30)
+        assert_eq!(d.history.len(), MAX_HISTORY);
+        // The oldest entries should have been drained; first remaining is tool_20
+        assert_eq!(d.history[0].0, "tool_20");
+    }
+
+    #[test]
+    fn test_detection_still_works_after_history_cap() {
+        let mut d = DoomLoopDetector::default();
+        // Fill history past the cap with unique calls
+        for i in 0..28 {
+            d.record(&format!("tool_{}", i), &format!("args_{}", i));
+        }
+        // Now add a repeating pattern that should be detected
+        for _ in 0..3 {
+            d.record("stuck_tool", r#"{"same":"args"}"#);
+        }
+        // 28 + 3 = 31, but record() drains excess when len > MAX_HISTORY,
+        // so after the 31st insert we're back to 30.
+        assert_eq!(d.history.len(), MAX_HISTORY);
+        // The detector should still catch the 3 consecutive identical calls
         assert_eq!(d.check(), Some(3));
     }
 }

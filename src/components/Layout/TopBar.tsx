@@ -15,12 +15,18 @@ import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
 import { useGitStore } from '@/store/git'
 import RelativeTime from '@/components/RelativeTime'
 import { DEV } from '@/lib/env'
-import { useState, useCallback, useMemo, Fragment } from 'react'
+import { useState, useCallback, Fragment } from 'react'
 import { GitBranch } from 'lucide-react'
 
 interface TopBarProps {
   onResetZoneSizes?: () => void
 }
+
+const PANEL_GROUPS = [
+  { group: 'git' as const, label: 'Git' },
+  { group: 'tools' as const, label: 'Tools' },
+  { group: 'agent' as const, label: 'Agent' },
+] as const
 
 export default function TopBar({ onResetZoneSizes }: TopBarProps) {
   const [testError, setTestError] = useState(false)
@@ -50,23 +56,17 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
     return panels.left.some(g => g.includes(id)) || panels.right.some(g => g.includes(id)) || panels.bottom.some(g => g.includes(id))
   }, [panels])
 
-  const panelGroups = useMemo(() => [
-    { group: 'git' as const, label: 'Git' },
-    { group: 'tools' as const, label: 'Tools' },
-    { group: 'agent' as const, label: 'Agent' },
-  ], [])
-
   return (
     <Menubar className="shrink-0 pointer-events-auto bg-background/80 backdrop-blur-sm">
       <img src="/cotect.svg" alt="Cotect" className="h-6 w-6 ml-1 mr-1" />
       <MenubarMenu>
         <MenubarTrigger>File</MenubarTrigger>
         <MenubarContent>
-          <MenubarItem>New</MenubarItem>
+          <MenubarItem disabled>New</MenubarItem>
           <MenubarItem onClick={handleOpenFolder}>Open Folder...</MenubarItem>
           <MenubarSeparator />
-          <MenubarItem>Save</MenubarItem>
-          <MenubarItem>Save As...</MenubarItem>
+          <MenubarItem disabled>Save</MenubarItem>
+          <MenubarItem disabled>Save As...</MenubarItem>
           <MenubarSeparator />
           <MenubarItem onClick={() => platform.windows.close()}>Exit</MenubarItem>
         </MenubarContent>
@@ -74,12 +74,12 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
       <MenubarMenu>
         <MenubarTrigger>Edit</MenubarTrigger>
         <MenubarContent>
-          <MenubarItem>Undo</MenubarItem>
-          <MenubarItem>Redo</MenubarItem>
+          <MenubarItem disabled>Undo</MenubarItem>
+          <MenubarItem disabled>Redo</MenubarItem>
           <MenubarSeparator />
-          <MenubarItem>Cut</MenubarItem>
-          <MenubarItem>Copy</MenubarItem>
-          <MenubarItem>Paste</MenubarItem>
+          <MenubarItem disabled>Cut</MenubarItem>
+          <MenubarItem disabled>Copy</MenubarItem>
+          <MenubarItem disabled>Paste</MenubarItem>
           {DEV && (
             <>
               <MenubarSeparator />
@@ -117,7 +117,7 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
             New Window
           </MenubarItem>
           <MenubarSeparator />
-          {panelGroups.map(({ group, label }, i) => (
+          {PANEL_GROUPS.map(({ group, label }, i) => (
             <Fragment key={group}>
               {i > 0 && <MenubarSeparator />}
               <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">{label}</div>

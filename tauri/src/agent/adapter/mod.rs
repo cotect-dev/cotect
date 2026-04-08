@@ -57,8 +57,9 @@ pub mod qwen;
 pub enum PromptFormat {
     /// Plain markdown-style format with JSON tool calls in XML-like tags.
     /// No special tokens. Self-documenting. Works with any capable model
-    /// without relying on specific training priors. This is the default
-    /// fallback for unknown open models.
+    /// without relying on specific training priors. Must be selected
+    /// explicitly — unknown models fall back to [`OpenAICompat`](Self::OpenAICompat)
+    /// instead.
     Plain,
 
     /// Gemma 2/3/4 native template using `<start_of_turn>` / `<end_of_turn>`
@@ -367,7 +368,12 @@ pub(crate) fn safe_emit_len_multi(buffer: &str, tags: &[&str]) -> usize {
 
 /// Emit a format-error sentinel tool call delta when fallback parsing fails.
 pub(crate) fn emit_format_error(idx: usize, content: &str, err: &str) -> LlmStreamEvent {
-    let truncated = if content.len() > 200 { &content[..200] } else { content };
+    let truncated = if content.len() > 200 {
+        let end = content.floor_char_boundary(200);
+        &content[..end]
+    } else {
+        content
+    };
     LlmStreamEvent::ToolCallDelta {
         index: idx,
         id: Some(format!("call_{}", idx + 1)),
@@ -377,6 +383,54 @@ pub(crate) fn emit_format_error(idx: usize, content: &str, err: &str) -> LlmStre
             "error": err
         }).to_string(),
     }
+}
+
+// ─── Shared tag-stripping utilities ─────────────────────────────────────────
+
+/// Remove all `open_prefix … close_tag` blocks from `text`.
+///
+/// Both Gemma (`<|channel>thought … <channel|>`) and Qwen (`<think>…</think>`)
+/// use the same algorithmic pattern: find the open prefix, skip to the close
+/// tag, remove everything in between (including the tags themselves).
+///
+/// When `strip_trailing_newline` is `true`, a single leading `\n` immediately
+/// after each close tag is also consumed (Qwen's `</think>` convention).
+pub(crate) fn strip_paired_blocks(
+    text: &str,
+    open_prefix: &str,
+    close_tag: &str,
+    strip_trailing_newline: bool,
+) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text;
+    while let Some(start) = remaining.find(open_prefix) {
+        result.push_str(&remaining[..start]);
+        let after_open = &remaining[start + open_prefix.len()..];
+        if let Some(end) = after_open.find(close_tag) {
+            remaining = &after_open[end + close_tag.len()..];
+            if strip_trailing_newline {
+                remaining = remaining.strip_prefix('\n').unwrap_or(remaining);
+            }
+        } else {
+            // Unclosed block — skip everything after open tag
+            remaining = "";
+        }
+    }
+    result.push_str(remaining);
+    result
+}
+
+/// Remove all blocks delimited by any of the given `(open, close)` tag pairs.
+///
+/// This is a convenience wrapper around [`strip_paired_blocks`] applied
+/// sequentially for each pair. Useful for stripping multiple raw-token
+/// families in one call (e.g. `<tool_call>…` **and** `<tool_response>…`).
+pub(crate) fn strip_tag_pairs(text: &str, pairs: &[(&str, &str)]) -> String {
+    let mut result = text.to_string();
+    for &(open, close) in pairs {
+        result = strip_paired_blocks(&result, open, close, false);
+    }
+    result
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -476,5 +530,77 @@ mod tests {
         ] {
             assert_eq!(build_adapter(format).name(), "openai_compat");
         }
+    }
+
+    // ── Shared tag-stripping utilities ──────────────────────────────────
+
+    #[test]
+    fn strip_paired_blocks_basic() {
+        let input = "before<open>content<close>after";
+        assert_eq!(
+            strip_paired_blocks(input, "<open>", "<close>", false),
+            "beforeafter"
+        );
+    }
+
+    #[test]
+    fn strip_paired_blocks_multiple() {
+        let input = "a<open>x<close>b<open>y<close>c";
+        assert_eq!(
+            strip_paired_blocks(input, "<open>", "<close>", false),
+            "abc"
+        );
+    }
+
+    #[test]
+    fn strip_paired_blocks_unclosed() {
+        let input = "before<open>unclosed content";
+        assert_eq!(
+            strip_paired_blocks(input, "<open>", "<close>", false),
+            "before"
+        );
+    }
+
+    #[test]
+    fn strip_paired_blocks_no_match() {
+        assert_eq!(
+            strip_paired_blocks("plain text", "<open>", "<close>", false),
+            "plain text"
+        );
+    }
+
+    #[test]
+    fn strip_paired_blocks_trailing_newline() {
+        let input = "<think>thought\n</think>\ntext";
+        assert_eq!(
+            strip_paired_blocks(input, "<think>", "</think>", true),
+            "text"
+        );
+    }
+
+    #[test]
+    fn strip_paired_blocks_no_trailing_newline_flag() {
+        let input = "<think>thought</think>\ntext";
+        assert_eq!(
+            strip_paired_blocks(input, "<think>", "</think>", false),
+            "\ntext"
+        );
+    }
+
+    #[test]
+    fn strip_tag_pairs_multiple_families() {
+        let input = "a<x>1</x>b<y>2</y>c";
+        assert_eq!(
+            strip_tag_pairs(input, &[("<x>", "</x>"), ("<y>", "</y>")]),
+            "abc"
+        );
+    }
+
+    #[test]
+    fn strip_tag_pairs_no_match() {
+        assert_eq!(
+            strip_tag_pairs("clean text", &[("<x>", "</x>")]),
+            "clean text"
+        );
     }
 }

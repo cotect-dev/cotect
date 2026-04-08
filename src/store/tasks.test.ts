@@ -86,6 +86,19 @@ describe('useTasksStore', () => {
         expect(tasks[0].status).toBe('errored')
       })
     })
+
+    it('cleans up event listener when startTask fails', async () => {
+      const unlisten = vi.fn()
+      vi.mocked(agentService.startTask).mockRejectedValue(new Error('No provider'))
+      vi.mocked(agentService.listenToTask).mockImplementation((_id, _cb) => unlisten)
+
+      useTasksStore.getState().createTask('t1', 'Test', 'implement', { root_path: '/p', files: [] })
+
+      // Wait for the async error handler to clean up
+      await vi.waitFor(() => {
+        expect(unlisten).toHaveBeenCalled()
+      })
+    })
   })
 
   describe('task status transitions', () => {
