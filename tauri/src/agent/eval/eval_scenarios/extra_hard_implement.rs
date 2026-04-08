@@ -1,23 +1,23 @@
-//! Extra-hard testing scenarios — pulled in from eval_v2/testing/*.rs via #[path].
+//! Extra-hard implement scenarios.
 
 // Re-export everything the child scenario files need.
 // They use `use super::*;` and we're their `super`.
 #[allow(unused_imports)]
 pub(crate) use super::*;
 
-#[path = "../../eval_v2/testing/01.rs"]
+#[path = "extra_hard/implement_01.rs"]
 mod _01;
 
-#[path = "../../eval_v2/testing/02.rs"]
+#[path = "extra_hard/implement_02.rs"]
 mod _02;
 
-#[path = "../../eval_v2/testing/03.rs"]
+#[path = "extra_hard/implement_03.rs"]
 mod _03;
 
-#[path = "../../eval_v2/testing/04.rs"]
+#[path = "extra_hard/implement_04.rs"]
 mod _04;
 
-#[path = "../../eval_v2/testing/05.rs"]
+#[path = "extra_hard/implement_05.rs"]
 mod _05;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {

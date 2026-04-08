@@ -9,7 +9,7 @@ pub mod doom_loop;
 pub mod retry;
 pub mod system_prompt;
 pub mod commands;
-#[path = "eval_v1/eval.rs"]
+#[path = "eval/eval.rs"]
 mod eval;
 
 pub use commands::AgentState;
