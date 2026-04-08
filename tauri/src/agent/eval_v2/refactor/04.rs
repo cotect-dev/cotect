@@ -320,7 +320,7 @@ if __name__ == "__main__":
              - Remove dead code (e.g. unused helper methods).\n\n\
              Step 1: Read all files and identify the common pattern.\n\
              Step 2: Apply your refactoring.\n\
-             Step 3: Run `python3 test_validators.py` to verify. If tests fail, \
+             Step 3: Run the existing `python3 test_validators.py` to verify. If tests fail, \
              reconsider — some seemingly identical methods may differ in critical ways.",
         )),
             vec![

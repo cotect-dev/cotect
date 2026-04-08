@@ -398,7 +398,7 @@ if __name__ == "__main__":
              Step 1: Read all source files (event_store.py, projector.py, \
              snapshot.py, system.py). Identify every bug and apply all your \
              fixes WITHOUT running the code first.\n\
-             Step 2: Run `python3 test_system.py` to check your work.\n\
+             Step 2: Run the existing `python3 test_system.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              fixes, and re-run until all tests pass.",
         )),

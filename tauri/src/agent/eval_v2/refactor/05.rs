@@ -325,7 +325,7 @@ if __name__ == "__main__":
                like the plugin registry and chunked processing.\n\n\
              Step 1: Read the code and plan the decomposition.\n\
              Step 2: Apply your refactoring.\n\
-             Step 3: Run `python3 test_pipeline.py` to verify. If tests fail, \
+             Step 3: Run the existing `python3 test_pipeline.py` to verify. If tests fail, \
              you may have removed something that's actually used.",
             pipeline_file)),
             vec![
