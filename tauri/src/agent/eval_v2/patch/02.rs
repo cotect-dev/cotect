@@ -304,7 +304,7 @@ if __name__ == "__main__":
              Step 1: Read all source files and identify every place that needs \
              to change for orders (and only orders).\n\
              Step 2: Apply your patches WITHOUT running the code first.\n\
-             Step 3: Run `python3 test_billing.py` to verify. If tests fail, \
+             Step 3: Run the existing `python3 test_billing.py` to verify. If tests fail, \
              read the errors and iterate until all tests pass.",
         )),
             vec![

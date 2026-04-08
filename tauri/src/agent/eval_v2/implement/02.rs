@@ -370,7 +370,7 @@ if __name__ == "__main__":
              files and fully restored.\n\n\
              Step 1: Read both files and understand the existing patterns, \
              then implement the methods WITHOUT running the code first.\n\
-             Step 2: Run `python3 test_board.py` to check your work.\n\
+             Step 2: Run the existing `python3 test_board.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              implementation, and re-run until all tests pass.",
             task_file, board_file)),

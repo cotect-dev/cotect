@@ -356,7 +356,7 @@ if __name__ == "__main__":
              Step 1: Read all source files and understand the request/response \
              flow, then implement the middleware system WITHOUT running the \
              code first.\n\
-             Step 2: Run `python3 test_app.py` to check your work.\n\
+             Step 2: Run the existing `python3 test_app.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              implementation, and re-run until all tests pass.",
             app_file, middleware_file)),

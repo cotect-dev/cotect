@@ -222,7 +222,7 @@ if __name__ == "__main__":
              and correctly unwraps responses.\n\n\
              Step 1: Read all source files and understand the cross-file dependencies.\n\
              Step 2: Apply all necessary patches WITHOUT running the code first.\n\
-             Step 3: Run `python3 test_api.py` to verify. If tests fail, read the \
+             Step 3: Run the existing `python3 test_api.py` to verify. If tests fail, read the \
              errors and iterate until all tests pass.",
         )),
             vec![

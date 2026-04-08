@@ -253,7 +253,7 @@ if __name__ == "__main__":
              - Consolidate redundant properties.\n\n\
              Step 1: Read the code carefully and identify what to simplify.\n\
              Step 2: Apply your refactoring changes.\n\
-             Step 3: Run `python3 test_ring_buffer.py` to verify nothing is broken. \
+             Step 3: Run the existing `python3 test_ring_buffer.py` to verify nothing is broken. \
              If tests fail, revert and reconsider — some things that look dead may \
              actually be needed.",
             ring_file)),
