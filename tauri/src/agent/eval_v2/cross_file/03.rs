@@ -282,5 +282,5 @@ if __name__ == "__main__":
             vec![models_file, service_file, serializer_file, validator_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_cross_file_03_schema_migration", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_cross_file_03_schema_migration", Category::CrossFile, Difficulty::Hard, I, setup));
 }

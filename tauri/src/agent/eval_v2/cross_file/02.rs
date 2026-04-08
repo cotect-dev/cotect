@@ -295,5 +295,5 @@ if __name__ == "__main__":
             vec![notification_file, dispatcher_file, formatter_file, payments_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_cross_file_02_selective_rename", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_cross_file_02_selective_rename", Category::CrossFile, Difficulty::Hard, I, setup));
 }

@@ -334,5 +334,5 @@ if __name__ == "__main__":
             vec![limiter_file, middleware_file, handler_file, pipeline_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_patch_05_middleware_header_threading", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_patch_05_middleware_header_threading", Category::Patch, Difficulty::Hard, I, setup));
 }

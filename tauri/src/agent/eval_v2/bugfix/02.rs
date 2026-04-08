@@ -234,5 +234,5 @@ if __name__ == "__main__":
             vec![scheduler_file, runner_file, task_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_bugfix_02_cross_file_scheduler", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_bugfix_02_cross_file_scheduler", Category::Bugfix, Difficulty::Hard, I, setup));
 }

@@ -327,5 +327,5 @@ else:
             vec![node_file.clone(), dll_file.clone(), ap(dir, "test_linkedlist.py")]),
             vec![dll_fixed, runner, dll_buggy])
     }
-    v.push(scen!("v2_testing_04_linked_list", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_testing_04_linked_list", Category::Testing, Difficulty::Hard, I, setup));
 }

@@ -296,5 +296,5 @@ if __name__ == "__main__":
             vec![collector_file, middleware_file, formatter_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_refactor_03_trap_side_effects", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_refactor_03_trap_side_effects", Category::Refactor, Difficulty::Hard, I, setup));
 }

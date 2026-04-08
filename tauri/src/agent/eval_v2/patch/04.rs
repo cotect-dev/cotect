@@ -339,5 +339,5 @@ if __name__ == "__main__":
             vec![config_file, processor_file, validator_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_patch_04_selective_field_rename", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_patch_04_selective_field_rename", Category::Patch, Difficulty::Hard, I, setup));
 }

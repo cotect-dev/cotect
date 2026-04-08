@@ -274,5 +274,5 @@ else:
             vec![stats_file.clone(), transform_file.clone(), ap(dir, "test_stats.py")]),
             vec![stats_fixed, transform_fixed, runner, stats_buggy, transform_buggy])
     }
-    v.push(scen!("v2_testing_02_stats_library", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_testing_02_stats_library", Category::Testing, Difficulty::Hard, I, setup));
 }

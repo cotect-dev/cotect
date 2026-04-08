@@ -334,5 +334,5 @@ if __name__ == "__main__":
             vec![email_file, username_file, password_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_refactor_04_dangerous_consolidation", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_refactor_04_dangerous_consolidation", Category::Refactor, Difficulty::Hard, I, setup));
 }

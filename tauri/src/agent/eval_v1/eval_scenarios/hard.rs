@@ -1,4 +1,4 @@
-//! Extra-hard scenarios — 25 devious challenges designed to trip up even
+//! Hard scenarios — 25 devious challenges designed to trip up even
 //! frontier models. Every scenario contains a "gotcha": a red herring,
 //! an unintuitive answer, a multi-file dependency chain, or a subtle
 //! semantic trap that requires genuine reasoning rather than pattern-matching.
@@ -51,7 +51,7 @@ def apply_discount(subtotal: float, tax: float) -> float:
                  file_lacks("billing.py", &["total = subtotal + tax"])]),
             vec![p])
     }
-    v.push(scen!("xhard_shadow_variable_trap", Category::Bugfix, Difficulty::Hard, I, s_shadow_variable_trap));
+    v.push(scen!("hard_shadow_variable_trap", Category::Bugfix, Difficulty::Hard, I, s_shadow_variable_trap));
 
     // ────────────────────────────────────────────────────────────────────
     // 2. BUGFIX — Red herring across files
@@ -96,7 +96,7 @@ def register_user(data: dict) -> dict:
                  file_lacks("validator.py", &[r#"[a-zA-Z]{2}$"#])]),
             vec![api, validator])
     }
-    v.push(scen!("xhard_red_herring_cross_file", Category::Bugfix, Difficulty::Hard, I, s_red_herring_cross_file));
+    v.push(scen!("hard_red_herring_cross_file", Category::Bugfix, Difficulty::Hard, I, s_red_herring_cross_file));
 
     // ────────────────────────────────────────────────────────────────────
     // 3. BUGFIX — Unicode string slicing
@@ -130,7 +130,7 @@ def register_user(data: dict) -> dict:
                  file_lacks("truncate.py", &["if len(text) <= max_bytes:", "return text[:max_bytes]"])]),
             vec![p])
     }
-    v.push(scen!("xhard_unicode_truncation", Category::Bugfix, Difficulty::Hard, I, s_unicode_truncation));
+    v.push(scen!("hard_unicode_truncation", Category::Bugfix, Difficulty::Hard, I, s_unicode_truncation));
 
     // ────────────────────────────────────────────────────────────────────
     // 4. UNDERSTANDING — JavaScript closure-in-loop trap
@@ -162,7 +162,7 @@ var h = createHandlers();
             vec![complete(), succeeded("read"), num(64)]),
             vec![p])
     }
-    v.push(scen!("xhard_closure_in_loop", Category::Understanding, Difficulty::Hard, R, s_closure_in_loop));
+    v.push(scen!("hard_closure_in_loop", Category::Understanding, Difficulty::Hard, R, s_closure_in_loop));
 
     // ────────────────────────────────────────────────────────────────────
     // 5. UNDERSTANDING — Python operator precedence trap
@@ -195,7 +195,7 @@ var h = createHandlers();
             vec![complete(), succeeded("read"), num(43)]),
             vec![p])
     }
-    v.push(scen!("xhard_precedence_trap", Category::Understanding, Difficulty::Hard, R, s_precedence_trap));
+    v.push(scen!("hard_precedence_trap", Category::Understanding, Difficulty::Hard, R, s_precedence_trap));
 
     // ────────────────────────────────────────────────────────────────────
     // 6. UNDERSTANDING — Mutable default argument + aliasing
@@ -228,7 +228,7 @@ c = append_to(3, [])
             vec![complete(), succeeded("read"), num(5)]),
             vec![p])
     }
-    v.push(scen!("xhard_mutable_default_arg", Category::Understanding, Difficulty::Hard, R, s_mutable_default));
+    v.push(scen!("hard_mutable_default_arg", Category::Understanding, Difficulty::Hard, R, s_mutable_default));
 
     // ────────────────────────────────────────────────────────────────────
     // 7. SEARCH — Needle in haystack with decoys
@@ -268,7 +268,7 @@ c = append_to(3, [])
             vec![complete(), succeeded("fs_search"), num(3),
                  oc_all(&["rate limiting", "connection pooling", "pagination"])])
     }
-    v.push(scen!("xhard_search_decoy_todos", Category::Search, Difficulty::Hard, R, s_precise_search_with_decoys));
+    v.push(scen!("hard_search_decoy_todos", Category::Search, Difficulty::Hard, R, s_precise_search_with_decoys));
 
     // ────────────────────────────────────────────────────────────────────
     // 8. SEARCH — Cross-file data flow tracing
@@ -304,7 +304,7 @@ c = append_to(3, [])
                  // The raw display is 20.0 but it represents 0.20 * 100 = 20.0
                  num(20)])
     }
-    v.push(scen!("xhard_data_flow_trace", Category::Search, Difficulty::Hard, R, s_data_flow_trace));
+    v.push(scen!("hard_data_flow_trace", Category::Search, Difficulty::Hard, R, s_data_flow_trace));
 
     // ────────────────────────────────────────────────────────────────────
     // 9. CROSS-FILE — Config contradicts implementation
@@ -355,7 +355,7 @@ def send_request(url: str, payload: dict) -> dict:
                  file_lacks("client.py", &["range(3)", "attempt < 2"])]),
             vec![client, cfg])
     }
-    v.push(scen!("xhard_config_code_mismatch", Category::CrossFile, Difficulty::Hard, I, s_config_code_mismatch));
+    v.push(scen!("hard_config_code_mismatch", Category::CrossFile, Difficulty::Hard, I, s_config_code_mismatch));
 
     // ────────────────────────────────────────────────────────────────────
     // 10. CROSS-FILE — Diamond dependency update
@@ -423,7 +423,7 @@ export function handleRequest(userId: string): string {
                  file_has("logging.ts", &["ipAddress"]),
                  file_has("app.ts", &["127.0.0.1"])])
     }
-    v.push(scen!("xhard_diamond_dependency", Category::CrossFile, Difficulty::Hard, I, s_diamond_dependency));
+    v.push(scen!("hard_diamond_dependency", Category::CrossFile, Difficulty::Hard, I, s_diamond_dependency));
 
     // ────────────────────────────────────────────────────────────────────
     // 11. CROSS-FILE — Hidden re-export chain
@@ -476,7 +476,7 @@ print(normalize_name("Mary-Jane O'Brien"))
                  file_lacks("lib/core.py", &["[^a-zA-Z\\s]"])]),
             vec![ap(dir, "main.py")])
     }
-    v.push(scen!("xhard_reexport_chain_trace", Category::CrossFile, Difficulty::Hard, I, s_reexport_chain));
+    v.push(scen!("hard_reexport_chain_trace", Category::CrossFile, Difficulty::Hard, I, s_reexport_chain));
 
     // ────────────────────────────────────────────────────────────────────
     // 12. IMPLEMENT — Modular exponentiation (gotcha: naive approach overflows)
@@ -500,7 +500,7 @@ print(normalize_name("Mary-Jane O'Brien"))
                  // Must have the core loop mechanism
                  file_has("modpow.py", &["while", "%"])])
     }
-    v.push(scen!("xhard_impl_modpow", Category::Implement, Difficulty::Hard, I, s_modular_exponentiation));
+    v.push(scen!("hard_impl_modpow", Category::Implement, Difficulty::Hard, I, s_modular_exponentiation));
 
     // ────────────────────────────────────────────────────────────────────
     // 13. IMPLEMENT — Topological sort with cycle detection
@@ -522,7 +522,7 @@ print(normalize_name("Mary-Jane O'Brien"))
             vec![complete(),
                  file_has("topo.py", &["def topo_sort", "class CycleError", "raise CycleError", "__name__"])])
     }
-    v.push(scen!("xhard_impl_topo_sort", Category::Implement, Difficulty::Hard, I, s_topo_sort_with_cycles));
+    v.push(scen!("hard_impl_topo_sort", Category::Implement, Difficulty::Hard, I, s_topo_sort_with_cycles));
 
     // ────────────────────────────────────────────────────────────────────
     // 14. REFACTOR — Behavior-preserving with hidden side effects
@@ -576,7 +576,7 @@ def get_audit_log() -> list[str]:
                  file_has("processor.py", &["def get_audit_log"])]),
             vec![p])
     }
-    v.push(scen!("xhard_refactor_preserve_side_effects", Category::Refactor, Difficulty::Hard, I, s_refactor_with_side_effects));
+    v.push(scen!("hard_refactor_preserve_side_effects", Category::Refactor, Difficulty::Hard, I, s_refactor_with_side_effects));
 
     // ────────────────────────────────────────────────────────────────────
     // 15. REFACTOR — Extract with entangled mutable state
@@ -624,7 +624,7 @@ def reset():
                  file_lacks("counters.py", &["_state = {"])]),
             vec![p])
     }
-    v.push(scen!("xhard_refactor_entangled_state", Category::Refactor, Difficulty::Hard, I, s_entangled_state));
+    v.push(scen!("hard_refactor_entangled_state", Category::Refactor, Difficulty::Hard, I, s_entangled_state));
 
     // ────────────────────────────────────────────────────────────────────
     // 16. PATCH — Surgical edit in repetitive generated code
@@ -650,7 +650,7 @@ def reset():
                  file_has("routes.py", &["def handle_route_28(request):\n    \"\"\"Handler for route 28.\"\"\"\n    return {\"route\": 28, \"status\": \"ok\"}"])]),
             vec![p])
     }
-    v.push(scen!("xhard_surgical_repetitive_edit", Category::Patch, Difficulty::Hard, I, s_surgical_repetitive_edit));
+    v.push(scen!("hard_surgical_repetitive_edit", Category::Patch, Difficulty::Hard, I, s_surgical_repetitive_edit));
 
     // ────────────────────────────────────────────────────────────────────
     // 17. PATCH — TypeScript edit where the obvious fix breaks types
@@ -698,7 +698,7 @@ export class Store<T extends Identifiable> {
                  file_has("store.ts", &["add(item", "get(id", "remove(id", "getAll()"])]),
             vec![p])
     }
-    v.push(scen!("xhard_type_constraint_edit", Category::Patch, Difficulty::Hard, I, s_type_constraint_edit));
+    v.push(scen!("hard_type_constraint_edit", Category::Patch, Difficulty::Hard, I, s_type_constraint_edit));
 
     // ────────────────────────────────────────────────────────────────────
     // 18. ERROR HANDLING — Exception hierarchy ordering trap
@@ -764,7 +764,7 @@ def load_user_config(user_id: str) -> dict:
                  file_has("handler.py", &["except ValidationError", "except json.JSONDecodeError", "except FileNotFoundError"])]),
             vec![p])
     }
-    v.push(scen!("xhard_exception_ordering", Category::ErrorHandling, Difficulty::Hard, I, s_exception_ordering));
+    v.push(scen!("hard_exception_ordering", Category::ErrorHandling, Difficulty::Hard, I, s_exception_ordering));
 
     // ────────────────────────────────────────────────────────────────────
     // 19. ERROR HANDLING — Async error swallowing
@@ -827,7 +827,7 @@ export async function runPipeline(url: string): Promise<PipelineResult> {
                  file_lacks("pipeline.ts", &["{ transformed: validated }"])]),
             vec![p])
     }
-    v.push(scen!("xhard_async_error_swallowing", Category::ErrorHandling, Difficulty::Hard, I, s_async_error_swallowing));
+    v.push(scen!("hard_async_error_swallowing", Category::ErrorHandling, Difficulty::Hard, I, s_async_error_swallowing));
 
     // ────────────────────────────────────────────────────────────────────
     // 20. RECOVERY — Must read a broken symlink, discover it's broken,
@@ -850,7 +850,7 @@ export async function runPipeline(url: string): Promise<PipelineResult> {
                  file_has("data/archive/settings.json", &["\"theme\": \"light\""]),
                  file_lacks("data/archive/settings.json", &["\"theme\": \"dark\""])])
     }
-    v.push(scen!("xhard_recovery_redirect_file", Category::Recovery, Difficulty::Hard, I, s_missing_real_file));
+    v.push(scen!("hard_recovery_redirect_file", Category::Recovery, Difficulty::Hard, I, s_missing_real_file));
 
     // ────────────────────────────────────────────────────────────────────
     // 21. RECOVERY — Partially corrupted file requires careful extraction
@@ -876,7 +876,7 @@ export async function runPipeline(url: string): Promise<PipelineResult> {
                  file_has("service.py", &["def add_user", "def get_user", "def deactivate_user", "def list_active", "def remove_user"])]),
             vec![p])
     }
-    v.push(scen!("xhard_recovery_corrupted_file", Category::Recovery, Difficulty::Hard, I, s_corrupted_file_recovery));
+    v.push(scen!("hard_recovery_corrupted_file", Category::Recovery, Difficulty::Hard, I, s_corrupted_file_recovery));
 
     // ────────────────────────────────────────────────────────────────────
     // 22. PLANNING — Architecture with hidden constraints
@@ -947,7 +947,7 @@ def process_batch():
                  // Must mention the worker/background process
                  oc_any(&["worker", "batch", "cron", "background"])])
     }
-    v.push(scen!("xhard_plan_hidden_constraints", Category::Planning, Difficulty::Hard, P, s_plan_with_hidden_constraints));
+    v.push(scen!("hard_plan_hidden_constraints", Category::Planning, Difficulty::Hard, P, s_plan_with_hidden_constraints));
 
     // ────────────────────────────────────────────────────────────────────
     // 23. PLANNING — Contradictory requirements in spec
@@ -984,7 +984,7 @@ def process_batch():
                  oc_any(&["hmac", "hashlib", "PBKDF2", "alternative", "workaround", "instead", "scrypt"])]),
             vec![p])
     }
-    v.push(scen!("xhard_plan_contradictory_reqs", Category::Planning, Difficulty::Hard, P, s_plan_contradictory_requirements));
+    v.push(scen!("hard_plan_contradictory_reqs", Category::Planning, Difficulty::Hard, P, s_plan_contradictory_requirements));
 
     // ────────────────────────────────────────────────────────────────────
     // 24. UNDERSTANDING — Rust borrow checker puzzle
@@ -1041,7 +1041,7 @@ fn main() {
                  oc_any(&["String", "owned", "clone", "to_string", "to_owned", "extend", "move"])]),
             vec![p])
     }
-    v.push(scen!("xhard_rust_borrow_puzzle", Category::Understanding, Difficulty::Hard, R, s_rust_borrow_puzzle));
+    v.push(scen!("hard_rust_borrow_puzzle", Category::Understanding, Difficulty::Hard, R, s_rust_borrow_puzzle));
 
     // ────────────────────────────────────────────────────────────────────
     // 25. CROSS-FILE — Database schema migration with cascading updates
@@ -1166,5 +1166,5 @@ def test_post_to_dict():
                  file_has("seed_data.json", &["admin", "moderator"]),
                  file_has("test_models.py", &["role"])])
     }
-    v.push(scen!("xhard_schema_migration_cascade", Category::CrossFile, Difficulty::Hard, I, s_schema_migration_cascade));
+    v.push(scen!("hard_schema_migration_cascade", Category::CrossFile, Difficulty::Hard, I, s_schema_migration_cascade));
 }

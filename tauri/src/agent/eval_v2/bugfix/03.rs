@@ -260,5 +260,5 @@ if __name__ == "__main__":
             vec![relay_file, protocol_file, config_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_bugfix_03_cross_domain_relay", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_bugfix_03_cross_domain_relay", Category::Bugfix, Difficulty::Hard, I, setup));
 }

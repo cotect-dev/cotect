@@ -352,5 +352,5 @@ if __name__ == "__main__":
             vec![http_file, cache_file, limiter_file, worker_file]),
             vec![test_file])
     }
-    v.push(scen!("v2_cross_file_05_extract_config", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_cross_file_05_extract_config", Category::CrossFile, Difficulty::Hard, I, setup));
 }

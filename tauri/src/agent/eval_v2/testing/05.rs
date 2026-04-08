@@ -329,5 +329,5 @@ else:
             vec![transfer_fixed, interest_fixed, statement_fixed,
                  runner, transfer_buggy, interest_buggy, statement_buggy])
     }
-    v.push(scen!("v2_testing_05_banking_system", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!("xhard_testing_05_banking_system", Category::Testing, Difficulty::Hard, I, setup));
 }
