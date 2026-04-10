@@ -27,7 +27,7 @@ function isTestFile(name: string): boolean {
   // Files named exactly "test.*" or "tests.*"
   if (/^tests?\.\w+$/.test(lower)) return true
   // Common test config/setup files
-  if (/^(jest|vitest|karma|cypress|playwright)[.\-]/.test(lower)) return true
+  if (/^(jest|vitest|karma|cypress|playwright)[.-]/.test(lower)) return true
   return false
 }
 
@@ -283,7 +283,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     // focus highlight appears immediately — before the async preview loads.
     flattenAndRender(get, set)
     // Fire-and-forget preview update
-    get().updatePreview()
+    void get().updatePreview()
   },
 
   moveFocus: (direction) => {
@@ -294,7 +294,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       if (nodes.length > 0) {
         set({ focusedNodeId: nodes[0].id })
         flattenAndRender(get, set)
-        get().updatePreview()
+        void get().updatePreview()
       }
       return
     }
@@ -324,7 +324,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     if (nextId) {
       set({ focusedNodeId: nextId })
       flattenAndRender(get, set)
-      get().updatePreview()
+      void get().updatePreview()
     }
   },
 
@@ -349,7 +349,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       // Flatten and position
       flattenAndRender(get, set)
       // Load preview for the first focused node
-      get().updatePreview()
+      void get().updatePreview()
     } catch (err) {
       console.error('Failed to init root:', err)
     }
@@ -388,7 +388,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       })
 
       flattenAndRender(get, set)
-      get().updatePreview()
+      void get().updatePreview()
       return
     }
 
@@ -411,12 +411,9 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         })
 
         flattenAndRender(get, set)
-        get().updatePreview()
+        void get().updatePreview()
       } else if (node.type === 'file') {
         const path = data.path as string
-        const isImport = data.isImport as boolean | undefined
-        if (isImport) return
-
         const fileName = data.label as string
         let contentNode: AppNode
         if (isImageFile(fileName)) {
@@ -438,7 +435,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         })
 
         flattenAndRender(get, set)
-        get().updatePreview()
+        void get().updatePreview()
       }
     } catch (err) {
       console.error('Failed to navigate right:', err)
@@ -475,7 +472,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
     flattenAndRender(get, set)
     // Load preview for the restored focus
-    get().updatePreview()
+    void get().updatePreview()
   },
 
   toggleHideNode: () => {
@@ -531,18 +528,15 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         previewCol = { path, kind: 'directory', nodes: dirNodes, edges: [] }
       } else if (node.type === 'file') {
         const path = data.path as string
-        const isImport = data.isImport as boolean | undefined
         const fileName = data.label as string
-        if (!isImport) {
-          let contentNode: AppNode
-          if (isImageFile(fileName)) {
-            const imageNode = await buildImageNode(path)
-            contentNode = imageNode ?? await buildFileNode(path)
-          } else {
-            contentNode = await buildFileNode(path)
-          }
-          previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
+        let contentNode: AppNode
+        if (isImageFile(fileName)) {
+          const imageNode = await buildImageNode(path)
+          contentNode = imageNode ?? await buildFileNode(path)
+        } else {
+          contentNode = await buildFileNode(path)
         }
+        previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
       }
 
       // Check that the focus hasn't changed while we were loading

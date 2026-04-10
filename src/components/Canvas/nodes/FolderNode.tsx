@@ -13,7 +13,7 @@ export default memo(function FolderNode({ id, data }: NodeProps<FolderNode>) {
   const handleDoubleClick = useCallback(() => {
     const store = useCanvasStore.getState()
     store.setFocus(id)
-    store.navigateRight()
+    void store.navigateRight()
   }, [id])
 
   const count = data.childCount

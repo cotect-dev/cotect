@@ -9,7 +9,7 @@ import { emit } from '@tauri-apps/api/event'
 // --- Mock platform with controllable windowId and session ---
 
 let mockWindowId = 'main'
-let mockSessionData: { rootPath: string; currentPath: string; viewMode: 'directory' | 'file' } | null = null
+let mockSessionData: { rootPath: string } | null = null
 
 vi.mock('@/services/platform', () => ({
   getPlatform: () => ({
@@ -66,11 +66,6 @@ vi.mock('@/services/platform', () => ({
   }),
 }))
 
-// Mock treesitter (used by browser store's navigateTo → analyzeFile)
-vi.mock('@/services/treesitter', () => ({
-  analyzeFile: vi.fn().mockResolvedValue({ declarations: [], imports: [] }),
-}))
-
 import { useWindowLifecycle } from './useWindowLifecycle'
 import { useGitStore, stopGitWatcher } from '@/store/git'
 import { useBrowserStore } from '@/store/browser'
@@ -95,16 +90,7 @@ describe('useWindowLifecycle — git initialization on session restore', () => {
       lastCommitTimestamp: null,
       loading: false,
     })
-    useBrowserStore.setState({
-      rootPath: '',
-      currentPath: '',
-      viewMode: 'directory',
-      breadcrumbs: [],
-      loading: false,
-      entries: [],
-      fileAnalysis: null,
-      siblingAnalyses: new Map(),
-    })
+    useBrowserStore.setState({ rootPath: '' })
     stopGitWatcher()
 
     // Default: invoke returns null (used by git refresh)
@@ -112,11 +98,7 @@ describe('useWindowLifecycle — git initialization on session restore', () => {
   })
 
   it('initializes git store when session has a saved rootPath', async () => {
-    mockSessionData = {
-      rootPath: '/home/user/project',
-      currentPath: '/home/user/project',
-      viewMode: 'directory',
-    }
+    mockSessionData = { rootPath: '/home/user/project' }
 
     const { result } = renderHook(() => useWindowLifecycle())
 
@@ -147,11 +129,7 @@ describe('useWindowLifecycle — git initialization on session restore', () => {
 
   it('initializes git for child windows with a saved session', async () => {
     mockWindowId = 'child-1'
-    mockSessionData = {
-      rootPath: '/home/user/project',
-      currentPath: '/home/user/project',
-      viewMode: 'directory',
-    }
+    mockSessionData = { rootPath: '/home/user/project' }
 
     const { result } = renderHook(() => useWindowLifecycle())
 

@@ -49,8 +49,8 @@ export const tauriPlatform: Platform = {
         visible: opts?.visible ?? true,
       })
       await new Promise<void>((resolve, reject) => {
-        webview.once('tauri://created', () => resolve())
-        webview.once('tauri://error', (e) => reject(new Error(String(e.payload))))
+        void webview.once('tauri://created', () => resolve())
+        void webview.once('tauri://error', (e) => reject(new Error(String(e.payload))))
       })
     },
 
@@ -145,7 +145,9 @@ export const tauriPlatform: Platform = {
       let unlisten: UnlistenFn | null = null
       listen(event, (e) => {
         callback(e.payload)
-      }).then((fn) => { unlisten = fn })
+      }).then((fn) => { unlisten = fn }).catch((err) => {
+        console.warn(`[ipc] failed to attach listener for "${event}":`, err)
+      })
 
       return () => { unlisten?.() }
     },
@@ -207,7 +209,9 @@ export const tauriPlatform: Platform = {
     },
 
     setSync<T>(key: string, value: T) {
-      getStore().then((s) => s.set(key, value)).catch(() => {})
+      getStore().then((s) => s.set(key, value)).catch((err) => {
+        console.warn(`[storage] setSync("${key}") failed:`, err)
+      })
     },
 
     async remove(key: string) {
@@ -216,7 +220,9 @@ export const tauriPlatform: Platform = {
     },
 
     removeSync(key: string) {
-      getStore().then((s) => s.delete(key)).catch(() => {})
+      getStore().then((s) => s.delete(key)).catch((err) => {
+        console.warn(`[storage] removeSync("${key}") failed:`, err)
+      })
     },
 
     async exists(key: string) {
@@ -233,7 +239,9 @@ export const tauriPlatform: Platform = {
 
   syncedState: {
     set(name: string, state: unknown, windowId: string) {
-      invoke('set_synced_state', { name, state, source: windowId }).catch(() => {})
+      invoke('set_synced_state', { name, state, source: windowId }).catch((err) => {
+        console.warn(`[syncedState] set("${name}") failed — other windows may see stale state:`, err)
+      })
     },
 
     async get(name: string): Promise<unknown | null> {
@@ -248,7 +256,9 @@ export const tauriPlatform: Platform = {
       let unlisten: UnlistenFn | null = null
       listen(`synced-state-update:${name}`, (e) => {
         callback(e.payload as { state: unknown; source: string })
-      }).then((fn) => { unlisten = fn })
+      }).then((fn) => { unlisten = fn }).catch((err) => {
+        console.warn(`[syncedState] failed to attach listener for "${name}":`, err)
+      })
       return () => { unlisten?.() }
     },
   },

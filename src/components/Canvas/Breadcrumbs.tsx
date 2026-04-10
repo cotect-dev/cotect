@@ -1,9 +1,8 @@
 import { memo, useMemo, useCallback } from 'react'
 import { ChevronRight, Home } from 'lucide-react'
-import { useBrowserStore, useCanvasStore } from '@/store'
+import { useCanvasStore } from '@/store'
 
 export default memo(function Breadcrumbs() {
-  const loading = useBrowserStore((s) => s.loading)
   const depthChain = useCanvasStore((s) => s.depthChain)
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
 
@@ -60,10 +59,6 @@ export default memo(function Breadcrumbs() {
             </button>
           </div>
         ))}
-
-        {loading && (
-          <div className="ml-2 h-3 w-3 border border-primary/50 border-t-primary rounded-full animate-spin" />
-        )}
       </div>
     </div>
   )

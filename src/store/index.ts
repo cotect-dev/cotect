@@ -1,5 +1,4 @@
 export { useBrowserStore } from './browser'
-export type { ViewMode } from './browser'
 export { useCanvasStore } from './canvas'
 export type { Column } from './canvas'
 export { useChatStore, sendMessage } from './chat'

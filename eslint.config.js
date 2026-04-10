@@ -6,7 +6,13 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores([
+    'dist',
+    'coverage',
+    'tauri/target',
+    'node_modules',
+    'public',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -18,6 +24,26 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'react-hooks/exhaustive-deps': 'error',
+      // React Compiler rules bundled in eslint-plugin-react-hooks v7 —
+      // disabled because the project doesn't use the compiler and the rules
+      // flag idiomatic patterns (aggregating multiple refs in a callback ref,
+      // manual memoization in complex hooks).
+      'react-hooks/immutability': 'off',
+      'react-hooks/react-compiler': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      // Keep this as a warning — code already has several intentional
+      // mixed-export files (button variants, panel registry, etc.)
+      'react-refresh/only-export-components': 'warn',
     },
   },
 ])

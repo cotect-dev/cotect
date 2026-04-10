@@ -98,7 +98,12 @@ export function listenToTask(
   const promise = listen<TaskEvent>(`agent-task-event:${taskId}`, (e) => {
     callback(e.payload)
   })
+  promise.catch((err) => {
+    console.warn(`[agent] failed to attach listener for task "${taskId}":`, err)
+  })
   return () => {
-    promise.then((fn) => fn()).catch(() => {})
+    promise.then((fn) => fn()).catch((err) => {
+      console.warn(`[agent] failed to detach listener for task "${taskId}":`, err)
+    })
   }
 }

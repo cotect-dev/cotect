@@ -4,12 +4,6 @@ import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CA
 
 // --- Mocks ---
 
-vi.mock('web-tree-sitter', () => ({
-  Parser: { init: vi.fn() },
-  Query: vi.fn(),
-  Language: { load: vi.fn() },
-}))
-
 const mockReadDirectory = vi.fn()
 const mockReadFile = vi.fn()
 const mockReadBinaryFile = vi.fn()
@@ -472,27 +466,6 @@ describe('navigateRight', () => {
     expect(fileCol.nodes[0].type).toBe('codeNode')
   })
 
-  it('blocks navigation into import file nodes', async () => {
-    // Set up a state where we have a file node marked as isImport
-    const importNode: AppNode = {
-      id: 'sibling:/proj/utils.ts', type: 'file', position: { x: 0, y: 0 },
-      data: { label: 'utils.ts', path: '/proj/utils.ts', isImport: true },
-    }
-
-    const col: Column = { path: '/proj/app.ts', kind: 'file', nodes: [importNode], edges: [] }
-    useCanvasStore.setState({
-      columns: [col],
-      currentColumnIndex: 0,
-      focusedNodeId: importNode.id,
-      nodes: [{ ...importNode, data: { ...importNode.data } } as Node],
-    })
-
-    await useCanvasStore.getState().navigateRight()
-
-    // Should NOT have navigated
-    expect(useCanvasStore.getState().currentColumnIndex).toBe(0)
-  })
-
   it('promotes existing preview column when path matches', async () => {
     // Set up folder node + preview column for the folder
     const folderNode: AppNode = {
@@ -747,23 +720,6 @@ describe('updatePreview', () => {
     await useCanvasStore.getState().updatePreview()
 
     // Preview should have been discarded because focus changed
-    expect(useCanvasStore.getState().columns).toHaveLength(1)
-  })
-
-  it('skips preview for import file nodes', async () => {
-    const importNode: AppNode = {
-      id: 'sibling:/proj/utils.ts', type: 'file', position: { x: 0, y: 0 },
-      data: { label: 'utils.ts', path: '/proj/utils.ts', isImport: true },
-    }
-    useCanvasStore.setState({
-      focusedNodeId: 'sibling:/proj/utils.ts',
-      columns: [{ path: '/proj/app.ts', kind: 'file', nodes: [importNode], edges: [] }],
-      currentColumnIndex: 0,
-    })
-
-    await useCanvasStore.getState().updatePreview()
-
-    // Should have trimmed — no preview for import nodes
     expect(useCanvasStore.getState().columns).toHaveLength(1)
   })
 

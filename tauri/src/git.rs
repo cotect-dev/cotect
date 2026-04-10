@@ -1,26 +1,40 @@
 use serde::Serialize;
 use std::collections::HashMap;
-use std::process::Command;
+use std::time::Duration;
+use tokio::process::Command;
+use tokio::time::timeout;
 
 const GIT_NOT_FOUND: &str = "GIT_NOT_FOUND";
 const NOT_A_REPO: &str = "NOT_A_REPO";
+const GIT_TIMEOUT_STR: &str = "GIT_TIMEOUT";
+const GIT_TIMEOUT: Duration = Duration::from_secs(15);
 
-fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(["-C", repo_path, "--no-optional-locks"])
-        .args(args)
-        .output()
-        .map_err(|_| GIT_NOT_FOUND.to_string())?;
+async fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
+    let mut cmd = Command::new("git");
+    cmd.args(["-C", repo_path, "--no-optional-locks"]).args(args);
+    cmd.kill_on_drop(true);
 
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        if stderr.contains("not a git repository") {
-            Err(NOT_A_REPO.to_string())
+    let fut = async move {
+        let output = cmd
+            .output()
+            .await
+            .map_err(|_| GIT_NOT_FOUND.to_string())?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
-            Err(stderr)
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if stderr.contains("not a git repository") {
+                Err(NOT_A_REPO.to_string())
+            } else {
+                Err(stderr)
+            }
         }
+    };
+
+    match timeout(GIT_TIMEOUT, fut).await {
+        Ok(result) => result,
+        Err(_) => Err(GIT_TIMEOUT_STR.to_string()),
     }
 }
 
@@ -99,10 +113,10 @@ fn parse_porcelain(porcelain: &str, stats: &HashMap<String, (u32, u32)>) -> (Vec
 }
 
 #[tauri::command]
-pub fn git_status(repo_path: String) -> Result<GitStatus, String> {
-    let porcelain = run_git(&repo_path, &["status", "--porcelain"])?;
-    let numstat = run_git(&repo_path, &["diff", "--numstat"]).unwrap_or_default();
-    let cached_numstat = run_git(&repo_path, &["diff", "--cached", "--numstat"]).unwrap_or_default();
+pub async fn git_status(repo_path: String) -> Result<GitStatus, String> {
+    let porcelain = run_git(&repo_path, &["status", "--porcelain"]).await?;
+    let numstat = run_git(&repo_path, &["diff", "--numstat"]).await.unwrap_or_default();
+    let cached_numstat = run_git(&repo_path, &["diff", "--cached", "--numstat"]).await.unwrap_or_default();
 
     let mut stats = parse_numstat(&numstat);
     for (path, (ins, del)) in parse_numstat(&cached_numstat) {
@@ -204,7 +218,7 @@ fn parse_log_output(output: &str) -> Vec<GitLogEntry> {
 }
 
 #[tauri::command]
-pub fn git_log(repo_path: String, limit: Option<u32>, skip: Option<u32>) -> Result<Vec<GitLogEntry>, String> {
+pub async fn git_log(repo_path: String, limit: Option<u32>, skip: Option<u32>) -> Result<Vec<GitLogEntry>, String> {
     let limit_str = format!("-{}", limit.unwrap_or(50));
     let mut args = vec!["log", &limit_str];
     let skip_str;
@@ -213,7 +227,7 @@ pub fn git_log(repo_path: String, limit: Option<u32>, skip: Option<u32>) -> Resu
         args.push(&skip_str);
     }
     args.extend_from_slice(&["--format=%H%n%s%n%an%n%ct%n---END---", "--numstat"]);
-    let output = run_git(&repo_path, &args)?;
+    let output = run_git(&repo_path, &args).await?;
 
     Ok(parse_log_output(&output))
 }
@@ -224,16 +238,16 @@ pub struct GitBranch {
 }
 
 #[tauri::command]
-pub fn git_branch(repo_path: String) -> Result<GitBranch, String> {
-    let output = run_git(&repo_path, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+pub async fn git_branch(repo_path: String) -> Result<GitBranch, String> {
+    let output = run_git(&repo_path, &["rev-parse", "--abbrev-ref", "HEAD"]).await?;
     Ok(GitBranch {
         current: output.trim().to_string(),
     })
 }
 
 #[tauri::command]
-pub fn git_last_commit_time(repo_path: String) -> Result<i64, String> {
-    let output = run_git(&repo_path, &["log", "-1", "--format=%ct"])?;
+pub async fn git_last_commit_time(repo_path: String) -> Result<i64, String> {
+    let output = run_git(&repo_path, &["log", "-1", "--format=%ct"]).await?;
     output
         .trim()
         .parse::<i64>()
@@ -241,8 +255,8 @@ pub fn git_last_commit_time(repo_path: String) -> Result<i64, String> {
 }
 
 #[tauri::command]
-pub fn git_init(repo_path: String) -> Result<(), String> {
-    run_git(&repo_path, &["init"]).map(|_| ())
+pub async fn git_init(repo_path: String) -> Result<(), String> {
+    run_git(&repo_path, &["init"]).await.map(|_| ())
 }
 
 #[cfg(test)]
