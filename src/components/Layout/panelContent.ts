@@ -1,20 +1,16 @@
-import type { ComponentType } from 'react'
-import Chat from '@/components/Chat'
-import Console from '@/components/Console'
-import Changes from '@/components/Changes'
-import History from '@/components/History'
-import Branches from '@/components/Branches'
-import Tasks from '@/components/Tasks'
-import Settings from '@/components/Settings'
+import { lazy, type ComponentType, type LazyExoticComponent } from 'react'
 
-export const PANEL_CONTENT: Record<string, ComponentType> = {
-  chat: Chat,
-  console: Console,
-  changes: Changes,
-  history: History,
-  branches: Branches,
-  tasks: Tasks,
-  settings: Settings,
+// All panels are code-split: each one lives in its own chunk and only loads
+// when its PanelHost portal mounts. Keeps CodeMirror / syntax highlighter /
+// react-markdown out of the main chunk.
+export const PANEL_CONTENT: Record<string, ComponentType | LazyExoticComponent<ComponentType>> = {
+  chat: lazy(() => import('@/components/Chat')),
+  console: lazy(() => import('@/components/Console')),
+  changes: lazy(() => import('@/components/Changes')),
+  history: lazy(() => import('@/components/History')),
+  branches: lazy(() => import('@/components/Branches')),
+  tasks: lazy(() => import('@/components/Tasks')),
+  settings: lazy(() => import('@/components/Settings')),
 }
 
 export const PANEL_IDS = Object.keys(PANEL_CONTENT)

@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useEffect, useMemo, useState, Suspense, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { PANEL_CONTENT, PANEL_IDS } from './panelContent';
 
@@ -66,9 +66,22 @@ export function PanelHostProvider({ children }: { children: ReactNode }) {
       {children}
       {PANEL_IDS.map((id) => {
         const C = PANEL_CONTENT[id];
-        return createPortal(<C key={id} />, containers[id]);
+        return createPortal(
+          <Suspense key={id} fallback={<PanelFallback />}>
+            <C />
+          </Suspense>,
+          containers[id],
+        );
       })}
     </PanelHostContext.Provider>
+  );
+}
+
+function PanelFallback() {
+  return (
+    <div className="flex items-center justify-center h-full text-xs text-muted-foreground/60">
+      Loading...
+    </div>
   );
 }
 
