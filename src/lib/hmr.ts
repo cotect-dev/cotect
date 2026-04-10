@@ -1,5 +1,6 @@
 import type { StoreApi } from 'zustand'
-import type { ViteHotContext } from 'vite/types/hot'
+
+type ViteHotContext = NonNullable<ImportMeta['hot']>
 
 /**
  * Preserve a Zustand store across Vite HMR module reloads.
@@ -21,17 +22,17 @@ import type { ViteHotContext } from 'vite/types/hot'
  * are patched into the original, so new code takes effect immediately while
  * all data state is preserved.
  */
-export function createStoreWithHMR<T>(
+export function createStoreWithHMR<S extends StoreApi<unknown>>(
   hot: ViteHotContext | undefined,
   key: string,
-  factory: () => StoreApi<T>,
-): StoreApi<T> {
+  factory: () => S,
+): S {
   const fresh = factory()
 
   if (!hot || !hot.data) return fresh
 
   const storeKey = `__store__${key}`
-  const existing = hot.data[storeKey] as StoreApi<T> | undefined
+  const existing = hot.data[storeKey] as S | undefined
 
   if (existing) {
     // HMR re-execution: the original store instance is still alive and
@@ -45,7 +46,7 @@ export function createStoreWithHMR<T>(
         patch[k] = v
       }
     }
-    existing.setState(patch as Partial<T>)
+    ;(existing.setState as (partial: Record<string, unknown>) => void)(patch)
     return existing
   }
 

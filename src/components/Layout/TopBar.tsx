@@ -58,7 +58,7 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
 
   return (
     <Menubar className="shrink-0 pointer-events-auto bg-background/80 backdrop-blur-sm">
-      <img src="/cotect.svg" alt="Cotect" className="h-6 w-6 ml-1 mr-1" />
+      <img src="/icon.svg" alt="Cotect" className="h-6 w-6 ml-1 mr-1" />
       <MenubarMenu>
         <MenubarTrigger>File</MenubarTrigger>
         <MenubarContent>

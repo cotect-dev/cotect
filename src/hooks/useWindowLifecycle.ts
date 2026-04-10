@@ -47,7 +47,7 @@ export function useWindowLifecycle() {
       const splash = document.getElementById('splash')
       if (splash) {
         splash.classList.add('hide')
-        setTimeout(() => splash.remove(), 200)
+        setTimeout(() => splash.remove(), 100)
       }
 
       if (isMain) {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useConsoleStore } from './console'
 
 describe('console monkey-patches and formatArgs', () => {
