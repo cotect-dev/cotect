@@ -81,9 +81,10 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
           if (!focusedId) break
           const focusedNode = store.nodes.find((n) => n.id === focusedId)
           if (!focusedNode) break
-          const nodeData = focusedNode.data as Record<string, unknown>
-          // file/folder nodes have 'path', code/image nodes have 'filePath'
-          const nodePath = (nodeData.path ?? nodeData.filePath) as string | undefined
+          const nodePath =
+            focusedNode.type === 'folder' || focusedNode.type === 'file'
+              ? focusedNode.data.path
+              : focusedNode.data.filePath
           if (nodePath) {
             e.preventDefault()
             getPlatform().fs.showInFolder(nodePath).catch((err) => {

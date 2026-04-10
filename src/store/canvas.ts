@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { createStoreWithHMR } from '@/lib/hmr'
 import {
-  type Node,
   type Edge,
   type OnNodesChange,
   type OnEdgesChange,
@@ -44,12 +43,12 @@ export interface Column {
 }
 
 export type CanvasState = {
-  nodes: Node[]
+  nodes: AppNode[]
   edges: Edge[]
-  onNodesChange: OnNodesChange
+  onNodesChange: OnNodesChange<AppNode>
   onEdgesChange: OnEdgesChange
   onConnect: OnConnect
-  setNodes: (nodes: Node[]) => void
+  setNodes: (nodes: AppNode[]) => void
   setEdges: (edges: Edge[]) => void
 
   // Focus management
@@ -65,6 +64,13 @@ export type CanvasState = {
 
   // Hidden nodes: node IDs that have been hidden by the user (H key)
   hiddenNodeIds: Set<string>
+
+  // Memory of the last focused node per column path, recorded when navigating
+  // left out of a column. On subsequent navigateRight into the same path we
+  // restore that focus instead of landing on the first node. Entries persist
+  // until initRoot — a 2L+2R round trip uses each entry exactly once and
+  // leaves the user at the position they started from.
+  rightFocusMemory: Record<string, string>
 
   // The height of the canvas viewport in pixels (set by the view layer)
   viewportHeight: number
@@ -215,7 +221,7 @@ function positionColumnNodes(nodes: AppNode[], xOffset: number, yStart: number =
  * Find the nearest node above or below the focused node within the same column X position.
  */
 function findVerticalNeighbor(
-  allNodes: Node[],
+  allNodes: AppNode[],
   focusedId: string,
   direction: 'up' | 'down',
 ): string | null {
@@ -257,6 +263,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   currentColumnIndex: 0,
   depthChain: [],
   hiddenNodeIds: new Set(),
+  rightFocusMemory: {},
   viewportHeight: 0,
   cameraY: CANVAS_PAD_Y,
 
@@ -344,6 +351,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         depthChain: [rootPath],
         focusedNodeId: dirNodes.length > 0 ? dirNodes[0].id : null,
         cameraY: CANVAS_PAD_Y,
+        rightFocusMemory: {},
       })
 
       // Flatten and position
@@ -367,12 +375,21 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     const node = nodes.find((n) => n.id === focusedNodeId)
     if (!node) return
 
-    const data = node.data as Record<string, unknown>
-
     // Only folders and files can be navigated into
     if (node.type !== 'folder' && node.type !== 'file') return
 
-    const nodeTargetPath = data.path as string
+    const nodeTargetPath = node.data.path
+
+    // Pick the focused child for a column we're moving into: prefer the
+    // remembered node if we saw this path before, otherwise fall back to the
+    // first node.
+    const pickFocus = (newColNodes: AppNode[]): string | null => {
+      const remembered = get().rightFocusMemory[nodeTargetPath]
+      if (remembered && newColNodes.some((n) => n.id === remembered)) {
+        return remembered
+      }
+      return newColNodes[0]?.id ?? null
+    }
 
     // Check if we already have a preview column loaded for this node
     const previewCol = columns[currentColumnIndex + 1]
@@ -383,7 +400,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       set({
         currentColumnIndex: currentColumnIndex + 1,
         depthChain: newChain,
-        focusedNodeId: previewCol.nodes.length > 0 ? previewCol.nodes[0].id : null,
+        focusedNodeId: pickFocus(previewCol.nodes),
         cameraY: CANVAS_PAD_Y,
       })
 
@@ -395,7 +412,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     // No matching preview — load fresh
     try {
       if (node.type === 'folder') {
-        const path = data.path as string
+        const path = node.data.path
         const dirNodes = await buildDirectoryNodes(path)
         const newColumn: Column = { path, kind: 'directory', nodes: dirNodes, edges: [] }
 
@@ -406,15 +423,15 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           columns: newColumns,
           currentColumnIndex: currentColumnIndex + 1,
           depthChain: newChain,
-          focusedNodeId: dirNodes.length > 0 ? dirNodes[0].id : null,
+          focusedNodeId: pickFocus(dirNodes),
           cameraY: CANVAS_PAD_Y,
         })
 
         flattenAndRender(get, set)
         void get().updatePreview()
-      } else if (node.type === 'file') {
-        const path = data.path as string
-        const fileName = data.label as string
+      } else {
+        const path = node.data.path
+        const fileName = node.data.label
         let contentNode: AppNode
         if (isImageFile(fileName)) {
           const imageNode = await buildImageNode(path)
@@ -430,7 +447,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           columns: newColumns,
           currentColumnIndex: currentColumnIndex + 1,
           depthChain: newChain,
-          focusedNodeId: newColumn.nodes[0]?.id ?? null,
+          focusedNodeId: pickFocus(newColumn.nodes),
           cameraY: CANVAS_PAD_Y,
         })
 
@@ -446,20 +463,28 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
    * Navigate left (A key) — go back to parent column.
    */
   navigateLeft: () => {
-    const { columns, currentColumnIndex } = get()
+    const { columns, currentColumnIndex, focusedNodeId, rightFocusMemory } = get()
     if (currentColumnIndex <= 0) return
 
     const newIndex = currentColumnIndex - 1
 
+    // Remember which node was focused in the column we're leaving, keyed by
+    // that column's path. navigateRight will restore it if the user drills
+    // back into the same path.
+    const leavingCol = columns[currentColumnIndex]
+    const nextMemory = leavingCol && focusedNodeId
+      ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
+      : rightFocusMemory
+
     // Try to restore focus to the item in the parent column that led to the current column
-    const currentColPath = columns[currentColumnIndex]?.path
+    const currentColPath = leavingCol?.path
     const parentCol = columns[newIndex]
     let restoreFocusId: string | null = null
 
     if (parentCol && currentColPath) {
       const match = parentCol.nodes.find((n) => {
-        const d = n.data as Record<string, unknown>
-        return d.path === currentColPath
+        if (n.type === 'folder' || n.type === 'file') return n.data.path === currentColPath
+        return n.data.filePath === currentColPath
       })
       if (match) restoreFocusId = match.id
     }
@@ -468,6 +493,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       currentColumnIndex: newIndex,
       focusedNodeId: restoreFocusId || (parentCol?.nodes[0]?.id ?? null),
       cameraY: CANVAS_PAD_Y,
+      rightFocusMemory: nextMemory,
     })
 
     flattenAndRender(get, set)
@@ -517,18 +543,16 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       return
     }
 
-    const data = node.data as Record<string, unknown>
-
     try {
       let previewCol: Column | null = null
 
       if (node.type === 'folder') {
-        const path = data.path as string
+        const path = node.data.path
         const dirNodes = await buildDirectoryNodes(path)
         previewCol = { path, kind: 'directory', nodes: dirNodes, edges: [] }
       } else if (node.type === 'file') {
-        const path = data.path as string
-        const fileName = data.label as string
+        const path = node.data.path
+        const fileName = node.data.label
         let contentNode: AppNode
         if (isImageFile(fileName)) {
           const imageNode = await buildImageNode(path)
@@ -579,7 +603,7 @@ function flattenAndRender(
     return
   }
 
-  const allNodes: Node[] = []
+  const allNodes: AppNode[] = []
   const allEdges: Edge[] = []
 
   const { focusedNodeId, hiddenNodeIds, viewportHeight, cameraY } = get()
@@ -651,11 +675,12 @@ function flattenAndRender(
     // Position nodes in this column
     const positioned = positionColumnNodes(orderedNodes, xOffset, yStart)
 
-    // Tag nodes: dim non-current columns, mark hidden nodes, mark focused node
+    // Tag nodes: dim non-current columns, mark hidden nodes, mark focused node.
+    // The cast is necessary because spreading a discriminated union loses the
+    // discriminant in TypeScript's inference — we know the shape is preserved.
     for (const node of positioned) {
       allNodes.push({
         ...node,
-        id: node.id,
         data: {
           ...node.data,
           __columnIndex: i,
@@ -663,7 +688,7 @@ function flattenAndRender(
           __isHidden: hiddenNodeIds.has(node.id),
           __isFocused: node.id === focusedNodeId,
         },
-      } as Node)
+      } as AppNode)
     }
 
     // Add edges
