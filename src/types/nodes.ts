@@ -31,9 +31,26 @@ export interface CodeNodeData extends Record<string, unknown> {
   endLine: number
 }
 
+export interface FunctionNodeData extends Record<string, unknown> {
+  label: string
+  kind: 'function'
+  startLine: number
+  endLine: number
+  isMethod?: boolean
+}
+
+export interface ClassNodeData extends Record<string, unknown> {
+  label: string
+  kind: 'class'
+  startLine: number
+  endLine: number
+}
+
 export type FolderNode = Node<FolderNodeData, 'folder'>
 export type FileNode = Node<FileNodeData, 'file'>
 export type CodeNode = Node<CodeNodeData, 'codeNode'>
 export type ImageNode = Node<ImageNodeData, 'imageNode'>
+export type FunctionNode = Node<FunctionNodeData, 'functionNode'>
+export type ClassNode = Node<ClassNodeData, 'classNode'>
 
-export type AppNode = FolderNode | FileNode | CodeNode | ImageNode
+export type AppNode = FolderNode | FileNode | CodeNode | ImageNode | FunctionNode | ClassNode

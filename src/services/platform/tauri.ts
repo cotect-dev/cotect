@@ -184,6 +184,10 @@ export const tauriPlatform: Platform = {
       const result = await open({ title, directory: true })
       return result as string | null
     },
+
+    async showInFolder(path: string): Promise<void> {
+      await invoke('show_in_folder', { path })
+    },
   },
 
   storage: {

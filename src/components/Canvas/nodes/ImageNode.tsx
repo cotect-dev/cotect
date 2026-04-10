@@ -13,7 +13,7 @@ export default memo(function ImageNode({ id, data }: NodeProps<ImageNode>) {
 
   return (
     <div
-      className={`bg-background/90 backdrop-blur border border-border rounded-lg p-2 transition-all duration-150 ${flags.isFocused ? 'ring-2 ring-primary/60 bg-primary/10 scale-[1.02]' : ''} ${getNodeOpacity(flags)} cursor-pointer hover:border-primary/50 hover:bg-muted/50`}
+      className={`bg-background/90 backdrop-blur border border-border rounded-lg p-2 ${flags.isFocused ? 'ring-2 ring-primary/60 bg-primary/10 scale-[1.02]' : ''} ${getNodeOpacity(flags)} cursor-pointer hover:border-primary/50 hover:bg-muted/50`}
       onClick={handleClick}
       style={{ maxWidth: '50vw' }}
     >

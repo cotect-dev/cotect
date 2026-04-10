@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Node } from '@xyflow/react'
-import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
+import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
 
 // --- Mocks ---
 
@@ -783,7 +783,7 @@ describe('flattenAndRender', () => {
   }
 
   function makeSimpleNode(id: string, type: string = 'file'): AppNode {
-    return { id, type: type as AppNode['type'], position: { x: 0, y: 0 }, data: { label: id, path: id } as AppNode['data'] }
+    return { id, type: type as AppNode['type'], position: { x: 0, y: 0 }, data: { label: id, path: id } as AppNode['data'] } as AppNode
   }
 
   it('renders all columns regardless of current index', async () => {

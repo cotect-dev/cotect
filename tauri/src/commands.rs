@@ -324,6 +324,51 @@ pub fn get_monitors() -> Vec<MonitorInfo> {
         .collect()
 }
 
+/// Open a folder in the system file manager.
+/// Accepts a path — if it's a directory, it opens that directory;
+/// if it's a file, it opens the parent directory.
+#[tauri::command]
+pub fn show_in_folder(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    let dir = if p.is_dir() {
+        p.to_path_buf()
+    } else {
+        p.parent()
+            .ok_or_else(|| format!("Cannot determine parent directory of {}", path))?
+            .to_path_buf()
+    };
+
+    if !dir.exists() {
+        return Err(format!("Directory does not exist: {}", dir.display()));
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

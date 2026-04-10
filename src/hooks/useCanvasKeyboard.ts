@@ -1,5 +1,6 @@
 import { useEffect, type RefObject } from 'react'
 import { useCanvasStore } from '@/store'
+import { getPlatform } from '@/services/platform'
 
 const FOCUS_GUARD_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 
@@ -27,6 +28,15 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
 
       const store = useCanvasStore.getState()
       const key = e.key.toLowerCase()
+
+      // Swallow Tab so the browser doesn't steal focus from the canvas.
+      // The focus guard above already lets Tab pass through inputs, textareas,
+      // contenteditable elements and the CodeMirror editor, so this only
+      // applies while the canvas itself is focused.
+      if (key === 'tab') {
+        e.preventDefault()
+        return
+      }
 
       switch (key) {
         case 'w':
@@ -65,6 +75,23 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
           e.preventDefault()
           store.toggleHideNode()
           break
+        case 'f': {
+          // Open the focused node's folder in the system file manager
+          const focusedId = store.focusedNodeId
+          if (!focusedId) break
+          const focusedNode = store.nodes.find((n) => n.id === focusedId)
+          if (!focusedNode) break
+          const nodeData = focusedNode.data as Record<string, unknown>
+          // file/folder nodes have 'path', code/image nodes have 'filePath'
+          const nodePath = (nodeData.path ?? nodeData.filePath) as string | undefined
+          if (nodePath) {
+            e.preventDefault()
+            getPlatform().fs.showInFolder(nodePath).catch((err) => {
+              console.error('Failed to open in folder:', err)
+            })
+          }
+          break
+        }
       }
     }
 

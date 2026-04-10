@@ -53,7 +53,7 @@ interface GitState {
   setRepoPath: (path: string) => void
 }
 
-const failedGitState = (gitError: GitError): Partial<GitState> => ({
+const failedGitState = (gitError: GitError): Pick<GitState, 'initialized' | 'isGitRepo' | 'gitError' | 'status' | 'log' | 'branch' | 'lastCommitTimestamp'> => ({
   initialized: true,
   isGitRepo: false,
   gitError,

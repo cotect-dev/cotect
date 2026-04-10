@@ -141,6 +141,10 @@ export const browserPlatform: Platform = {
     async showFolderDialog() {
       return null
     },
+
+    async showInFolder() {
+      // Not available in browser
+    },
   },
 
   storage: {
