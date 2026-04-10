@@ -65,8 +65,11 @@ export function initAllSyncedStores(): void {
     const unlisten = platform.syncedState.listen(entry.name, ({ state, source }) => {
       if (source !== windowId && state) {
         entry.syncing = true
-        entry.store.setState(state as Partial<unknown>)
-        entry.syncing = false
+        try {
+          entry.store.setState(state as Partial<unknown>)
+        } finally {
+          entry.syncing = false
+        }
       }
     })
     unlisteners.push(unlisten)
@@ -75,9 +78,14 @@ export function initAllSyncedStores(): void {
     platform.syncedState.get(entry.name).then((state) => {
       if (state && typeof state === 'object') {
         entry.syncing = true
-        entry.store.setState(entry.sanitize ? entry.sanitize(state as Partial<unknown>) : state as Partial<unknown>)
-        entry.syncing = false
+        try {
+          entry.store.setState(entry.sanitize ? entry.sanitize(state as Partial<unknown>) : state as Partial<unknown>)
+        } finally {
+          entry.syncing = false
+        }
       }
+    }).catch((err) => {
+      console.warn(`[synced] initial load failed for "${entry.name}":`, err)
     })
   }
 }
@@ -85,7 +93,9 @@ export function initAllSyncedStores(): void {
 export function clearAllSyncedStores(): void {
   const platform = getPlatform()
   for (const { name } of pending) {
-    platform.syncedState.clear(name)
+    platform.syncedState.clear(name).catch((err) => {
+      console.warn(`[synced] clear("${name}") failed:`, err)
+    })
   }
 }
 
@@ -108,7 +118,10 @@ export async function loadSyncedStoreFromBackend(name: string): Promise<void> {
   const state = await platform.syncedState.get(name)
   if (state && typeof state === 'object') {
     entry.syncing = true
-    entry.store.setState(state as Partial<unknown>)
-    entry.syncing = false
+    try {
+      entry.store.setState(state as Partial<unknown>)
+    } finally {
+      entry.syncing = false
+    }
   }
 }

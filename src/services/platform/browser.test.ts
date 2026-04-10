@@ -96,9 +96,9 @@ describe('browserPlatform.syncedState', () => {
   })
 
   describe('clear', () => {
-    it('removes key from localStorage', () => {
+    it('removes key from localStorage', async () => {
       store['cotect:panel-x'] = '{"a":1}'
-      browserPlatform.syncedState.clear('x')
+      await browserPlatform.syncedState.clear('x')
       expect(localStorageMock.removeItem).toHaveBeenCalledWith('cotect:panel-x')
     })
   })

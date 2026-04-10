@@ -19,7 +19,9 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
   const [isWayland, setIsWayland] = useState<boolean | null>(null)
 
   useEffect(() => {
-    platform.isWayland().then(setIsWayland)
+    platform.isWayland().then(setIsWayland).catch((err) => {
+      console.warn('[crossWindowDropOverlay] isWayland check failed:', err)
+    })
   }, [platform])
 
   const detectZone = useCallback((clientX: number, clientY: number): HoverZone => {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useEffect, useMemo, type ComponentType, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import Chat from '@/components/Chat';
 import Console from '@/components/Console';
@@ -37,7 +37,7 @@ interface PanelHostCtx {
 
 const PanelHostContext = createContext<PanelHostCtx>({ getNode: () => null });
 
-export function usePanelHost() {
+function usePanelHost() {
   return useContext(PanelHostContext);
 }
 
@@ -61,12 +61,10 @@ function createPanelContainers(): Record<string, HTMLDivElement> {
 }
 
 export function PanelHostProvider({ children }: { children: ReactNode }) {
-  // Create containers once and keep them for the provider's lifetime
-  const containersRef = useRef<Record<string, HTMLDivElement> | null>(null);
-  if (!containersRef.current) {
-    containersRef.current = createPanelContainers();
-  }
-  const containers = containersRef.current;
+  // useState with a lazy initializer guarantees createPanelContainers runs
+  // exactly once per provider mount — equivalent to a ref, but legal to read
+  // during render (refs are not).
+  const [containers] = useState(createPanelContainers);
 
   // Clean up DOM elements when provider unmounts
   useEffect(() => {
@@ -84,7 +82,6 @@ export function PanelHostProvider({ children }: { children: ReactNode }) {
   return (
     <PanelHostContext.Provider value={ctx}>
       {children}
-      {/* Render each panel component into its stable DOM container via portal */}
       {PANEL_IDS.map((id) => {
         const C = PANEL_CONTENT[id];
         return createPortal(<C key={id} />, containers[id]);

@@ -34,6 +34,8 @@ export function useWindowBounds() {
       pos = p
       size = s
       recompute()
+    }).catch((err) => {
+      console.warn('[useWindowBounds] initial position/size fetch failed:', err)
     })
 
     const cleanups: (() => void)[] = []
@@ -41,12 +43,16 @@ export function useWindowBounds() {
     platform.windows.onMoved((p) => {
       pos = p
       recompute()
-    }).then((unlisten) => cleanups.push(unlisten))
+    }).then((unlisten) => { cleanups.push(unlisten) }).catch((err) => {
+      console.warn('[useWindowBounds] onMoved listener attach failed:', err)
+    })
 
     platform.windows.onResized((s) => {
       size = s
       recompute()
-    }).then((unlisten) => cleanups.push(unlisten))
+    }).then((unlisten) => { cleanups.push(unlisten) }).catch((err) => {
+      console.warn('[useWindowBounds] onResized listener attach failed:', err)
+    })
 
     return () => {
       for (const fn of cleanups) fn()

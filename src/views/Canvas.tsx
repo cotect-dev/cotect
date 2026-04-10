@@ -46,15 +46,13 @@ function CanvasFlow() {
       }
     })
     observer.observe(el)
-    // Read initial size
-    setLeftPanelWidth(el.offsetWidth)
     return () => observer.disconnect()
   }, [])
 
   // Initialize canvas when root path is set
   useEffect(() => {
     if (rootPath) {
-      useCanvasStore.getState().initRoot(rootPath)
+      void useCanvasStore.getState().initRoot(rootPath)
     }
   }, [rootPath])
 
@@ -62,7 +60,9 @@ function CanvasFlow() {
   const prevPanelWidth = useRef(leftPanelWidth)
   // Keep a ref so the deferred viewport callback always reads the latest value
   const leftPanelWidthRef = useRef(leftPanelWidth)
-  leftPanelWidthRef.current = leftPanelWidth
+  useEffect(() => {
+    leftPanelWidthRef.current = leftPanelWidth
+  }, [leftPanelWidth])
 
   // Set viewport so the current column appears right after the left panel.
   // Previous columns will be behind/under the left panel, reachable by
@@ -83,7 +83,7 @@ function CanvasFlow() {
       // Offset the viewport so that position maps to screen-X = pad + panelW.
       const columnStep = NODE_WIDTH + NODE_H_GAP
       const currentColX = currentColumnIndex * columnStep
-      reactFlow.setViewport(
+      void reactFlow.setViewport(
         { x: CANVAS_PAD_X + panelW - currentColX, y: CANVAS_PAD_Y, zoom: 1 },
         { duration: 100 },
       )
@@ -97,7 +97,7 @@ function CanvasFlow() {
     prevPanelWidth.current = leftPanelWidth
     if (delta === 0) return
     const vp = reactFlow.getViewport()
-    reactFlow.setViewport(
+    void reactFlow.setViewport(
       { x: vp.x + delta, y: vp.y, zoom: vp.zoom },
       { duration: 0 },
     )
@@ -136,7 +136,7 @@ function CanvasFlow() {
     }
 
     if (newX !== viewport.x || newY !== viewport.y) {
-      reactFlow.setViewport({ x: newX, y: newY, zoom: viewport.zoom }, { duration: 0 })
+      void reactFlow.setViewport({ x: newX, y: newY, zoom: viewport.zoom }, { duration: 0 })
     }
   }, [focusedNodeId, focusedNodeX, focusedNodeY]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -152,7 +152,7 @@ function CanvasFlow() {
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.stopPropagation()
     const viewport = reactFlow.getViewport()
-    reactFlow.setViewport(
+    void reactFlow.setViewport(
       { x: viewport.x - e.deltaX, y: viewport.y - e.deltaY, zoom: viewport.zoom },
       { duration: 0 },
     )

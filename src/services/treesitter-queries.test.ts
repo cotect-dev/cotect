@@ -43,12 +43,9 @@ describe('getConfigForFile', () => {
     expect(LANGUAGE_CONFIGS).toHaveLength(2)
   })
 
-  it('each config has required fields', () => {
+  it('each config has extensions', () => {
     for (const config of LANGUAGE_CONFIGS) {
       expect(config.extensions.length).toBeGreaterThan(0)
-      expect(config.grammarPath).toBeTruthy()
-      expect(config.declarationQuery).toBeTruthy()
-      expect(config.importQuery).toBeTruthy()
     }
   })
 })

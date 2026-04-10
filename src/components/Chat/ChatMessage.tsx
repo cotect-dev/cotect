@@ -17,9 +17,9 @@ function getModulesSnapshot() {
   return _loadVersion
 }
 
-import('remark-gfm').then((m) => { _remarkGfm = m.default; _loadVersion++; _listeners.forEach((fn) => fn()) })
-import('react-syntax-highlighter/dist/esm/styles/prism').then((m) => { _oneDark = m.oneDark; _loadVersion++; _listeners.forEach((fn) => fn()) })
-import('react-syntax-highlighter').then((m) => { _SyntaxHighlighter = m.Prism; _loadVersion++; _listeners.forEach((fn) => fn()) })
+void import('remark-gfm').then((m) => { _remarkGfm = m.default; _loadVersion++; _listeners.forEach((fn) => fn()) })
+void import('react-syntax-highlighter/dist/esm/styles/prism').then((m) => { _oneDark = m.oneDark; _loadVersion++; _listeners.forEach((fn) => fn()) })
+void import('react-syntax-highlighter').then((m) => { _SyntaxHighlighter = m.Prism; _loadVersion++; _listeners.forEach((fn) => fn()) })
 
 function MarkdownCode({ className: cn, children, ...props }: React.HTMLAttributes<HTMLElement>) {
   const match = /language-(\w+)/.exec(cn || '')
@@ -51,8 +51,11 @@ function MarkdownCode({ className: cn, children, ...props }: React.HTMLAttribute
 const markdownComponents = { code: MarkdownCode }
 
 function Markdown({ text, className = '' }: { text: string; className?: string }) {
-  useSyncExternalStore(subscribeModules, getModulesSnapshot)
-  const plugins = useMemo(() => _remarkGfm ? [_remarkGfm] : [], [_remarkGfm])
+  const modulesVersion = useSyncExternalStore(subscribeModules, getModulesSnapshot)
+  // Recompute when modulesVersion bumps: the module globals (_remarkGfm etc.)
+  // are mutated outside React, and the version tick is our "they changed" signal.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const plugins = useMemo(() => _remarkGfm ? [_remarkGfm] : [], [modulesVersion])
 
   return (
     <div className={`prose dark:prose-invert prose-sm max-w-none break-words [&_p]:my-1 [&_pre]:my-1 [&_ul]:my-1 [&_ol]:my-1 ${className}`}>

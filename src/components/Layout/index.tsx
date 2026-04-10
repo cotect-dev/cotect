@@ -40,6 +40,8 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
   useEffect(() => {
     loadZoneSizes(windowId).then((saved) => {
       if (saved) setZoneSizes(saved)
+    }).catch((err) => {
+      console.warn('[layout] loadZoneSizes failed:', err)
     })
   }, [windowId])
 

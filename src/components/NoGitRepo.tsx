@@ -16,6 +16,14 @@ export default function NoGitRepo() {
     )
   }
 
+  if (gitError === 'GIT_TIMEOUT') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground text-sm">
+        Git command timed out
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground text-sm">
       <span>Not a git repository</span>

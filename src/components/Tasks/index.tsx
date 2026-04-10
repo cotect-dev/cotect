@@ -59,7 +59,7 @@ const TaskCard = memo(function TaskCard({ task }: { task: TaskEntry }) {
   const removeTask = useTasksStore((s) => s.removeTask)
   const [expanded, setExpanded] = useState(false)
 
-  const [now, setNow] = useState(Date.now())
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (task.status !== 'running') return
     const interval = setInterval(() => setNow(Date.now()), 1000)

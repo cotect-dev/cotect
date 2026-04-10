@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // Mock the platform module before anything imports it
 const mockSet = vi.fn()
 const mockGet = vi.fn().mockResolvedValue(null)
-const mockClear = vi.fn()
+const mockClear = vi.fn().mockResolvedValue(undefined)
 const mockSyncListen = vi.fn().mockReturnValue(() => {})
 
 vi.mock('@/services/platform', () => ({

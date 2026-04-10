@@ -130,7 +130,7 @@ describe('windowManager', () => {
   })
 
   describe('session persistence', () => {
-    const session: PersistedSession = { rootPath: '/projects/app', currentPath: '/projects/app/src', viewMode: 'directory' }
+    const session: PersistedSession = { rootPath: '/projects/app' }
 
     it('saves and loads session', async () => {
       saveSession(session)

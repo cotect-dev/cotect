@@ -48,23 +48,19 @@ export default function History() {
   const log = useGitStore((s) => s.log)
   const repoPath = useGitStore((s) => s.repoPath)
   // Only store *extra* commits loaded via infinite scroll — the base comes from the store.
-  // This eliminates the useEffect sync that caused a redundant render cycle.
   const [extraCommits, setExtraCommits] = useState<GitLogEntry[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(true)
+  const [baseLog, setBaseLog] = useState(log)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const prevLogRef = useRef(log)
 
-  // Reset extra commits when the base log changes (new git refresh)
-  if (log !== prevLogRef.current) {
-    prevLogRef.current = log
-    if (extraCommits.length > 0) setExtraCommits([])
-    // Re-derive hasMore from the fresh log
-    if (!log || log.length < 50) {
-      if (hasMore) setHasMore(false)
-    } else {
-      if (!hasMore) setHasMore(true)
-    }
+  // Reset extra commits when the base log changes (new git refresh).
+  // Adjusting state during render is the React-documented pattern for
+  // resetting derived state — cheaper than a useEffect round-trip.
+  if (log !== baseLog) {
+    setBaseLog(log)
+    setExtraCommits([])
+    setHasMore(!!log && log.length >= 50)
   }
 
   const allCommits = useMemo(
@@ -94,7 +90,7 @@ export default function History() {
     const el = scrollRef.current
     if (!el) return
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 100) {
-      loadMore()
+      void loadMore()
     }
   }, [loadMore])
 
