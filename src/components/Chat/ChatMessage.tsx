@@ -3,9 +3,14 @@ import type { Message } from '@/store/chat'
 
 const ReactMarkdown = lazy(() => import('react-markdown'))
 
+// PrismAsyncLight has a tiny core and lazy-loads each language on demand,
+// instead of bundling refractor's entire language table (~1.6 MB).
+type SyntaxHighlighterComponent =
+  typeof import('react-syntax-highlighter/dist/esm/prism-async-light').default
+
 let _remarkGfm: typeof import('remark-gfm').default | null = null
 let _oneDark: Record<string, React.CSSProperties> | null = null
-let _SyntaxHighlighter: typeof import('react-syntax-highlighter').Prism | null = null
+let _SyntaxHighlighter: SyntaxHighlighterComponent | null = null
 
 let _loadVersion = 0
 const _listeners = new Set<() => void>()
@@ -18,8 +23,8 @@ function getModulesSnapshot() {
 }
 
 void import('remark-gfm').then((m) => { _remarkGfm = m.default; _loadVersion++; _listeners.forEach((fn) => fn()) })
-void import('react-syntax-highlighter/dist/esm/styles/prism').then((m) => { _oneDark = m.oneDark; _loadVersion++; _listeners.forEach((fn) => fn()) })
-void import('react-syntax-highlighter').then((m) => { _SyntaxHighlighter = m.Prism; _loadVersion++; _listeners.forEach((fn) => fn()) })
+void import('react-syntax-highlighter/dist/esm/styles/prism/one-dark').then((m) => { _oneDark = m.default; _loadVersion++; _listeners.forEach((fn) => fn()) })
+void import('react-syntax-highlighter/dist/esm/prism-async-light').then((m) => { _SyntaxHighlighter = m.default; _loadVersion++; _listeners.forEach((fn) => fn()) })
 
 function MarkdownCode({ className: cn, children, ...props }: React.HTMLAttributes<HTMLElement>) {
   const match = /language-(\w+)/.exec(cn || '')
