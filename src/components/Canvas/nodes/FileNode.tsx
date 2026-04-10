@@ -17,11 +17,7 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
 
   const icon = isTest ? FlaskConical : isImage ? Image : parseable ? FileCode : FileText
   const iconColor = isTest ? 'text-yellow-600' : isImage ? 'text-emerald-400' : parseable ? 'text-blue-400' : 'text-muted-foreground'
-  const border = data.isImport
-    ? 'border-indigo-500/50 border-dashed'
-    : isTest
-      ? 'border-yellow-700/40 border-dashed'
-      : 'border-border'
+  const border = isTest ? 'border-yellow-700/40 border-dashed' : 'border-border'
 
   const opacity = flags.isHidden ? 'opacity-30' : (!flags.isCurrent || isPreview) ? 'opacity-50' : ''
 
@@ -29,10 +25,10 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
   const handleDoubleClick = useCallback(() => {
     const store = useCanvasStore.getState()
     store.setFocus(id)
-    store.navigateRight()
+    void store.navigateRight()
   }, [id])
 
-  const canNavigate = (parseable || isImage) && !data.isImport
+  const canNavigate = parseable || isImage
 
   return (
     <BaseNode
@@ -44,10 +40,6 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
       focused={flags.isFocused}
       onClick={handleClick}
       onDoubleClick={canNavigate ? handleDoubleClick : undefined}
-    >
-      {data.isImport && data.declarationCount != null && (
-        <div className="text-xs text-muted-foreground mt-1">{data.declarationCount} declarations</div>
-      )}
-    </BaseNode>
+    />
   )
 })

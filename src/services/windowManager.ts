@@ -26,8 +26,6 @@ export interface PersistedGeometry {
 
 export interface PersistedSession {
   rootPath: string
-  currentPath: string
-  viewMode: 'directory' | 'file'
 }
 
 export async function getChildWindowIds(): Promise<string[]> {
@@ -119,10 +117,16 @@ export async function startGeometryPersistence(windowId: string): Promise<void> 
 
   const schedulePersist = () => {
     if (debounceTimer) clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => { persist().catch(() => {}) }, 300)
+    debounceTimer = setTimeout(() => {
+      persist().catch((err) => {
+        console.warn('[windowManager] geometry persist failed:', err)
+      })
+    }, 300)
   }
 
-  persist().catch(() => {})
+  persist().catch((err) => {
+    console.warn('[windowManager] initial geometry persist failed:', err)
+  })
 
   const cleanups: (() => void)[] = []
 
@@ -158,11 +162,7 @@ export function startSessionPersistence(): void {
     if (!state.rootPath) return
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
-      saveSession({
-        rootPath: state.rootPath,
-        currentPath: state.currentPath,
-        viewMode: state.viewMode,
-      })
+      saveSession({ rootPath: state.rootPath })
     }, 300)
   })
 }
@@ -192,5 +192,7 @@ export async function restoreGeometryOnMonitor(
     }
   }
 
-  await platform.windows.move(geometry.x, geometry.y).catch(() => {})
+  await platform.windows.move(geometry.x, geometry.y).catch((err) => {
+    console.warn('[windowManager] window move failed during geometry restore:', err)
+  })
 }

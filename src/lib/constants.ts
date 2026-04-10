@@ -23,7 +23,7 @@ export const HIDDEN_DIRECTORIES = new Set([
   '.idea', '.vscode', '.DS_Store', '__MACOSX',
 ])
 
-export const IMAGE_EXTENSIONS = new Set([
+const IMAGE_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico', '.avif',
 ])
 

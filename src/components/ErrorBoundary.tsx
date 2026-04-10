@@ -23,6 +23,8 @@ export default class ErrorBoundary extends Component<Props, State> {
     navigator.clipboard.writeText(text).then(() => {
       this.setState({ copied: true })
       setTimeout(() => this.setState({ copied: false }), 2000)
+    }).catch((err) => {
+      console.warn('[ErrorBoundary] clipboard write failed:', err)
     })
   }
 

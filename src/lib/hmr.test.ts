@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// HMR test uses `any` in store/hot-reload mocks — typing them precisely
+// would require duplicating Vite's ImportMetaHot shape; the tests are the
+// boundary so we accept the looseness here.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createStoreWithHMR } from './hmr'
 

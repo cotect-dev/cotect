@@ -230,6 +230,9 @@ export function usePanelDrag() {
         return { ...prev, overPosition, insertIndex, neighborIndex, tabIntoGroupKey: null }
       })
     },
+    // platform/windowId/windowBoundsRef are all stable (hook refs); only the
+    // memoized helpers actually need to be in the dep list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [computeInsertIndex, detectTabInto]
   )
 
@@ -312,10 +315,8 @@ export function usePanelDrag() {
           dragState.isGroup ? g[0] === dragState.panelId : g.includes(dragState.panelId)
         )
         if (draggedGroupIdx >= 0) {
-          if (!dragState.isGroup && panels[pos][draggedGroupIdx].length > 1) {
-          } else {
-            count--
-          }
+          const isSplittingGroup = !dragState.isGroup && panels[pos][draggedGroupIdx].length > 1
+          if (!isSplittingGroup) count--
         }
         if (dragState.overPosition === pos && !dragState.tabIntoGroupKey) count++
       }

@@ -34,7 +34,7 @@ function ProviderForm({
   }, [clearTestResult])
 
   const handleTest = useCallback(() => {
-    testProvider({
+    void testProvider({
       id: stableId.current,
       name: name || 'Test',
       endpoint,
@@ -158,7 +158,7 @@ function ProviderCard({ provider, isActive }: { provider: ProviderConfig; isActi
       <ProviderForm
         initial={provider}
         onSave={(updated) => {
-          updateProvider(provider.id, updated)
+          void updateProvider(provider.id, updated)
           setEditing(false)
         }}
         onCancel={() => setEditing(false)}
@@ -228,7 +228,7 @@ export default function Settings() {
   const [adding, setAdding] = useState(false)
 
   useEffect(() => {
-    loadConfig()
+    void loadConfig()
   }, [loadConfig])
 
   if (loading || !config) {
@@ -268,7 +268,7 @@ export default function Settings() {
       {adding && (
         <ProviderForm
           onSave={(provider) => {
-            addProvider(provider)
+            void addProvider(provider)
             setAdding(false)
           }}
           onCancel={() => setAdding(false)}

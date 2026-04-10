@@ -16,7 +16,7 @@ export default memo(function ChatInput() {
     const trimmed = text.trim()
     if (!trimmed || useChatStore.getState().isGenerating) return
     setText('')
-    sendMessage(trimmed)
+    void sendMessage(trimmed)
   }, [text])
 
   const handleKeyDown = useCallback(

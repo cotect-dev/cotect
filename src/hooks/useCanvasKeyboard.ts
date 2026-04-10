@@ -57,7 +57,7 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
         case 'd':
         case 'arrowright':
           e.preventDefault()
-          store.navigateRight()
+          void store.navigateRight()
           break
         case 'e': {
           // Focus the CodeMirror editor inside the currently focused code node

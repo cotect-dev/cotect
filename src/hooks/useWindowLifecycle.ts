@@ -14,16 +14,17 @@ export function useWindowLifecycle() {
   const isMain = windowId === 'main'
 
   useEffect(() => {
-    platform.windows.setMinSize(isMain ? 1280 : 400, isMain ? 720 : 300)
+    void platform.windows.setMinSize(isMain ? 1280 : 400, isMain ? 720 : 300)
     if (isMain) clearAllSyncedStores()
     initAllSyncedStores()
     return () => { stopAllSyncedStores() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     let cancelled = false
 
-    ;(async () => {
+    void (async () => {
       const [saved, geo, childIds, session] = await Promise.all([
         loadLayout(windowId),
         loadGeometry(windowId),
@@ -36,14 +37,22 @@ export function useWindowLifecycle() {
 
       if (geo) {
         await restoreGeometryOnMonitor(windowId, geo, platform)
-        if (isMain) await platform.windows.resize(geo.width, geo.height).catch(() => {})
-        if (geo.isMaximized) await platform.windows.maximize().catch(() => {})
+        if (isMain) {
+          await platform.windows.resize(geo.width, geo.height).catch((err) => {
+            console.warn('[windowLifecycle] resize during restore failed:', err)
+          })
+        }
+        if (geo.isMaximized) {
+          await platform.windows.maximize().catch((err) => {
+            console.warn('[windowLifecycle] maximize during restore failed:', err)
+          })
+        }
       }
 
       loadLayoutIntoStore(saved ?? (isMain ? DEFAULT_MAIN_LAYOUT : { panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {} }))
       startLayoutPersistence(windowId)
 
-      if (isMain) platform.windows.show()
+      if (isMain) void platform.windows.show()
       const splash = document.getElementById('splash')
       if (splash) {
         splash.classList.add('hide')
@@ -75,11 +84,8 @@ export function useWindowLifecycle() {
 
         if (session?.rootPath) {
           try {
-            await useBrowserStore.getState().openRoot(session.rootPath)
+            useBrowserStore.getState().openRoot(session.rootPath)
             if (cancelled) return
-            if (session.currentPath && session.currentPath !== session.rootPath) {
-              await useBrowserStore.getState().navigateTo(session.currentPath, session.viewMode)
-            }
           } catch (err) {
             console.error('Failed to restore session root:', err)
           }
@@ -92,7 +98,9 @@ export function useWindowLifecycle() {
             gitState.setRepoPath(state.rootPath)
             stopGitWatcher()
             startGitWatcher(state.rootPath, windowId)
-            gitState.refresh()
+            gitState.refresh().catch((err) => {
+              console.warn('[windowLifecycle] git refresh after root change failed:', err)
+            })
           }
         })
 
@@ -102,30 +110,38 @@ export function useWindowLifecycle() {
         if (currentRoot && currentRoot !== useGitStore.getState().repoPath) {
           useGitStore.getState().setRepoPath(currentRoot)
           startGitWatcher(currentRoot, windowId)
-          useGitStore.getState().refresh()
+          useGitStore.getState().refresh().catch((err) => {
+            console.warn('[windowLifecycle] git refresh during restore failed:', err)
+          })
         }
       }
 
       if (session?.rootPath && !isMain) {
         useGitStore.getState().setRepoPath(session.rootPath)
         startGitWatcher(session.rootPath, windowId)
-        useGitStore.getState().refresh()
+        useGitStore.getState().refresh().catch((err) => {
+          console.warn('[windowLifecycle] git refresh on child window restore failed:', err)
+        })
       }
 
-      platform.ipc.emit('window-opened', { windowId }).catch(() => {})
+      platform.ipc.emit('window-opened', { windowId }).catch((err) => {
+        console.warn('[windowLifecycle] window-opened emit failed:', err)
+      })
 
       setIsReady(true)
     })()
 
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     if (isMain) return
     return platform.ipc.listen('window-closed', (payload: unknown) => {
       const { windowId: closedId } = payload as { windowId: string }
-      if (closedId === 'main') platform.windows.close()
+      if (closedId === 'main') void platform.windows.close()
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -136,8 +152,11 @@ export function useWindowLifecycle() {
       stopAllSyncedStores()
       stopGitWatcher()
       if (!isMain) removeLayout(windowId)
-      platform.ipc.emit('window-closed', { windowId }).catch(() => {})
+      platform.ipc.emit('window-closed', { windowId }).catch((err) => {
+        console.warn('[windowLifecycle] window-closed emit failed:', err)
+      })
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

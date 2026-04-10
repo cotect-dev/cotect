@@ -36,7 +36,7 @@ export interface GitBranch {
   current: string
 }
 
-type GitError = 'GIT_NOT_FOUND' | 'NOT_A_REPO' | 'NO_COMMITS' | 'PARTIAL_FAILURE' | null
+type GitError = 'GIT_NOT_FOUND' | 'NOT_A_REPO' | 'NO_COMMITS' | 'GIT_TIMEOUT' | 'PARTIAL_FAILURE' | null
 
 interface GitState {
   repoPath: string
@@ -102,6 +102,12 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
           broadcastGitState(state)
           return
         }
+        if (err.includes('GIT_TIMEOUT')) {
+          const state = failedGitState('GIT_TIMEOUT')
+          set({ ...state, loading: false })
+          broadcastGitState(state)
+          return
+        }
         // Unknown error from git_status — don't fall through to success path
         console.error('Git status failed with unknown error:', err)
         set({ ...failedGitState(null), loading: false })
@@ -156,7 +162,9 @@ interface GitSyncPayload {
 }
 
 function broadcastGitState(state: Omit<GitSyncPayload, 'source'>): void {
-  emit('git-sync', { ...state, source: windowId } as GitSyncPayload).catch(() => {})
+  emit('git-sync', { ...state, source: windowId } as GitSyncPayload).catch((err) => {
+    console.warn('[git] broadcast failed:', err)
+  })
 }
 
 let watcherCleanup: (() => void) | null = null
@@ -183,32 +191,51 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
       })
     }
   })
-  cleanups.push(() => { syncListenPromise.then(fn => fn()).catch(() => {}) })
+  cleanups.push(() => {
+    syncListenPromise.then((fn) => fn()).catch((err) => {
+      console.warn('[git] failed to detach sync listener:', err)
+    })
+  })
 
   // Only main window runs git commands and broadcasts
   if (isMain) {
-    // Watch .git/ for commits, branch switches, staging
-    invoke('watch_path', { path: `${repoPath}/.git`, id: 'git', recursive: false }).catch(() => {})
-    cleanups.push(() => { invoke('unwatch_path', { id: 'git' }).catch(() => {}) })
+    const watches: Array<{ path: string; id: string; recursive: boolean }> = [
+      { path: `${repoPath}/.git`, id: 'git', recursive: false },
+      { path: repoPath, id: 'source', recursive: false },
+      { path: `${repoPath}/src`, id: 'source-src', recursive: true },
+      { path: `${repoPath}/tauri/src`, id: 'source-rs', recursive: true },
+    ]
+    for (const w of watches) {
+      invoke('watch_path', w).catch((err) => {
+        console.warn(`[git] watch_path "${w.id}" failed — git state may become stale:`, err)
+      })
+      cleanups.push(() => {
+        invoke('unwatch_path', { id: w.id }).catch((err) => {
+          console.warn(`[git] unwatch_path "${w.id}" failed:`, err)
+        })
+      })
+    }
 
-    // Watch source directories for working tree edits
-    invoke('watch_path', { path: repoPath, id: 'source', recursive: false }).catch(() => {})
-    cleanups.push(() => { invoke('unwatch_path', { id: 'source' }).catch(() => {}) })
-    invoke('watch_path', { path: `${repoPath}/src`, id: 'source-src', recursive: true }).catch(() => {})
-    cleanups.push(() => { invoke('unwatch_path', { id: 'source-src' }).catch(() => {}) })
-    invoke('watch_path', { path: `${repoPath}/tauri/src`, id: 'source-rs', recursive: true }).catch(() => {})
-    cleanups.push(() => { invoke('unwatch_path', { id: 'source-rs' }).catch(() => {}) })
-
-    const GIT_WATCH_IDS = new Set(['git', 'source', 'source-src', 'source-rs'])
+    const GIT_WATCH_IDS = new Set(watches.map((w) => w.id))
     const fsListenPromise = listen('fs-changed', (event) => {
       const payload = event.payload as { id: string }
       if (GIT_WATCH_IDS.has(payload.id)) {
-        useGitStore.getState().refresh()
+        useGitStore.getState().refresh().catch((err) => {
+          console.warn('[git] refresh after fs change failed:', err)
+        })
       }
     })
-    cleanups.push(() => { fsListenPromise.then(fn => fn()).catch(() => {}) })
+    cleanups.push(() => {
+      fsListenPromise.then((fn) => fn()).catch((err) => {
+        console.warn('[git] failed to detach fs-changed listener:', err)
+      })
+    })
 
-    const onFocus = () => { useGitStore.getState().refresh() }
+    const onFocus = () => {
+      useGitStore.getState().refresh().catch((err) => {
+        console.warn('[git] refresh on window focus failed:', err)
+      })
+    }
     window.addEventListener('focus', onFocus)
     cleanups.push(() => window.removeEventListener('focus', onFocus))
   }

@@ -13,8 +13,10 @@ import { getNodeFlags } from '.'
 
 /**
  * Global registry of mounted CodeMirror EditorViews.
- * When the canvas pans (viewport moves), we call requestMeasure() on each
- * so CodeMirror recalculates which lines are visible and renders them.
+ * Kept so that when the canvas viewport moves we can call requestMeasure()
+ * on each editor; this is a no-op when CodeMirror is managing its own
+ * scrolling, but harmless and useful if a consumer ever needs to force
+ * a re-measure (e.g. after the surrounding container resizes).
  */
 const editorViews = new Set<EditorView>()
 
@@ -32,6 +34,15 @@ function getLanguageExt(filePath: string) {
   return javascript({ typescript: true })
 }
 
+const DEFAULT_CODE_NODE_WIDTH = 650
+const MIN_CODE_NODE_WIDTH = 280
+/**
+ * Vertical space reserved above/below the editor for the top bar and
+ * a little breathing room. The editor will grow until it reaches
+ * `window.innerHeight - CODE_NODE_HEIGHT_RESERVED`, then scroll internally.
+ */
+const CODE_NODE_HEIGHT_RESERVED = 120
+
 export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -39,7 +50,38 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [editorHeight, setEditorHeight] = useState<number | undefined>(undefined)
+  const [nodeWidth, setNodeWidth] = useState<number>(DEFAULT_CODE_NODE_WIDTH)
+
+  /**
+   * Start a right-edge resize drag. Uses native document listeners so the
+   * drag keeps working even if the pointer leaves the small handle area,
+   * and short-circuits ReactFlow's own drag handlers via stopPropagation
+   * + preventDefault on the initial mousedown.
+   */
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startWidth = nodeWidth
+
+    const onMove = (ev: MouseEvent) => {
+      ev.preventDefault()
+      const next = Math.max(MIN_CODE_NODE_WIDTH, startWidth + (ev.clientX - startX))
+      setNodeWidth(next)
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    // While dragging, force the ew-resize cursor globally and block text
+    // selection so the drag feels solid across the whole window.
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+  }, [nodeWidth])
 
   const saveToFile = useCallback(async () => {
     const view = viewRef.current
@@ -71,7 +113,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       doc: data.code,
       extensions: [
         lineNumbers({
-          formatNumber: (n) => String(n + data.startLine),
+          // CodeMirror passes 1-based line numbers to `formatNumber`, so the
+          // first line in the snippet maps to `data.startLine` directly.
+          formatNumber: (n) => String(n + data.startLine - 1),
         }),
         highlightActiveLine(),
         getLanguageExt(data.filePath),
@@ -89,7 +133,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           {
             key: 'Mod-s',
             run: () => {
-              saveToFile()
+              void saveToFile()
               return true
             },
           },
@@ -106,10 +150,15 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         EditorView.theme({
           '&': {
             fontSize: '12px',
+            // Let the editor grow with its content up to the window height,
+            // then scroll internally. This is the CodeMirror-idiomatic way
+            // to get a "grow-until-cap then scroll" behaviour — see:
+            // https://codemirror.net/examples/styling/#overflow-and-scrolling
+            maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`,
           },
           '.cm-scroller': {
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            overflow: 'visible !important',
+            overflowY: 'auto',
           },
           '.cm-gutters': {
             backgroundColor: 'transparent',
@@ -133,17 +182,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     })
     editorViews.add(viewRef.current)
 
-    // After CodeMirror renders its initial viewport, read the total document
-    // height from its height map so the outer node can be sized to contain
-    // all lines. This lets ReactFlow measure the full node height while
-    // CodeMirror still virtualizes rendering.
-    requestAnimationFrame(() => {
-      if (viewRef.current) {
-        const totalHeight = viewRef.current.contentHeight
-        setEditorHeight(totalHeight)
-      }
-    })
-
     return () => {
       if (viewRef.current) {
         editorViews.delete(viewRef.current)
@@ -157,8 +195,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
   return (
     <div
-      className={`bg-background/95 backdrop-blur border rounded-lg min-w-[280px] nodrag nopan ${flags.isFocused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
-      style={{ maxWidth: '50vw' }}
+      className={`relative bg-background/95 backdrop-blur border rounded-lg nodrag nopan ${flags.isFocused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
+      style={{ width: nodeWidth }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/30">
@@ -188,7 +226,20 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       <div
         ref={editorRef}
         className="nowheel"
-        style={editorHeight != null ? { height: editorHeight } : undefined}
+      />
+
+      {/*
+        Right-edge resize handle (width only).
+        Positioned fully inside the node bounds so ReactFlow's wrapper
+        doesn't clip it; uses `nodrag nopan` to keep ReactFlow from
+        hijacking the pointer, and native mousedown/mousemove/mouseup
+        listeners for rock-solid drag behaviour across the window.
+      */}
+      <div
+        onMouseDown={handleResizeMouseDown}
+        className="nodrag nopan absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-primary/40 transition-colors rounded-r-lg z-10"
+        aria-label="Resize code node"
+        role="separator"
       />
 
       <Handle type="source" position={Position.Bottom} className="opacity-0" />

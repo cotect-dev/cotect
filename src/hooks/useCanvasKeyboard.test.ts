@@ -1,13 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
-// Mock web-tree-sitter to avoid WASM loading
-vi.mock('web-tree-sitter', () => ({
-  Parser: { init: vi.fn() },
-  Query: vi.fn(),
-  Language: { load: vi.fn() },
-}))
-
 // Mock platform
 vi.mock('@/services/platform', () => ({
   getPlatform: () => ({
@@ -16,11 +9,6 @@ vi.mock('@/services/platform', () => ({
       readFile: vi.fn().mockResolvedValue(''),
     },
   }),
-}))
-
-// Mock treesitter
-vi.mock('@/services/treesitter', () => ({
-  analyzeFile: vi.fn().mockResolvedValue({ declarations: [], imports: [] }),
 }))
 
 import { useCanvasKeyboard } from './useCanvasKeyboard'
