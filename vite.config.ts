@@ -10,6 +10,23 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-reactflow': ['@xyflow/react'],
+          'vendor-ui': ['@base-ui/react', 'lucide-react', '@dnd-kit/core', '@dnd-kit/utilities'],
+          'vendor-tauri': [
+            '@tauri-apps/api',
+            '@tauri-apps/plugin-store',
+            '@tauri-apps/plugin-dialog',
+            '@tauri-apps/plugin-fs',
+          ],
+        },
+      },
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

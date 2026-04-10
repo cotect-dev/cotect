@@ -2,7 +2,7 @@ import type { NodeTypes } from '@xyflow/react'
 import type { NodeDisplayFlags } from '@/types/nodes'
 import FolderNode from './FolderNode'
 import FileNode from './FileNode'
-import CodeNode from './CodeNode'
+import CodeNode from './CodeNodeLazy'
 import ImageNode from './ImageNode'
 
 export const nodeTypes: NodeTypes = {
