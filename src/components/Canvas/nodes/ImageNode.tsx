@@ -7,7 +7,7 @@ import type { ImageNode } from '@/types/nodes'
 import { getNodeFlags, getNodeOpacity } from '.'
 
 export default memo(function ImageNode({ id, data }: NodeProps<ImageNode>) {
-  const flags = getNodeFlags(data as Record<string, unknown>)
+  const flags = getNodeFlags(data)
 
   const handleClick = useCallback(() => useCanvasStore.getState().setFocus(id), [id])
 

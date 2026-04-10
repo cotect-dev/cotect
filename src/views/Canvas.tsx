@@ -8,7 +8,7 @@ import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
 import WindowShell from '@/components/WindowShell'
 import { useCanvasKeyboard } from '@/hooks/useCanvasKeyboard'
 import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
-import { notifyCanvasScrolled } from '@/components/Canvas/nodes/CodeNode'
+import { notifyCanvasScrolled } from '@/components/Canvas/nodes/codeNodeRegistry'
 
 const proOptions = { hideAttribution: true }
 

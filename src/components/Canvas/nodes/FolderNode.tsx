@@ -7,7 +7,7 @@ import BaseNode from './BaseNode'
 import { getNodeFlags, getNodeOpacity } from '.'
 
 export default memo(function FolderNode({ id, data }: NodeProps<FolderNode>) {
-  const flags = getNodeFlags(data as Record<string, unknown>)
+  const flags = getNodeFlags(data)
 
   const handleClick = useCallback(() => useCanvasStore.getState().setFocus(id), [id])
   const handleDoubleClick = useCallback(() => {
