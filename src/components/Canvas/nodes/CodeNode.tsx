@@ -32,7 +32,7 @@ function getLanguageExt(filePath: string) {
   return javascript({ typescript: true })
 }
 
-export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
+export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const flags = getNodeFlags(data as Record<string, unknown>)
@@ -157,7 +157,7 @@ export default memo(function CodeNode({ id, data }: NodeProps<CodeNode>) {
 
   return (
     <div
-      className={`bg-background/95 backdrop-blur border rounded-lg min-w-[280px] transition-all duration-150 nodrag nopan ${flags.isFocused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
+      className={`bg-background/95 backdrop-blur border rounded-lg min-w-[280px] nodrag nopan ${flags.isFocused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
       style={{ maxWidth: '50vw' }}
     >
       {/* Header */}

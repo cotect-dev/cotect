@@ -78,7 +78,7 @@ export default function PanelArea({ group, position, groupIndex, ghostTabLabel }
   return (
     <div
       data-panel-area={group[0]}
-      className={`h-full w-full overflow-hidden bg-background/80 backdrop-blur-sm flex flex-col transition-opacity duration-200 ${
+      className={`h-full w-full overflow-hidden bg-background/80 backdrop-blur-sm flex flex-col transition-opacity duration-100 ${
         isDragging ? 'opacity-20' : ''
       }`}
     >

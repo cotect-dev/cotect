@@ -83,7 +83,7 @@ export function generateFileNodes(
       const methodId = `${nodeId}:${method.name}`
       nodes.push({
         id: methodId, type: 'functionNode', position: { x: 0, y: 0 },
-        data: { label: method.name, kind: 'function', startLine: method.startLine, endLine: method.endLine, isMethod: true },
+        data: { label: method.name, kind: 'function' as const, startLine: method.startLine, endLine: method.endLine, isMethod: true },
       })
       edges.push({ id: `e-${nodeId}-${methodId}`, source: nodeId, target: methodId, type: 'smoothstep' })
     }

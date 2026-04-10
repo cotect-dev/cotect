@@ -73,6 +73,7 @@ fn main() {
             commands::get_window_monitor,
             commands::set_window_on_monitor,
             commands::get_monitors,
+            commands::show_in_folder,
             watcher::watch_path,
             watcher::unwatch_path,
             git::git_status,

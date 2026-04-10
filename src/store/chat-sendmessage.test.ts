@@ -15,7 +15,7 @@ vi.mock('@/services/platform', () => ({
   }),
 }))
 
-import { useChatStore, sendMessage, buildRequestPayload, type Message, type ModelId } from './chat'
+import { useChatStore, sendMessage, buildRequestPayload, type Message } from './chat'
 
 // --- SSE stream helpers ---
 

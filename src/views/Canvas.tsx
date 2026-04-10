@@ -85,7 +85,7 @@ function CanvasFlow() {
       const currentColX = currentColumnIndex * columnStep
       reactFlow.setViewport(
         { x: CANVAS_PAD_X + panelW - currentColX, y: CANVAS_PAD_Y, zoom: 1 },
-        { duration: 200 },
+        { duration: 100 },
       )
     }, 30)
     return () => clearTimeout(timer)
@@ -136,7 +136,7 @@ function CanvasFlow() {
     }
 
     if (newX !== viewport.x || newY !== viewport.y) {
-      reactFlow.setViewport({ x: newX, y: newY, zoom: viewport.zoom }, { duration: 150 })
+      reactFlow.setViewport({ x: newX, y: newY, zoom: viewport.zoom }, { duration: 0 })
     }
   }, [focusedNodeId, focusedNodeX, focusedNodeY]) // eslint-disable-line react-hooks/exhaustive-deps
 

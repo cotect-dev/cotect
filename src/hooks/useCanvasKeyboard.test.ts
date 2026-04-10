@@ -26,8 +26,6 @@ vi.mock('@/services/treesitter', () => ({
 import { useCanvasKeyboard } from './useCanvasKeyboard'
 import { useCanvasStore } from '@/store'
 
-const FOCUS_GUARD_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
-
 describe('useCanvasKeyboard', () => {
   let container: HTMLDivElement
 
@@ -245,5 +243,49 @@ describe('useCanvasKeyboard', () => {
     expect(navigateLeftSpy).not.toHaveBeenCalled()
     expect(navigateRightSpy).not.toHaveBeenCalled()
     expect(toggleSpy).not.toHaveBeenCalled()
+  })
+
+  it('prevents default browser Tab focus change when canvas is focused', () => {
+    const ref = { current: container }
+    renderHook(() => useCanvasKeyboard(ref))
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    container.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('allows Tab to pass through when an INPUT is focused', () => {
+    const ref = { current: container }
+    renderHook(() => useCanvasKeyboard(ref))
+
+    const input = document.createElement('input')
+    container.appendChild(input)
+    input.focus()
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    input.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('allows Tab to pass through when CodeMirror editor is focused', () => {
+    const ref = { current: container }
+    renderHook(() => useCanvasKeyboard(ref))
+
+    const cmEditor = document.createElement('div')
+    cmEditor.className = 'cm-editor'
+    const cmContent = document.createElement('div')
+    cmContent.className = 'cm-content'
+    cmContent.setAttribute('contenteditable', 'true')
+    cmContent.setAttribute('tabindex', '0')
+    cmEditor.appendChild(cmContent)
+    container.appendChild(cmEditor)
+    cmContent.focus()
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    cmContent.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
   })
 })

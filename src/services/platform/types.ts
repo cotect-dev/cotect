@@ -82,6 +82,8 @@ export interface Platform {
     writeFile(path: string, content: string): Promise<void>
     readDirectory(path: string): Promise<FSEntry[]>
     showFolderDialog(title: string): Promise<string | null>
+    /** Open a path in the system file manager. If path is a file, opens the parent directory. */
+    showInFolder(path: string): Promise<void>
   }
 
   storage: {
