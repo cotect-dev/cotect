@@ -28,8 +28,6 @@ preloadChunk(import('@/components/Settings'), 'Settings')
 preloadChunk(import('@/components/History'), 'History')
 preloadChunk(import('@/components/Branches'), 'Branches')
 preloadChunk(import('@/components/Tasks'), 'Tasks')
-// CodeNode ships CodeMirror; drilling into the first file otherwise blanks.
-preloadChunk(import('@/components/Canvas/nodes/CodeNode'), 'CodeNode')
 // ChatMessage's own module-level dynamic imports — pull them in parallel
 // with the Chat chunk itself to avoid a two-level waterfall.
 preloadChunk(import('remark-gfm'), 'remark-gfm')

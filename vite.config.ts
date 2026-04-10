@@ -23,6 +23,18 @@ export default defineConfig({
             '@tauri-apps/plugin-dialog',
             '@tauri-apps/plugin-fs',
           ],
+          // CodeMirror is statically imported by CodeNode (which is now a
+          // static node type) — put it in its own vendor chunk so the
+          // browser modulepreloads it in parallel with the main bundle
+          // and the first file drill renders instantly.
+          'vendor-codemirror': [
+            '@codemirror/view',
+            '@codemirror/state',
+            '@codemirror/lang-javascript',
+            '@codemirror/lang-json',
+            '@codemirror/lang-css',
+            '@codemirror/theme-one-dark',
+          ],
         },
       },
     },
