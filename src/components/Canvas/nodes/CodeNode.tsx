@@ -10,21 +10,7 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { getPlatform } from '@/services/platform'
 import type { CodeNode } from '@/types/nodes'
 import { getNodeFlags } from '.'
-
-/**
- * Global registry of mounted CodeMirror EditorViews.
- * Kept so that when the canvas viewport moves we can call requestMeasure()
- * on each editor; this is a no-op when CodeMirror is managing its own
- * scrolling, but harmless and useful if a consumer ever needs to force
- * a re-measure (e.g. after the surrounding container resizes).
- */
-const editorViews = new Set<EditorView>()
-
-export function notifyCanvasScrolled() {
-  for (const view of editorViews) {
-    view.requestMeasure()
-  }
-}
+import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'
 
 function getLanguageExt(filePath: string) {
   if (/\.(tsx?)$/.test(filePath)) return javascript({ typescript: true, jsx: true })
@@ -46,7 +32,7 @@ const CODE_NODE_HEIGHT_RESERVED = 120
 export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const flags = getNodeFlags(data as Record<string, unknown>)
+  const flags = getNodeFlags(data)
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -180,11 +166,11 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       state,
       parent: editorRef.current,
     })
-    editorViews.add(viewRef.current)
+    registerEditorView(viewRef.current)
 
     return () => {
       if (viewRef.current) {
-        editorViews.delete(viewRef.current)
+        unregisterEditorView(viewRef.current)
         viewRef.current.destroy()
         viewRef.current = null
       }

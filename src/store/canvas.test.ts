@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { Node } from '@xyflow/react'
 import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
 
 // --- Mocks ---
@@ -32,6 +31,7 @@ function resetStore() {
     currentColumnIndex: 0,
     depthChain: [],
     hiddenNodeIds: new Set(),
+    rightFocusMemory: {},
     viewportHeight: 0,
     cameraY: CANVAS_PAD_Y,
   })
@@ -39,6 +39,16 @@ function resetStore() {
 
 function makeFSEntries(entries: Array<{ name: string; path: string; isDirectory: boolean }>) {
   return entries
+}
+
+/** Build a positioned file node for position-only tests. */
+function posNode(id: string, x: number, y: number): AppNode {
+  return {
+    id,
+    type: 'file',
+    position: { x, y },
+    data: { label: id, path: `/${id}` },
+  }
 }
 
 // ============================================================================
@@ -63,7 +73,7 @@ describe('isTestFile detection (via directory node sorting)', () => {
     // Column 0 is the root directory column
     const dirCol = useCanvasStore.getState().columns[0]
     expect(dirCol).toBeDefined()
-    const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
+    const labels = dirCol.nodes.map((n) => n.data.label)
     // Regular files come before test files
     expect(labels.indexOf('app.ts')).toBeLessThan(labels.indexOf('app.test.ts'))
     expect(labels.indexOf('utils.ts')).toBeLessThan(labels.indexOf('app.test.ts'))
@@ -80,7 +90,7 @@ describe('isTestFile detection (via directory node sorting)', () => {
     await useCanvasStore.getState().initRoot('/proj')
 
     const dirCol = useCanvasStore.getState().columns[0]
-    const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
+    const labels = dirCol.nodes.map((n) => n.data.label)
     // Folder first, then regular file, then test file
     expect(labels).toEqual(['src', 'main.ts', 'app.spec.ts'])
   })
@@ -102,7 +112,7 @@ describe('isTestFile detection (via directory node sorting)', () => {
     await useCanvasStore.getState().initRoot('/p')
 
     const dirCol = useCanvasStore.getState().columns[0]
-    const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
+    const labels = dirCol.nodes.map((n) => n.data.label)
     // 'regular.ts' should be the only regular file — everything else is a test
     expect(labels[0]).toBe('regular.ts')
     // All others are test files — they come after
@@ -126,10 +136,10 @@ describe('isTestFile detection (via directory node sorting)', () => {
     await useCanvasStore.getState().initRoot('/p')
 
     const dirCol = useCanvasStore.getState().columns[0]
-    const regular = dirCol.nodes.find((n) => (n.data as Record<string, unknown>).label === 'app.ts')
-    const test = dirCol.nodes.find((n) => (n.data as Record<string, unknown>).label === 'app.test.ts')
-    expect((regular!.data as Record<string, unknown>).isTestFile).toBeFalsy()
-    expect((test!.data as Record<string, unknown>).isTestFile).toBe(true)
+    const regular = dirCol.nodes.find((n) => n.data.label === 'app.ts')
+    const test = dirCol.nodes.find((n) => n.data.label === 'app.test.ts')
+    expect(regular?.type === 'file' && regular.data.isTestFile).toBeFalsy()
+    expect(test?.type === 'file' && test.data.isTestFile).toBe(true)
   })
 })
 
@@ -154,7 +164,7 @@ describe('directory filtering', () => {
     await useCanvasStore.getState().initRoot('/p')
 
     const dirCol = useCanvasStore.getState().columns[0]
-    const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
+    const labels = dirCol.nodes.map((n) => n.data.label)
     expect(labels).toContain('src')
     expect(labels).toContain('main.ts')
     expect(labels).not.toContain('node_modules')
@@ -172,7 +182,7 @@ describe('directory filtering', () => {
     await useCanvasStore.getState().initRoot('/p')
 
     const dirCol = useCanvasStore.getState().columns[0]
-    const labels = dirCol.nodes.map((n) => (n.data as Record<string, unknown>).label)
+    const labels = dirCol.nodes.map((n) => n.data.label)
     expect(labels).toContain('.env')
     expect(labels).toContain('.gitignore')
     expect(labels).not.toContain('.hidden')
@@ -189,12 +199,8 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
   })
 
   it('moveFocus picks first node when no focus is set', () => {
-    // Manually set up nodes
     useCanvasStore.setState({
-      nodes: [
-        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
-        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
-      ],
+      nodes: [posNode('a', 0, 0), posNode('b', 0, 72)],
     })
 
     useCanvasStore.getState().moveFocus('down')
@@ -203,11 +209,7 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
 
   it('moveFocus moves focus down to next node in same column', () => {
     useCanvasStore.setState({
-      nodes: [
-        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
-        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
-        { id: 'c', position: { x: 0, y: 144 }, data: {} } as Node,
-      ],
+      nodes: [posNode('a', 0, 0), posNode('b', 0, 72), posNode('c', 0, 144)],
       focusedNodeId: 'a',
     })
 
@@ -217,10 +219,7 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
 
   it('moveFocus moves focus up to previous node in same column', () => {
     useCanvasStore.setState({
-      nodes: [
-        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
-        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
-      ],
+      nodes: [posNode('a', 0, 0), posNode('b', 0, 72)],
       focusedNodeId: 'b',
     })
 
@@ -230,9 +229,7 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
 
   it('moveFocus does nothing when at boundary (no neighbor)', () => {
     useCanvasStore.setState({
-      nodes: [
-        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
-      ],
+      nodes: [posNode('a', 0, 0)],
       focusedNodeId: 'a',
     })
 
@@ -243,8 +240,8 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
   it('moveFocus ignores nodes in different X columns', () => {
     useCanvasStore.setState({
       nodes: [
-        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
-        { id: 'b', position: { x: NODE_WIDTH + NODE_H_GAP, y: 72 }, data: {} } as Node,
+        posNode('a', 0, 0),
+        posNode('b', NODE_WIDTH + NODE_H_GAP, 72),
       ],
       focusedNodeId: 'a',
     })
@@ -262,11 +259,7 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
 
   it('moveFocus picks nearest node when multiple candidates exist', () => {
     useCanvasStore.setState({
-      nodes: [
-        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
-        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
-        { id: 'c', position: { x: 0, y: 200 }, data: {} } as Node,
-      ],
+      nodes: [posNode('a', 0, 0), posNode('b', 0, 72), posNode('c', 0, 200)],
       focusedNodeId: 'a',
     })
 
@@ -276,11 +269,7 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
 
   it('moveFocus wraps down from last node to first node in column', () => {
     useCanvasStore.setState({
-      nodes: [
-        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
-        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
-        { id: 'c', position: { x: 0, y: 144 }, data: {} } as Node,
-      ],
+      nodes: [posNode('a', 0, 0), posNode('b', 0, 72), posNode('c', 0, 144)],
       focusedNodeId: 'c',
     })
 
@@ -290,11 +279,7 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
 
   it('moveFocus wraps up from first node to last node in column', () => {
     useCanvasStore.setState({
-      nodes: [
-        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
-        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
-        { id: 'c', position: { x: 0, y: 144 }, data: {} } as Node,
-      ],
+      nodes: [posNode('a', 0, 0), posNode('b', 0, 72), posNode('c', 0, 144)],
       focusedNodeId: 'a',
     })
 
@@ -305,10 +290,10 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
   it('moveFocus wraps within own column only, not across columns', () => {
     useCanvasStore.setState({
       nodes: [
-        { id: 'a', position: { x: 0, y: 0 }, data: {} } as Node,
-        { id: 'b', position: { x: 0, y: 72 }, data: {} } as Node,
-        { id: 'c', position: { x: NODE_WIDTH + NODE_H_GAP, y: 0 }, data: {} } as Node,
-        { id: 'd', position: { x: NODE_WIDTH + NODE_H_GAP, y: 72 }, data: {} } as Node,
+        posNode('a', 0, 0),
+        posNode('b', 0, 72),
+        posNode('c', NODE_WIDTH + NODE_H_GAP, 0),
+        posNode('d', NODE_WIDTH + NODE_H_GAP, 72),
       ],
       focusedNodeId: 'b',
     })
@@ -415,7 +400,7 @@ describe('navigateRight', () => {
   it('does nothing when focused node not found', async () => {
     useCanvasStore.setState({
       focusedNodeId: 'nonexistent',
-      nodes: [{ id: 'other', position: { x: 0, y: 0 }, data: {} } as Node],
+      nodes: [posNode('other', 0, 0)],
     })
     await useCanvasStore.getState().navigateRight()
     expect(useCanvasStore.getState().currentColumnIndex).toBe(0)
@@ -486,8 +471,8 @@ describe('navigateRight', () => {
       depthChain: ['/proj'],
       focusedNodeId: '/proj/src',
       nodes: [
-        { ...folderNode, data: { ...folderNode.data } } as Node,
-        { ...previewFileNode, data: { ...previewFileNode.data } } as Node,
+        { ...folderNode, data: { ...folderNode.data } } as AppNode,
+        { ...previewFileNode, data: { ...previewFileNode.data } } as AppNode,
       ],
     })
 
@@ -534,8 +519,8 @@ describe('navigateLeft', () => {
       currentColumnIndex: 1,
       focusedNodeId: '/proj/src/main.ts',
       nodes: [
-        { ...parentNode, data: { ...parentNode.data } } as Node,
-        { ...childNode, data: { ...childNode.data } } as Node,
+        { ...parentNode, data: { ...parentNode.data } } as AppNode,
+        { ...childNode, data: { ...childNode.data } } as AppNode,
       ],
     })
 
@@ -560,7 +545,7 @@ describe('navigateLeft', () => {
       columns: [parentCol, childCol],
       currentColumnIndex: 1,
       focusedNodeId: null,
-      nodes: [{ ...node1, data: { ...node1.data } } as Node],
+      nodes: [{ ...node1, data: { ...node1.data } } as AppNode],
     })
 
     useCanvasStore.getState().navigateLeft()
@@ -568,6 +553,219 @@ describe('navigateLeft', () => {
     expect(useCanvasStore.getState().focusedNodeId).toBe('node1')
   })
 
+  it('records the focused child in rightFocusMemory', () => {
+    const folderNode: AppNode = {
+      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      data: { label: 'src', path: '/proj/src', isDirectory: true as const },
+    }
+    const childA: AppNode = {
+      id: '/proj/src/a.ts', type: 'file', position: { x: 0, y: 0 },
+      data: { label: 'a.ts', path: '/proj/src/a.ts' },
+    }
+    const childB: AppNode = {
+      id: '/proj/src/b.ts', type: 'file', position: { x: 0, y: 0 },
+      data: { label: 'b.ts', path: '/proj/src/b.ts' },
+    }
+
+    useCanvasStore.setState({
+      columns: [
+        { path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] },
+        { path: '/proj/src', kind: 'directory', nodes: [childA, childB], edges: [] },
+      ],
+      currentColumnIndex: 1,
+      focusedNodeId: '/proj/src/b.ts',
+      nodes: [
+        { ...folderNode, data: { ...folderNode.data } } as AppNode,
+        { ...childA, data: { ...childA.data } } as AppNode,
+        { ...childB, data: { ...childB.data } } as AppNode,
+      ],
+    })
+
+    useCanvasStore.getState().navigateLeft()
+
+    expect(useCanvasStore.getState().rightFocusMemory).toEqual({
+      '/proj/src': '/proj/src/b.ts',
+    })
+  })
+
+})
+
+// ============================================================================
+// Tests for the navigateLeft → navigateRight focus memory
+// ============================================================================
+describe('rightFocusMemory', () => {
+  beforeEach(() => {
+    resetStore()
+    vi.clearAllMocks()
+  })
+
+  it('navigateRight restores remembered focus from a preview promotion', async () => {
+    const folderNode: AppNode = {
+      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      data: { label: 'src', path: '/proj/src', isDirectory: true as const },
+    }
+    const childA: AppNode = {
+      id: '/proj/src/a.ts', type: 'file', position: { x: 0, y: 0 },
+      data: { label: 'a.ts', path: '/proj/src/a.ts' },
+    }
+    const childB: AppNode = {
+      id: '/proj/src/b.ts', type: 'file', position: { x: 0, y: 0 },
+      data: { label: 'b.ts', path: '/proj/src/b.ts' },
+    }
+
+    useCanvasStore.setState({
+      columns: [
+        { path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] },
+        { path: '/proj/src', kind: 'directory', nodes: [childA, childB], edges: [] },
+      ],
+      currentColumnIndex: 1,
+      depthChain: ['/proj', '/proj/src'],
+      focusedNodeId: '/proj/src/b.ts',
+      nodes: [
+        { ...folderNode, data: { ...folderNode.data } } as AppNode,
+        { ...childA, data: { ...childA.data } } as AppNode,
+        { ...childB, data: { ...childB.data } } as AppNode,
+      ],
+    })
+
+    // Left: focus moves back to the parent, memory is saved.
+    useCanvasStore.getState().navigateLeft()
+    expect(useCanvasStore.getState().focusedNodeId).toBe('/proj/src')
+
+    // Right: the preview column gets promoted; memory restores b.ts,
+    // not the first node (a.ts).
+    await useCanvasStore.getState().navigateRight()
+    expect(useCanvasStore.getState().focusedNodeId).toBe('/proj/src/b.ts')
+  })
+
+  it('restores remembered focus from a fresh load when no preview exists', async () => {
+    const folderNode: AppNode = {
+      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      data: { label: 'src', path: '/proj/src', isDirectory: true as const },
+    }
+
+    useCanvasStore.setState({
+      columns: [
+        { path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] },
+      ],
+      currentColumnIndex: 0,
+      depthChain: ['/proj'],
+      focusedNodeId: '/proj/src',
+      nodes: [{ ...folderNode, data: { ...folderNode.data } } as AppNode],
+      // Pre-seeded memory as if we had navigated left out of /proj/src earlier,
+      // but without a preview column loaded (e.g., after a reset).
+      rightFocusMemory: { '/proj/src': '/proj/src/b.ts' },
+    })
+
+    mockReadDirectory.mockResolvedValue(makeFSEntries([
+      { name: 'a.ts', path: '/proj/src/a.ts', isDirectory: false },
+      { name: 'b.ts', path: '/proj/src/b.ts', isDirectory: false },
+    ]))
+
+    await useCanvasStore.getState().navigateRight()
+
+    expect(useCanvasStore.getState().focusedNodeId).toBe('/proj/src/b.ts')
+  })
+
+  it('falls back to first node when remembered id no longer exists', async () => {
+    const folderNode: AppNode = {
+      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      data: { label: 'src', path: '/proj/src', isDirectory: true as const },
+    }
+
+    useCanvasStore.setState({
+      columns: [
+        { path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] },
+      ],
+      currentColumnIndex: 0,
+      depthChain: ['/proj'],
+      focusedNodeId: '/proj/src',
+      nodes: [{ ...folderNode, data: { ...folderNode.data } } as AppNode],
+      rightFocusMemory: { '/proj/src': '/proj/src/deleted.ts' },
+    })
+
+    mockReadDirectory.mockResolvedValue(makeFSEntries([
+      { name: 'a.ts', path: '/proj/src/a.ts', isDirectory: false },
+    ]))
+
+    await useCanvasStore.getState().navigateRight()
+
+    // deleted.ts is gone, so we fall back to the first node (a.ts).
+    expect(useCanvasStore.getState().focusedNodeId).toBe('/proj/src/a.ts')
+  })
+
+  it('2L+2R round trip returns the user to the exact starting focus', async () => {
+    // Three-level tree: /proj → /proj/src → /proj/src/inner → /proj/src/inner/deep.ts
+    const srcFolder: AppNode = {
+      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      data: { label: 'src', path: '/proj/src', isDirectory: true as const },
+    }
+    const innerFolder: AppNode = {
+      id: '/proj/src/inner', type: 'folder', position: { x: 0, y: 0 },
+      data: { label: 'inner', path: '/proj/src/inner', isDirectory: true as const },
+    }
+    const deepA: AppNode = {
+      id: '/proj/src/inner/a.ts', type: 'file', position: { x: 0, y: 0 },
+      data: { label: 'a.ts', path: '/proj/src/inner/a.ts' },
+    }
+    const deepB: AppNode = {
+      id: '/proj/src/inner/b.ts', type: 'file', position: { x: 0, y: 0 },
+      data: { label: 'b.ts', path: '/proj/src/inner/b.ts' },
+    }
+
+    useCanvasStore.setState({
+      columns: [
+        { path: '/proj', kind: 'directory', nodes: [srcFolder], edges: [] },
+        { path: '/proj/src', kind: 'directory', nodes: [innerFolder], edges: [] },
+        { path: '/proj/src/inner', kind: 'directory', nodes: [deepA, deepB], edges: [] },
+      ],
+      currentColumnIndex: 2,
+      depthChain: ['/proj', '/proj/src', '/proj/src/inner'],
+      focusedNodeId: '/proj/src/inner/b.ts',
+      nodes: [
+        { ...srcFolder, data: { ...srcFolder.data } } as AppNode,
+        { ...innerFolder, data: { ...innerFolder.data } } as AppNode,
+        { ...deepA, data: { ...deepA.data } } as AppNode,
+        { ...deepB, data: { ...deepB.data } } as AppNode,
+      ],
+    })
+
+    const store = useCanvasStore.getState
+
+    // L: leave /proj/src/inner focused on b.ts → memory records it
+    store().navigateLeft()
+    expect(store().currentColumnIndex).toBe(1)
+    expect(store().focusedNodeId).toBe('/proj/src/inner')
+
+    // L: leave /proj/src focused on inner → memory records it
+    store().navigateLeft()
+    expect(store().currentColumnIndex).toBe(0)
+    expect(store().focusedNodeId).toBe('/proj/src')
+
+    // R: drill back into /proj/src, focus restored to 'inner'
+    await store().navigateRight()
+    expect(store().currentColumnIndex).toBe(1)
+    expect(store().focusedNodeId).toBe('/proj/src/inner')
+
+    // R: drill back into /proj/src/inner, focus restored to 'b.ts' (not 'a.ts')
+    await store().navigateRight()
+    expect(store().currentColumnIndex).toBe(2)
+    expect(store().focusedNodeId).toBe('/proj/src/inner/b.ts')
+  })
+
+  it('initRoot wipes previously saved focus memory', async () => {
+    useCanvasStore.setState({
+      rightFocusMemory: { '/old/path': '/old/path/something.ts' },
+    })
+
+    mockReadDirectory.mockResolvedValue(makeFSEntries([
+      { name: 'a.ts', path: '/proj/a.ts', isDirectory: false },
+    ]))
+
+    await useCanvasStore.getState().initRoot('/proj')
+
+    expect(useCanvasStore.getState().rightFocusMemory).toEqual({})
+  })
 })
 
 // ============================================================================
@@ -1102,7 +1300,7 @@ describe('buildFileNodes', () => {
       columns: [{ path: '/proj', kind: 'directory', nodes: [fileNode], edges: [] }],
       currentColumnIndex: 0,
       focusedNodeId: '/proj/config.json',
-      nodes: [{ ...fileNode, data: { ...fileNode.data } } as Node],
+      nodes: [{ ...fileNode, data: { ...fileNode.data } } as AppNode],
     })
 
     mockReadFile.mockResolvedValue('{\n  "key": "value"\n}\n')
@@ -1113,9 +1311,11 @@ describe('buildFileNodes', () => {
     const fileCol = state.columns[1]
     expect(fileCol).toBeDefined()
     expect(fileCol.nodes).toHaveLength(1)
-    expect(fileCol.nodes[0].type).toBe('codeNode')
-    const data = fileCol.nodes[0].data as Record<string, unknown>
-    expect(data.code).toBe('{\n  "key": "value"\n}\n')
+    const firstNode = fileCol.nodes[0]
+    expect(firstNode.type).toBe('codeNode')
+    if (firstNode.type === 'codeNode') {
+      expect(firstNode.data.code).toBe('{\n  "key": "value"\n}\n')
+    }
   })
 
 })
@@ -1146,7 +1346,9 @@ describe('ReactFlow handlers', () => {
   })
 
   it('setNodes replaces nodes', () => {
-    const newNodes = [{ id: 'x', position: { x: 0, y: 0 }, data: {} } as Node]
+    const newNodes: AppNode[] = [
+      { id: 'x', type: 'file', position: { x: 0, y: 0 }, data: { label: 'x', path: '/x' } },
+    ]
     useCanvasStore.getState().setNodes(newNodes)
     expect(useCanvasStore.getState().nodes).toEqual(newNodes)
   })

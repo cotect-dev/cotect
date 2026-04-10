@@ -1,7 +1,8 @@
 import { useDraggable } from '@dnd-kit/core';
 import { X } from 'lucide-react';
 import { getPanelLabel, useLayoutStore, type PanelPosition } from '@/store/layout';
-import { PANEL_CONTENT, PanelSlot } from './PanelHost';
+import { PanelSlot } from './PanelHost';
+import { PANEL_CONTENT } from './panelContent';
 
 interface PanelAreaProps {
   group: string[];

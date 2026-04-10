@@ -9,7 +9,7 @@ import BaseNode from './BaseNode'
 import { getNodeFlags } from '.'
 
 export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
-  const flags = getNodeFlags(data as Record<string, unknown>)
+  const flags = getNodeFlags(data)
   const parseable = getConfigForFile(data.label) !== null
   const isTest = data.isTestFile === true
   const isPreview = id.startsWith('__preview__:')
