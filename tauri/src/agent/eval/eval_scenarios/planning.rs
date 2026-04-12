@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Plan as P;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_plan_security_audit(dir: &Path) -> SetupResult {
         let p = ap(dir, "server.py");
@@ -45,7 +44,6 @@ def upload():
     }
     v.push(scen!("plan_security_audit", Category::Planning, Difficulty::Medium, P, s_plan_security_audit));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_plan_microservice_split(dir: &Path) -> SetupResult {
         std::fs::create_dir_all(dir.join("app")).ok();
