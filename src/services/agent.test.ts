@@ -108,8 +108,7 @@ describe('agent service', () => {
 
       expect(listen).toHaveBeenCalledWith('agent-task-event:task-42', expect.any(Function))
 
-      // Cleanup should call unlisten
-      // Note: unlisten is set async, so we verify the returned function exists
+      // unlisten is set async, so we verify the returned function exists
       expect(typeof unsubscribe).toBe('function')
     })
 
@@ -120,10 +119,8 @@ describe('agent service', () => {
       const callback = vi.fn()
       const cleanup = agent.listenToTask('task-99', callback)
 
-      // Call cleanup — this internally calls promise.then(fn => fn())
       cleanup()
 
-      // Wait for the listen promise to resolve and the unlisten to be called
       await vi.waitFor(() => {
         expect(unlisten).toHaveBeenCalled()
       })
