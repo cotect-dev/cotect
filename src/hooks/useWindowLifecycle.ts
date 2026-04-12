@@ -93,7 +93,6 @@ export function useWindowLifecycle() {
         }
         startSessionPersistence()
 
-        // Initialize persistence with the current project
         const rootPath = session?.rootPath || useBrowserStore.getState().rootPath
         if (rootPath) {
           const projectId = await computeProjectId(rootPath)
@@ -106,7 +105,6 @@ export function useWindowLifecycle() {
             gitState.setRepoPath(state.rootPath)
             stopGitWatcher()
             startGitWatcher(state.rootPath, windowId)
-            // Switch persistence to the new project
             computeProjectId(state.rootPath).then((newProjectId) => {
               switchProject(newProjectId).catch((err) => {
                 console.warn('[windowLifecycle] persistence project switch failed:', err)

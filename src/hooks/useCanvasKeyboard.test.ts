@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
-// Mock platform
 vi.mock('@/services/platform', () => ({
   getPlatform: () => ({
     fs: {
@@ -20,7 +19,6 @@ describe('useCanvasKeyboard', () => {
   beforeEach(() => {
     container = document.createElement('div')
     document.body.appendChild(container)
-    // Reset store
     useCanvasStore.setState({
       nodes: [],
       edges: [],
