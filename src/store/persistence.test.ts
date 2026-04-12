@@ -183,6 +183,31 @@ describe('persistence', () => {
       )
     })
 
+    it('auto-converts Set to Array without custom serialize', async () => {
+      const store = create(
+        withPersistence<{ ids: Set<string> }>(
+          () => ({ ids: new Set() }),
+          {
+            name: 'mystore',
+            fields: { ids: { scope: 'global' } },
+            debounce: 100,
+          },
+        ),
+      )
+
+      await initPersistence('test-project-abc12345')
+      mockSyncedSet.mockClear()
+
+      store.setState({ ids: new Set(['x', 'y']) })
+      vi.advanceTimersByTime(150)
+
+      expect(mockSyncedSet).toHaveBeenCalledWith(
+        'persist:global',
+        expect.objectContaining({ 'mystore.ids': expect.arrayContaining(['x', 'y']) }),
+        'test-window',
+      )
+    })
+
     it('uses serialize function when provided', async () => {
       const store = create(
         withPersistence<{ ids: Set<string> }>(
