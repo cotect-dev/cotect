@@ -7,8 +7,6 @@ const INPUT_CLASS =
   'h-7 px-2 text-xs rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary'
 const MONO_INPUT_CLASS = `${INPUT_CLASS} font-mono`
 
-// ─── Provider form ───────────────────────────────────────────────────────────
-
 function ProviderForm({
   initial,
   onSave,
@@ -100,7 +98,6 @@ function ProviderForm({
         </div>
       </div>
 
-      {/* Test result */}
       {testResult && (
         <div className={`text-[10px] rounded px-2 py-1 ${testResult.error ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
           {testResult.error
@@ -129,7 +126,6 @@ function ProviderForm({
         </div>
       )}
 
-      {/* Actions */}
       <div className="flex gap-1 justify-end">
         <Button size="sm" variant="ghost" onClick={onCancel} className="h-7 text-xs">
           Cancel
@@ -144,8 +140,6 @@ function ProviderForm({
     </div>
   )
 }
-
-// ─── Provider card ───────────────────────────────────────────────────────────
 
 function ProviderCard({ provider, isActive }: { provider: ProviderConfig; isActive: boolean }) {
   const [editing, setEditing] = useState(false)
@@ -217,8 +211,6 @@ function ProviderCard({ provider, isActive }: { provider: ProviderConfig; isActi
   )
 }
 
-// ─── Main settings panel ─────────────────────────────────────────────────────
-
 export default function Settings() {
   const config = useSettingsStore((s) => s.config)
   const loading = useSettingsStore((s) => s.loading)
@@ -264,7 +256,6 @@ export default function Settings() {
         </Button>
       </div>
 
-      {/* Add form */}
       {adding && (
         <ProviderForm
           onSave={(provider) => {
@@ -275,7 +266,6 @@ export default function Settings() {
         />
       )}
 
-      {/* Provider list */}
       <div className="flex flex-col gap-1.5">
         {config.providers.length === 0 && !adding && (
           <div className="text-xs text-muted-foreground text-center py-4">
@@ -291,7 +281,6 @@ export default function Settings() {
         ))}
       </div>
 
-      {/* Info */}
       <div className="text-[10px] text-muted-foreground/50 mt-auto pt-2 border-t border-border">
         Configure OpenAI-compatible LLM providers. The active provider is used for all agent tasks.
         Supports Ollama, OpenAI, Anthropic (via proxy), and any OpenAI-compatible endpoint.
