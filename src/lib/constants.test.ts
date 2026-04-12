@@ -57,7 +57,6 @@ describe('constants', () => {
     expect(HIDDEN_DIRECTORIES).toBeInstanceOf(Set)
     expect(HIDDEN_DIRECTORIES.size).toBeGreaterThan(0)
 
-    // Critical hidden directories
     expect(HIDDEN_DIRECTORIES.has('node_modules')).toBe(true)
     expect(HIDDEN_DIRECTORIES.has('.git')).toBe(true)
     expect(HIDDEN_DIRECTORIES.has('dist')).toBe(true)

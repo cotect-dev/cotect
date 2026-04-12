@@ -46,16 +46,13 @@ describe('createStoreWithHMR', () => {
   it('returns the original store on HMR re-execution (preserves instance identity)', () => {
     const hot = { data: {} as Record<string, unknown> } as any
 
-    // First load
     const originalStore = createMockStore({ count: 42, action: vi.fn() })
     const first = createStoreWithHMR(hot, 'test', () => originalStore as any)
     expect(first).toBe(originalStore)
 
-    // Simulate HMR re-execution — factory creates a fresh store
     const freshStore = createMockStore({ count: 0, action: vi.fn() })
     const second = createStoreWithHMR(hot, 'test', () => freshStore as any)
 
-    // Must return the ORIGINAL store, not the fresh one
     expect(second).toBe(originalStore)
     expect(second).not.toBe(freshStore)
   })
@@ -67,14 +64,11 @@ describe('createStoreWithHMR', () => {
     const originalStore = createMockStore({ count: 42, action: originalAction })
     createStoreWithHMR(hot, 'test', () => originalStore as any)
 
-    // HMR re-execution with new action implementation
     const freshAction = vi.fn()
     const freshStore = createMockStore({ count: 0, action: freshAction })
     const result = createStoreWithHMR(hot, 'test', () => freshStore as any)
 
-    // The action on the returned (original) store should be the fresh one
     expect(result.getState().action).toBe(freshAction)
-    // But data should be preserved
     expect(result.getState().count).toBe(42)
   })
 
@@ -89,7 +83,6 @@ describe('createStoreWithHMR', () => {
     })
     createStoreWithHMR(hot, 'test', () => originalStore as any)
 
-    // HMR re-execution with default values
     const freshStore = createMockStore({
       count: 0,
       name: 'fresh',
@@ -98,7 +91,6 @@ describe('createStoreWithHMR', () => {
     })
     const result = createStoreWithHMR(hot, 'test', () => freshStore as any)
 
-    // Data state must be preserved from the original
     expect(result.getState().count).toBe(99)
     expect(result.getState().name).toBe('original')
     expect(result.getState().items).toEqual([1, 2, 3])
@@ -115,7 +107,6 @@ describe('createStoreWithHMR', () => {
     })
     createStoreWithHMR(hot, 'complex', () => originalStore as any)
 
-    // HMR re-execution
     const freshStore = createMockStore({
       map: new Map(),
       set: new Set(),
@@ -150,14 +141,11 @@ describe('createStoreWithHMR', () => {
     const originalStore = createMockStore({ count: 100, action: originalFn })
     createStoreWithHMR(hot, 'test', () => originalStore as any)
 
-    // HMR re-execution: fresh store has count: 0 (the default)
     const freshFn = vi.fn()
     const freshStore = createMockStore({ count: 0, action: freshFn })
     const result = createStoreWithHMR(hot, 'test', () => freshStore as any)
 
-    // count should NOT be reset to 0 — original's 100 is preserved
     expect(result.getState().count).toBe(100)
-    // action should be the fresh one
     expect(result.getState().action).toBe(freshFn)
   })
 })
