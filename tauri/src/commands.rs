@@ -118,7 +118,7 @@ pub fn read_binary_file(file_path: String) -> Result<Vec<u8>, String> {
 #[tauri::command]
 pub fn is_wayland() -> bool {
     std::env::var("WAYLAND_DISPLAY").is_ok()
-        && std::env::var("XDG_SESSION_TYPE").map_or(false, |v| v == "wayland")
+        && std::env::var("XDG_SESSION_TYPE").is_ok_and(|v| v == "wayland")
 }
 
 use gdk::prelude::*;
@@ -139,7 +139,7 @@ fn find_gtk_window_by_title(
         if gtk_title == target_title {
             let is_ours = tauri_windows
                 .values()
-                .any(|tw| tw.title().map_or(false, |t| t == target_title));
+                .any(|tw| tw.title().is_ok_and(|t| t == target_title));
             if is_ours {
                 return Some(gtk_win);
             }
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn directory_entries_sorted_dirs_first_case_insensitive() {
-        let mut entries = vec![
+        let mut entries = [
             FSEntry { name: "zebra.txt".into(), path: "/tmp/zebra.txt".into(), is_directory: false },
             FSEntry { name: "alpha".into(), path: "/tmp/alpha".into(), is_directory: true },
             FSEntry { name: "beta.txt".into(), path: "/tmp/beta.txt".into(), is_directory: false },
@@ -411,9 +411,8 @@ mod tests {
         // Ensure the env vars are not set
         std::env::remove_var("WAYLAND_DISPLAY");
         std::env::remove_var("XDG_SESSION_TYPE");
-        // is_wayland checks both vars -- without them, should return false
         let result = std::env::var("WAYLAND_DISPLAY").is_ok()
-            && std::env::var("XDG_SESSION_TYPE").map_or(false, |v| v == "wayland");
+            && std::env::var("XDG_SESSION_TYPE").is_ok_and(|v| v == "wayland");
         assert!(!result);
     }
 
