@@ -169,8 +169,7 @@ export const tauriPlatform: Platform = {
     },
 
     async writeFile(path: string, content: string): Promise<void> {
-      const { writeTextFile } = await import('@tauri-apps/plugin-fs')
-      await writeTextFile(path, content)
+      await invoke('write_file_content', { filePath: path, content })
     },
 
     async readDirectory(path: string): Promise<FSEntry[]> {
