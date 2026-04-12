@@ -32,6 +32,7 @@ const CODE_NODE_HEIGHT_RESERVED = 120
 export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const resizeRef = useRef<HTMLDivElement>(null)
   const flags = getNodeFlags(data)
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -56,6 +57,11 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     e.stopPropagation()
     const startX = e.clientX
     const startWidth = nodeWidth
+    const handle = resizeRef.current
+
+    handle?.setAttribute('data-resizing', '')
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
 
     const onMove = (ev: MouseEvent) => {
       ev.preventDefault()
@@ -65,18 +71,14 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     const onUp = (ev: MouseEvent) => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      handle?.removeAttribute('data-resizing')
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      // Commit final width to store (persisted + synced to other windows)
       const finalWidth = Math.max(MIN_CODE_NODE_WIDTH, startWidth + (ev.clientX - startX))
       setCodeNodeWidth(finalWidth)
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-    // While dragging, force the ew-resize cursor globally and block text
-    // selection so the drag feels solid across the whole window.
-    document.body.style.cursor = 'ew-resize'
-    document.body.style.userSelect = 'none'
   }, [nodeWidth, setCodeNodeWidth])
 
   const saveToFile = useCallback(async () => {
@@ -191,7 +193,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
   return (
     <div
-      className={`relative bg-background/95 backdrop-blur border rounded-lg nodrag nopan ${flags.isFocused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
+      className={`relative pointer-events-auto bg-background/95 backdrop-blur border rounded-lg nodrag nopan ${flags.isFocused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
       style={{ width: nodeWidth }}
     >
       {/* Header */}
@@ -218,25 +220,26 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         </div>
       </div>
 
-      {/* Editor */}
       <div
         ref={editorRef}
         className="nowheel"
       />
 
-      {/*
-        Right-edge resize handle (width only).
-        Positioned fully inside the node bounds so ReactFlow's wrapper
-        doesn't clip it; uses `nodrag nopan` to keep ReactFlow from
-        hijacking the pointer, and native mousedown/mousemove/mouseup
-        listeners for rock-solid drag behaviour across the window.
-      */}
       <div
+        ref={resizeRef}
         onMouseDown={handleResizeMouseDown}
-        className="nodrag nopan absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-primary/40 transition-colors rounded-r-lg z-10"
-        aria-label="Resize code node"
+        className="nodrag nopan group/handle absolute top-0 right-0 bottom-0 w-3 cursor-col-resize
+          flex items-center justify-center z-10"
         role="separator"
-      />
+      >
+        <div className="absolute inset-y-0 right-0 w-px
+          bg-foreground/10 group-hover/handle:bg-primary/40 group-data-[resizing]/handle:bg-primary/40 transition-colors" />
+        <div className="z-10 shrink-0 rounded-lg transition-colors
+          bg-background border border-foreground/15
+          group-hover/handle:border-primary/40 group-data-[resizing]/handle:border-primary/40
+          h-6 w-1.5"
+        />
+      </div>
 
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
       <Handle type="target" position={Position.Top} className="opacity-0" />

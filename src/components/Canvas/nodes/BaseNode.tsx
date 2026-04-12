@@ -19,7 +19,7 @@ export default memo(function BaseNode({ icon: Icon, iconClassName, label, border
   const focusRing = focused ? 'ring-2 ring-primary/60 bg-primary/10 scale-[1.02]' : ''
   return (
     <div
-      className={`bg-background/90 backdrop-blur border rounded-lg px-3 py-2 w-[180px] max-w-[180px] ${borderClassName} ${onClick || onDoubleClick ? 'cursor-pointer hover:border-primary/50 hover:bg-muted/50' : ''} ${focusRing} ${className}`}
+      className={`pointer-events-auto bg-background/90 backdrop-blur border rounded-lg px-3 py-2 w-[180px] max-w-[180px] ${borderClassName} ${onClick || onDoubleClick ? 'cursor-pointer hover:border-primary/50 hover:bg-muted/50' : ''} ${focusRing} ${className}`}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
     >
