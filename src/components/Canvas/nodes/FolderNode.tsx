@@ -4,7 +4,7 @@ import { Folder } from 'lucide-react'
 import { useCanvasStore } from '@/store'
 import type { FolderNode } from '@/types/nodes'
 import BaseNode from './BaseNode'
-import { getNodeFlags, getNodeOpacity } from '.'
+import { getNodeFlags, getNodeOpacity } from './nodeUtils'
 
 export default memo(function FolderNode({ id, data }: NodeProps<FolderNode>) {
   const flags = getNodeFlags(data)
