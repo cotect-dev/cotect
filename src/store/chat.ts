@@ -1,5 +1,6 @@
-import { createSyncedStore } from './synced'
+import { create } from 'zustand'
 import { createStoreWithHMR } from '@/lib/hmr'
+import { withPersistence } from '@/store/persistence'
 
 export type ModelId = 'qwen3.5-think' | 'qwen3.5-no-think'
 
@@ -30,35 +31,44 @@ interface ChatState {
   clearMessages: () => void
 }
 
-export const useChatStore = createStoreWithHMR(import.meta.hot, 'chat', () => createSyncedStore<ChatState>('chat', (set) => ({
-  messages: [],
-  isGenerating: false,
-  thinkingEnabled: true,
-  abortController: null,
-  addMessage: (msg) =>
-    set((s) => ({ messages: [...s.messages, msg] })),
-  updateMessage: (id, update) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === id ? { ...m, ...update } : m,
-      ),
-    })),
-  setGenerating: (isGenerating) => set({ isGenerating }),
-  setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),
-  setAbortController: (abortController) => set({ abortController }),
-  clearMessages: () => set({ messages: [] }),
-}), {
-  sanitize: (saved) => ({
-    ...saved,
-    isGenerating: false,
-    abortController: null,
-    messages: (saved as Partial<ChatState>).messages?.map((m) => ({
-      ...m,
-      isStreaming: false,
-      isThinking: false,
-    })),
-  }),
-}))
+export const useChatStore = createStoreWithHMR(import.meta.hot, 'chat', () => create<ChatState>()(
+  withPersistence(
+    (set) => ({
+      messages: [],
+      isGenerating: false,
+      thinkingEnabled: true,
+      abortController: null,
+      addMessage: (msg) =>
+        set((s) => ({ messages: [...s.messages, msg] })),
+      updateMessage: (id, update) =>
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === id ? { ...m, ...update } : m,
+          ),
+        })),
+      setGenerating: (isGenerating) => set({ isGenerating }),
+      setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),
+      setAbortController: (abortController) => set({ abortController }),
+      clearMessages: () => set({ messages: [] }),
+    }),
+    {
+      name: 'chat',
+      fields: {
+        messages: {
+          scope: 'global',
+          deserialize: (raw: unknown) =>
+            (raw as Message[])?.map((m) => ({
+              ...m,
+              isStreaming: false,
+              isThinking: false,
+            })) ?? [],
+        },
+        thinkingEnabled: { scope: 'global' },
+      },
+      debounce: 300,
+    },
+  ),
+))
 
 const API_BASE = '/llm/v1'
 

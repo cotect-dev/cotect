@@ -4,7 +4,6 @@ import { loadLayout, loadGeometry, loadSession, getChildWindowIds, removeLayout,
 import { useBrowserStore } from '@/store/browser'
 import { useGitStore, startGitWatcher, stopGitWatcher } from '@/store/git'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
-import { initAllSyncedStores, clearAllSyncedStores, stopAllSyncedStores } from '@/store/synced'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
 import { initPersistence, stopPersistence, flushPendingWrites, switchProject } from '@/store/persistence'
 import { computeProjectId } from '@/lib/projectId'
@@ -17,11 +16,8 @@ export function useWindowLifecycle() {
 
   useEffect(() => {
     void platform.windows.setMinSize(isMain ? 1280 : 400, isMain ? 720 : 300)
-    if (isMain) clearAllSyncedStores()
-    initAllSyncedStores()
     return () => {
       stopPersistence()
-      stopAllSyncedStores()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -170,7 +166,6 @@ export function useWindowLifecycle() {
       stopLayoutPersistence()
       stopGeometryPersistence()
       stopSessionPersistence()
-      stopAllSyncedStores()
       stopGitWatcher()
       if (!isMain) removeLayout(windowId)
       platform.ipc.emit('window-closed', { windowId }).catch((err) => {
