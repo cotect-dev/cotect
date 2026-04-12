@@ -12,7 +12,6 @@ import { notifyCanvasScrolled } from '@/components/Canvas/nodes/codeNodeRegistry
 
 const proOptions = { hideAttribution: true }
 
-// Padding from the edges of the visible area
 const CANVAS_PAD_X = 48
 
 // Initial viewport position — ensures nodes aren't hidden behind the menu bar
@@ -21,7 +20,6 @@ const defaultViewport = { x: CANVAS_PAD_X, y: CANVAS_PAD_Y, zoom: 1 }
 
 function CanvasFlow() {
   const containerRef = useRef<HTMLDivElement>(null)
-  // Narrow selectors — only subscribe to the data ReactFlow actually needs
   const nodes = useCanvasStore((s) => s.nodes)
   const edges = useCanvasStore((s) => s.edges)
   const focusedNodeId = useCanvasStore((s) => s.focusedNodeId)
@@ -49,7 +47,6 @@ function CanvasFlow() {
     return () => observer.disconnect()
   }, [])
 
-  // Initialize canvas when root path is set
   useEffect(() => {
     if (rootPath) {
       void useCanvasStore.getState().initRoot(rootPath)
@@ -140,7 +137,6 @@ function CanvasFlow() {
     }
   }, [focusedNodeId, focusedNodeX, focusedNodeY]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keyboard navigation
   useCanvasKeyboard(containerRef)
 
   // Auto-focus container on mount so keyboard navigation works immediately
@@ -180,12 +176,6 @@ function CanvasFlow() {
       { duration: 0 },
     )
   }, [reactFlow])
-
-  // Whenever the canvas viewport moves (scroll, pan, animated navigation),
-  // tell CodeMirror editors to re-measure which lines are visible.
-  const handleViewportChange = useCallback(() => {
-    notifyCanvasScrolled()
-  }, [])
 
   // Report container height to the store so flattenAndRender can
   // compute where the visible area starts for the preview column.
@@ -233,10 +223,8 @@ function CanvasFlow() {
           disableKeyboardA11y={true}
           minZoom={1}
           maxZoom={1}
-          onViewportChange={handleViewportChange}
-        >
-          
-        </ReactFlow>
+          onViewportChange={notifyCanvasScrolled}
+        />
       </div>
       <Breadcrumbs />
       <div className="absolute inset-0 pointer-events-none z-10">
