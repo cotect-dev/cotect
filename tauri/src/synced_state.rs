@@ -89,8 +89,7 @@ pub fn start_batch_broadcaster(app: AppHandle) {
                 Ok(d) => d,
                 Err(_) => continue,
             };
-            let names: Vec<String> = dirty.drain().collect();
-            names
+            dirty.drain().collect()
         };
 
         if dirty_names.is_empty() {
@@ -267,7 +266,6 @@ mod tests {
             dirty.insert("chat".to_string());
         }
 
-        // Clear
         {
             let mut entries = store.entries.lock().unwrap();
             entries.remove("chat");
@@ -325,7 +323,6 @@ mod tests {
             dirty.insert("b".to_string());
         }
 
-        // Clear only "a"
         {
             let mut entries = store.entries.lock().unwrap();
             entries.remove("a");

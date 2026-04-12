@@ -31,7 +31,6 @@ use super::{
     strip_paired_blocks, strip_tag_pairs,
 };
 
-// ─── Adapter ────────────────────────────────────────────────────────────────
 
 pub struct GemmaAdapter;
 
@@ -60,7 +59,6 @@ impl ModelAdapter for GemmaAdapter {
     }
 }
 
-// ─── Stream parser ──────────────────────────────────────────────────────────
 
 /// Stream parser for Gemma 4 responses via OpenAI-compat API.
 ///
@@ -206,13 +204,11 @@ impl GemmaStreamParser {
             }
 
             // Check for thinking block start
-            let think_marker = if let Some(pos) = self.text_buffer.find("<|channel>thought\n") {
-                Some((pos, "<|channel>thought\n".len()))
-            } else if let Some(pos) = self.text_buffer.find("<|channel>thought ") {
-                Some((pos, "<|channel>thought ".len()))
-            } else {
-                None
-            };
+            let think_marker = self.text_buffer.find("<|channel>thought\n")
+                .map(|pos| (pos, "<|channel>thought\n".len()))
+                .or_else(|| {
+                    self.text_buffer.find("<|channel>thought ").map(|pos| (pos, "<|channel>thought ".len()))
+                });
             if let Some((pos, marker_len)) = think_marker {
                 if pos > 0 {
                     let text: String = self.text_buffer.drain(..pos).collect();
@@ -425,7 +421,6 @@ impl GemmaStreamParser {
     }
 }
 
-// ─── Gemma native tool call parser ──────────────────────────────────────────
 
 /// Parse a tool call from the model's output. Tries multiple strategies:
 ///
@@ -471,11 +466,7 @@ fn parse_gemma_tool_call(input: &str) -> Result<(String, String), String> {
     }
 
     let args_str = &after_prefix[brace_pos + 1..];
-    let args_str = if args_str.ends_with('}') {
-        &args_str[..args_str.len() - 1]
-    } else {
-        args_str
-    };
+    let args_str = args_str.strip_suffix('}').unwrap_or(args_str);
 
     let args = parse_native_args(args_str)?;
     let json_str = serde_json::to_string(&args).unwrap_or_else(|_| "{}".to_string());
@@ -679,7 +670,7 @@ fn collect_until_matching_brace(chars: &mut std::iter::Peekable<std::str::Chars>
     let mut depth = 1i32;
     let mut in_string = false;
     let mut escape_next = false;
-    while let Some(c) = chars.next() {
+    for c in chars.by_ref() {
         if escape_next {
             escape_next = false;
             s.push(c);
@@ -725,7 +716,6 @@ fn parse_array(chars: &mut std::iter::Peekable<std::str::Chars>) -> Result<Value
     Ok(Value::Array(arr))
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 /// Strip `<|channel>thought\n...<channel|>` blocks from text.
 fn strip_thinking(text: &str) -> String {
@@ -749,7 +739,6 @@ fn contains_tool_call_pattern(text: &str) -> bool {
     text.contains("<|tool_call>") || text.contains("call:")
 }
 
-// ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -767,7 +756,6 @@ mod tests {
         }
     }
 
-    // ── Tool call parsing ───────────────────────────────────────────────
 
     #[test]
     fn parse_simple_tool_call() {
@@ -866,7 +854,6 @@ mod tests {
         assert_eq!(parsed["command"], "ls -la");
     }
 
-    // ── Gemma <|"|> pipe-quote parsing ──────────────────────────────────
 
     #[test]
     fn parse_gemma_pipe_quote_simple() {
@@ -910,7 +897,6 @@ mod tests {
         assert_eq!(args.get("new_string").unwrap().as_str().unwrap(), "world");
     }
 
-    // ── Thinking block stripping ────────────────────────────────────────
 
     #[test]
     fn strip_thinking_block() {
@@ -929,7 +915,6 @@ mod tests {
         assert_eq!(strip_thinking("Hello world"), "Hello world");
     }
 
-    // ── Raw tool token stripping ────────────────────────────────────────
 
     #[test]
     fn strip_raw_tool_call_tokens() {
@@ -948,7 +933,6 @@ mod tests {
         assert_eq!(strip_raw_tool_tokens("plain text"), "plain text");
     }
 
-    // ── Stream parser (OpenAI SSE format) ───────────────────────────────
 
     #[test]
     fn parse_openai_text_delta() {
@@ -1086,7 +1070,6 @@ mod tests {
         assert!(!e2.iter().any(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. })));
     }
 
-    // ── Safe emit ───────────────────────────────────────────────────────
 
     #[test]
     fn safe_emit_partial_tag() {
@@ -1103,7 +1086,6 @@ mod tests {
         );
     }
 
-    // ── Request body ────────────────────────────────────────────────────
 
     #[test]
     fn build_request_matches_openai_format() {

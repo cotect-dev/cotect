@@ -99,8 +99,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // ─── Edge case tests ────────────────────────────────────────────────
-
     #[tokio::test]
     async fn test_retry_max_attempts_zero() {
         let counter = Arc::new(AtomicUsize::new(0));

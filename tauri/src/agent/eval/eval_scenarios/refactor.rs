@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Implement as I;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_loops_to_comprehension(dir: &Path) -> SetupResult {
         let p = ap(dir, "transform.py");
@@ -70,7 +69,6 @@ function fetchUser(id, callback) {
     }
     v.push(scen!("refactor_callbacks_to_async", Category::Refactor, Difficulty::Medium, I, s_callback_to_promise));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_decompose_god_function(dir: &Path) -> SetupResult {
         let p = ap(dir, "processor.py");

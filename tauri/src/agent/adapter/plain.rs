@@ -74,7 +74,6 @@ impl ModelAdapter for PlainAdapter {
     }
 }
 
-// ─── Prompt rendering ───────────────────────────────────────────────────────
 
 /// Render the full conversation into a single prompt string.
 pub(crate) fn render_prompt(messages: &[ChatMessage], tools: &[ToolDefinition]) -> String {
@@ -283,7 +282,6 @@ fn extract_type(prop: &Value) -> String {
     }
 }
 
-// ─── SSE response types (llama.cpp /completion) ─────────────────────────────
 
 #[derive(Deserialize, Default)]
 struct CompletionChunk {
@@ -296,7 +294,6 @@ struct CompletionChunk {
     stop_type: Option<String>,
 }
 
-// ─── Stream parser ──────────────────────────────────────────────────────────
 
 /// State machine for parsing the model's raw streaming output.
 ///
@@ -493,7 +490,6 @@ impl StreamParser for PlainStreamParser {
     }
 }
 
-// ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -550,7 +546,6 @@ mod tests {
         assert_eq!(body["stop"][0], json!("<<<"));
     }
 
-    // ─ Rendering tests ──────────────────────────────────────────────────────
 
     #[test]
     fn renders_system_user_basic() {
@@ -704,7 +699,6 @@ mod tests {
         assert_eq!(render_parameters(&params), "(none)");
     }
 
-    // ─ Parser tests ─────────────────────────────────────────────────────────
 
     #[test]
     fn parser_emits_plain_text() {

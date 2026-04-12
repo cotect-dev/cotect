@@ -6,8 +6,6 @@ import { emit } from '@tauri-apps/api/event'
 // Make emit return a resolved Promise so broadcastGitState's .catch() works
 ;(emit as Mock).mockReturnValue(Promise.resolve())
 
-// --- Mock platform with controllable windowId and session ---
-
 let mockWindowId = 'main'
 let mockSessionData: { rootPath: string } | null = null
 
@@ -78,7 +76,6 @@ describe('useWindowLifecycle — git initialization on session restore', () => {
     mockWindowId = 'main'
     mockSessionData = null
 
-    // Reset stores
     useGitStore.setState({
       repoPath: '',
       initialized: false,
@@ -106,11 +103,8 @@ describe('useWindowLifecycle — git initialization on session restore', () => {
       expect(result.current.isReady).toBe(true)
     })
 
-    // Git store should have the repo path from the restored session
     const gitState = useGitStore.getState()
     expect(gitState.repoPath).toBe('/home/user/project')
-
-    // refresh() should have been called (it invokes git_status etc.)
     expect(mockInvoke).toHaveBeenCalledWith('git_status', { repoPath: '/home/user/project' })
   })
 

@@ -112,7 +112,6 @@ mod tests {
         let state = make_state();
         let path_str = f.path().to_str().unwrap().to_string();
 
-        // Read first (using the read tool to mark it)
         let read_input = fs_read::FSReadInput {
             file_path: path_str.clone(),
             start_line: None,
@@ -120,7 +119,6 @@ mod tests {
         };
         fs_read::execute(&read_input, &state).await.unwrap();
 
-        // Now write should succeed
         let input = FSWriteInput {
             file_path: path_str.clone(),
             content: "new content".into(),

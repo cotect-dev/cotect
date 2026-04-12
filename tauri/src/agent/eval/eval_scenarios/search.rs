@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Research as R;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_find_callers(dir: &Path) -> SetupResult {
         std::fs::create_dir_all(dir.join("src")).ok();
@@ -38,7 +37,6 @@ pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
     }
     v.push(scen!("search_error_patterns", Category::Search, Difficulty::Medium, R, s_find_error_handling));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_find_type_issues(dir: &Path) -> SetupResult {
         std::fs::create_dir_all(dir.join("src")).ok();

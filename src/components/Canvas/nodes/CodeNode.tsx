@@ -215,7 +215,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       className={`relative pointer-events-auto bg-background border border-r-0 rounded-l-lg nodrag nopan ${flags.isFocused ? 'outline outline-2 outline-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
       style={{ width: nodeWidth }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/30">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs font-medium text-foreground truncate">

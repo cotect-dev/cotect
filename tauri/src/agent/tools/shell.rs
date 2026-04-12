@@ -10,7 +10,6 @@ use crate::agent::utils::truncate_bytes;
 
 const TIMEOUT: Duration = Duration::from_secs(120);
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ShellInput {
     /// The shell command to execute.

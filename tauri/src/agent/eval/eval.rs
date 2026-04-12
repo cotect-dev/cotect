@@ -37,9 +37,7 @@ use tokio::sync::mpsc;
 use crate::agent::orch::Orchestrator;
 use crate::agent::types::*;
 
-// ────────────────────────────────────────────────────────────────────────
 // Configuration
-// ────────────────────────────────────────────────────────────────────────
 
 struct EvalConfig {
     endpoint: String,
@@ -82,7 +80,7 @@ impl EvalConfig {
         let format_override = std::env::var("COTECT_EVAL_FORMAT")
             .ok()
             .and_then(|v| parse_format_override(&v));
-        let keep_dirs = std::env::var("COTECT_EVAL_KEEP_DIRS").ok().map_or(false, |v| v == "1" || v == "true");
+        let keep_dirs = std::env::var("COTECT_EVAL_KEEP_DIRS").ok().is_some_and(|v| v == "1" || v == "true");
 
         if let Some(ref d) = transcript_dir {
             let _ = std::fs::create_dir_all(d);
@@ -131,9 +129,7 @@ fn parse_format_override(s: &str) -> Option<super::adapter::PromptFormat> {
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Category / Difficulty / System prompt style
-// ────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Category {
@@ -248,9 +244,7 @@ impl SystemStyle {
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Scenario spec
-// ────────────────────────────────────────────────────────────────────────
 
 type SetupFn = fn(&Path) -> SetupResult;
 
@@ -311,9 +305,7 @@ pub(super) enum Check {
     RunOutputLacks(String, u64, Vec<String>),
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Result collection
-// ────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -332,9 +324,7 @@ struct EvalResult {
     interrupted: Option<String>,
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Event accumulator helpers
-// ────────────────────────────────────────────────────────────────────────
 
 struct RunOutcome {
     events: Vec<TaskEvent>,
@@ -385,9 +375,7 @@ fn contains_ci(hay: &str, needle: &str) -> bool {
     hay.to_lowercase().contains(&needle.to_lowercase())
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Check evaluation
-// ────────────────────────────────────────────────────────────────────────
 
 fn evaluate_checks(
     checks: &[Check],
@@ -603,9 +591,7 @@ fn output_preview(output: &str) -> String {
     if output.len() > 200 { format!("{}...", &output[..197]) } else { output.to_string() }
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Prompt prefix based on system style
-// ────────────────────────────────────────────────────────────────────────
 
 fn user_prompt_with_style(style: SystemStyle, body: &str) -> String {
     match style {
@@ -627,10 +613,9 @@ fn user_prompt_with_style(style: SystemStyle, body: &str) -> String {
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Transcript building
-// ────────────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn build_transcript(
     spec: &ScenarioSpec,
     prompt: &str,
@@ -795,9 +780,7 @@ fn truncate_for_transcript(s: &str, max_chars: usize) -> String {
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Scenario runner
-// ────────────────────────────────────────────────────────────────────────
 
 async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     use std::io::Write;
@@ -973,9 +956,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Report printing
-// ────────────────────────────────────────────────────────────────────────
 
 fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     let total = results.len();
@@ -1050,18 +1031,14 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     println!("{}", "=".repeat(78));
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Scenario definitions — 125 total, split by category under eval_scenarios/
-// ────────────────────────────────────────────────────────────────────────
 
 #[path = "eval_scenarios/mod.rs"]
 mod eval_scenarios;
 
 use eval_scenarios::make_scenarios;
 
-// ────────────────────────────────────────────────────────────────────────
 // Main test entry points
-// ────────────────────────────────────────────────────────────────────────
 
 fn collect_scenarios(cfg: &EvalConfig) -> Vec<ScenarioSpec> {
     let mut all = make_scenarios();
@@ -1115,10 +1092,8 @@ async fn eval_suite() {
     // Don't assert; let the user see the report.
 }
 
-// ────────────────────────────────────────────────────────────────────────
 // Also expose legacy single-category shortcuts so we can easily rerun a
 // subset from cargo test by name.
-// ────────────────────────────────────────────────────────────────────────
 
 async fn run_category(cat: Category) {
     let Some(mut cfg) = EvalConfig::from_env() else {

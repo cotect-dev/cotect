@@ -309,7 +309,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(
             "We need to thread a `X-RateLimit-Remaining` header through the \
              HTTP middleware pipeline so it appears in every response. The header \
              value should be the number of remaining requests in the rate limiter.\n\n\
@@ -321,8 +321,9 @@ if __name__ == "__main__":
              Step 1: Read all source files and trace the context flow.\n\
              Step 2: Apply coordinated patches WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_pipeline.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass.",
-        )),
+             read the errors and iterate until all tests pass."
+            .to_string()
+        ),
             vec![
                 complete(),
                 succeeded("shell"),

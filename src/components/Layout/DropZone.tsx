@@ -35,7 +35,6 @@ export default function DropZone({
 
   const isVertical = position === 'left' || position === 'right';
 
-  // Memoize: filter out the dragged group/panel from visible groups
   const { visibleGroups, visibleSizes } = useMemo(() => {
     const vGroups: string[][] = [];
     const vSizes: number[] = [];
