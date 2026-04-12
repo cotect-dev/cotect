@@ -16,8 +16,6 @@ export default memo(function FolderNode({ id, data }: NodeProps<FolderNode>) {
     void store.navigateRight()
   }, [id])
 
-  const count = data.childCount
-
   return (
     <BaseNode
       icon={Folder}
@@ -28,7 +26,7 @@ export default memo(function FolderNode({ id, data }: NodeProps<FolderNode>) {
       focused={flags.isFocused}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
-      badge={count != null ? String(count) : undefined}
+      badge={data.childCount != null ? String(data.childCount) : undefined}
     />
   )
 })
