@@ -1,17 +1,5 @@
-/**
- * Agent service — bridges the frontend with the Rust agent backend.
- *
- * Provides:
- * - startTask / abortTask — lifecycle control
- * - getConfig / setConfig — provider management
- * - testConnection — provider validation
- * - Event listening per task (TaskEvent stream from Rust)
- */
-
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-
-// ─── Types mirroring Rust agent::types ───────────────────────────────────────
 
 export type AgentRole = 'implement' | 'research' | 'plan'
 
@@ -52,7 +40,7 @@ export interface AgentConfig {
   active_provider_id: string
 }
 
-// Discriminated union matching Rust TaskEvent (serde tag = "type")
+// serde tag = "type" on the Rust side
 export type TaskEvent =
   | { type: 'text'; content: string; partial: boolean }
   | { type: 'reasoning'; content: string }
@@ -62,8 +50,6 @@ export type TaskEvent =
   | { type: 'error'; message: string }
   | { type: 'complete' }
   | { type: 'interrupted'; reason: string }
-
-// ─── Tauri command wrappers ──────────────────────────────────────────────────
 
 export async function startTask(request: TaskRequest): Promise<void> {
   await invoke('agent_start_task', { request })
@@ -85,12 +71,7 @@ export async function testConnection(config: ProviderConfig): Promise<string[]> 
   return invoke<string[]>('agent_test_connection', { config })
 }
 
-// ─── Event subscription ──────────────────────────────────────────────────────
-
-/**
- * Subscribe to events for a specific task. Returns an unsubscribe function.
- * Events are emitted by Rust on the `agent-task-event:{taskId}` channel.
- */
+// Events are emitted by Rust on `agent-task-event:{taskId}`.
 export function listenToTask(
   taskId: string,
   callback: (event: TaskEvent) => void,

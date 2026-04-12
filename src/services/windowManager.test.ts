@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// Platform mock state - storage is an in-memory map
 const storage = new Map<string, unknown>()
 
 const mockPlatform = {
@@ -39,7 +38,6 @@ vi.mock('@/services/platform', () => ({
   getPlatform: () => mockPlatform,
 }))
 
-// Mock browser store so session persistence tests don't need full browser store deps
 vi.mock('@/store/browser', () => ({
   useBrowserStore: {
     subscribe: vi.fn().mockReturnValue(() => {}),
@@ -156,7 +154,6 @@ describe('windowManager', () => {
       storage.set('wm-layout-child-2', {})
 
       const ids = await getChildWindowIds()
-      // Should return child IDs excluding 'main'
       expect(ids).toContain('child-1')
       expect(ids).toContain('child-2')
       expect(ids).not.toContain('main')
