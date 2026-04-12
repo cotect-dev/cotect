@@ -168,8 +168,7 @@ impl Orchestrator {
             let has_content = !turn.content.trim().is_empty();
 
             // "stop", "end_turn", or stream ended cleanly (None) with no tool calls = done
-            is_complete = (finish == Some("stop") || finish == Some("end_turn")
-                || (finish.is_none() && !has_tools))
+            is_complete = (finish == Some("stop") || finish == Some("end_turn") || finish.is_none())
                 && !has_tools;
             should_yield = is_complete;
 
@@ -548,13 +547,11 @@ mod tests {
         assert!(builder.arguments.is_empty());
     }
 
-    // ─── Error tracker edge cases ───────────────────────────────────────
-
     #[test]
     fn test_tool_error_tracker_zero_limit() {
         let tracker = ToolErrorTracker::new(0);
         // With limit 0, no errors are allowed
-        assert!(tracker.limit_reached() == false); // No errors recorded yet
+        assert!(!tracker.limit_reached()); // No errors recorded yet
         assert_eq!(tracker.remaining("read"), 0); // But remaining is 0
     }
 
@@ -616,8 +613,6 @@ mod tests {
         assert_eq!(tracker.remaining("unknown_tool"), 5);
     }
 
-    // ─── extract_shell_exit_code tests ────────────────────────────────────
-
     #[test]
     fn test_extract_exit_code_bracket_format() {
         let output = "some output\n\n[exit code: 0]";
@@ -653,8 +648,6 @@ mod tests {
         let output = "just some random text without exit codes";
         assert_eq!(extract_shell_exit_code(output), None);
     }
-
-    // ─── consume_stream tests ───────────────────────────────────────────
 
     #[tokio::test]
     async fn test_consume_stream_text_only() {
@@ -834,8 +827,6 @@ mod tests {
         assert_eq!(result.tool_calls[0].function.name, "read");
     }
 
-    // ─── Dedup and cap tests ─────────────────────────────────────────────
-
     #[tokio::test]
     async fn test_consume_stream_deduplicates_identical_tool_calls() {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -914,8 +905,6 @@ mod tests {
         // Capped at 5
         assert_eq!(result.tool_calls.len(), 5);
     }
-
-    // ─── Helper ─────────────────────────────────────────────────────────
 
     fn make_test_orchestrator(sender: mpsc::UnboundedSender<TaskEvent>) -> Orchestrator {
         let provider = ProviderConfig {

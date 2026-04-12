@@ -67,8 +67,8 @@ fn normalize_endpoint(raw: &str) -> String {
 fn strip_v1_suffix(endpoint: &str) -> String {
     let trimmed = endpoint.trim_end_matches('/');
     for suffix in &["/openai/v1", "/api/v1", "/v1"] {
-        if trimmed.ends_with(suffix) {
-            return trimmed[..trimmed.len() - suffix.len()].to_string();
+        if let Some(stripped) = trimmed.strip_suffix(suffix) {
+            return stripped.to_string();
         }
     }
     trimmed.to_string()
