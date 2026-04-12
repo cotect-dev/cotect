@@ -271,8 +271,6 @@ pub async fn git_remote_url(repo_path: String) -> Result<Option<String>, String>
 mod tests {
     use super::*;
 
-    // --- parse_numstat tests ---
-
     #[test]
     fn parse_numstat_empty() {
         let stats = parse_numstat("");
@@ -309,8 +307,6 @@ mod tests {
         let stats = parse_numstat(input);
         assert_eq!(stats.get("src/main.rs"), Some(&(8, 3)));
     }
-
-    // --- parse_porcelain tests ---
 
     #[test]
     fn parse_porcelain_empty() {
@@ -389,8 +385,6 @@ mod tests {
         assert_eq!(ins, 2);
         assert_eq!(del, 1);
     }
-
-    // --- parse_log_output tests ---
 
     #[test]
     fn parse_log_output_empty() {

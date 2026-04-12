@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Implement as I;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_update_interface(dir: &Path) -> SetupResult {
         let types = ap(dir, "types.ts");
@@ -41,7 +40,6 @@ pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
     }
     v.push(scen!("cross_version_bump", Category::CrossFile, Difficulty::Medium, I, s_version_bump));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_split_module(dir: &Path) -> SetupResult {
         let mono = ap(dir, "utils.py");

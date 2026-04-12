@@ -224,7 +224,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(
             "We need to change `format_entry()` in formatter.py to return a \
              tuple of (formatted_line, char_count) instead of just the string. \
              This change cascades through renderer.py and exporter.py — all \
@@ -234,8 +234,9 @@ if __name__ == "__main__":
              Step 1: Read all source files and trace every call to `format_entry()`.\n\
              Step 2: Apply coordinated patches WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_report.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass.",
-        )),
+             read the errors and iterate until all tests pass."
+            .to_string()
+        ),
             vec![
                 complete(),
                 succeeded("shell"),

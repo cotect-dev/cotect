@@ -29,9 +29,7 @@ use std::path::Path;
 use crate::agent::types::AgentRole;
 use super::{Category, Check, Difficulty, ScenarioSpec, SetupResult};
 
-// ────────────────────────────────────────────────────────────────────────
 // Shared shorthand builders used by every category module
-// ────────────────────────────────────────────────────────────────────────
 
 /// Build a bare `SetupResult` with only a prompt.
 pub(crate) fn pf(prompt: impl Into<String>) -> SetupResult {
@@ -53,7 +51,6 @@ pub(crate) fn with_blocked(mut s: SetupResult, files: Vec<String>) -> SetupResul
     s
 }
 
-// ── Common check helpers ────────────────────────────────────────────────
 
 #[allow(dead_code)]
 pub(crate) fn oc(needle: &str) -> Check {
@@ -157,9 +154,7 @@ macro_rules! scen {
 
 pub(crate) use scen;
 
-// ────────────────────────────────────────────────────────────────────────
 // Aggregate all scenarios
-// ────────────────────────────────────────────────────────────────────────
 
 pub(super) fn make_scenarios() -> Vec<ScenarioSpec> {
     let mut v = Vec::with_capacity(100);

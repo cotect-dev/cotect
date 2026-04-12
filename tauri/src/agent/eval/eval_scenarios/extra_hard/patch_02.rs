@@ -295,7 +295,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(
             "We need to change the `orders` table to store totals as decimals \
              instead of integers (to support cents). The `invoices` and `payments` \
              tables must remain unchanged — they use whole-number totals by design.\n\n\
@@ -305,8 +305,9 @@ if __name__ == "__main__":
              to change for orders (and only orders).\n\
              Step 2: Apply your patches WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_billing.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass.",
-        )),
+             read the errors and iterate until all tests pass."
+            .to_string()
+        ),
             vec![
                 complete(),
                 succeeded("shell"),

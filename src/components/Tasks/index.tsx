@@ -5,8 +5,6 @@ import type { AgentRole } from '@/services/agent'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
-// ─── Status badge ────────────────────────────────────────────────────────────
-
 const STATUS_STYLES: Record<TaskStatus, string> = {
   pending: 'bg-yellow-500/20 text-yellow-400',
   running: 'bg-blue-500/20 text-blue-400',
@@ -25,8 +23,6 @@ function StatusBadge({ status }: { status: TaskStatus }) {
     </span>
   )
 }
-
-// ─── Tool activity display ───────────────────────────────────────────────────
 
 function ToolActivityList({ task }: { task: TaskEntry }) {
   const recent = task.toolActivity.slice(-5)
@@ -51,8 +47,6 @@ function ToolActivityList({ task }: { task: TaskEntry }) {
     </div>
   )
 }
-
-// ─── Task card ───────────────────────────────────────────────────────────────
 
 const TaskCard = memo(function TaskCard({ task }: { task: TaskEntry }) {
   const abortTask = useTasksStore((s) => s.abortTask)
@@ -100,15 +94,12 @@ const TaskCard = memo(function TaskCard({ task }: { task: TaskEntry }) {
         </div>
       </div>
 
-      {/* Tool activity */}
       {isActive && <ToolActivityList task={task} />}
 
-      {/* Error display */}
       {task.error && (
         <div className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1 mt-0.5">{task.error}</div>
       )}
 
-      {/* Expandable output */}
       {task.text && (
         <div>
           <button
@@ -129,8 +120,6 @@ const TaskCard = memo(function TaskCard({ task }: { task: TaskEntry }) {
     </div>
   )
 })
-
-// ─── New task form ───────────────────────────────────────────────────────────
 
 function NewTaskForm() {
   const [prompt, setPrompt] = useState('')
@@ -207,8 +196,6 @@ function NewTaskForm() {
   )
 }
 
-// ─── Main panel ──────────────────────────────────────────────────────────────
-
 export default function Tasks() {
   const tasks = useTasksStore((s) => s.tasks)
   const clearCompleted = useTasksStore((s) => s.clearCompleted)
@@ -217,7 +204,6 @@ export default function Tasks() {
 
   return (
     <div className="flex flex-col h-full gap-2">
-      {/* Task list */}
       <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-1">
         {tasks.length === 0 && (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs">
@@ -229,7 +215,6 @@ export default function Tasks() {
         ))}
       </div>
 
-      {/* Clear button */}
       {hasCompleted && (
         <div className="flex justify-end">
           <Button
@@ -243,13 +228,10 @@ export default function Tasks() {
         </div>
       )}
 
-      {/* New task form */}
       <NewTaskForm />
     </div>
   )
 }
-
-// ─── Utils ───────────────────────────────────────────────────────────────────
 
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000)

@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Implement as I;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_async_missing_await(dir: &Path) -> SetupResult {
         let p = ap(dir, "fetcher.ts");
@@ -46,7 +45,6 @@ def get_total():
     }
     v.push(scen!("bugfix_python_scope", Category::Bugfix, Difficulty::Medium, I, s_wrong_scope));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_sql_injection(dir: &Path) -> SetupResult {
         let p = ap(dir, "db.py");

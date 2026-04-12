@@ -10,12 +10,10 @@ use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
 
-    // ────────────────────────────────────────────────────────────────────
     // 1. BUGFIX — Shadow variable trap
     //    The obvious "bug" (an unused import) is a decoy. The real bug is
     //    a variable shadowing issue in a helper function that silently
     //    returns the wrong value.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_shadow_variable_trap(dir: &Path) -> SetupResult {
         let p = ap(dir, "billing.py");
@@ -53,12 +51,10 @@ def apply_discount(subtotal: float, tax: float) -> float:
     }
     v.push(scen!("hard_shadow_variable_trap", Category::Bugfix, Difficulty::Hard, I, s_shadow_variable_trap));
 
-    // ────────────────────────────────────────────────────────────────────
     // 2. BUGFIX — Red herring across files
     //    The prompt says "there's a bug in api.py". The obvious issue in
     //    api.py is actually correct. The real bug is in validator.py
     //    where a regex is wrong. The model must read BOTH files.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_red_herring_cross_file(dir: &Path) -> SetupResult {
         let api = ap(dir, "api.py");
@@ -98,13 +94,11 @@ def register_user(data: dict) -> dict:
     }
     v.push(scen!("hard_red_herring_cross_file", Category::Bugfix, Difficulty::Hard, I, s_red_herring_cross_file));
 
-    // ────────────────────────────────────────────────────────────────────
     // 3. BUGFIX — Unicode string slicing
     //    Looks like simple string processing but breaks on emoji/multi-byte.
     //    The model must realize Python str indexing is by code point, not
     //    byte, and that the REAL bug is using len() check before a
     //    different encoding operation.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_unicode_truncation(dir: &Path) -> SetupResult {
         let p = ap(dir, "truncate.py");
@@ -132,11 +126,9 @@ def register_user(data: dict) -> dict:
     }
     v.push(scen!("hard_unicode_truncation", Category::Bugfix, Difficulty::Hard, I, s_unicode_truncation));
 
-    // ────────────────────────────────────────────────────────────────────
     // 4. UNDERSTANDING — JavaScript closure-in-loop trap
     //    Classic gotcha: var in a for loop shares the closure variable.
     //    The model must report the exact (counterintuitive) output.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_closure_in_loop(dir: &Path) -> SetupResult {
         let p = ap(dir, "closures.js");
@@ -164,11 +156,9 @@ var h = createHandlers();
     }
     v.push(scen!("hard_closure_in_loop", Category::Understanding, Difficulty::Hard, R, s_closure_in_loop));
 
-    // ────────────────────────────────────────────────────────────────────
     // 5. UNDERSTANDING — Python operator precedence trap
     //    `not`, `and`, `or`, `in`, comparison chaining. The answer is
     //    counterintuitive.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_precedence_trap(dir: &Path) -> SetupResult {
         let p = ap(dir, "precedence.py");
@@ -197,11 +187,9 @@ var h = createHandlers();
     }
     v.push(scen!("hard_precedence_trap", Category::Understanding, Difficulty::Hard, R, s_precedence_trap));
 
-    // ────────────────────────────────────────────────────────────────────
     // 6. UNDERSTANDING — Mutable default argument + aliasing
     //    The function mutates a default list, causing state leak between
     //    calls. The model must correctly trace three separate calls.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_mutable_default(dir: &Path) -> SetupResult {
         let p = ap(dir, "defaults.py");
@@ -230,12 +218,10 @@ c = append_to(3, [])
     }
     v.push(scen!("hard_mutable_default_arg", Category::Understanding, Difficulty::Hard, R, s_mutable_default));
 
-    // ────────────────────────────────────────────────────────────────────
     // 7. SEARCH — Needle in haystack with decoys
     //    20 files, some contain "TODO" inside strings or variable names
     //    (decoys), only specific ones are actual TODO comments. Must
     //    count precisely.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_precise_search_with_decoys(dir: &Path) -> SetupResult {
         std::fs::create_dir_all(dir.join("src")).ok();
@@ -270,11 +256,9 @@ c = append_to(3, [])
     }
     v.push(scen!("hard_search_decoy_todos", Category::Search, Difficulty::Hard, R, s_precise_search_with_decoys));
 
-    // ────────────────────────────────────────────────────────────────────
     // 8. SEARCH — Cross-file data flow tracing
     //    A value passes through 5 files via imports. One file silently
     //    transforms it. The model must trace the full chain.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_data_flow_trace(dir: &Path) -> SetupResult {
         std::fs::create_dir_all(dir.join("pipeline")).ok();
@@ -306,11 +290,9 @@ c = append_to(3, [])
     }
     v.push(scen!("hard_data_flow_trace", Category::Search, Difficulty::Hard, R, s_data_flow_trace));
 
-    // ────────────────────────────────────────────────────────────────────
     // 9. CROSS-FILE — Config contradicts implementation
     //    config.json says max 5 retries, but the code hard-codes 3.
     //    The model must update BOTH to be consistent (use config value).
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_config_code_mismatch(dir: &Path) -> SetupResult {
         let cfg = ap(dir, "config.json");
@@ -357,12 +339,10 @@ def send_request(url: str, payload: dict) -> dict:
     }
     v.push(scen!("hard_config_code_mismatch", Category::CrossFile, Difficulty::Hard, I, s_config_code_mismatch));
 
-    // ────────────────────────────────────────────────────────────────────
     // 10. CROSS-FILE — Diamond dependency update
     //     Four files form a diamond: base -> (left, right) -> consumer.
     //     Adding a required field to base means all four must be updated
     //     consistently.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_diamond_dependency(dir: &Path) -> SetupResult {
         let base = ap(dir, "base.ts");
@@ -425,11 +405,9 @@ export function handleRequest(userId: string): string {
     }
     v.push(scen!("hard_diamond_dependency", Category::CrossFile, Difficulty::Hard, I, s_diamond_dependency));
 
-    // ────────────────────────────────────────────────────────────────────
     // 11. CROSS-FILE — Hidden re-export chain
     //     Must follow re-exports through 4 files to find where a function
     //     is actually defined, then fix the bug at the source.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_reexport_chain(dir: &Path) -> SetupResult {
         std::fs::create_dir_all(dir.join("lib")).ok();
@@ -478,11 +456,9 @@ print(normalize_name("Mary-Jane O'Brien"))
     }
     v.push(scen!("hard_reexport_chain_trace", Category::CrossFile, Difficulty::Hard, I, s_reexport_chain));
 
-    // ────────────────────────────────────────────────────────────────────
     // 12. IMPLEMENT — Modular exponentiation (gotcha: naive approach overflows)
     //     Must implement binary exponentiation with modulo, not just
     //     pow(base, exp) % mod which works in Python but shows understanding.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_modular_exponentiation(dir: &Path) -> SetupResult {
         let p = ap(dir, "modpow.py");
@@ -502,10 +478,8 @@ print(normalize_name("Mary-Jane O'Brien"))
     }
     v.push(scen!("hard_impl_modpow", Category::Implement, Difficulty::Hard, I, s_modular_exponentiation));
 
-    // ────────────────────────────────────────────────────────────────────
     // 13. IMPLEMENT — Topological sort with cycle detection
     //     Must handle disconnected graphs AND detect cycles properly.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_topo_sort_with_cycles(dir: &Path) -> SetupResult {
         let p = ap(dir, "topo.py");
@@ -524,12 +498,10 @@ print(normalize_name("Mary-Jane O'Brien"))
     }
     v.push(scen!("hard_impl_topo_sort", Category::Implement, Difficulty::Hard, I, s_topo_sort_with_cycles));
 
-    // ────────────────────────────────────────────────────────────────────
     // 14. REFACTOR — Behavior-preserving with hidden side effects
     //     The function looks like it just computes a value, but it also
     //     writes to a log file as a side effect. Naive refactoring breaks
     //     the logging.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_refactor_with_side_effects(dir: &Path) -> SetupResult {
         let p = ap(dir, "processor.py");
@@ -578,11 +550,9 @@ def get_audit_log() -> list[str]:
     }
     v.push(scen!("hard_refactor_preserve_side_effects", Category::Refactor, Difficulty::Hard, I, s_refactor_with_side_effects));
 
-    // ────────────────────────────────────────────────────────────────────
     // 15. REFACTOR — Extract with entangled mutable state
     //     Two functions both read and write a shared dict. Must refactor
     //     into a class without breaking the shared-state semantics.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_entangled_state(dir: &Path) -> SetupResult {
         let p = ap(dir, "counters.py");
@@ -626,11 +596,9 @@ def reset():
     }
     v.push(scen!("hard_refactor_entangled_state", Category::Refactor, Difficulty::Hard, I, s_entangled_state));
 
-    // ────────────────────────────────────────────────────────────────────
     // 16. PATCH — Surgical edit in repetitive generated code
     //     300 lines of near-identical handlers. Must change exactly ONE
     //     without using replace_all and without breaking neighbors.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_surgical_repetitive_edit(dir: &Path) -> SetupResult {
         let p = ap(dir, "routes.py");
@@ -652,11 +620,9 @@ def reset():
     }
     v.push(scen!("hard_surgical_repetitive_edit", Category::Patch, Difficulty::Hard, I, s_surgical_repetitive_edit));
 
-    // ────────────────────────────────────────────────────────────────────
     // 17. PATCH — TypeScript edit where the obvious fix breaks types
     //     Adding a method is straightforward, but the generic constraint
     //     makes the naive approach fail. Must add a type guard.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_type_constraint_edit(dir: &Path) -> SetupResult {
         let p = ap(dir, "store.ts");
@@ -700,11 +666,9 @@ export class Store<T extends Identifiable> {
     }
     v.push(scen!("hard_type_constraint_edit", Category::Patch, Difficulty::Hard, I, s_type_constraint_edit));
 
-    // ────────────────────────────────────────────────────────────────────
     // 18. ERROR HANDLING — Exception hierarchy ordering trap
     //     Python except clauses are checked top-to-bottom. If a parent
     //     class comes first, children never match. Model must reorder.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_exception_ordering(dir: &Path) -> SetupResult {
         let p = ap(dir, "handler.py");
@@ -766,11 +730,9 @@ def load_user_config(user_id: str) -> dict:
     }
     v.push(scen!("hard_exception_ordering", Category::ErrorHandling, Difficulty::Hard, I, s_exception_ordering));
 
-    // ────────────────────────────────────────────────────────────────────
     // 19. ERROR HANDLING — Async error swallowing
     //     A Promise chain silently drops errors because .then() doesn't
     //     re-throw and there's no .catch() on the inner promise.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_async_error_swallowing(dir: &Path) -> SetupResult {
         let p = ap(dir, "pipeline.ts");
@@ -829,10 +791,8 @@ export async function runPipeline(url: string): Promise<PipelineResult> {
     }
     v.push(scen!("hard_async_error_swallowing", Category::ErrorHandling, Difficulty::Hard, I, s_async_error_swallowing));
 
-    // ────────────────────────────────────────────────────────────────────
     // 20. RECOVERY — Must read a broken symlink, discover it's broken,
     //     find the real file, and patch it.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_missing_real_file(dir: &Path) -> SetupResult {
         // Create the actual file at a non-obvious location
@@ -852,11 +812,9 @@ export async function runPipeline(url: string): Promise<PipelineResult> {
     }
     v.push(scen!("hard_recovery_redirect_file", Category::Recovery, Difficulty::Hard, I, s_missing_real_file));
 
-    // ────────────────────────────────────────────────────────────────────
     // 21. RECOVERY — Partially corrupted file requires careful extraction
     //     A valid Python file has a corrupted section. The model must
     //     preserve the good parts and fix only the broken part.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_corrupted_file_recovery(dir: &Path) -> SetupResult {
         let p = ap(dir, "service.py");
@@ -878,12 +836,10 @@ export async function runPipeline(url: string): Promise<PipelineResult> {
     }
     v.push(scen!("hard_recovery_corrupted_file", Category::Recovery, Difficulty::Hard, I, s_corrupted_file_recovery));
 
-    // ────────────────────────────────────────────────────────────────────
     // 22. PLANNING — Architecture with hidden constraints
     //     Must read multiple files to discover that the DB is SQLite
     //     (no concurrent writes), the API is synchronous (Flask), and
     //     there's a file lock mechanism. Plan must account for these.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_plan_with_hidden_constraints(dir: &Path) -> SetupResult {
         std::fs::create_dir_all(dir.join("app")).ok();
@@ -949,12 +905,10 @@ def process_batch():
     }
     v.push(scen!("hard_plan_hidden_constraints", Category::Planning, Difficulty::Hard, P, s_plan_with_hidden_constraints));
 
-    // ────────────────────────────────────────────────────────────────────
     // 23. PLANNING — Contradictory requirements in spec
     //     Requirements say "no external dependencies" but also require
     //     JWT authentication and bcrypt password hashing. Model must
     //     identify the contradiction and propose a resolution.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_plan_contradictory_requirements(dir: &Path) -> SetupResult {
         let p = ap(dir, "requirements.md");
@@ -986,11 +940,9 @@ def process_batch():
     }
     v.push(scen!("hard_plan_contradictory_reqs", Category::Planning, Difficulty::Hard, P, s_plan_contradictory_requirements));
 
-    // ────────────────────────────────────────────────────────────────────
     // 24. UNDERSTANDING — Rust borrow checker puzzle
     //     Code that LOOKS like it should compile but doesn't due to
     //     lifetime issues. Model must explain WHY.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_rust_borrow_puzzle(dir: &Path) -> SetupResult {
         let p = ap(dir, "borrowck.rs");
@@ -1043,11 +995,9 @@ fn main() {
     }
     v.push(scen!("hard_rust_borrow_puzzle", Category::Understanding, Difficulty::Hard, R, s_rust_borrow_puzzle));
 
-    // ────────────────────────────────────────────────────────────────────
     // 25. CROSS-FILE — Database schema migration with cascading updates
     //     Must update schema, migration SQL, model code, seed data, AND
     //     test fixtures consistently across 5 files.
-    // ────────────────────────────────────────────────────────────────────
 
     fn s_schema_migration_cascade(dir: &Path) -> SetupResult {
         let schema = ap(dir, "schema.sql");

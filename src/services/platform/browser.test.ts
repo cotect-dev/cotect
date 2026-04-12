@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// We test the browser platform's syncedState implementation, which uses
-// a single shared BroadcastChannel('cotect') and localStorage with prefix 'cotect:'.
-
 // Mock BroadcastChannel with addEventListener/removeEventListener support
 class MockBroadcastChannel {
   static instances: MockBroadcastChannel[] = []
@@ -22,7 +19,6 @@ class MockBroadcastChannel {
   removeEventListener(type: string, fn: (...args: unknown[]) => void) {
     this.listeners.get(type)?.delete(fn)
   }
-  /** Simulate receiving a message (for testing listen callbacks) */
   simulateMessage(data: unknown) {
     const handlers = this.listeners.get('message')
     if (handlers) {
@@ -34,7 +30,6 @@ class MockBroadcastChannel {
 // Install mock before import
 vi.stubGlobal('BroadcastChannel', MockBroadcastChannel)
 
-// Mock localStorage
 const store: Record<string, string> = {}
 const localStorageMock = {
   getItem: vi.fn((key: string) => store[key] ?? null),
@@ -50,7 +45,6 @@ import { browserPlatform } from '@/services/platform/browser'
 
 describe('browserPlatform.syncedState', () => {
   beforeEach(() => {
-    // Clear the mock store between tests
     for (const k of Object.keys(store)) delete store[k]
     vi.clearAllMocks()
   })
@@ -66,7 +60,6 @@ describe('browserPlatform.syncedState', () => {
 
     it('broadcasts via shared BroadcastChannel', () => {
       browserPlatform.syncedState.set('test-store', { count: 42 }, 'win1')
-      // The shared channel is named 'cotect'
       const bc = MockBroadcastChannel.instances.find((i) => i.name === 'cotect')
       expect(bc).toBeDefined()
       expect(bc!.postMessage).toHaveBeenCalledWith({
@@ -114,7 +107,6 @@ describe('browserPlatform.syncedState', () => {
       const callback = vi.fn()
       browserPlatform.syncedState.listen('my-name', callback)
 
-      // Simulate a message on the shared channel
       const bc = MockBroadcastChannel.instances.find((i) => i.name === 'cotect')!
       bc.simulateMessage({
         event: 'synced-state-update:my-name',

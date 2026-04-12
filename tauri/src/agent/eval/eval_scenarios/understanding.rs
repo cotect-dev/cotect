@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Research as R;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_trace_execution(dir: &Path) -> SetupResult {
         let p = ap(dir, "pipeline.py");
@@ -31,7 +30,6 @@ transform = pipeline(double, add_ten, negate)
     }
     v.push(scen!("understand_pipeline_trace", Category::Understanding, Difficulty::Medium, R, s_trace_execution));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_xss_vulnerability(dir: &Path) -> SetupResult {
         let p = ap(dir, "template.js");

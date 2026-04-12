@@ -142,9 +142,7 @@ export const browserPlatform: Platform = {
       return null
     },
 
-    async showInFolder() {
-      // Not available in browser
-    },
+    async showInFolder() {},
   },
 
   storage: {

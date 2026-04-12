@@ -17,7 +17,6 @@
 #   --scenario NAME   Run a single scenario instead of the full suite
 #                     Use a substring match, e.g.: --scenario bugfix, --scenario refactor_rename
 #   --all             Run all individual scenarios (not just the suite runner)
-#   --verbose         Show full cargo test output (--nocapture)
 #
 # Examples:
 #   # Local Ollama
@@ -47,7 +46,6 @@ MAX_TURNS=""
 TIMEOUT=""
 SCENARIO=""
 RUN_ALL=false
-VERBOSE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -58,7 +56,6 @@ while [[ $# -gt 0 ]]; do
         --timeout)   TIMEOUT="$2"; shift 2 ;;
         --scenario)  SCENARIO="$2"; shift 2 ;;
         --all)       RUN_ALL=true; shift ;;
-        --verbose)   VERBOSE=true; shift ;;
         -h|--help)
             sed -n '2,/^$/p' "$0" | sed 's/^#//; s/^ //'
             exit 0
@@ -84,16 +81,13 @@ if [[ "$ENDPOINT" == */api/v1 ]]; then
     ENDPOINT="${ENDPOINT%/api/v1}/v1"
 fi
 
-# Export environment variables
 export COTECT_EVAL_ENDPOINT="$ENDPOINT"
 export COTECT_EVAL_MODEL="$MODEL"
 [[ -n "$API_KEY" ]]   && export COTECT_EVAL_API_KEY="$API_KEY"
 [[ -n "$MAX_TURNS" ]] && export COTECT_EVAL_MAX_TURNS="$MAX_TURNS"
 [[ -n "$TIMEOUT" ]]   && export COTECT_EVAL_TIMEOUT="$TIMEOUT"
 
-# Build test filter
 CARGO_ARGS=(test -p cotect)
-
 if [[ -n "$SCENARIO" ]]; then
     CARGO_ARGS+=("eval_${SCENARIO}" -- --ignored --nocapture)
 elif $RUN_ALL; then
@@ -102,12 +96,6 @@ else
     CARGO_ARGS+=("eval_suite" -- --ignored --nocapture)
 fi
 
-if $VERBOSE; then
-    # Already has --nocapture from above
-    :
-fi
-
-# Print config
 echo "=========================================="
 echo "Cotect Model Evaluation"
 echo "=========================================="
@@ -120,9 +108,6 @@ echo "Scenario:   ${SCENARIO:-full_suite}"
 echo "=========================================="
 echo ""
 
-# Navigate to the Tauri crate and run
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CRATE_DIR="$SCRIPT_DIR/../tauri"
-
-cd "$CRATE_DIR"
+cd "$SCRIPT_DIR/../tauri"
 cargo "${CARGO_ARGS[@]}"

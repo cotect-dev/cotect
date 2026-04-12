@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
 
-// --- Mocks ---
-
 const mockReadDirectory = vi.fn()
 const mockReadFile = vi.fn()
 const mockReadBinaryFile = vi.fn()
@@ -19,8 +17,6 @@ vi.mock('@/services/platform', () => ({
 
 import { useCanvasStore, type Column } from './canvas'
 import type { AppNode } from '@/types/nodes'
-
-// --- Helpers ---
 
 function resetStore() {
   useCanvasStore.setState({
@@ -51,9 +47,6 @@ function posNode(id: string, x: number, y: number): AppNode {
   }
 }
 
-// ============================================================================
-// Tests for isTestFile (tested indirectly through buildDirectoryNodes)
-// ============================================================================
 describe('isTestFile detection (via directory node sorting)', () => {
   beforeEach(() => {
     resetStore()
@@ -143,9 +136,6 @@ describe('isTestFile detection (via directory node sorting)', () => {
   })
 })
 
-// ============================================================================
-// Tests for buildDirectoryNodes filtering
-// ============================================================================
 describe('directory filtering', () => {
   beforeEach(() => {
     resetStore()
@@ -189,9 +179,6 @@ describe('directory filtering', () => {
   })
 })
 
-// ============================================================================
-// Tests for positionColumnNodes and findVerticalNeighbor (tested via store)
-// ============================================================================
 describe('findVerticalNeighbor (via moveFocus)', () => {
   beforeEach(() => {
     resetStore()
@@ -304,9 +291,6 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
   })
 })
 
-// ============================================================================
-// Tests for initRoot
-// ============================================================================
 describe('initRoot', () => {
   beforeEach(() => {
     resetStore()
@@ -382,9 +366,6 @@ describe('initRoot', () => {
   })
 })
 
-// ============================================================================
-// Tests for navigateRight
-// ============================================================================
 describe('navigateRight', () => {
   beforeEach(() => {
     resetStore()
@@ -428,27 +409,18 @@ describe('navigateRight', () => {
     expect(state.depthChain).toContain('/proj/src')
   })
 
-  it('navigates into a file and builds code node', async () => {
-
+  it('does not advance into a file — files are previewed in-place', async () => {
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'app.ts', path: '/proj/app.ts', isDirectory: false },
     ]))
 
     await useCanvasStore.getState().initRoot('/proj')
-
-    // File content for buildFileNode
     mockReadFile.mockResolvedValue('const x = 1;\n'.repeat(25))
 
     await useCanvasStore.getState().navigateRight()
 
     const state = useCanvasStore.getState()
-    expect(state.currentColumnIndex).toBe(1)
-    const fileCol = state.columns[1]
-    expect(fileCol).toBeDefined()
-    expect(fileCol.kind).toBe('file')
-    // Should have a single full-file code node
-    expect(fileCol.nodes).toHaveLength(1)
-    expect(fileCol.nodes[0].type).toBe('codeNode')
+    expect(state.currentColumnIndex).toBe(0)
   })
 
   it('promotes existing preview column when path matches', async () => {
@@ -486,9 +458,6 @@ describe('navigateRight', () => {
   })
 })
 
-// ============================================================================
-// Tests for navigateLeft
-// ============================================================================
 describe('navigateLeft', () => {
   beforeEach(() => {
     resetStore()
@@ -590,9 +559,6 @@ describe('navigateLeft', () => {
 
 })
 
-// ============================================================================
-// Tests for the navigateLeft → navigateRight focus memory
-// ============================================================================
 describe('rightFocusMemory', () => {
   beforeEach(() => {
     resetStore()
@@ -1305,11 +1271,12 @@ describe('buildFileNodes', () => {
 
     mockReadFile.mockResolvedValue('{\n  "key": "value"\n}\n')
 
-    await useCanvasStore.getState().navigateRight()
+    await useCanvasStore.getState().updatePreview()
 
     const state = useCanvasStore.getState()
     const fileCol = state.columns[1]
     expect(fileCol).toBeDefined()
+    expect(fileCol.kind).toBe('file')
     expect(fileCol.nodes).toHaveLength(1)
     const firstNode = fileCol.nodes[0]
     expect(firstNode.type).toBe('codeNode')
