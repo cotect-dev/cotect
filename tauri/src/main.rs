@@ -66,6 +66,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::read_directory,
             commands::read_file_content,
+            commands::write_file_content,
             commands::read_file_head,
             commands::read_binary_file,
             commands::is_wayland,
@@ -92,6 +93,7 @@ fn main() {
             agent::commands::agent_test_connection,
         ])
         .setup(|app| {
+            synced_state::load_all(app.handle());
             synced_state::start_batch_broadcaster(app.handle().clone());
             Ok(())
         })

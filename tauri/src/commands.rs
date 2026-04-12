@@ -59,6 +59,11 @@ pub fn read_file_content(file_path: String) -> Result<String, String> {
     fs::read_to_string(&file_path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn write_file_content(file_path: String, content: String) -> Result<(), String> {
+    fs::write(&file_path, &content).map_err(|e| e.to_string())
+}
+
 /// Read at most `max_bytes` from the beginning of a file.
 /// Returns the content as a UTF-8 string (truncated at a valid char boundary)
 /// plus the total file size in bytes so the caller knows whether truncation occurred.

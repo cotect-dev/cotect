@@ -16,10 +16,10 @@ interface BaseNodeProps {
 }
 
 export default memo(function BaseNode({ icon: Icon, iconClassName, label, borderClassName = 'border-border', className = '', onClick, onDoubleClick, badge, focused, children }: BaseNodeProps) {
-  const focusRing = focused ? 'ring-2 ring-primary/60 bg-primary/10 scale-[1.02]' : ''
+  const focusRing = focused ? 'outline outline-2 outline-primary/60 bg-primary/10' : ''
   return (
     <div
-      className={`pointer-events-auto bg-background/90 backdrop-blur border rounded-lg px-3 py-2 w-[180px] max-w-[180px] ${borderClassName} ${onClick || onDoubleClick ? 'cursor-pointer hover:border-primary/50 hover:bg-muted/50' : ''} ${focusRing} ${className}`}
+      className={`pointer-events-auto bg-background border rounded-lg px-3 py-2 w-[180px] max-w-[180px] ${borderClassName} ${onClick || onDoubleClick ? 'cursor-pointer hover:border-primary/50 hover:bg-muted/50' : ''} ${focusRing} ${className}`}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
     >
