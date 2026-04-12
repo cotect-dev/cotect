@@ -3,8 +3,6 @@ import { createStoreWithHMR } from '@/lib/hmr'
 import * as agentService from '@/services/agent'
 import type { TaskEvent, AgentRole } from '@/services/agent'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'errored' | 'interrupted'
 
 export interface ToolActivity {
@@ -39,11 +37,7 @@ interface TasksState {
   removeTask: (id: string) => void
 }
 
-// ─── Listener management (module-level, outside Zustand state) ──────────────
-
 const taskListeners = new Map<string, () => void>()
-
-// ─── Store ───────────────────────────────────────────────────────────────────
 
 export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
   create<TasksState>((set, get) => ({
@@ -122,8 +116,6 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
   })),
 )
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 /** Apply a partial update to a single task by id. */
 function updateTask(taskId: string, updater: (task: TaskEntry) => Partial<TaskEntry>) {
   useTasksStore.setState((s) => ({
@@ -136,8 +128,6 @@ function detachListener(taskId: string) {
   taskListeners.get(taskId)?.()
   taskListeners.delete(taskId)
 }
-
-// ─── Event handler ───────────────────────────────────────────────────────────
 
 function handleTaskEvent(taskId: string, event: TaskEvent) {
   const { tasks } = useTasksStore.getState()
