@@ -6,7 +6,7 @@ import { getConfigForFile } from '@/services/treesitter-queries'
 import { isImageFile } from '@/lib/constants'
 import type { FileNode } from '@/types/nodes'
 import BaseNode from './BaseNode'
-import { getNodeFlags } from '.'
+import { getNodeFlags } from './nodeUtils'
 
 export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
   const flags = getNodeFlags(data)
