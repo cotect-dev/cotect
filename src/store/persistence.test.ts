@@ -139,7 +139,7 @@ describe('persistence', () => {
     it('writes global field changes after debounce', async () => {
       const store = create(
         withPersistence<{ width: number }>(
-          (set) => ({ width: 300 }),
+          () => ({ width: 300 }),
           { name: 'mystore', fields: { width: { scope: 'global' } }, debounce: 100 },
         ),
       )
@@ -165,7 +165,7 @@ describe('persistence', () => {
     it('writes project field changes to the project namespace', async () => {
       const store = create(
         withPersistence<{ hidden: string[] }>(
-          (set) => ({ hidden: [] }),
+          () => ({ hidden: [] }),
           { name: 'mystore', fields: { hidden: { scope: 'project' } }, debounce: 100 },
         ),
       )
