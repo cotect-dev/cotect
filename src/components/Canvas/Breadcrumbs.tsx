@@ -6,7 +6,6 @@ export default memo(function Breadcrumbs() {
   const depthChain = useCanvasStore((s) => s.depthChain)
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
 
-  // Memoize breadcrumb entries — only recompute when depthChain or currentColumnIndex changes
   const crumbs = useMemo(() => depthChain.map((path, i) => ({
     path,
     label: path.includes(':') ? path.split(':').pop()! : path.split('/').pop() || path,
