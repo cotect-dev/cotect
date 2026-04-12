@@ -358,7 +358,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         columns: [rootColumn],
         currentColumnIndex: 0,
         depthChain: [rootPath],
-        focusedNodeId: dirNodes.length > 0 ? dirNodes[0].id : null,
+        focusedNodeId: (dirNodes.find((n) => !get().hiddenNodeIds.has(n.id)) ?? dirNodes[0])?.id ?? null,
         cameraY: CANVAS_PAD_Y,
         rightFocusMemory: {},
       })
@@ -384,8 +384,9 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     const node = nodes.find((n) => n.id === focusedNodeId)
     if (!node) return
 
-    // Only folders and files can be navigated into
-    if (node.type !== 'folder' && node.type !== 'file') return
+    // Only folders can be navigated into — files are previewed in-place
+    // and operable from the current context (E to edit, scroll to browse)
+    if (node.type !== 'folder') return
 
     const nodeTargetPath = node.data.path
 
@@ -420,49 +421,23 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
     // No matching preview — load fresh
     try {
-      if (node.type === 'folder') {
-        const path = node.data.path
-        const dirNodes = await buildDirectoryNodes(path)
-        const newColumn: Column = { path, kind: 'directory', nodes: dirNodes, edges: [] }
+      const path = node.data.path
+      const dirNodes = await buildDirectoryNodes(path)
+      const newColumn: Column = { path, kind: 'directory', nodes: dirNodes, edges: [] }
 
-        const newColumns = [...columns.slice(0, currentColumnIndex + 1), newColumn]
-        const newChain = [...depthChain.slice(0, currentColumnIndex + 1), path]
+      const newColumns = [...columns.slice(0, currentColumnIndex + 1), newColumn]
+      const newChain = [...depthChain.slice(0, currentColumnIndex + 1), path]
 
-        set({
-          columns: newColumns,
-          currentColumnIndex: currentColumnIndex + 1,
-          depthChain: newChain,
-          focusedNodeId: pickFocus(dirNodes),
-          cameraY: CANVAS_PAD_Y,
-        })
+      set({
+        columns: newColumns,
+        currentColumnIndex: currentColumnIndex + 1,
+        depthChain: newChain,
+        focusedNodeId: pickFocus(dirNodes),
+        cameraY: CANVAS_PAD_Y,
+      })
 
-        flattenAndRender(get, set)
-        void get().updatePreview()
-      } else {
-        const path = node.data.path
-        const fileName = node.data.label
-        let contentNode: AppNode
-        if (isImageFile(fileName)) {
-          const imageNode = await buildImageNode(path)
-          contentNode = imageNode ?? await buildFileNode(path)
-        } else {
-          contentNode = await buildFileNode(path)
-        }
-        const newColumn: Column = { path, kind: 'file', nodes: [contentNode], edges: [] }
-        const newColumns = [...columns.slice(0, currentColumnIndex + 1), newColumn]
-        const newChain = [...depthChain.slice(0, currentColumnIndex + 1), path]
-
-        set({
-          columns: newColumns,
-          currentColumnIndex: currentColumnIndex + 1,
-          depthChain: newChain,
-          focusedNodeId: pickFocus(newColumn.nodes),
-          cameraY: CANVAS_PAD_Y,
-        })
-
-        flattenAndRender(get, set)
-        void get().updatePreview()
-      }
+      flattenAndRender(get, set)
+      void get().updatePreview()
     } catch (err) {
       console.error('Failed to navigate right:', err)
     }
@@ -611,6 +586,21 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   ),
 ))
 
+// When persistence hydrates hiddenNodeIds after initRoot has already rendered,
+// re-run flattenAndRender so the nodes reflect the restored hidden state.
+let prevHiddenNodeIds = useCanvasStore.getState().hiddenNodeIds
+useCanvasStore.subscribe((state) => {
+  if (state.hiddenNodeIds !== prevHiddenNodeIds) {
+    prevHiddenNodeIds = state.hiddenNodeIds
+    if (state.columns.length > 0) {
+      flattenAndRender(
+        useCanvasStore.getState as () => CanvasState,
+        useCanvasStore.setState as (partial: Partial<CanvasState>) => void,
+      )
+    }
+  }
+})
+
 /**
  * Flatten all columns into positioned nodes and edges,
  * then update the store's nodes/edges for ReactFlow rendering.
@@ -711,7 +701,7 @@ function flattenAndRender(
         data: {
           ...node.data,
           __columnIndex: i,
-          __isCurrent: isCurrentCol,
+          __isCurrent: isCurrentCol || (isPreviewCol && col.kind === 'file'),
           __isHidden: hiddenNodeIds.has(node.id),
           __isFocused: node.id === focusedNodeId,
         },

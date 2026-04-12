@@ -43,7 +43,7 @@ const pendingProject: Record<string, unknown> = {}
 
 export function withPersistence<T>(
   creator: StateCreator<T, [], []>,
-  options: PersistOptions<T>,
+  options: PersistOptions<NoInfer<T>>,
 ): StateCreator<T, [], []> {
   return (set, get, api) => {
     const initialState = creator(set, get, api)

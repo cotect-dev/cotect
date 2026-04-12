@@ -60,11 +60,28 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
           void store.navigateRight()
           break
         case 'e': {
-          // Focus the CodeMirror editor inside the currently focused code node
           const focusedId = store.focusedNodeId
           if (!focusedId) break
-          const nodeEl = container?.querySelector(`[data-id="${CSS.escape(focusedId)}"]`)
-          const cmContent = nodeEl?.querySelector('.cm-content') as HTMLElement | null
+
+          // If the focused node is a file, target the CodeMirror editor in the
+          // preview column (the file content is shown to the right without
+          // navigating into it). Otherwise target the focused node itself.
+          const focusedNode = store.nodes.find((n) => n.id === focusedId)
+          let cmContent: HTMLElement | null = null
+
+          if (focusedNode?.type === 'file') {
+            const previewCol = store.columns[store.currentColumnIndex + 1]
+            if (previewCol?.kind === 'file' && previewCol.nodes[0]) {
+              const previewEl = container?.querySelector(
+                `[data-id="${CSS.escape(previewCol.nodes[0].id)}"]`,
+              )
+              cmContent = previewEl?.querySelector('.cm-content') as HTMLElement | null
+            }
+          } else {
+            const nodeEl = container?.querySelector(`[data-id="${CSS.escape(focusedId)}"]`)
+            cmContent = nodeEl?.querySelector('.cm-content') as HTMLElement | null
+          }
+
           if (cmContent) {
             e.preventDefault()
             cmContent.focus()
