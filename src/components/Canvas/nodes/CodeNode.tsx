@@ -1,8 +1,12 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view'
+import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection, dropCursor, highlightSpecialChars, rectangularSelection, crosshairCursor } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
+import { defaultKeymap, history, historyKeymap, indentWithTab, copyLineDown, deleteLine, toggleComment } from '@codemirror/commands'
+import { highlightSelectionMatches } from '@codemirror/search'
+import { closeBrackets, closeBracketsKeymap, autocompletion, acceptCompletion } from '@codemirror/autocomplete'
+import { indentOnInput, bracketMatching, foldGutter, foldKeymap } from '@codemirror/language'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
 import { css } from '@codemirror/lang-css'
@@ -111,11 +115,21 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       doc: data.code,
       extensions: [
         lineNumbers({
-          // CodeMirror passes 1-based line numbers to `formatNumber`, so the
-          // first line in the snippet maps to `data.startLine` directly.
           formatNumber: (n) => String(n + data.startLine - 1),
         }),
         highlightActiveLine(),
+        highlightSpecialChars(),
+        history(),
+        foldGutter(),
+        drawSelection(),
+        dropCursor(),
+        indentOnInput(),
+        bracketMatching(),
+        closeBrackets(),
+        autocompletion(),
+        rectangularSelection(),
+        crosshairCursor(),
+        highlightSelectionMatches(),
         getLanguageExt(data.filePath),
         oneDark,
         EditorView.lineWrapping,
@@ -144,14 +158,19 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
               return true
             },
           },
+          { key: 'Mod-d', run: copyLineDown },
+          { key: 'Mod-Shift-k', run: deleteLine },
+          { key: 'Mod-/', run: toggleComment },
+          { key: 'Tab', run: acceptCompletion },
+          indentWithTab,
+          ...closeBracketsKeymap,
+          ...defaultKeymap,
+          ...historyKeymap,
+          ...foldKeymap,
         ]),
         EditorView.theme({
           '&': {
             fontSize: '12px',
-            // Let the editor grow with its content up to the window height,
-            // then scroll internally. This is the CodeMirror-idiomatic way
-            // to get a "grow-until-cap then scroll" behaviour — see:
-            // https://codemirror.net/examples/styling/#overflow-and-scrolling
             maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`,
           },
           '.cm-scroller': {
@@ -193,7 +212,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
   return (
     <div
-      className={`relative pointer-events-auto bg-background/95 backdrop-blur border border-r-0 rounded-l-lg nodrag nopan ${flags.isFocused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
+      className={`relative pointer-events-auto bg-background border border-r-0 rounded-l-lg nodrag nopan ${flags.isFocused ? 'outline outline-2 outline-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
       style={{ width: nodeWidth }}
     >
       {/* Header */}
