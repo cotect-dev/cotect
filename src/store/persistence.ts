@@ -285,6 +285,38 @@ export async function switchProject(newProjectId: string): Promise<void> {
   startCrossWindowSync()
 }
 
+/**
+ * Reload a specific store's persisted fields from the backend.
+ * Used for cross-window panel transfers where the receiving window
+ * needs to pick up the latest state immediately.
+ */
+export async function reloadStoreFromBackend(storeName: string): Promise<void> {
+  const platform = getPlatform()
+  const entry = registeredStores.find((e) => e.name === storeName)
+  if (!entry) return
+
+  const [globalData, projectData] = await Promise.all([
+    platform.syncedState.get('persist:global'),
+    currentProjectId ? platform.syncedState.get(`persist:project:${currentProjectId}`) : Promise.resolve(null),
+  ])
+
+  const gData = globalData && typeof globalData === 'object' ? globalData as Record<string, unknown> : {}
+  const pData = projectData && typeof projectData === 'object' ? projectData as Record<string, unknown> : {}
+
+  const patch: Record<string, unknown> = {}
+  for (const [field, config] of Object.entries(entry.fields)) {
+    const key = `${entry.name}.${field}`
+    const source = config.scope === 'global' ? gData : pData
+    if (key in source) {
+      patch[field] = deserializeField(config, source[key])
+    }
+  }
+
+  if (Object.keys(patch).length > 0) {
+    entry.store.setState(patch)
+  }
+}
+
 export function flushPendingWrites(): void {
   flushScope('global')
   flushScope('project')

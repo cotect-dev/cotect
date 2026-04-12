@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { getPlatform } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
 import { useWindowBounds } from '@/hooks/useWindowBounds'
-import { loadSyncedStoreFromBackend } from '@/store/synced'
+import { reloadStoreFromBackend } from '@/store/persistence'
 
 type HoverZone = PanelPosition | null
 
@@ -179,7 +179,7 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
           // Load current state from the backend for the incoming panels
           // so the target window has content immediately.
           for (const id of currentIncoming.panelIds) {
-            void loadSyncedStoreFromBackend(id)
+            void reloadStoreFromBackend(id)
           }
           lastAccepted = { panelIds: [...currentIncoming.panelIds] }
         }
