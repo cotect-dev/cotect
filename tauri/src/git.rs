@@ -259,6 +259,14 @@ pub async fn git_init(repo_path: String) -> Result<(), String> {
     run_git(&repo_path, &["init"]).await.map(|_| ())
 }
 
+#[tauri::command]
+pub async fn git_remote_url(repo_path: String) -> Result<Option<String>, String> {
+    match run_git(&repo_path, &["remote", "get-url", "origin"]).await {
+        Ok(url) => Ok(Some(url.trim().to_string())),
+        Err(_) => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
