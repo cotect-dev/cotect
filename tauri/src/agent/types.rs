@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-// ─── Task types (cross-boundary with frontend) ───────────────────────────────
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskScope {
     pub root_path: String,
@@ -86,8 +84,6 @@ pub enum TaskEvent {
     },
 }
 
-// ─── Provider configuration ──────────────────────────────────────────────────
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
     pub id: String,
@@ -142,8 +138,6 @@ impl ProviderConfig {
             .unwrap_or_else(|| crate::agent::adapter::detect_format(&self.model))
     }
 }
-
-// ─── LLM message types (internal) ───────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -239,8 +233,6 @@ pub struct FunctionDef {
     pub parameters: serde_json::Value,
 }
 
-// ─── LLM stream events ─────────────────────────────────────────────────────
-
 #[derive(Debug, Clone)]
 pub enum LlmStreamEvent {
     TextDelta(String),
@@ -328,7 +320,7 @@ mod tests {
     fn test_estimated_tokens_text_only() {
         let msg = ChatMessage::user("Hello world test"); // 16 chars -> 16/4 + 1 = 5
         let tokens = msg.estimated_tokens();
-        assert!(tokens >= 4 && tokens <= 6);
+        assert!((4..=6).contains(&tokens));
     }
 
     #[test]

@@ -35,7 +35,7 @@ impl Default for DoomLoopDetector {
 }
 
 impl DoomLoopDetector {
-    #[allow(dead_code)] // Used in tests
+    #[allow(dead_code)]
     pub fn new(threshold: usize) -> Self {
         Self {
             history: Vec::new(),
@@ -168,8 +168,6 @@ mod tests {
         assert_eq!(d.check(), None);
     }
 
-    // ─── Edge case tests ────────────────────────────────────────────────
-
     #[test]
     fn test_threshold_of_1_detects_single_call() {
         let mut d = DoomLoopDetector::new(1);
@@ -273,8 +271,6 @@ mod tests {
         }
         assert_eq!(d.check(), Some(3));
     }
-
-    // ─── Hash-based detection & history cap tests ────────────────────────
 
     #[test]
     fn test_same_tool_and_args_detected_via_hash() {
