@@ -9,7 +9,7 @@ import { css } from '@codemirror/lang-css'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { getPlatform } from '@/services/platform'
 import type { CodeNode } from '@/types/nodes'
-import { getNodeFlags } from '.'
+import { getNodeFlags } from './nodeUtils'
 import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'
 
 function getLanguageExt(filePath: string) {

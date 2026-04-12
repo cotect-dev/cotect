@@ -4,7 +4,7 @@ import { Handle, Position } from '@xyflow/react'
 import { Image } from 'lucide-react'
 import { useCanvasStore } from '@/store'
 import type { ImageNode } from '@/types/nodes'
-import { getNodeFlags, getNodeOpacity } from '.'
+import { getNodeFlags, getNodeOpacity } from './nodeUtils'
 
 export default memo(function ImageNode({ id, data }: NodeProps<ImageNode>) {
   const flags = getNodeFlags(data)
