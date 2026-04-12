@@ -31,13 +31,8 @@ function isTestFile(name: string): boolean {
   return false
 }
 
-/**
- * A column represents one level in the navigation hierarchy.
- * Each column has a path and the nodes/edges for that level.
- */
 export interface Column {
   path: string
-  // 'directory' | 'file'
   kind: 'directory' | 'file'
   nodes: AppNode[]
   edges: Edge[]
@@ -84,7 +79,6 @@ export type CanvasState = {
   // the preview column without waiting for the actual viewport animation.
   cameraY: number
 
-  // Actions
   setViewportHeight: (h: number) => void
   setFocus: (nodeId: string | null) => void
   moveFocus: (direction: 'up' | 'down') => void

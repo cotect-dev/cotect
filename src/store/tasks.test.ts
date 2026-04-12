@@ -215,8 +215,6 @@ describe('useTasksStore', () => {
     })
   })
 
-  // ─── Event handler integration tests ──────────────────────────────────
-
   describe('handleTaskEvent (via listenToTask callback)', () => {
     /** Helper to get the event callback that was passed to listenToTask */
     function getEventCallback(): (event: agentService.TaskEvent) => void {

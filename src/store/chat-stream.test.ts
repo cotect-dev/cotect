@@ -1,10 +1,3 @@
-/**
- * Tests for the stream-processing helpers exported from chat.ts.
- *
- * These tests exercise the real `countWords`, `createAccumulator`, and
- * `processStreamChunk` functions directly, validating the stream-processing
- * algorithm the chat store relies on without needing network access.
- */
 import { describe, it, expect, vi } from 'vitest'
 
 // Mock platform before importing the module that depends on it

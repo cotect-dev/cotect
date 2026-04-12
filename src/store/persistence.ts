@@ -1,8 +1,6 @@
 import type { StateCreator, StoreApi } from 'zustand'
 import { getPlatform } from '@/services/platform'
 
-// --- Types ---
-
 interface PersistFieldConfig<V = unknown> {
   scope: 'global' | 'project'
   serialize?: (value: V) => unknown
@@ -24,8 +22,6 @@ interface RegisteredStore {
   unsubscribe: (() => void) | null
 }
 
-// --- Module state ---
-
 const registeredStores: RegisteredStore[] = []
 let currentProjectId: string | null = null
 let globalCache: Record<string, unknown> = {}
@@ -38,8 +34,6 @@ const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 // Pending writes: accumulated key-value pairs per namespace
 const pendingGlobal: Record<string, unknown> = {}
 const pendingProject: Record<string, unknown> = {}
-
-// --- Middleware ---
 
 export function withPersistence<T>(
   creator: StateCreator<T, [], []>,
@@ -66,8 +60,6 @@ export function withPersistence<T>(
     return initialState
   }
 }
-
-// --- Persistence service ---
 
 function getNamespace(scope: 'global' | 'project'): string {
   if (scope === 'global') return 'persist:global'
@@ -224,8 +216,6 @@ function hydrateFromCache(scope: 'global' | 'project') {
     }
   }
 }
-
-// --- Public API ---
 
 export async function initPersistence(projectId: string): Promise<void> {
   currentProjectId = projectId
