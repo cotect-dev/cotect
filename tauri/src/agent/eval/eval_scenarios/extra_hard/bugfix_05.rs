@@ -391,7 +391,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(
             "The event-sourcing system has subtle bugs that surface under specific \
              conditions. The bugs interact — you may need to fix one to see the \
              next clearly.\n\n\
@@ -400,8 +400,9 @@ if __name__ == "__main__":
              fixes WITHOUT running the code first.\n\
              Step 2: Run the existing `python3 test_system.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
-             fixes, and re-run until all tests pass.",
-        )),
+             fixes, and re-run until all tests pass."
+            .to_string()
+        ),
             vec![
                 complete(),
                 succeeded("shell"),

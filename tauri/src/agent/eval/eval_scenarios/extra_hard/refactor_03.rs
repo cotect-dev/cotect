@@ -271,7 +271,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(
             "The metrics system has unnecessary indirection and duplicated code. \
              Clean it up:\n\
              - The MetricsMiddleware in middleware.py looks like a pointless wrapper \
@@ -283,8 +283,9 @@ if __name__ == "__main__":
              Step 1: Read all files and plan your refactoring.\n\
              Step 2: Apply changes WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_metrics.py` to verify. If tests fail, \
-             reconsider what you removed — some 'unnecessary' code may be important.",
-        )),
+             reconsider what you removed — some 'unnecessary' code may be important."
+            .to_string()
+        ),
             vec![
                 complete(),
                 succeeded("shell"),
