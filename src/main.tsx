@@ -26,6 +26,8 @@ preloadChunk(import('@/components/Settings'), 'Settings')
 preloadChunk(import('@/components/History'), 'History')
 preloadChunk(import('@/components/Branches'), 'Branches')
 preloadChunk(import('@/components/Tasks'), 'Tasks')
+// ChatMessage's own dynamic imports — warm them alongside the Chat chunk
+// to avoid a two-level waterfall when the first message renders.
 preloadChunk(import('remark-gfm'), 'remark-gfm')
 preloadChunk(import('react-syntax-highlighter/dist/esm/prism-async-light'), 'prism-async-light')
 preloadChunk(import('react-syntax-highlighter/dist/esm/styles/prism/one-dark'), 'one-dark')
