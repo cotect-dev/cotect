@@ -65,7 +65,6 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
         .await
         .map_err(|e| io_err("read file", path, e))?;
 
-    // Mark as read for write/patch enforcement
     state.mark_read(path).await;
 
     let lines: Vec<&str> = content.lines().collect();
@@ -81,7 +80,6 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
     // Clamp end to be at least start (model may pass end_line < start_line)
     let end = end.max(start);
 
-    // Only iterate the requested slice (0-indexed: start-1 .. end)
     let slice = &lines[start - 1..end.min(total)];
     let mut output = String::with_capacity(slice.iter().map(|l| l.len() + 12).sum());
     for (i, line) in slice.iter().enumerate() {
@@ -114,7 +112,6 @@ mod tests {
         assert!(result.contains("1: line one"));
         assert!(result.contains("2: line two"));
         assert!(result.contains("3: line three"));
-        // No range indicator for full file
         assert!(!result.contains("[Showing lines"));
     }
 

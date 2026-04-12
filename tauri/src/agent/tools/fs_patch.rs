@@ -49,7 +49,6 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
         return Err("old_string and new_string are identical. No change needed.".into());
     }
 
-    // Find occurrences with early exit
     let mut matches = content.match_indices(&input.old_string);
     let first = matches.next();
     if first.is_none() {

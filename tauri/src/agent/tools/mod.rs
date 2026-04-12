@@ -56,12 +56,10 @@ impl ToolState {
     }
 }
 
-/// Parse JSON arguments into the expected type, returning a consistent error.
 fn parse_args<T: DeserializeOwned>(args: &str) -> Result<T, String> {
     serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))
 }
 
-/// Execute a tool call and return the result string.
 pub async fn execute_tool(
     tool_call: &ToolCall,
     state: &Arc<ToolState>,
@@ -93,7 +91,7 @@ pub async fn execute_tool(
     }
 }
 
-/// Extract a file_path from a tool call's arguments (for UI indicators).
+/// Extract file_path or path from a tool call's arguments (for UI indicators).
 pub fn extract_file_path(func: &super::types::FunctionCall) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(&func.arguments)
         .ok()
@@ -105,7 +103,6 @@ pub fn extract_file_path(func: &super::types::FunctionCall) -> Option<String> {
         })
 }
 
-/// Generate all tool definitions for the LLM.
 pub fn all_definitions() -> Vec<ToolDefinition> {
     vec![
         make_def::<fs_read::FSReadInput>(
@@ -149,7 +146,6 @@ pub fn all_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
-/// Return tool definitions filtered by agent role.
 pub fn definitions_for_role(role: AgentRole) -> Vec<ToolDefinition> {
     let all = all_definitions();
     let allowed: &[&str] = match role {
@@ -303,8 +299,6 @@ mod tests {
         assert!(!state.has_read("/project/other.txt").await);
     }
 
-    // ─── Integrated tool dispatch tests ─────────────────────────────────
-
     #[tokio::test]
     async fn test_execute_tool_read_real_file() {
         use std::io::Write;
@@ -408,7 +402,6 @@ mod tests {
 
         let state = ToolState::new("/tmp".into());
 
-        // Step 1: Read the file
         let read_call = ToolCall {
             id: "c1".into(),
             call_type: "function".into(),
@@ -420,7 +413,6 @@ mod tests {
         let read_result = execute_tool(&read_call, &state).await.unwrap();
         assert!(read_result.contains("original content"));
 
-        // Step 2: Patch the file
         let patch_call = ToolCall {
             id: "c2".into(),
             call_type: "function".into(),
@@ -432,7 +424,6 @@ mod tests {
         let patch_result = execute_tool(&patch_call, &state).await.unwrap();
         assert!(patch_result.contains("Successfully patched"));
 
-        // Verify
         let on_disk = std::fs::read_to_string(path).unwrap();
         assert!(on_disk.contains("modified content here"));
     }
@@ -447,7 +438,6 @@ mod tests {
 
         let state = ToolState::new("/tmp".into());
 
-        // Read first
         let read_call = ToolCall {
             id: "c1".into(),
             call_type: "function".into(),
@@ -458,7 +448,6 @@ mod tests {
         };
         execute_tool(&read_call, &state).await.unwrap();
 
-        // Then write
         let write_call = ToolCall {
             id: "c2".into(),
             call_type: "function".into(),
