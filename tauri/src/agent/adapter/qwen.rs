@@ -30,7 +30,6 @@ use super::{
     strip_paired_blocks, strip_tag_pairs,
 };
 
-// ─── Adapter ────────────────────────────────────────────────────────────────
 
 pub struct QwenAdapter;
 
@@ -59,7 +58,6 @@ impl ModelAdapter for QwenAdapter {
     }
 }
 
-// ─── Stream parser ──────────────────────────────────────────────────────────
 
 /// Stream parser for Qwen 3/3.5 responses via OpenAI-compat API.
 ///
@@ -378,7 +376,6 @@ impl QwenStreamParser {
     }
 }
 
-// ─── Qwen native tool call parser ───────────────────────────────────────────
 
 /// Parse a tool call from Qwen's output. Qwen uses Hermes-style tool calls:
 ///
@@ -480,7 +477,6 @@ fn extract_balanced_json(input: &str) -> Option<String> {
     None
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 /// Strip `<think>...</think>` blocks from text.
 fn strip_thinking(text: &str) -> String {
@@ -501,7 +497,6 @@ fn contains_tool_call_pattern(text: &str) -> bool {
     text.contains("<tool_call>")
 }
 
-// ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -519,7 +514,6 @@ mod tests {
         }
     }
 
-    // ── Tool call parsing ───────────────────────────────────────────────
 
     #[test]
     fn parse_hermes_style_tool_call() {
@@ -586,7 +580,6 @@ mod tests {
         assert_eq!(parsed["command"], "ls");
     }
 
-    // ── Thinking block stripping ────────────────────────────────────────
 
     #[test]
     fn strip_thinking_block() {
@@ -611,7 +604,6 @@ mod tests {
         assert_eq!(strip_thinking(input), "Hello");
     }
 
-    // ── Raw tool token stripping ────────────────────────────────────────
 
     #[test]
     fn strip_raw_tool_call_tokens() {
@@ -631,7 +623,6 @@ mod tests {
         assert_eq!(strip_raw_tool_tokens("plain text"), "plain text");
     }
 
-    // ── Stream parser (OpenAI SSE format) ───────────────────────────────
 
     #[test]
     fn parse_openai_text_delta() {
@@ -767,7 +758,6 @@ mod tests {
         assert!(!e2.iter().any(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. })));
     }
 
-    // ── Streaming thinking across chunks ────────────────────────────────
 
     #[test]
     fn streaming_think_across_chunks() {
@@ -788,7 +778,6 @@ mod tests {
         assert!(e2.iter().any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t.contains("answer"))));
     }
 
-    // ── Safe emit ───────────────────────────────────────────────────────
 
     #[test]
     fn safe_emit_partial_tag() {
@@ -805,7 +794,6 @@ mod tests {
         );
     }
 
-    // ── Extract balanced JSON ───────────────────────────────────────────
 
     #[test]
     fn extract_balanced_simple() {
@@ -831,7 +819,6 @@ mod tests {
         assert_eq!(extract_balanced_json(input).unwrap(), input);
     }
 
-    // ── Request body ────────────────────────────────────────────────────
 
     #[test]
     fn build_request_matches_openai_format() {

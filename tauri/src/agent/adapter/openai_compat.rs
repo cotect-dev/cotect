@@ -49,7 +49,6 @@ impl ModelAdapter for OpenAICompatAdapter {
     }
 }
 
-// ─── Stream parser ──────────────────────────────────────────────────────────
 
 #[derive(Default)]
 struct OpenAICompatParser {
@@ -124,7 +123,6 @@ impl StreamParser for OpenAICompatParser {
     }
 }
 
-// ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
