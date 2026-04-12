@@ -215,8 +215,6 @@ mod tests {
         assert!(prompt.contains("cannot modify"));
     }
 
-    // ─── Comprehensive system prompt tests ──────────────────────────────
-
     #[test]
     fn test_plan_role_instructions() {
         let prompt = role_instructions(AgentRole::Plan);

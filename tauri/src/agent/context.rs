@@ -218,8 +218,6 @@ mod tests {
         assert!(ctx.messages[1].content.contains("system_reminder"));
     }
 
-    // ─── Multi-turn conversation tests ──────────────────────────────────
-
     #[test]
     fn test_multi_turn_conversation_structure() {
         let mut ctx = ConversationContext::new("You are helpful.".into(), vec![]);
