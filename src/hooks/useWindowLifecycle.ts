@@ -6,6 +6,8 @@ import { useGitStore, startGitWatcher, stopGitWatcher } from '@/store/git'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
 import { initAllSyncedStores, clearAllSyncedStores, stopAllSyncedStores } from '@/store/synced'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
+import { initPersistence, stopPersistence, flushPendingWrites, switchProject } from '@/store/persistence'
+import { computeProjectId } from '@/lib/projectId'
 
 export function useWindowLifecycle() {
   const [isReady, setIsReady] = useState(false)
@@ -17,7 +19,10 @@ export function useWindowLifecycle() {
     void platform.windows.setMinSize(isMain ? 1280 : 400, isMain ? 720 : 300)
     if (isMain) clearAllSyncedStores()
     initAllSyncedStores()
-    return () => { stopAllSyncedStores() }
+    return () => {
+      stopPersistence()
+      stopAllSyncedStores()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -92,12 +97,27 @@ export function useWindowLifecycle() {
         }
         startSessionPersistence()
 
+        // Initialize persistence with the current project
+        const rootPath = session?.rootPath || useBrowserStore.getState().rootPath
+        if (rootPath) {
+          const projectId = await computeProjectId(rootPath)
+          await initPersistence(projectId)
+        }
+
         useBrowserStore.subscribe((state) => {
           const gitState = useGitStore.getState()
           if (state.rootPath && state.rootPath !== gitState.repoPath) {
             gitState.setRepoPath(state.rootPath)
             stopGitWatcher()
             startGitWatcher(state.rootPath, windowId)
+            // Switch persistence to the new project
+            computeProjectId(state.rootPath).then((newProjectId) => {
+              switchProject(newProjectId).catch((err) => {
+                console.warn('[windowLifecycle] persistence project switch failed:', err)
+              })
+            }).catch((err) => {
+              console.warn('[windowLifecycle] project ID computation failed:', err)
+            })
             gitState.refresh().catch((err) => {
               console.warn('[windowLifecycle] git refresh after root change failed:', err)
             })
@@ -146,6 +166,7 @@ export function useWindowLifecycle() {
 
   useEffect(() => {
     return platform.windows.onClose(() => {
+      flushPendingWrites()
       stopLayoutPersistence()
       stopGeometryPersistence()
       stopSessionPersistence()
