@@ -312,7 +312,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(
             "The three validator modules (email_validator.py, username_validator.py, \
              password_validator.py) have nearly identical structure. Refactor them:\n\
              - Extract a shared base class with the common validate() pattern.\n\
@@ -321,8 +321,9 @@ if __name__ == "__main__":
              Step 1: Read all files and identify the common pattern.\n\
              Step 2: Apply your refactoring.\n\
              Step 3: Run the existing `python3 test_validators.py` to verify. If tests fail, \
-             reconsider — some seemingly identical methods may differ in critical ways.",
-        )),
+             reconsider — some seemingly identical methods may differ in critical ways."
+            .to_string()
+        ),
             vec![
                 complete(),
                 succeeded("shell"),

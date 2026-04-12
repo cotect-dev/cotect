@@ -215,16 +215,17 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(
             "We're migrating from API v1 to v2. The v2 API wraps all successful \
-             responses in a {{\"data\": ...}} envelope. You need to make \
+             responses in a {\"data\": ...} envelope. You need to make \
              coordinated changes across all source files so the client targets v2 \
              and correctly unwraps responses.\n\n\
              Step 1: Read all source files and understand the cross-file dependencies.\n\
              Step 2: Apply all necessary patches WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_api.py` to verify. If tests fail, read the \
-             errors and iterate until all tests pass.",
-        )),
+             errors and iterate until all tests pass."
+            .to_string()
+        ),
             vec![
                 complete(),
                 succeeded("shell"),

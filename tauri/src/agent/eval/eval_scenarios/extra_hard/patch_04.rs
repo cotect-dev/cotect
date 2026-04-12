@@ -314,7 +314,7 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
+        with_blocked(with_scope(with_checks(pf(
             "We're renaming the `user_name` field to `display_name` for the \
              profile entity ONLY. The session and audit_log entities must keep \
              their `user_name` fields — those refer to the login username, \
@@ -326,8 +326,9 @@ if __name__ == "__main__":
              reference to `user_name`.\n\
              Step 2: Apply surgical patches WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_entities.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass.",
-        )),
+             read the errors and iterate until all tests pass."
+            .to_string()
+        ),
             vec![
                 complete(),
                 succeeded("shell"),
