@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Implement as I;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_patch_with_context(dir: &Path) -> SetupResult {
         let p = ap(dir, "funcs.js");
@@ -33,7 +32,6 @@ function gamma() {
     }
     v.push(scen!("recovery_disambiguate_patch", Category::Recovery, Difficulty::Medium, I, s_patch_with_context));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_large_file_navigation(dir: &Path) -> SetupResult {
         let p = ap(dir, "big.py");

@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Implement as I;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_iterator(dir: &Path) -> SetupResult {
         let p = ap(dir, "chunked.py");
@@ -20,7 +19,6 @@ pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
     }
     v.push(scen!("impl_iterators", Category::Implement, Difficulty::Medium, I, s_iterator));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_state_machine(dir: &Path) -> SetupResult {
         let p = ap(dir, "fsm.py");
