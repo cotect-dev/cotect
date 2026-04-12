@@ -193,7 +193,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
   return (
     <div
-      className={`relative pointer-events-auto bg-background/95 backdrop-blur border rounded-lg nodrag nopan ${flags.isFocused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
+      className={`relative pointer-events-auto bg-background/95 backdrop-blur border border-r-0 rounded-l-lg nodrag nopan ${flags.isFocused ? 'ring-2 ring-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
       style={{ width: nodeWidth }}
     >
       {/* Header */}
@@ -228,13 +228,13 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       <div
         ref={resizeRef}
         onMouseDown={handleResizeMouseDown}
-        className="nodrag nopan group/handle absolute top-0 right-0 bottom-0 w-3 cursor-col-resize
-          flex items-center justify-center z-10"
+        className="nodrag nopan group/handle absolute top-0 -right-3 bottom-0 w-3 cursor-col-resize
+          flex items-center z-10"
         role="separator"
       >
-        <div className="absolute inset-y-0 right-0 w-px
+        <div className="absolute inset-y-0 left-0 w-px
           bg-foreground/10 group-hover/handle:bg-primary/40 group-data-[resizing]/handle:bg-primary/40 transition-colors" />
-        <div className="z-10 shrink-0 rounded-lg transition-colors
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[2px] rounded-lg transition-colors
           bg-background border border-foreground/15
           group-hover/handle:border-primary/40 group-data-[resizing]/handle:border-primary/40
           h-6 w-1.5"
