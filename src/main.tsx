@@ -19,17 +19,13 @@ function preloadChunk(mod: Promise<unknown>, name: string): void {
   })
 }
 
-// Panels visible in the default layout — highest priority.
 preloadChunk(import('@/components/Chat'), 'Chat')
 preloadChunk(import('@/components/Changes'), 'Changes')
 preloadChunk(import('@/components/Console'), 'Console')
-// Panels the user can open from the top bar — still warm early.
 preloadChunk(import('@/components/Settings'), 'Settings')
 preloadChunk(import('@/components/History'), 'History')
 preloadChunk(import('@/components/Branches'), 'Branches')
 preloadChunk(import('@/components/Tasks'), 'Tasks')
-// ChatMessage's own module-level dynamic imports — pull them in parallel
-// with the Chat chunk itself to avoid a two-level waterfall.
 preloadChunk(import('remark-gfm'), 'remark-gfm')
 preloadChunk(import('react-syntax-highlighter/dist/esm/prism-async-light'), 'prism-async-light')
 preloadChunk(import('react-syntax-highlighter/dist/esm/styles/prism/one-dark'), 'one-dark')
