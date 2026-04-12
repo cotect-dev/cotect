@@ -48,7 +48,6 @@ export function PanelHostProvider({ children }: { children: ReactNode }) {
   // during render (refs are not).
   const [containers] = useState(createPanelContainers);
 
-  // Clean up DOM elements when provider unmounts
   useEffect(() => {
     return () => {
       for (const el of Object.values(containers)) {
@@ -94,7 +93,6 @@ export function PanelSlot({ id, visible }: { id: string; visible: boolean }) {
   const { getNode } = usePanelHost();
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Adopt/release the panel's stable DOM container
   useEffect(() => {
     const wrapper = getNode(id);
     const mount = mountRef.current;
