@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Implement as I;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_add_logging(dir: &Path) -> SetupResult {
         let p = ap(dir, "service.py");
@@ -34,7 +33,6 @@ def post_data(url: str, payload: dict) -> dict:
     }
     v.push(scen!("patch_add_logging", Category::Patch, Difficulty::Medium, I, s_add_logging));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_add_generics(dir: &Path) -> SetupResult {
         let p = ap(dir, "repo.ts");

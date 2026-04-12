@@ -6,7 +6,6 @@ use crate::agent::types::AgentRole::Implement as I;
 use super::*;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    // ── Medium ──────────────────────────────────────────────────────────
 
     fn s_typed_errors_ts(dir: &Path) -> SetupResult {
         let p = ap(dir, "api.ts");
@@ -43,7 +42,6 @@ export async function postData(url: string, body: unknown): Promise<any> {
     }
     v.push(scen!("errh_typed_errors_ts", Category::ErrorHandling, Difficulty::Medium, I, s_typed_errors_ts));
 
-    // ── Hard ────────────────────────────────────────────────────────────
 
     fn s_retry_with_backoff(dir: &Path) -> SetupResult {
         let p = ap(dir, "client.py");
