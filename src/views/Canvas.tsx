@@ -148,9 +148,32 @@ function CanvasFlow() {
     containerRef.current?.focus()
   }, [])
 
-  // Wheel handler: translate vertical scroll into viewport pan
+  // Wheel handler: translate vertical scroll into viewport pan, or forward
+  // to the preview code node's scroller when a file is focused.
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.stopPropagation()
+
+    // When a file node is focused, hijack scrolling to the preview code node
+    const store = useCanvasStore.getState()
+    const focusedId = store.focusedNodeId
+    if (focusedId) {
+      const focused = store.nodes.find((n) => n.id === focusedId)
+      if (focused?.type === 'file') {
+        const previewCol = store.columns[store.currentColumnIndex + 1]
+        if (previewCol?.kind === 'file' && previewCol.nodes[0]) {
+          const previewEl = containerRef.current?.querySelector(
+            `[data-id="${CSS.escape(previewCol.nodes[0].id)}"]`,
+          )
+          const scroller = previewEl?.querySelector('.cm-scroller') as HTMLElement | null
+          if (scroller) {
+            scroller.scrollTop += e.deltaY
+            scroller.scrollLeft += e.deltaX
+            return
+          }
+        }
+      }
+    }
+
     const viewport = reactFlow.getViewport()
     void reactFlow.setViewport(
       { x: viewport.x - e.deltaX, y: viewport.y - e.deltaY, zoom: viewport.zoom },
