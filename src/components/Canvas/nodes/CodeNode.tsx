@@ -11,6 +11,7 @@ import { getPlatform } from '@/services/platform'
 import type { CodeNode } from '@/types/nodes'
 import { getNodeFlags } from './nodeUtils'
 import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'
+import { useCanvasStore } from '@/store/canvas'
 
 function getLanguageExt(filePath: string) {
   if (/\.(tsx?)$/.test(filePath)) return javascript({ typescript: true, jsx: true })
@@ -20,7 +21,6 @@ function getLanguageExt(filePath: string) {
   return javascript({ typescript: true })
 }
 
-const DEFAULT_CODE_NODE_WIDTH = 650
 const MIN_CODE_NODE_WIDTH = 280
 /**
  * Vertical space reserved above/below the editor for the top bar and
@@ -36,7 +36,14 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [nodeWidth, setNodeWidth] = useState<number>(DEFAULT_CODE_NODE_WIDTH)
+  const storeWidth = useCanvasStore((s) => s.codeNodeWidth)
+  const setCodeNodeWidth = useCanvasStore((s) => s.setCodeNodeWidth)
+  const [nodeWidth, setNodeWidth] = useState<number>(storeWidth)
+
+  // Sync from store when it changes externally (e.g. cross-window sync, hydration)
+  useEffect(() => {
+    setNodeWidth(storeWidth)
+  }, [storeWidth])
 
   /**
    * Start a right-edge resize drag. Uses native document listeners so the
@@ -55,11 +62,14 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       const next = Math.max(MIN_CODE_NODE_WIDTH, startWidth + (ev.clientX - startX))
       setNodeWidth(next)
     }
-    const onUp = () => {
+    const onUp = (ev: MouseEvent) => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      // Commit final width to store (persisted + synced to other windows)
+      const finalWidth = Math.max(MIN_CODE_NODE_WIDTH, startWidth + (ev.clientX - startX))
+      setCodeNodeWidth(finalWidth)
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
@@ -67,7 +77,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     // selection so the drag feels solid across the whole window.
     document.body.style.cursor = 'ew-resize'
     document.body.style.userSelect = 'none'
-  }, [nodeWidth])
+  }, [nodeWidth, setCodeNodeWidth])
 
   const saveToFile = useCallback(async () => {
     const view = viewRef.current
