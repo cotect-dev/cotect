@@ -115,6 +115,42 @@ pub fn start_batch_broadcaster(app: AppHandle) {
     });
 }
 
+pub fn load_all(app: &AppHandle) {
+    let Ok(app_dir) = app.path().app_data_dir() else {
+        return;
+    };
+    let store_path = app_dir.join("app-state.json");
+    let content = match std::fs::read_to_string(&store_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return;
+    };
+    let Some(obj) = json.as_object() else {
+        return;
+    };
+
+    let state = app.state::<SyncedStateStore>();
+    let mut entries = match state.entries.lock() {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let prefix = "panel-";
+    for (key, value) in obj {
+        if let Some(name) = key.strip_prefix(prefix) {
+            entries.insert(
+                name.to_string(),
+                StoreEntry {
+                    state: value.clone(),
+                    source: String::new(),
+                },
+            );
+        }
+    }
+}
+
 pub fn persist_all(app: &AppHandle) {
     let state = app.state::<SyncedStateStore>();
     let entries = match state.entries.lock() {
