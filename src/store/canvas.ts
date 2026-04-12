@@ -12,6 +12,7 @@ import {
 import { getPlatform } from '@/services/platform'
 import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN, isImageFile, getImageMimeType, IMAGE_PREVIEW_MAX_BYTES } from '@/lib/constants'
 import type { AppNode } from '@/types/nodes'
+import { withPersistence } from '@/store/persistence'
 
 /**
  * Returns true if a filename looks like a test/spec file.
@@ -65,6 +66,9 @@ export type CanvasState = {
   // Hidden nodes: node IDs that have been hidden by the user (H key)
   hiddenNodeIds: Set<string>
 
+  // Persisted width for code nodes (global preference)
+  codeNodeWidth: number
+
   // Memory of the last focused node per column path, recorded when navigating
   // left out of a column. On subsequent navigateRight into the same path we
   // restore that focus instead of landing on the first node. Entries persist
@@ -89,6 +93,8 @@ export type CanvasState = {
   initRoot: (rootPath: string) => Promise<void>
   /** Toggle hide/show for the currently focused node. */
   toggleHideNode: () => void
+  /** Set the width for all code nodes (persisted globally). */
+  setCodeNodeWidth: (width: number) => void
   /** Load a preview column for the currently focused node (shown to the right). */
   updatePreview: () => Promise<void>
 }
@@ -254,7 +260,9 @@ function findVerticalNeighbor(
   return bestId
 }
 
-export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () => create<CanvasState>((set, get) => ({
+export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () => create<CanvasState>()(
+  withPersistence(
+    (set, get) => ({
   nodes: [],
   edges: [],
 
@@ -263,6 +271,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   currentColumnIndex: 0,
   depthChain: [],
   hiddenNodeIds: new Set(),
+  codeNodeWidth: 650,
   rightFocusMemory: {},
   viewportHeight: 0,
   cameraY: CANVAS_PAD_Y,
@@ -515,6 +524,10 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     flattenAndRender(get, set)
   },
 
+  setCodeNodeWidth: (width: number) => {
+    set({ codeNodeWidth: width })
+  },
+
   /**
    * Load a preview column for the currently focused node and place it
    * at columns[currentColumnIndex + 1]. This gives immediate feedback
@@ -582,7 +595,21 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       // Silently ignore preview errors
     }
   },
-})))
+    }),
+    {
+      name: 'canvas',
+      fields: {
+        codeNodeWidth: { scope: 'global' },
+        hiddenNodeIds: {
+          scope: 'project',
+          serialize: (s: Set<string>) => [...s],
+          deserialize: (raw: unknown) => new Set(raw as string[]),
+        },
+      },
+      debounce: 500,
+    },
+  ),
+))
 
 /**
  * Flatten all columns into positioned nodes and edges,
