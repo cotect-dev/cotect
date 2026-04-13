@@ -54,6 +54,11 @@ interface GitState {
    */
   headContent: { sha: string; files: Record<string, string> }
   loadHeadContent: (repoRelativePath: string) => Promise<string | null>
+  /** Hybrid timestamps (unix seconds) per repo-relative dirty file path. */
+  fileTimes: Record<string, number>
+  /** Current Changes-panel sort mode. Not persisted across restarts. */
+  sortMode: 'path' | 'recent' | 'oldest'
+  setSortMode: (mode: 'path' | 'recent' | 'oldest') => void
   loading: boolean
   refresh: () => Promise<void>
   initRepo: () => Promise<void>
@@ -80,7 +85,13 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
   branch: null,
   lastCommitTimestamp: null,
   headContent: { sha: '', files: {} },
+  fileTimes: {},
+  sortMode: 'path',
   loading: false,
+
+  setSortMode: (mode) => {
+    set({ sortMode: mode })
+  },
 
   loadHeadContent: async (repoRelativePath: string) => {
     const { repoPath, headContent } = get()
