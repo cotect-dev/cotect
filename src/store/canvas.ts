@@ -92,6 +92,8 @@ export type CanvasState = {
   setCodeNodeWidth: (width: number) => void
   /** Load a preview column for the currently focused node (shown to the right). */
   updatePreview: () => Promise<void>
+  /** Navigate the canvas directly to a repo-relative file path and focus it. */
+  focusFileByPath: (repoRelativePath: string) => Promise<void>
 }
 
 /**
@@ -386,6 +388,44 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       void get().updatePreview()
     } catch (err) {
       console.error('Failed to init root:', err)
+    }
+  },
+
+  focusFileByPath: async (repoRelativePath: string) => {
+    const { columns } = get()
+    const rootCol = columns[0]
+    if (!rootCol) return
+    const rootPath = rootCol.path
+
+    const segments = repoRelativePath.split('/').filter(Boolean)
+    if (segments.length === 0) return
+
+    let currentPath = rootPath
+    const newColumns: Column[] = [rootCol]
+    try {
+      for (let i = 0; i < segments.length - 1; i++) {
+        currentPath = `${currentPath}/${segments[i]}`
+        const dirNodes = await buildDirectoryNodes(currentPath)
+        newColumns.push({ path: currentPath, kind: 'directory', nodes: dirNodes, edges: [] })
+      }
+
+      const parentCol = newColumns[newColumns.length - 1]
+      const fileName = segments[segments.length - 1]
+      const fileNodeId = `${currentPath === rootPath ? rootPath : currentPath}/${fileName}`
+      const hasFile = parentCol.nodes.some((n) => n.id === fileNodeId)
+
+      set({
+        columns: newColumns,
+        currentColumnIndex: newColumns.length - 1,
+        depthChain: newColumns.map((c) => c.path),
+        focusedNodeId: hasFile ? fileNodeId : null,
+        cameraY: CANVAS_PAD_Y,
+      })
+
+      flattenAndRender(get, set)
+      void get().updatePreview()
+    } catch (err) {
+      console.warn('[canvas] focusFileByPath failed:', err)
     }
   },
 
