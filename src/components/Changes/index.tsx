@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react'
-import { useGitStore, type GitFileStatus } from '@/store/git'
+import { useGitStore, sortedFiles, type GitFileStatus } from '@/store/git'
 import { useCanvasStore } from '@/store/canvas'
 import NoGitRepo from '@/components/NoGitRepo'
 
@@ -107,11 +107,34 @@ const TreeEntry = memo(function TreeEntry({ node, depth }: { node: TreeNode; dep
 export default function Changes() {
   const isGitRepo = useGitStore((s) => s.isGitRepo)
   const status = useGitStore((s) => s.status)
+  const fileTimes = useGitStore((s) => s.fileTimes)
+  const sortMode = useGitStore((s) => s.sortMode)
+  const setSortMode = useGitStore((s) => s.setSortMode)
 
   const tree = useMemo(
-    () => (status ? buildCompactTree(status.files) : []),
-    [status],
+    () => (status && sortMode === 'path' ? buildCompactTree(status.files) : []),
+    [status, sortMode],
   )
+
+  const flatSorted = useMemo(
+    () => (status && sortMode !== 'path' ? sortedFiles({ status, fileTimes, sortMode }) : []),
+    [status, fileTimes, sortMode],
+  )
+
+  const cycleSortMode = () => {
+    const next: Record<typeof sortMode, typeof sortMode> = {
+      path: 'recent',
+      recent: 'oldest',
+      oldest: 'path',
+    }
+    setSortMode(next[sortMode])
+  }
+
+  const sortLabel: Record<typeof sortMode, string> = {
+    path: 'Path',
+    recent: 'Recent',
+    oldest: 'Oldest',
+  }
 
   if (!isGitRepo) return <NoGitRepo />
 
@@ -125,13 +148,22 @@ export default function Changes() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-2 py-1 text-[11px] text-muted-foreground/60 border-b border-border/30">
-        {status.files.length} file{status.files.length !== 1 ? 's' : ''} changed
+      <div className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground/60 border-b border-border/30">
+        <span>{status.files.length} file{status.files.length !== 1 ? 's' : ''} changed</span>
+        <button
+          onClick={cycleSortMode}
+          className="px-1.5 py-0.5 rounded hover:bg-muted/50 font-mono text-[10px] cursor-pointer"
+          title="Toggle sort mode"
+        >
+          {sortLabel[sortMode]}
+        </button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto py-1">
-        {tree.map((node) => (
-          <TreeEntry key={node.path} node={node} depth={0} />
-        ))}
+        {sortMode === 'path'
+          ? tree.map((node) => <TreeEntry key={node.path} node={node} depth={0} />)
+          : flatSorted.map((file) => (
+              <FileEntry key={file.path} file={file} showFullPath />
+            ))}
       </div>
     </div>
   )
