@@ -31,7 +31,7 @@ export default memo(function Breadcrumbs() {
   }, [])
 
   return (
-    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
       <div className="flex items-center gap-1 bg-background/90 backdrop-blur-md border border-border rounded-lg px-3 py-1.5 shadow-lg">
         <button
           className={`text-xs transition-colors ${currentColumnIndex === 0 ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}

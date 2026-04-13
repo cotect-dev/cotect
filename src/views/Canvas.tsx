@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react'
+import { ReactFlow, ReactFlowProvider, useReactFlow, Background, BackgroundVariant } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCanvasStore, useBrowserStore } from '@/store'
 import Layout from '@/components/Layout'
@@ -224,7 +224,15 @@ function CanvasFlow() {
           minZoom={1}
           maxZoom={1}
           onViewportChange={notifyCanvasScrolled}
-        />
+        >
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={24}
+            size={2}
+            color="var(--color-foreground)"
+            style={{ opacity: 0.1 }}
+          />
+        </ReactFlow>
       </div>
       <Breadcrumbs />
       <div className="absolute inset-0 pointer-events-none z-10">
