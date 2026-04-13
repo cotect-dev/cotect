@@ -83,6 +83,7 @@ fn main() {
             git::git_last_commit_time,
             git::git_remote_url,
             git::git_init,
+            git::git_show_file,
             synced_state::set_synced_state,
             synced_state::get_synced_state,
             synced_state::clear_synced_state,
