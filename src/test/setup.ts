@@ -47,4 +47,5 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
   writeTextFile: vi.fn(),
+  stat: vi.fn().mockResolvedValue({ mtime: null }),
 }))
