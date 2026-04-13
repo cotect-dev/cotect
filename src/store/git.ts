@@ -196,6 +196,35 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
   },
 })))
 
+/**
+ * Return the files in the order required by the current sort mode.
+ * - 'path': original order (tree building happens in the view layer).
+ * - 'recent': descending by fileTimes, files with missing timestamps last in original order.
+ * - 'oldest': ascending by fileTimes, files with missing timestamps last in original order.
+ */
+export function sortedFiles(state: Pick<GitState, 'status' | 'fileTimes' | 'sortMode'>): GitFileStatus[] {
+  const files = state.status?.files ?? []
+  if (state.sortMode === 'path') return files
+
+  const withTime = files.map((file, originalIndex) => ({
+    file,
+    time: state.fileTimes[file.path] ?? null,
+    originalIndex,
+  }))
+
+  const cmp = (
+    a: { time: number | null; originalIndex: number },
+    b: { time: number | null; originalIndex: number },
+  ) => {
+    if (a.time === null && b.time === null) return a.originalIndex - b.originalIndex
+    if (a.time === null) return 1
+    if (b.time === null) return -1
+    return state.sortMode === 'recent' ? b.time - a.time : a.time - b.time
+  }
+
+  return withTime.slice().sort(cmp).map((entry) => entry.file)
+}
+
 let windowId = ''
 
 interface GitSyncPayload {
