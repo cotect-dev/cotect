@@ -260,6 +260,30 @@ pub async fn git_show_file(repo_path: String, file_path: String) -> Result<Strin
     run_git(&repo_path, &["show", &spec]).await
 }
 
+/// Returns, for each requested repo-relative path, the unix timestamp of the
+/// most recent commit that touched it. Paths that have never been committed
+/// (e.g. untracked files) return None. Order matches input order.
+#[tauri::command]
+pub async fn git_file_times(
+    repo_path: String,
+    paths: Vec<String>,
+) -> Result<Vec<(String, Option<i64>)>, String> {
+    let mut out = Vec::with_capacity(paths.len());
+    for path in paths {
+        let res = run_git(
+            &repo_path,
+            &["log", "-1", "--format=%ct", "--", &path],
+        )
+        .await;
+        let ts = match res {
+            Ok(s) => s.trim().parse::<i64>().ok(),
+            Err(_) => None,
+        };
+        out.push((path, ts));
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub async fn git_init(repo_path: String) -> Result<(), String> {
     run_git(&repo_path, &["init"]).await.map(|_| ())
@@ -346,6 +370,56 @@ mod tests {
             Ok(s) => assert!(!s.is_empty()),
             Err(_) => {} // also acceptable
         }
+    }
+
+    #[tokio::test]
+    async fn git_file_times_returns_committed_file_timestamp() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "hi\n", "init");
+
+        let result = git_file_times(repo.clone(), vec!["a.txt".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        let (path, ts) = &result[0];
+        assert_eq!(path, "a.txt");
+        assert!(ts.is_some(), "expected Some timestamp for committed file");
+        assert!(ts.unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn git_file_times_returns_none_for_untracked_path() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "hi\n", "init");
+        std::fs::write(format!("{repo}/new.txt"), "x\n").unwrap();
+
+        let result = git_file_times(repo, vec!["new.txt".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "new.txt");
+        assert!(result[0].1.is_none());
+    }
+
+    #[tokio::test]
+    async fn git_file_times_preserves_order_for_multiple_paths() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "first.txt", "1\n", "add first");
+        // Sleep a bit so the timestamps differ
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        write_and_commit(&repo, "second.txt", "2\n", "add second");
+
+        let result = git_file_times(
+            repo,
+            vec!["second.txt".to_string(), "first.txt".to_string()],
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].0, "second.txt");
+        assert_eq!(result[1].0, "first.txt");
+        // second.txt should have a larger timestamp than first.txt
+        assert!(result[0].1.unwrap() > result[1].1.unwrap());
     }
 
     #[test]
