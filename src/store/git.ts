@@ -47,6 +47,13 @@ interface GitState {
   log: GitLogEntry[] | null
   branch: GitBranch | null
   lastCommitTimestamp: number | null
+  /**
+   * Map of repo-relative path → HEAD content for that file.
+   * Lazily populated by loadHeadContent. Invalidated (replaced with empty) when
+   * HEAD SHA changes.
+   */
+  headContent: { sha: string; files: Record<string, string> }
+  loadHeadContent: (repoRelativePath: string) => Promise<string | null>
   loading: boolean
   refresh: () => Promise<void>
   initRepo: () => Promise<void>
@@ -72,7 +79,31 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
   log: null,
   branch: null,
   lastCommitTimestamp: null,
+  headContent: { sha: '', files: {} },
   loading: false,
+
+  loadHeadContent: async (repoRelativePath: string) => {
+    const { repoPath, headContent } = get()
+    if (!repoPath) return null
+    if (headContent.files[repoRelativePath] !== undefined) {
+      return headContent.files[repoRelativePath]
+    }
+    try {
+      const content = await invoke<string>('git_show_file', {
+        repoPath,
+        filePath: repoRelativePath,
+      })
+      set((state) => ({
+        headContent: {
+          sha: state.headContent.sha,
+          files: { ...state.headContent.files, [repoRelativePath]: content },
+        },
+      }))
+      return content
+    } catch {
+      return null
+    }
+  },
 
   refresh: async () => {
     const { repoPath, loading } = get()
@@ -127,7 +158,13 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
         branch: branch.status === 'fulfilled' ? branch.value : null,
         lastCommitTimestamp: lastCommitTime.status === 'fulfilled' ? lastCommitTime.value : null,
       }
-      set({ ...newState, loading: false })
+      const headSha = log.status === 'fulfilled' && log.value[0] ? log.value[0].hash : ''
+      const currentHeadContent = get().headContent
+      const nextHeadContent =
+        currentHeadContent.sha === headSha
+          ? currentHeadContent
+          : { sha: headSha, files: {} }
+      set({ ...newState, headContent: nextHeadContent, loading: false })
       broadcastGitState(newState)
     } catch (err) {
       console.error('Git refresh failed:', err)
