@@ -33,7 +33,7 @@ function isTestFile(name: string): boolean {
 
 export interface Column {
   path: string
-  kind: 'directory' | 'file'
+  kind: 'directory' | 'file' | 'diff'
   nodes: AppNode[]
   edges: Edge[]
 }
