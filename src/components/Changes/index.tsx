@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react'
 import { useGitStore, type GitFileStatus } from '@/store/git'
+import { useCanvasStore } from '@/store/canvas'
 import NoGitRepo from '@/components/NoGitRepo'
 
 interface TreeNode {
@@ -51,14 +52,25 @@ const statusColors: Record<string, string> = {
   '??': 'text-muted-foreground',
 }
 
-const FileEntry = memo(function FileEntry({ file }: { file: GitFileStatus }) {
+const FileEntry = memo(function FileEntry({ file, showFullPath }: { file: GitFileStatus; showFullPath?: boolean }) {
+  const handleClick = () => {
+    void useCanvasStore.getState().focusFileByPath(file.path)
+  }
+  const displayName = showFullPath ? file.path : file.path.split('/').pop()
+  const truncateStyle: React.CSSProperties = showFullPath
+    ? { direction: 'rtl', textAlign: 'left', unicodeBidi: 'plaintext' }
+    : {}
   return (
-    <div className="flex items-center justify-between gap-2 px-2 py-px hover:bg-muted/30 text-xs font-mono">
+    <div
+      className="flex items-center justify-between gap-2 px-2 py-px hover:bg-primary/10 cursor-pointer text-xs font-mono"
+      onClick={handleClick}
+      title={file.path}
+    >
       <div className="flex items-center gap-1.5 min-w-0">
         <span className={`shrink-0 w-4 text-center ${statusColors[file.status] ?? 'text-muted-foreground'}`}>
           {file.status}
         </span>
-        <span className="truncate">{file.path.split('/').pop()}</span>
+        <span className="truncate" style={truncateStyle}>{displayName}</span>
       </div>
       <div className="flex items-center gap-1 shrink-0 text-[10px]">
         {file.insertions > 0 && <span className="text-green-500">+{file.insertions}</span>}
