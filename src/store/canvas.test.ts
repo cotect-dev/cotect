@@ -1400,7 +1400,7 @@ describe('diff column materialization', () => {
     mockGitStatus.files = []
   })
 
-  it('builds a diff column at currentColumnIndex + 2 when focused file is dirty', async () => {
+  it('swaps the file preview column for a diff column when focused file is dirty', async () => {
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'a.ts', path: '/proj/a.ts', isDirectory: false },
     ]))
@@ -1411,14 +1411,13 @@ describe('diff column materialization', () => {
     await useCanvasStore.getState().updatePreview()
 
     const cols = useCanvasStore.getState().columns
-    expect(cols).toHaveLength(3)
+    expect(cols).toHaveLength(2)
     expect(cols[0].kind).toBe('directory')
-    expect(cols[1].kind).toBe('file')
-    expect(cols[2].kind).toBe('diff')
-    expect(cols[2].nodes[0].type).toBe('diff')
+    expect(cols[1].kind).toBe('diff')
+    expect(cols[1].nodes[0].type).toBe('diff')
   })
 
-  it('does not build a diff column when focused file is clean', async () => {
+  it('uses a file preview column when focused file is clean', async () => {
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'a.ts', path: '/proj/a.ts', isDirectory: false },
     ]))
@@ -1430,10 +1429,11 @@ describe('diff column materialization', () => {
 
     const cols = useCanvasStore.getState().columns
     expect(cols).toHaveLength(2)
+    expect(cols[1].kind).toBe('file')
     expect(cols.some((c) => c.kind === 'diff')).toBe(false)
   })
 
-  it('removes the diff column when the file becomes clean', async () => {
+  it('swaps the diff column back to a file column when the file becomes clean', async () => {
     mockReadDirectory.mockResolvedValue(makeFSEntries([
       { name: 'a.ts', path: '/proj/a.ts', isDirectory: false },
     ]))
@@ -1442,10 +1442,12 @@ describe('diff column materialization', () => {
 
     await useCanvasStore.getState().initRoot('/proj')
     await useCanvasStore.getState().updatePreview()
-    expect(useCanvasStore.getState().columns).toHaveLength(3)
+    expect(useCanvasStore.getState().columns[1].kind).toBe('diff')
 
     mockGitStatus.files = []
     await useCanvasStore.getState().updatePreview()
-    expect(useCanvasStore.getState().columns).toHaveLength(2)
+    const cols = useCanvasStore.getState().columns
+    expect(cols).toHaveLength(2)
+    expect(cols[1].kind).toBe('file')
   })
 })
