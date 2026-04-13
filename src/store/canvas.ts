@@ -178,7 +178,7 @@ function buildDiffColumnForPath(filePath: string, fileName: string): Column | nu
     position: { x: 0, y: 0 },
     data: { label: fileName, filePath, isNewFile },
   }
-  return { path: `diff:${filePath}`, kind: 'diff', nodes: [diffNode], edges: [] }
+  return { path: filePath, kind: 'diff', nodes: [diffNode], edges: [] }
 }
 
 /**
@@ -598,27 +598,27 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       } else if (node.type === 'file') {
         const path = node.data.path
         const fileName = node.data.label
-        let contentNode: AppNode
         if (isImageFile(fileName)) {
           const imageNode = await buildImageNode(path)
-          contentNode = imageNode ?? await buildFileNode(path)
+          const contentNode = imageNode ?? await buildFileNode(path)
+          previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
         } else {
-          contentNode = await buildFileNode(path)
+          // If the file is dirty, show a diff view in place of the code preview.
+          const diffCol = buildDiffColumnForPath(path, fileName)
+          if (diffCol) {
+            previewCol = diffCol
+          } else {
+            const contentNode = await buildFileNode(path)
+            previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
+          }
         }
-        previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
       }
 
       // Check that the focus hasn't changed while we were loading
       if (get().focusedNodeId !== focusedNodeId) return
 
       if (previewCol) {
-        let newColumns = [...columns.slice(0, currentColumnIndex + 1), previewCol]
-        if (previewCol.kind === 'file' && node.type === 'file') {
-          const diffCol = buildDiffColumnForPath(node.data.path, node.data.label)
-          if (diffCol) {
-            newColumns = [...newColumns, diffCol]
-          }
-        }
+        const newColumns = [...columns.slice(0, currentColumnIndex + 1), previewCol]
         set({ columns: newColumns })
       } else {
         // No preview available — trim any existing preview column
