@@ -40,17 +40,9 @@ export interface CodeNodeData extends NodeDisplayFlags, Record<string, unknown> 
   endLine: number
 }
 
-export interface DiffNodeData extends NodeDisplayFlags, Record<string, unknown> {
-  label: string
-  filePath: string
-  /** Whether this file is untracked/added (no HEAD content). */
-  isNewFile: boolean
-}
-
 export type FolderNode = Node<FolderNodeData, 'folder'>
 export type FileNode = Node<FileNodeData, 'file'>
 export type CodeNode = Node<CodeNodeData, 'codeNode'>
 export type ImageNode = Node<ImageNodeData, 'imageNode'>
-export type DiffNode = Node<DiffNodeData, 'diff'>
 
-export type AppNode = FolderNode | FileNode | CodeNode | ImageNode | DiffNode
+export type AppNode = FolderNode | FileNode | CodeNode | ImageNode

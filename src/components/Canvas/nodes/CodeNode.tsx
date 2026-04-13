@@ -1,8 +1,8 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection, dropCursor, highlightSpecialChars, rectangularSelection, crosshairCursor } from '@codemirror/view'
-import { EditorState } from '@codemirror/state'
+import { EditorState, type Extension } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap, indentWithTab, copyLineDown, deleteLine, toggleComment } from '@codemirror/commands'
 import { highlightSelectionMatches } from '@codemirror/search'
 import { closeBrackets, closeBracketsKeymap, autocompletion, acceptCompletion } from '@codemirror/autocomplete'
@@ -11,11 +11,13 @@ import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
 import { css } from '@codemirror/lang-css'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { unifiedMergeView } from '@codemirror/merge'
 import { getPlatform } from '@/services/platform'
 import type { CodeNode } from '@/types/nodes'
 import { getNodeFlags } from './nodeUtils'
 import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'
 import { useCanvasStore } from '@/store/canvas'
+import { useGitStore } from '@/store/git'
 
 function getLanguageExt(filePath: string) {
   if (/\.(tsx?)$/.test(filePath)) return javascript({ typescript: true, jsx: true })
@@ -33,6 +35,12 @@ const MIN_CODE_NODE_WIDTH = 280
  */
 const CODE_NODE_HEIGHT_RESERVED = 120
 
+function toRepoRelative(absPath: string, repoPath: string): string {
+  if (!repoPath) return absPath
+  if (absPath.startsWith(repoPath + '/')) return absPath.slice(repoPath.length + 1)
+  return absPath
+}
+
 export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -44,6 +52,44 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const storeWidth = useCanvasStore((s) => s.codeNodeWidth)
   const setCodeNodeWidth = useCanvasStore((s) => s.setCodeNodeWidth)
   const [nodeWidth, setNodeWidth] = useState<number>(storeWidth)
+
+  // Git-aware inline diff: if the current file is dirty, render the editor
+  // with a unifiedMergeView extension comparing working tree vs HEAD content.
+  const gitStatus = useGitStore((s) => s.status)
+  const repoPath = useGitStore((s) => s.repoPath)
+  const loadHeadContent = useGitStore((s) => s.loadHeadContent)
+
+  const gitEntry = useMemo(() => {
+    if (!gitStatus) return null
+    return (
+      gitStatus.files.find(
+        (f) => data.filePath.endsWith('/' + f.path) || data.filePath === f.path,
+      ) ?? null
+    )
+  }, [gitStatus, data.filePath])
+
+  const isNewFile = gitEntry?.status === 'A' || gitEntry?.status === 'U'
+  // null = no diff needed, string = HEAD content to diff against (empty for new files)
+  const [headContent, setHeadContent] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!gitEntry) {
+      setHeadContent(null)
+      return
+    }
+    if (isNewFile) {
+      setHeadContent('')
+      return
+    }
+    const repoRel = toRepoRelative(data.filePath, repoPath)
+    void loadHeadContent(repoRel).then((content) => {
+      if (!cancelled) setHeadContent(content)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gitEntry, isNewFile, data.filePath, repoPath, loadHeadContent])
 
   // Sync from store when it changes externally (e.g. cross-window sync, hydration)
   useEffect(() => {
@@ -111,6 +157,39 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       viewRef.current = null
     }
 
+    // Accept/reject stubs: wired up so the default CodeMirror behavior still
+    // runs (accept = drop the chunk marker, reject = revert the chunk to HEAD
+    // content in the editor doc). The user can then Cmd-S to persist. Logged
+    // so a future enhancement can hook real git operations (stage/checkout)
+    // in place of / alongside the in-memory action.
+    const filePath = data.filePath
+    const mergeExtensions: Extension[] =
+      headContent !== null
+        ? [
+            unifiedMergeView({
+              original: headContent,
+              mergeControls: (type, action) => {
+                const btn = document.createElement('button')
+                btn.type = 'button'
+                btn.textContent = type === 'accept' ? '✓ accept' : '✕ reject'
+                btn.className =
+                  'cm-merge-stub-btn text-[10px] font-mono px-1.5 py-0.5 mx-0.5 rounded ' +
+                  (type === 'accept'
+                    ? 'bg-green-900/40 text-green-400 hover:bg-green-900/60'
+                    : 'bg-red-900/40 text-red-400 hover:bg-red-900/60')
+                btn.addEventListener('click', (e) => {
+                  action(e)
+                  // TODO: hook real git actions here
+                  // accept → stage the hunk (git add -p)
+                  // reject → checkout the hunk from HEAD (git checkout -p)
+                  console.log(`[CodeNode] ${type} chunk for ${filePath}`)
+                })
+                return btn
+              },
+            }),
+          ]
+        : []
+
     const state = EditorState.create({
       doc: data.code,
       extensions: [
@@ -132,6 +211,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         highlightSelectionMatches(),
         getLanguageExt(data.filePath),
         oneDark,
+        ...mergeExtensions,
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -206,7 +286,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         viewRef.current = null
       }
     }
-  }, [data.code, data.filePath, data.startLine]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.code, data.filePath, data.startLine, headContent]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const lineCount = data.endLine - data.startLine + 1
 
