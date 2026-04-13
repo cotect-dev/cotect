@@ -255,6 +255,12 @@ pub async fn git_last_commit_time(repo_path: String) -> Result<i64, String> {
 }
 
 #[tauri::command]
+pub async fn git_show_file(repo_path: String, file_path: String) -> Result<String, String> {
+    let spec = format!("HEAD:{file_path}");
+    run_git(&repo_path, &["show", &spec]).await
+}
+
+#[tauri::command]
 pub async fn git_init(repo_path: String) -> Result<(), String> {
     run_git(&repo_path, &["init"]).await.map(|_| ())
 }
@@ -270,6 +276,77 @@ pub async fn git_remote_url(repo_path: String) -> Result<Option<String>, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command as StdCommand;
+    use tempfile::TempDir;
+
+    /// Create an empty initialized git repo in a fresh tempdir.
+    /// Returns the TempDir (keeps the dir alive) and the path as String.
+    fn make_repo() -> (TempDir, String) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().to_str().unwrap().to_string();
+        for args in [
+            vec!["init", "-q"],
+            vec!["config", "user.email", "test@test"],
+            vec!["config", "user.name", "Test"],
+            vec!["config", "commit.gpgsign", "false"],
+        ] {
+            let status = StdCommand::new("git")
+                .arg("-C")
+                .arg(&path)
+                .args(&args)
+                .status()
+                .expect("git");
+            assert!(status.success(), "git {:?} failed", args);
+        }
+        (dir, path)
+    }
+
+    fn write_and_commit(repo: &str, rel_path: &str, content: &str, msg: &str) {
+        let full = format!("{repo}/{rel_path}");
+        if let Some(parent) = std::path::Path::new(&full).parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&full, content).unwrap();
+        StdCommand::new("git").arg("-C").arg(repo).args(["add", rel_path]).status().unwrap();
+        StdCommand::new("git").arg("-C").arg(repo).args(["commit", "-q", "-m", msg]).status().unwrap();
+    }
+
+    #[tokio::test]
+    async fn git_show_file_returns_committed_content() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "hello\n", "init");
+        // Modify in working tree — git_show_file should still return HEAD content
+        std::fs::write(format!("{repo}/a.txt"), "changed\n").unwrap();
+
+        let head = git_show_file(repo.clone(), "a.txt".to_string()).await.unwrap();
+        assert_eq!(head, "hello\n");
+    }
+
+    #[tokio::test]
+    async fn git_show_file_errors_when_path_not_in_head() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "x\n", "init");
+        // b.txt has never existed
+        let result = git_show_file(repo, "b.txt".to_string()).await;
+        assert!(result.is_err(), "expected Err for missing path, got {:?}", result);
+    }
+
+    #[tokio::test]
+    async fn git_show_file_handles_binary_gracefully() {
+        let (_dir, repo) = make_repo();
+        let full = format!("{repo}/bin.dat");
+        std::fs::write(&full, [0xFF, 0xFE, 0x00, 0x01, 0xFF]).unwrap();
+        StdCommand::new("git").arg("-C").arg(&repo).args(["add", "bin.dat"]).status().unwrap();
+        StdCommand::new("git").arg("-C").arg(&repo).args(["commit", "-q", "-m", "add binary"]).status().unwrap();
+
+        let result = git_show_file(repo, "bin.dat".to_string()).await;
+        // We just care that it doesn't panic and returns something — either Ok(lossy) or Err.
+        // DiffNode handles both by rendering a placeholder.
+        match result {
+            Ok(s) => assert!(!s.is_empty()),
+            Err(_) => {} // also acceptable
+        }
+    }
 
     #[test]
     fn parse_numstat_empty() {
