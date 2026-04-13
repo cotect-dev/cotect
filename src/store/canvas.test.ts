@@ -1338,6 +1338,61 @@ describe('ReactFlow handlers', () => {
   })
 })
 
+describe('focusFileByPath', () => {
+  beforeEach(() => {
+    resetStore()
+    vi.clearAllMocks()
+    mockGitStatus.files = []
+  })
+
+  it('navigates columns to the parent directory of a nested file and focuses it', async () => {
+    mockReadDirectory.mockImplementation((path: string) => {
+      if (path === '/proj') {
+        return Promise.resolve(makeFSEntries([
+          { name: 'src', path: '/proj/src', isDirectory: true },
+        ]))
+      }
+      if (path === '/proj/src') {
+        return Promise.resolve(makeFSEntries([
+          { name: 'foo.ts', path: '/proj/src/foo.ts', isDirectory: false },
+        ]))
+      }
+      return Promise.resolve([])
+    })
+    mockReadFile.mockResolvedValue('file content\n')
+
+    await useCanvasStore.getState().initRoot('/proj')
+
+    await useCanvasStore.getState().focusFileByPath('src/foo.ts')
+
+    const { columns, currentColumnIndex, focusedNodeId } = useCanvasStore.getState()
+    expect(columns.length).toBeGreaterThanOrEqual(2)
+    expect(columns[currentColumnIndex].path).toBe('/proj/src')
+    expect(focusedNodeId).toBe('/proj/src/foo.ts')
+  })
+
+  it('focuses the parent directory when the file is deleted from disk', async () => {
+    mockReadDirectory.mockImplementation((path: string) => {
+      if (path === '/proj') {
+        return Promise.resolve(makeFSEntries([
+          { name: 'src', path: '/proj/src', isDirectory: true },
+        ]))
+      }
+      if (path === '/proj/src') {
+        return Promise.resolve([])
+      }
+      return Promise.resolve([])
+    })
+
+    await useCanvasStore.getState().initRoot('/proj')
+    await useCanvasStore.getState().focusFileByPath('src/gone.ts')
+
+    const { columns, currentColumnIndex, focusedNodeId } = useCanvasStore.getState()
+    expect(columns[currentColumnIndex].path).toBe('/proj/src')
+    expect(focusedNodeId).toBeNull()
+  })
+})
+
 describe('diff column materialization', () => {
   beforeEach(() => {
     resetStore()
