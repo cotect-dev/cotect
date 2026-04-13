@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection, dropCursor, highlightSpecialChars, rectangularSelection, crosshairCursor } from '@codemirror/view'
-import { EditorState, type Extension } from '@codemirror/state'
+import { EditorState, Compartment, type Extension } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap, indentWithTab, copyLineDown, deleteLine, toggleComment } from '@codemirror/commands'
 import { highlightSelectionMatches } from '@codemirror/search'
 import { closeBrackets, closeBracketsKeymap, autocompletion, acceptCompletion } from '@codemirror/autocomplete'
@@ -41,9 +41,40 @@ function toRepoRelative(absPath: string, repoPath: string): string {
   return absPath
 }
 
+/**
+ * Build the set of extensions to load inside the merge-view compartment.
+ * Returns an empty array when there is no HEAD content to compare against,
+ * so reconfiguring with this cleanly removes the diff highlighting.
+ */
+function buildMergeExtension(head: string | null, filePath: string): Extension {
+  if (head === null) return []
+  return unifiedMergeView({
+    original: head,
+    mergeControls: (type, action) => {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.textContent = type === 'accept' ? '✓ accept' : '✕ reject'
+      btn.className =
+        'cm-merge-stub-btn text-[10px] font-mono px-1.5 py-0.5 mx-0.5 rounded ' +
+        (type === 'accept'
+          ? 'bg-green-900/40 text-green-400 hover:bg-green-900/60'
+          : 'bg-red-900/40 text-red-400 hover:bg-red-900/60')
+      btn.addEventListener('click', (e) => {
+        action(e)
+        // TODO: hook real git actions here
+        // accept → stage the hunk (git add -p)
+        // reject → checkout the hunk from HEAD (git checkout -p)
+        console.log(`[CodeNode] ${type} chunk for ${filePath}`)
+      })
+      return btn
+    },
+  })
+}
+
 export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const mergeCompartmentRef = useRef<Compartment>(new Compartment())
   const resizeRef = useRef<HTMLDivElement>(null)
   const flags = getNodeFlags(data)
   const [editorFocused, setEditorFocused] = useState(false)
@@ -157,38 +188,13 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       viewRef.current = null
     }
 
-    // Accept/reject stubs: wired up so the default CodeMirror behavior still
-    // runs (accept = drop the chunk marker, reject = revert the chunk to HEAD
-    // content in the editor doc). The user can then Cmd-S to persist. Logged
-    // so a future enhancement can hook real git operations (stage/checkout)
-    // in place of / alongside the in-memory action.
-    const filePath = data.filePath
-    const mergeExtensions: Extension[] =
-      headContent !== null
-        ? [
-            unifiedMergeView({
-              original: headContent,
-              mergeControls: (type, action) => {
-                const btn = document.createElement('button')
-                btn.type = 'button'
-                btn.textContent = type === 'accept' ? '✓ accept' : '✕ reject'
-                btn.className =
-                  'cm-merge-stub-btn text-[10px] font-mono px-1.5 py-0.5 mx-0.5 rounded ' +
-                  (type === 'accept'
-                    ? 'bg-green-900/40 text-green-400 hover:bg-green-900/60'
-                    : 'bg-red-900/40 text-red-400 hover:bg-red-900/60')
-                btn.addEventListener('click', (e) => {
-                  action(e)
-                  // TODO: hook real git actions here
-                  // accept → stage the hunk (git add -p)
-                  // reject → checkout the hunk from HEAD (git checkout -p)
-                  console.log(`[CodeNode] ${type} chunk for ${filePath}`)
-                })
-                return btn
-              },
-            }),
-          ]
-        : []
+    // Give the merge extension a fresh compartment for each new editor
+    // instance — compartments are tied to an EditorState, not reusable across
+    // destroyed views.
+    mergeCompartmentRef.current = new Compartment()
+    const initialMergeExt = mergeCompartmentRef.current.of(
+      buildMergeExtension(headContent, data.filePath),
+    )
 
     const state = EditorState.create({
       doc: data.code,
@@ -211,7 +217,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         highlightSelectionMatches(),
         getLanguageExt(data.filePath),
         oneDark,
-        ...mergeExtensions,
+        initialMergeExt,
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -286,7 +292,20 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         viewRef.current = null
       }
     }
-  }, [data.code, data.filePath, data.startLine, headContent]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.code, data.filePath, data.startLine]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Swap the merge extension in-place when git HEAD content for this file
+  // changes (file becomes dirty/clean, HEAD SHA advances, etc.) without
+  // destroying the editor or losing the user's unsaved edits.
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    view.dispatch({
+      effects: mergeCompartmentRef.current.reconfigure(
+        buildMergeExtension(headContent, data.filePath),
+      ),
+    })
+  }, [headContent, data.filePath])
 
   const lineCount = data.endLine - data.startLine + 1
 
