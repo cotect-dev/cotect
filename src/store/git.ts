@@ -130,24 +130,33 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
         invoke<number>('git_last_commit_time', { repoPath }),
       ])
 
+      const broadcastFailed = (state: ReturnType<typeof failedGitState>) => {
+        broadcastGitState({
+          ...state,
+          headContent: { sha: '', files: {} },
+          fileTimes: {},
+          sortMode: get().sortMode,
+        })
+      }
+
       if (status.status === 'rejected') {
         const err = String(status.reason)
         if (err.includes('GIT_NOT_FOUND')) {
           const state = failedGitState('GIT_NOT_FOUND')
           set({ ...state, loading: false })
-          broadcastGitState(state)
+          broadcastFailed(state)
           return
         }
         if (err.includes('NOT_A_REPO')) {
           const state = failedGitState('NOT_A_REPO')
           set({ ...state, loading: false })
-          broadcastGitState(state)
+          broadcastFailed(state)
           return
         }
         if (err.includes('GIT_TIMEOUT')) {
           const state = failedGitState('GIT_TIMEOUT')
           set({ ...state, loading: false })
-          broadcastGitState(state)
+          broadcastFailed(state)
           return
         }
         // Unknown error from git_status — don't fall through to success path
@@ -176,7 +185,61 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
           ? currentHeadContent
           : { sha: headSha, files: {} }
       set({ ...newState, headContent: nextHeadContent, loading: false })
-      broadcastGitState(newState)
+      broadcastGitState({
+        ...newState,
+        headContent: nextHeadContent,
+        fileTimes: get().fileTimes,
+        sortMode: get().sortMode,
+      })
+
+      // Recompute per-file timestamps in the background. Fire-and-forget — the
+      // UI already renders with the old fileTimes while this runs.
+      if (newState.status && newState.status.files.length > 0) {
+        const paths = newState.status.files.map((f) => f.path)
+        const statusFiles = newState.status.files
+        invoke<Array<[string, number | null]>>('git_file_times', { repoPath, paths })
+          .then(async (result) => {
+            const { stat } = await import('@tauri-apps/plugin-fs')
+            const headTimes: Record<string, number> = {}
+            for (const [p, ts] of result) {
+              if (ts !== null) headTimes[p] = ts
+            }
+            const hybrid: Record<string, number> = {}
+            await Promise.all(
+              statusFiles.map(async (f) => {
+                let fsTime: number | null = null
+                try {
+                  const s = await stat(`${repoPath}/${f.path}`)
+                  const mtime = s.mtime ? s.mtime.getTime() : 0
+                  if (!Number.isNaN(mtime) && mtime > 0) fsTime = Math.floor(mtime / 1000)
+                } catch {
+                  // file doesn't exist on disk (deleted) — fall back to head time only
+                }
+                const headTime = headTimes[f.path] ?? null
+                if (f.status === 'A' || f.status === 'U') {
+                  if (fsTime !== null) hybrid[f.path] = fsTime
+                } else if (f.status === 'D') {
+                  if (headTime !== null) hybrid[f.path] = headTime
+                } else {
+                  const best = Math.max(headTime ?? 0, fsTime ?? 0)
+                  if (best > 0) hybrid[f.path] = best
+                }
+              }),
+            )
+            set({ fileTimes: hybrid })
+            broadcastGitState({
+              ...newState,
+              headContent: nextHeadContent,
+              fileTimes: hybrid,
+              sortMode: get().sortMode,
+            })
+          })
+          .catch((err) => {
+            console.warn('[git] fileTimes refresh failed:', err)
+          })
+      } else {
+        set({ fileTimes: {} })
+      }
     } catch (err) {
       console.error('Git refresh failed:', err)
       set({ loading: false })
@@ -236,6 +299,9 @@ interface GitSyncPayload {
   log: GitLogEntry[] | null
   branch: GitBranch | null
   lastCommitTimestamp: number | null
+  headContent: { sha: string; files: Record<string, string> }
+  fileTimes: Record<string, number>
+  sortMode: 'path' | 'recent' | 'oldest'
 }
 
 function broadcastGitState(state: Omit<GitSyncPayload, 'source'>): void {
@@ -265,6 +331,9 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
         log: payload.log,
         branch: payload.branch,
         lastCommitTimestamp: payload.lastCommitTimestamp,
+        headContent: payload.headContent,
+        fileTimes: payload.fileTimes,
+        sortMode: payload.sortMode,
       })
     }
   })
