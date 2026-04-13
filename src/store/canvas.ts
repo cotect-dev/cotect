@@ -13,6 +13,7 @@ import { getPlatform } from '@/services/platform'
 import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN, isImageFile, getImageMimeType, IMAGE_PREVIEW_MAX_BYTES } from '@/lib/constants'
 import type { AppNode } from '@/types/nodes'
 import { withPersistence } from '@/store/persistence'
+import { useGitStore } from '@/store/git'
 
 /**
  * Returns true if a filename looks like a test/spec file.
@@ -154,6 +155,28 @@ async function buildFileNode(filePath: string): Promise<AppNode> {
       endLine: lineCount,
     },
   }
+}
+
+/**
+ * Build the single node for a diff column. Returns `null` if the file is not
+ * dirty according to the git store; the caller uses null to mean "no diff
+ * column should be materialized at this slot".
+ */
+function buildDiffColumnForPath(filePath: string, fileName: string): Column | null {
+  const status = useGitStore.getState().status
+  if (!status) return null
+  const entry = status.files.find((f) => {
+    return filePath.endsWith('/' + f.path) || filePath === f.path
+  })
+  if (!entry) return null
+  const isNewFile = entry.status === 'A' || entry.status === 'U'
+  const diffNode: AppNode = {
+    id: `diff:${filePath}`,
+    type: 'diff',
+    position: { x: 0, y: 0 },
+    data: { label: fileName, filePath, isNewFile },
+  }
+  return { path: `diff:${filePath}`, kind: 'diff', nodes: [diffNode], edges: [] }
 }
 
 /**
@@ -549,7 +572,13 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       if (get().focusedNodeId !== focusedNodeId) return
 
       if (previewCol) {
-        const newColumns = [...columns.slice(0, currentColumnIndex + 1), previewCol]
+        let newColumns = [...columns.slice(0, currentColumnIndex + 1), previewCol]
+        if (previewCol.kind === 'file' && node.type === 'file') {
+          const diffCol = buildDiffColumnForPath(node.data.path, node.data.label)
+          if (diffCol) {
+            newColumns = [...newColumns, diffCol]
+          }
+        }
         set({ columns: newColumns })
       } else {
         // No preview available — trim any existing preview column
