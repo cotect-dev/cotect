@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ReactFlow, ReactFlowProvider, useReactFlow, Background, BackgroundVariant } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCanvasStore, useBrowserStore } from '@/store'
+import { useGitStore } from '@/store/git'
 import Layout from '@/components/Layout'
 import { nodeTypes } from '@/components/Canvas/nodes'
 import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
@@ -136,6 +137,11 @@ function CanvasFlow() {
       void reactFlow.setViewport({ x: newX, y: newY, zoom: viewport.zoom }, { duration: 0 })
     }
   }, [focusedNodeId, focusedNodeX, focusedNodeY]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const gitStatus = useGitStore((s) => s.status)
+  useEffect(() => {
+    void useCanvasStore.getState().updatePreview()
+  }, [gitStatus])
 
   useCanvasKeyboard(containerRef)
 
