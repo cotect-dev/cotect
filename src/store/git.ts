@@ -178,7 +178,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
         branch: branch.status === 'fulfilled' ? branch.value : null,
         lastCommitTimestamp: lastCommitTime.status === 'fulfilled' ? lastCommitTime.value : null,
       }
-      const headSha = log.status === 'fulfilled' && log.value[0] ? log.value[0].hash : ''
+      const headSha = log.status === 'fulfilled' && log.value && log.value[0] ? log.value[0].hash : ''
       const currentHeadContent = get().headContent
       const nextHeadContent =
         currentHeadContent.sha === headSha
@@ -199,6 +199,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
         const statusFiles = newState.status.files
         invoke<Array<[string, number | null]>>('git_file_times', { repoPath, paths })
           .then(async (result) => {
+            if (!Array.isArray(result)) return
             const { stat } = await import('@tauri-apps/plugin-fs')
             const headTimes: Record<string, number> = {}
             for (const [p, ts] of result) {
