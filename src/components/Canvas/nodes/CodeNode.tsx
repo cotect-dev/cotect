@@ -45,8 +45,15 @@ function toRepoRelative(absPath: string, repoPath: string): string {
  * Build the set of extensions to load inside the merge-view compartment.
  * Returns an empty array when there is no HEAD content to compare against,
  * so reconfiguring with this cleanly removes the diff highlighting.
+ *
+ * onChunkAction fires after CodeMirror's default accept/reject transaction
+ * has already mutated the editor doc — used by the caller to persist the
+ * change back to disk so git picks it up.
  */
-function buildMergeExtension(head: string | null, filePath: string): Extension {
+function buildMergeExtension(
+  head: string | null,
+  onChunkAction: (type: 'accept' | 'reject') => void,
+): Extension {
   if (head === null) return []
   return unifiedMergeView({
     original: head,
@@ -61,10 +68,7 @@ function buildMergeExtension(head: string | null, filePath: string): Extension {
           : 'bg-red-900/40 text-red-400 hover:bg-red-900/60')
       btn.addEventListener('click', (e) => {
         action(e)
-        // TODO: hook real git actions here
-        // accept → stage the hunk (git add -p)
-        // reject → checkout the hunk from HEAD (git checkout -p)
-        console.log(`[CodeNode] ${type} chunk for ${filePath}`)
+        onChunkAction(type)
       })
       return btn
     },
@@ -180,6 +184,20 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
   }, [data.filePath])
 
+  const handleChunkAction = useCallback(
+    (type: 'accept' | 'reject') => {
+      // CodeMirror already mutated the editor doc in `action(e)` before we get
+      // here. Persist the new content so the file watcher → git refresh picks
+      // up the change and the merge highlighting reconciles.
+      void saveToFile()
+      // TODO: hook real git actions here
+      // accept → stage the hunk (git add -p)
+      // reject → checkout the hunk from HEAD (git checkout -p)
+      console.log(`[CodeNode] ${type} chunk for ${data.filePath}`)
+    },
+    [saveToFile, data.filePath],
+  )
+
   useEffect(() => {
     if (!editorRef.current) return
 
@@ -193,7 +211,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     // destroyed views.
     mergeCompartmentRef.current = new Compartment()
     const initialMergeExt = mergeCompartmentRef.current.of(
-      buildMergeExtension(headContent, data.filePath),
+      buildMergeExtension(headContent, handleChunkAction),
     )
 
     const state = EditorState.create({
@@ -302,10 +320,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     if (!view) return
     view.dispatch({
       effects: mergeCompartmentRef.current.reconfigure(
-        buildMergeExtension(headContent, data.filePath),
+        buildMergeExtension(headContent, handleChunkAction),
       ),
     })
-  }, [headContent, data.filePath])
+  }, [headContent, handleChunkAction])
 
   const lineCount = data.endLine - data.startLine + 1
 
