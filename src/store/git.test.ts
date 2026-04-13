@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
-import { useGitStore, startGitWatcher, stopGitWatcher, type GitStatus, type GitLogEntry, type GitBranch } from './git'
+import { useGitStore, sortedFiles, startGitWatcher, stopGitWatcher, type GitStatus, type GitLogEntry, type GitBranch } from './git'
 
 // Tauri APIs are auto-mocked via setup.ts. Cast for type-safe assertions.
 const mockInvoke = invoke as Mock
@@ -304,5 +304,54 @@ describe('startGitWatcher / stopGitWatcher', () => {
 
   it('stopGitWatcher can be called safely when no watcher is running', () => {
     expect(() => stopGitWatcher()).not.toThrow()
+  })
+})
+
+describe('sortedFiles selector', () => {
+  beforeEach(() => {
+    useGitStore.setState({
+      status: {
+        files: [
+          { path: 'src/a.ts', status: 'M', insertions: 1, deletions: 0 },
+          { path: 'src/b.ts', status: 'M', insertions: 2, deletions: 0 },
+          { path: 'README.md', status: 'M', insertions: 3, deletions: 0 },
+        ],
+        total_insertions: 6,
+        total_deletions: 0,
+      },
+      fileTimes: {
+        'src/a.ts': 1000,
+        'src/b.ts': 3000,
+        'README.md': 2000,
+      },
+      sortMode: 'path',
+    })
+  })
+
+  it('path mode returns the original order (tree building happens in the view)', () => {
+    const files = sortedFiles(useGitStore.getState())
+    expect(files.map((f) => f.path)).toEqual(['src/a.ts', 'src/b.ts', 'README.md'])
+  })
+
+  it('recent mode returns files sorted by descending timestamp', () => {
+    useGitStore.setState({ sortMode: 'recent' })
+    const files = sortedFiles(useGitStore.getState())
+    expect(files.map((f) => f.path)).toEqual(['src/b.ts', 'README.md', 'src/a.ts'])
+  })
+
+  it('oldest mode returns files sorted by ascending timestamp', () => {
+    useGitStore.setState({ sortMode: 'oldest' })
+    const files = sortedFiles(useGitStore.getState())
+    expect(files.map((f) => f.path)).toEqual(['src/a.ts', 'README.md', 'src/b.ts'])
+  })
+
+  it('recent mode places files with missing timestamps at the bottom', () => {
+    useGitStore.setState({
+      sortMode: 'recent',
+      fileTimes: { 'src/b.ts': 3000 },
+    })
+    const files = sortedFiles(useGitStore.getState())
+    expect(files[0].path).toBe('src/b.ts')
+    expect(files.slice(1).map((f) => f.path)).toEqual(['src/a.ts', 'README.md'])
   })
 })
