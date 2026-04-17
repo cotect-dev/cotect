@@ -310,21 +310,32 @@ else:
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The doubly linked list in {} and {} may have bugs. \
-             Your task is to write a comprehensive test file `test_linkedlist.py` \
-             that tests the DoublyLinkedList class according to its docstrings.\n\n\
-             Step 1: Read both source files and their docstrings carefully.\n\
-             Step 2: Write `test_linkedlist.py` with thorough tests. \
-             Use `from linkedlist import DoublyLinkedList` and print \
-             \"ALL_TESTS_PASSED\" at the end if all assertions pass.\n\
-             Step 3: Run `python3 test_linkedlist.py` to see which tests catch bugs.",
+            "The doubly linked list implementation across {} and {} is \
+             suspected to contain defects where the behaviour diverges from \
+             its documented contract. Write a test suite that catches any \
+             such divergence — a faithful implementation must pass every \
+             assertion, while any deviation from the specified behaviour \
+             must cause at least one failure. Pay particular attention to \
+             how internal structural invariants are preserved across \
+             mutating operations, not just whether individual calls return \
+             the expected value in the obvious direction.\n\n\
+             Deliverable: a Python test script whose filename matches \
+             `test_*.py`. The current source in this directory is suspected \
+             to be buggy — running your test script directly against it is \
+             expected to fail; that is the point, not a problem to paper \
+             over by weakening assertions. To validate end-to-end, run \
+             `python3 run_tests.py`: it prints exactly `ALL_TESTS_PASSED` \
+             once your tests both catch the defects and still pass on a \
+             faithful implementation. Stop as soon as you see that \
+             sentinel — don't keep iterating. The structure, framework, \
+             and choice of assertions is yours.",
             node_file, dll_file)),
             vec![
                 complete(),
                 succeeded("shell"),
                 run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
             ]),
-            vec![node_file.clone(), dll_file.clone(), ap(dir, "test_linkedlist.py")]),
+            vec![node_file.clone(), dll_file.clone()]),
             vec![dll_fixed, runner, dll_buggy])
     }
     v.push(scen!("xhard_testing_04_linked_list", Category::Testing, Difficulty::Hard, I, setup));

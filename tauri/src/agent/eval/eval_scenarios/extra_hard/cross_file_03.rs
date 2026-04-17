@@ -260,23 +260,41 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "Migrate the `address` field from a plain string to a structured dict \
-             with keys: street, city, state, zip. This change must be applied \
-             consistently across all files: {}, {}, {}, and {}.\n\n\
-             The `bio` field must remain a plain string. The `validate_email()` \
-             function is unrelated and must not change.\n\n\
-             After migration, the validator should check that the address dict \
-             contains all four required keys (street, city, state, zip) with \
-             non-empty values.\n\n\
-             Step 1: Read all source files and trace every usage of the address field.\n\
-             Step 2: Apply all necessary changes WITHOUT running the code first.\n\
-             Step 3: Run the existing `python3 test_migration.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass.",
-            models_file, service_file, serializer_file, validator_file)),
+        with_blocked(with_scope(with_checks(pf(
+            "The `User` type in this project currently stores `address` as a \
+             plain string. Migrate `address` to a structured dict carrying four \
+             sub-fields — street, city, state, zip — and propagate that change \
+             everywhere the field is produced, consumed, serialized, or \
+             validated. Find the call sites yourself.\n\n\
+             After the migration:\n\
+             - constructing a User must take a dict address and store it as a \
+               dict\n\
+             - anything that renders the address for display must format a \
+               readable string from the structured fields\n\
+             - JSON round-tripping must preserve the dict shape\n\
+             - validation must reject an empty address dict and any dict that \
+               is missing one of the four required sub-fields (or has an empty \
+               value for one)\n\n\
+             Other string fields on the user, and validators unrelated to \
+             address, must stay exactly as they are.\n\n\
+             Apply all edits first, then run the bundled test suite \
+             (`python3 test_migration.py`) and iterate until it prints \
+             ALL_TESTS_PASSED.".to_string()),
             vec![
                 complete(),
                 succeeded("shell"),
+                // Model: signature no longer declares address as str
+                file_lacks(&models_file, &["address: str"]),
+                // Service layer: no more `address: str` param in create_user / update_address
+                file_lacks(&service_file, &["address: str", "new_address: str"]),
+                // Validator must check structured keys
+                file_has(&validator_file, &["street", "city", "state", "zip"]),
+                // Old validator string-emptiness check on address must be gone
+                file_lacks(&validator_file, &["user.address.strip()"]),
+                // bio field and validate_email untouched
+                file_has(&models_file, &["bio"]),
+                file_has(&validator_file, &["def validate_email"]),
+                // End-to-end behaviour works
                 run_has("python3 test_migration.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![models_file, service_file, serializer_file, validator_file]),

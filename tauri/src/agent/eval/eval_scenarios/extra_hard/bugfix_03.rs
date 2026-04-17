@@ -239,12 +239,14 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(
-            "The message relay system is corrupting messages during storage. \
-             Short messages seem to work fine, but longer messages come back \
-             garbled after a store-and-forward cycle. Additionally, some message \
-             file paths are wrong — files are being saved without their extensions.\n\n\
-             Step 1: Read all source files, identify every bug, and apply \
-             your fixes WITHOUT running the code first.\n\
+            "The message relay system is failing in production. A test suite \
+             `test_relay.py` exercises the code end-to-end; several of its \
+             assertions fail. Small payloads appear to round-trip fine in \
+             isolation, but the full integration test reports corrupted data, \
+             and a couple of path-related assertions also fail with unexpected \
+             values.\n\n\
+             Step 1: Read every source file and identify all root causes. \
+             Apply your fixes WITHOUT running the code first.\n\
              Step 2: Run the existing `python3 test_relay.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              fixes, and re-run until all tests pass."
@@ -254,8 +256,12 @@ if __name__ == "__main__":
                 complete(),
                 succeeded("shell"),
                 // Primary: the full test suite must pass — it covers short/long
-                // message roundtrips, batch encoding, path resolution with extensions,
-                // multi-dot filenames, and full relay integration.
+                // message roundtrips, batch encoding, path resolution with
+                // extensions, multi-dot filenames, and full relay integration.
+                // Tests exercise both bugs (endianness + normalize) so any
+                // valid fix works: flipping encoder to '>I', flipping decoder
+                // to '<I', or rewriting the normalize() strip logic in any
+                // way that preserves extensions and multi-dot filenames.
                 run_has("python3 test_relay.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![relay_file, protocol_file, config_file]),

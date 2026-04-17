@@ -329,24 +329,43 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The configuration constants (TIMEOUT, MAX_RETRIES, TTL, MAX_ENTRIES, \
-             RATE_LIMIT, WINDOW, BATCH_SIZE, POLL_INTERVAL) are scattered across \
-             {}, {}, {}, and {} as hardcoded local constants. \
-             Create a new config.py file that centralizes all of them, then update \
-             each file to import its constants from config.py instead of defining \
-             them locally.\n\n\
-             Keep all values the same. Do NOT move `_DEFAULT_HEADERS` from \
-             http_client.py or `_CACHE_VERSION` from cache.py — those are \
-             internal to their respective modules.\n\n\
-             Step 1: Read all files and identify every constant to extract.\n\
-             Step 2: Create config.py and update all files WITHOUT running code first.\n\
-             Step 3: Run the existing `python3 test_config.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass.",
-            http_file, cache_file, limiter_file, worker_file)),
+        with_blocked(with_scope(with_checks(pf(
+            "Several modules in this project declare their own tunable knobs \
+             (timeouts, retry counts, TTLs, size caps, rate limits, batch sizes, \
+             poll intervals, etc.) as module-level constants. Centralize all of \
+             these public, shared-tunable constants into a single `config` \
+             module and update every module that owns one to pull its value \
+             from that shared module instead of defining it locally. The \
+             numeric values must stay exactly the same.\n\n\
+             Not everything that looks like a constant belongs in shared \
+             config: module-private bookkeeping (things that start with an \
+             underscore, or that are clearly an implementation detail of one \
+             module) must stay where it is. Use judgement — read each file and \
+             decide.\n\n\
+             Apply all edits first, then run the bundled test suite \
+             (`python3 test_config.py`) and iterate until it prints \
+             ALL_TESTS_PASSED.".to_string()),
             vec![
                 complete(),
                 succeeded("shell"),
+                // New shared config module exists and carries every value
+                file_exists(&ap(dir, "config.py")),
+                file_has(&ap(dir, "config.py"), &[
+                    "TIMEOUT", "MAX_RETRIES",
+                    "TTL", "MAX_ENTRIES",
+                    "RATE_LIMIT", "WINDOW",
+                    "BATCH_SIZE", "POLL_INTERVAL",
+                    "30", "3", "300", "1000", "100", "60", "50", "5",
+                ]),
+                // Original modules no longer assign these constants locally
+                file_lacks(&http_file, &["TIMEOUT = 30", "MAX_RETRIES = 3"]),
+                file_lacks(&cache_file, &["TTL = 300", "MAX_ENTRIES = 1000"]),
+                file_lacks(&limiter_file, &["RATE_LIMIT = 100", "WINDOW = 60"]),
+                file_lacks(&worker_file, &["BATCH_SIZE = 50", "POLL_INTERVAL = 5"]),
+                // Module-private bookkeeping stays put
+                file_has(&http_file, &["_DEFAULT_HEADERS"]),
+                file_has(&cache_file, &["_CACHE_VERSION"]),
+                // End-to-end behaviour works
                 run_has("python3 test_config.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![http_file, cache_file, limiter_file, worker_file]),

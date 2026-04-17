@@ -29,11 +29,14 @@ pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
         std::fs::write(dir.join("src/c.py"), "def c():\n    try:\n        stuff()\n    except:\n        pass\n").unwrap();
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Search {d} for exception handling patterns. Identify which files have bare `except` or \
-             `except Exception: pass` (swallowed exceptions). Which files have problematic error handling?")),
+            "Review the exception handling across Python files under {d}. \
+             Which files have problematic error handling that hides failures, \
+             and which files handle errors properly?")),
             vec![complete(), succeeded("fs_search"),
                  oc_all(&["a.py", "c.py"]),
-                 oc_any(&["swallow", "silent", "bare except", "pass", "ignore"])])
+                 oc_any(&["swallow", "silent", "bare", "hide", "ignore", "suppress",
+                          "discard", "empty", "catch-all", "broad", "eats", "nothing",
+                          "except:", "except Exception"])])
     }
     v.push(scen!("search_error_patterns", Category::Search, Difficulty::Medium, R, s_find_error_handling));
 
@@ -62,11 +65,11 @@ export function getUsers(): any[] {
 "#).unwrap();
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Search {d} TypeScript files for type safety issues: unsafe `any` usage, unsafe casts (`as`), \
-             and missing return types. List each issue with its file and line.")),
+            "Audit the TypeScript files under {d} for type-safety weaknesses. \
+             List each problem you find with its file and a short description.")),
             vec![complete(), succeeded("fs_search"),
-                 oc_all(&["any", "api.ts"]),
-                 oc_any(&["cast", "unsafe", "type safety", "type-safe", "any[]", "data: any"])])
+                 oc_any(&["api.ts"]),
+                 oc_any(&["any", "cast", "unsafe", "type safety", "type-safe"])])
     }
     v.push(scen!("search_type_safety_issues", Category::Search, Difficulty::Hard, R, s_find_type_issues));
 

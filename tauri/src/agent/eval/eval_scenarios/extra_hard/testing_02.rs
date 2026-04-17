@@ -258,20 +258,29 @@ else:
         std::fs::write(&transform_buggy, std::fs::read_to_string(&transform_file).unwrap()).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The statistics library in {} and {} may have bugs. \
-             Your task is to write a comprehensive test file `test_stats.py` \
-             that tests all functions in both modules according to their docstrings.\n\n\
-             Step 1: Read both source files and their docstrings carefully.\n\
-             Step 2: Write `test_stats.py` with thorough tests for every function. \
-             Print \"ALL_TESTS_PASSED\" at the end if all assertions pass.\n\
-             Step 3: Run `python3 test_stats.py` to see which tests catch bugs.",
+            "The statistics library consisting of {} and {} is suspected to \
+             contain defects where the implementations diverge from their \
+             documented contracts. Write a test suite that catches any such \
+             divergence — a faithful implementation must pass every \
+             assertion, while any deviation from the specified behaviour \
+             must cause at least one failure.\n\n\
+             Deliverable: a Python test script whose filename matches \
+             `test_*.py`. The current source in this directory is suspected \
+             to be buggy — running your test script directly against it is \
+             expected to fail; that is the point, not a problem to paper \
+             over by weakening assertions. To validate end-to-end, run \
+             `python3 run_tests.py`: it prints exactly `ALL_TESTS_PASSED` \
+             once your tests both catch the defects and still pass on a \
+             faithful implementation. Stop as soon as you see that \
+             sentinel — don't keep iterating. You decide the structure, \
+             framework, and which behaviours are worth asserting.",
             stats_file, transform_file)),
             vec![
                 complete(),
                 succeeded("shell"),
                 run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
             ]),
-            vec![stats_file.clone(), transform_file.clone(), ap(dir, "test_stats.py")]),
+            vec![stats_file.clone(), transform_file.clone()]),
             vec![stats_fixed, transform_fixed, runner, stats_buggy, transform_buggy])
     }
     v.push(scen!("xhard_testing_02_stats_library", Category::Testing, Difficulty::Hard, I, setup));

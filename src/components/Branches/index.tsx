@@ -10,7 +10,7 @@ export default function Branches() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-3 py-2 text-sm font-mono">
-        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+        <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
         <span className="truncate">{branch?.current ?? 'unknown'}</span>
       </div>
     </div>

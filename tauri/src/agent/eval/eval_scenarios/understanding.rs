@@ -45,11 +45,10 @@ transform = pipeline(double, add_ten, negate)
 }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Read {p}. Identify the security vulnerability and describe how an attacker could exploit it. \
-             What specific fields are dangerous and what kind of attack is this?")),
+            "Read {p}. What class of vulnerability does this template have, and how would an attacker exploit it through the user object? Be specific about the mechanism.")),
             vec![complete(), succeeded("read"),
-                 oc_any(&["XSS", "cross-site scripting", "script injection", "injection"]),
-                 oc_any(&["name", "bio", "website", "escap"])]),
+                 oc_any(&["XSS", "cross-site scripting", "script injection", "HTML injection"]),
+                 oc_any(&["<script", "javascript:", "onerror", "onload", "escap", "sanitiz", "innerHTML"])]),
             vec![p])
     }
     v.push(scen!("understand_xss_vulnerability", Category::Understanding, Difficulty::Hard, R, s_xss_vulnerability));
@@ -82,10 +81,10 @@ transform = pipeline(double, add_ten, negate)
 }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Read {p}. Identify the resource management issue. Why is `unmount()` insufficient? \
-             What will happen if mount/unmount cycles repeat? Explain the problem clearly.")),
+            "Read {p}. Review the lifecycle methods on this class. What goes wrong if a consumer repeatedly mounts and unmounts the Dashboard, and why?")),
             vec![complete(), succeeded("read"),
-                 oc_any(&["memory leak", "listener", "event listener", "not removed", "off", "removeListener", "unsubscribe"])]),
+                 oc_any(&["memory leak", "leak", "accumulat", "grow unbounded", "retain"]),
+                 oc_any(&["event listener", "listeners are", "handler", "subscription", "eventBus.off", "removeListener", "unsubscribe", "not removed", "never removed", "still registered"])]),
             vec![p])
     }
     v.push(scen!("understand_memory_leak", Category::Understanding, Difficulty::Hard, R, s_memory_leak));
@@ -109,10 +108,10 @@ def transfer(from_acc: Account, to_acc: Account, amount: float):
             to_acc.balance += amount
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Read {p}. If two threads simultaneously call `transfer(A, B, 50)` and `transfer(B, A, 30)`, \
-             what concurrency issue can occur? Name the issue and explain why it happens.")),
+            "Read {p}. Two threads call `transfer(A, B, 50)` and `transfer(B, A, 30)` at the same moment. Walk through a concrete interleaving that causes a failure, then name the failure mode.")),
             vec![complete(), succeeded("read"),
-                 oc_any(&["deadlock", "dead lock", "circular wait", "lock ordering"])]),
+                 oc_any(&["deadlock", "dead lock", "dead-lock"]),
+                 oc_any(&["circular wait", "lock ordering", "acquire", "holds", "waiting for", "each other", "cycle"])]),
             vec![p])
     }
     v.push(scen!("understand_deadlock", Category::Understanding, Difficulty::Hard, R, s_deadlock));

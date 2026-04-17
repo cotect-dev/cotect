@@ -225,11 +225,12 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The rate limiter in {} has duplicated logic between `consume()` and \
-             `try_consume()` — the refill-check-consume-log sequence is copy-pasted. \
-             Refactor it: extract the shared logic into a single `_do_consume()` helper \
-             method, and have both `consume()` and `try_consume()` call it. \
-             Remove any dead code you find.\n\n\
+            "The rate limiter in {} has a maintainability problem: `consume()` and \
+             `try_consume()` both carry out the same refill/check/deduct/log \
+             sequence, so any change to that path has to be made in two places \
+             and can easily drift out of sync. Clean the class up so the shared \
+             sequence lives in one place while keeping every externally observable \
+             behavior identical.\n\n\
              Step 1: Read the code and plan your refactoring.\n\
              Step 2: Apply changes WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_rate_limiter.py` to verify your refactoring \
@@ -241,6 +242,8 @@ if __name__ == "__main__":
                 // Primary: the test suite must still pass — it exercises
                 // consume, try_consume, refill, __slots__, _clamp, and
                 // log compaction, so any correct refactoring will pass.
+                // The test suite itself enforces deduplication (counting
+                // self._log.append occurrences), so we only gate on behavior.
                 run_has("python3 test_rate_limiter.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![limiter_file]),

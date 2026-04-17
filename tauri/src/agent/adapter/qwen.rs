@@ -71,6 +71,10 @@ pub(crate) struct QwenStreamParser {
     /// Accumulated raw text for fallback tool-call parsing.
     /// Preserves raw Qwen tokens that were stripped from text_buffer.
     accumulated_text: String,
+    /// Accumulated reasoning text — some servers route tool calls into
+    /// `reasoning_content` or a `<think>` block instead of content. Keep
+    /// a copy so we can scan it for `<tool_call>` blocks at finalize.
+    reasoning_accumulated: String,
     /// Whether we've emitted Done.
     done_emitted: bool,
     /// Whether we're inside a `<think>` block.
@@ -86,6 +90,7 @@ impl QwenStreamParser {
         Self {
             text_buffer: String::new(),
             accumulated_text: String::new(),
+            reasoning_accumulated: String::new(),
             done_emitted: false,
             in_thinking: false,
             has_structured_tool_calls: false,
@@ -118,6 +123,7 @@ impl StreamParser for QwenStreamParser {
             // servers that natively support Qwen's thinking mode)
             if let Some(reasoning) = &choice.delta.reasoning_content {
                 if !reasoning.is_empty() {
+                    self.reasoning_accumulated.push_str(reasoning);
                     events.push(LlmStreamEvent::ReasoningDelta(reasoning.clone()));
                 }
             }
@@ -190,6 +196,7 @@ impl QwenStreamParser {
                     self.text_buffer.drain(..pos + "</think>".len());
                     self.in_thinking = false;
                     if !reasoning.is_empty() {
+                        self.reasoning_accumulated.push_str(&reasoning);
                         events.push(LlmStreamEvent::ReasoningDelta(reasoning));
                     }
                     // Skip any trailing newlines after </think>
@@ -204,6 +211,7 @@ impl QwenStreamParser {
                 let safe = safe_emit_len(&self.text_buffer, "</think>");
                 if safe > 0 {
                     let reasoning: String = self.text_buffer.drain(..safe).collect();
+                    self.reasoning_accumulated.push_str(&reasoning);
                     events.push(LlmStreamEvent::ReasoningDelta(reasoning));
                 }
                 return;
@@ -288,14 +296,24 @@ impl QwenStreamParser {
     }
 
     /// Flush remaining buffer content at end of stream.
-    /// If no structured tool calls were received, attempt fallback parsing.
+    /// If no structured tool calls were received, attempt fallback parsing
+    /// across three channels: raw-token accumulator, text buffer, and reasoning
+    /// content (some servers route tool calls through `reasoning_content` or
+    /// inside `<think>` blocks instead of surfacing them as structured calls).
     fn flush_remaining(&mut self, events: &mut Vec<LlmStreamEvent>) {
-        // First, check accumulated_text (raw tool tokens stripped during streaming)
+        // 1. Raw tool tokens stripped during streaming.
         if !self.has_structured_tool_calls && !self.accumulated_text.is_empty() {
             let accumulated = std::mem::take(&mut self.accumulated_text);
             self.parse_all_tool_calls(&accumulated, events);
         }
 
+        // 2. Tool calls that the server routed into the reasoning channel.
+        if !self.has_structured_tool_calls && contains_tool_call_pattern(&self.reasoning_accumulated) {
+            let reasoning = std::mem::take(&mut self.reasoning_accumulated);
+            self.parse_all_tool_calls(&reasoning, events);
+        }
+
+        // 3. Remaining content buffer.
         if self.text_buffer.is_empty() {
             return;
         }
@@ -413,6 +431,13 @@ fn parse_qwen_tool_call(input: &str) -> Result<(String, String), String> {
         ));
     }
 
+    // Try Llama-3 / Claude-style XML form that some Qwen fine-tunes emit:
+    //   <function=NAME><parameter=KEY>VALUE</parameter>...</function>
+    // (The outer `<tool_call>` wrapper has already been stripped by the caller.)
+    if let Some((name, args_json)) = parse_xml_function_call(input) {
+        return Ok((name, args_json));
+    }
+
     // Try to salvage partial/malformed JSON — find the first '{' and attempt parse
     if let Some(brace_pos) = input.find('{') {
         let json_part = &input[brace_pos..];
@@ -439,6 +464,64 @@ fn parse_qwen_tool_call(input: &str) -> Result<(String, String), String> {
             input.to_string()
         }
     ))
+}
+
+/// Parse `<function=NAME><parameter=KEY>VALUE</parameter>...</function>`
+/// (Llama-3.x / Claude-style function-call XML that some Qwen fine-tunes emit).
+///
+/// Returns `(name, args_as_json_string)` or `None` if the input doesn't match.
+fn parse_xml_function_call(input: &str) -> Option<(String, String)> {
+    let start = input.find("<function=")?;
+    let rest = &input[start + "<function=".len()..];
+    let name_end = rest.find('>')?;
+    let name = rest[..name_end].trim().to_string();
+    if name.is_empty() {
+        return None;
+    }
+    let body_start = name_end + 1;
+    // Body runs from after `<function=NAME>` up to `</function>` (or end of input).
+    let body = match rest[body_start..].find("</function>") {
+        Some(end) => &rest[body_start..body_start + end],
+        None => &rest[body_start..],
+    };
+
+    let mut args = serde_json::Map::new();
+    let mut cursor = body;
+    while let Some(p_start) = cursor.find("<parameter=") {
+        let after = &cursor[p_start + "<parameter=".len()..];
+        let key_end = match after.find('>') {
+            Some(i) => i,
+            None => break,
+        };
+        let key = after[..key_end].trim().to_string();
+        let value_start = key_end + 1;
+        let (value, next) = match after[value_start..].find("</parameter>") {
+            Some(v_end) => (
+                &after[value_start..value_start + v_end],
+                &after[value_start + v_end + "</parameter>".len()..],
+            ),
+            None => (&after[value_start..], ""),
+        };
+        // Llama-3 style often wraps values in leading/trailing newlines.
+        let value = value.trim_matches(|c: char| c == '\n' || c == '\r');
+        // If the value parses as JSON (number, bool, null, array, nested object),
+        // preserve the type; otherwise store as string.
+        let v = serde_json::from_str::<Value>(value)
+            .unwrap_or_else(|_| Value::String(value.to_string()));
+        if !key.is_empty() {
+            args.insert(key, v);
+        }
+        cursor = next;
+    }
+
+    if args.is_empty() && !body.contains("<parameter=") {
+        // Matched `<function=NAME>` but no parameters at all — could still be a
+        // valid no-arg call. Emit empty-args JSON.
+        return Some((name, "{}".to_string()));
+    }
+
+    let args_json = serde_json::to_string(&Value::Object(args)).ok()?;
+    Some((name, args_json))
 }
 
 /// Extract a balanced JSON object string starting from the first '{'.
@@ -844,5 +927,130 @@ mod tests {
     fn endpoint_is_chat_completions() {
         let adapter = QwenAdapter;
         assert_eq!(adapter.endpoint_path(), "/chat/completions");
+    }
+
+
+    // XML-function tool-call format (Llama-3/Claude style emitted by some Qwen fine-tunes).
+
+    #[test]
+    fn parse_xml_function_single_param() {
+        let (name, args) = parse_qwen_tool_call(
+            "<function=read>\n<parameter=file_path>\n/tmp/foo.py\n</parameter>\n</function>",
+        )
+        .unwrap();
+        assert_eq!(name, "read");
+        let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
+        assert_eq!(parsed["file_path"], "/tmp/foo.py");
+    }
+
+    #[test]
+    fn parse_xml_function_multi_param() {
+        let (name, args) = parse_qwen_tool_call(
+            "<function=patch><parameter=file_path>/a.txt</parameter>\
+             <parameter=old_string>hello</parameter>\
+             <parameter=new_string>world</parameter></function>",
+        )
+        .unwrap();
+        assert_eq!(name, "patch");
+        let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
+        assert_eq!(parsed["file_path"], "/a.txt");
+        assert_eq!(parsed["old_string"], "hello");
+        assert_eq!(parsed["new_string"], "world");
+    }
+
+    #[test]
+    fn parse_xml_function_preserves_json_typed_values() {
+        let (name, args) = parse_qwen_tool_call(
+            "<function=ping><parameter=count>3</parameter><parameter=verbose>true</parameter></function>",
+        )
+        .unwrap();
+        assert_eq!(name, "ping");
+        let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
+        assert_eq!(parsed["count"], 3);
+        assert_eq!(parsed["verbose"], true);
+    }
+
+    #[test]
+    fn parse_xml_function_no_args() {
+        let (name, args) = parse_qwen_tool_call("<function=status></function>").unwrap();
+        assert_eq!(name, "status");
+        assert_eq!(args, "{}");
+    }
+
+    #[test]
+    fn fallback_parses_xml_function_inside_tool_call() {
+        let mut parser = QwenStreamParser::new();
+        parser.process_sse_data(
+            r#"{"choices":[{"delta":{"content":"<tool_call>\n<function=read>\n<parameter=file_path>\n/tmp/x.py\n</parameter>\n</function>\n</tool_call>"},"finish_reason":null}]}"#,
+        );
+        let e = parser.process_sse_data(
+            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        );
+        let calls: Vec<_> = e
+            .iter()
+            .filter_map(|ev| match ev {
+                LlmStreamEvent::ToolCallDelta { name: Some(n), arguments_chunk, .. } => {
+                    Some((n.clone(), arguments_chunk.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "read");
+        let parsed: serde_json::Map<String, Value> = serde_json::from_str(&calls[0].1).unwrap();
+        assert_eq!(parsed["file_path"], "/tmp/x.py");
+    }
+
+
+    // Tool calls emitted via the reasoning channel (some servers route them
+    // into `reasoning_content` or wrap them in `<think>` blocks).
+
+    #[test]
+    fn fallback_parses_tool_calls_from_reasoning_content_field() {
+        let mut parser = QwenStreamParser::new();
+        parser.process_sse_data(
+            r#"{"choices":[{"delta":{"reasoning_content":"planning step...\n<tool_call>\n<function=read>\n<parameter=file_path>\n/tmp/y.py\n</parameter>\n</function>\n</tool_call>"},"finish_reason":null}]}"#,
+        );
+        let e = parser.process_sse_data(
+            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        );
+        assert!(e.iter().any(|ev| matches!(
+            ev,
+            LlmStreamEvent::ToolCallDelta { name: Some(n), .. } if n == "read"
+        )));
+    }
+
+    #[test]
+    fn fallback_parses_tool_calls_from_think_block() {
+        let mut parser = QwenStreamParser::new();
+        parser.process_sse_data(
+            r#"{"choices":[{"delta":{"content":"<think>\nthinking...\n<tool_call>\n{\"name\": \"shell\", \"arguments\": {\"command\": \"ls\"}}\n</tool_call>\n</think>"},"finish_reason":null}]}"#,
+        );
+        let e = parser.process_sse_data(
+            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        );
+        assert!(e.iter().any(|ev| matches!(
+            ev,
+            LlmStreamEvent::ToolCallDelta { name: Some(n), .. } if n == "shell"
+        )));
+    }
+
+    #[test]
+    fn reasoning_fallback_skipped_when_structured_calls_present() {
+        let mut parser = QwenStreamParser::new();
+        // Reasoning contains a tool-call-like text, but server also emits a
+        // structured tool_calls field — we must not double-fire.
+        parser.process_sse_data(
+            r#"{"choices":[{"delta":{"reasoning_content":"<tool_call>\n<function=read>\n<parameter=file_path>\n/a\n</parameter>\n</function>\n</tool_call>","tool_calls":[{"index":0,"id":"id_1","function":{"name":"read","arguments":"{\"file_path\":\"/a\"}"}}]},"finish_reason":null}]}"#,
+        );
+        let e = parser.process_sse_data(
+            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        );
+        let calls: Vec<_> = e
+            .iter()
+            .filter(|ev| matches!(ev, LlmStreamEvent::ToolCallDelta { .. }))
+            .collect();
+        // The structured one was emitted on the first chunk; no extra fallback on flush.
+        assert_eq!(calls.len(), 0);
     }
 }

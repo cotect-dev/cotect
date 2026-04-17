@@ -34,12 +34,13 @@ def upload():
     return "OK"
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Read {p} and create a security audit plan. Identify all vulnerabilities and create a \
-             numbered plan to fix each one. Be specific about what's dangerous and how to fix it. \
-             At least 4 steps.")),
+             "Read {p} and produce a security audit plan that identifies every \
+              vulnerability in the file and describes how to remediate each one.")),
             vec![complete(), succeeded("read"),
-                 oc_all(&["1.", "2.", "3.", "4."]),
-                 oc_any(&["injection", "command injection", "SQL injection", "path traversal", "sanitiz"])]),
+                 oc_any(&["/search", "subprocess", "shell=true", "grep -r"]),
+                 oc_any(&["/user", "sql", "select *", "sqlite", "parameteriz", "prepared"]),
+                 oc_any(&["/upload", "filename", "path traversal", "secure_filename", "werkzeug"]),
+                 oc_any(&["command injection", "shell injection", "sanitiz", "escape", "validate"])]),
             vec![p])
     }
     v.push(scen!("plan_security_audit", Category::Planning, Difficulty::Medium, P, s_plan_security_audit));
@@ -53,13 +54,13 @@ def upload():
         std::fs::write(dir.join("app/main.py"), "from auth import AuthService\nfrom orders import OrderService\nfrom notifications import NotificationService\n\ndef create_order(user_token, items):\n    auth = AuthService()\n    user = auth.verify_token(user_token)\n    order = OrderService().create(user['id'], items)\n    NotificationService().send_email(user['email'], 'Order', str(order))\n    return order\n").unwrap();
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Analyse the code under {d}/app/ and create a numbered plan for splitting this monolith \
-             into microservices. Consider: service boundaries, inter-service communication, \
-             data ownership, shared libraries, deployment, and migration strategy. At least 6 steps.")),
+            "Analyse the code under {d}/app/ and produce a plan for splitting this monolith \
+             into microservices. The plan must be grounded in the actual modules you find.")),
             vec![complete(), used_any(&["fs_search", "read"]),
-                 oc_all(&["1.", "2.", "3.", "4.", "5.", "6."]),
-                 oc_any(&["auth", "order", "notification"]),
-                 oc_any(&["API", "service", "microservice", "communicate"])])
+                 oc_all(&["auth", "order", "notif"]),
+                 oc_any(&["main.py", "create_order", "orchestrat", "cross-service", "cross service", "coupling"]),
+                 oc_any(&["API", "REST", "gRPC", "queue", "event", "message", "HTTP", "RPC"]),
+                 oc_any(&["data", "database", "ownership", "schema", "migration"])])
     }
     v.push(scen!("plan_microservice_split", Category::Planning, Difficulty::Hard, P, s_plan_microservice_split));
 
@@ -106,13 +107,15 @@ def process_log_file(path: str) -> dict:
     }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Read {p}. This function loads entire log files into memory and makes multiple passes. \
-             Create a numbered plan for optimizing it for large files (100GB+). \
-             Cover: streaming, single-pass processing, memory management, parallelization. \
-             At least 5 steps.")),
+            "Read {p} and produce a plan for making this function handle 100GB+ log files \
+             without running out of memory. Identify the specific problems in the current \
+             implementation and propose concrete changes.")),
             vec![complete(), succeeded("read"),
-                 oc_all(&["1.", "2.", "3.", "4.", "5."]),
-                 oc_any(&["stream", "memory", "single pass", "one pass", "generator", "chunk"])]),
+                 oc_any(&["readlines", "loads the whole", "loads entire", "into memory", "in-memory", "list"]),
+                 oc_any(&["multiple passes", "three passes", "four passes", "several passes", "iterate", "loop"]),
+                 oc_any(&["stream", "iterator", "generator", "yield", "chunk", "line by line", "line-by-line"]),
+                 oc_any(&["single pass", "one pass", "single-pass", "one-pass", "aggregat", "running", "accumulat"]),
+                 oc_any(&["process_log_file", "json.loads", "type_counts", "response_time"])]),
             vec![p])
     }
     v.push(scen!("plan_optimize_performance", Category::Planning, Difficulty::Hard, P, s_plan_performance));
@@ -144,13 +147,14 @@ class PaymentProcessor:
         let p = ap(dir, "src/payment.py");
         let d = dir.to_string_lossy().into_owned();
         with_scope(with_checks(pf(format!(
-            "Read the payment code in {d}/src/ and create a comprehensive testing plan. \
-             Cover: unit tests with mocks, integration tests, edge cases, error scenarios, \
-             and how to test without hitting the real Stripe API. At least 5 detailed steps.")),
+            "Read the payment code in {d}/src/ and produce a testing plan for it. The plan \
+             must be specific to this class and the external dependency it uses.")),
             vec![complete(), succeeded("read"),
-                 oc_all(&["1.", "2.", "3.", "4.", "5."]),
-                 oc_any(&["mock", "stub", "fake"]),
-                 oc_any(&["unit", "integration", "test"])]),
+                 oc_all(&["charge", "refund"]),
+                 oc_any(&["get_balance", "balance"]),
+                 oc_any(&["stripe", "Stripe"]),
+                 oc_any(&["mock", "stub", "fake", "patch", "monkeypatch", "fixture"]),
+                 oc_any(&["error", "failure", "exception", "decline", "edge case", "invalid"])]),
             vec![p])
     }
     v.push(scen!("plan_testing_strategy", Category::Planning, Difficulty::Hard, P, s_plan_testing_strategy));

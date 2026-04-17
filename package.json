@@ -16,10 +16,10 @@
     "test:coverage": "vitest run --coverage",
     "test:rust": "cd tauri && cargo test",
     "test:all": "vitest run && cd tauri && cargo test",
-    "eval": "cd tauri && COTECT_EVAL_ENDPOINT=http://server.local:8080/v1 COTECT_EVAL_MODEL=gemma4-26b-a4b COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts COTECT_EVAL_MAX_TURNS=100 COTECT_EVAL_TIMEOUT=600 cargo test -p cotect eval_suite -- --ignored --nocapture",
-    "eval:medium": "cd tauri && COTECT_EVAL_ENDPOINT=http://server.local:8080/v1 COTECT_EVAL_MODEL=gemma4-26b-a4b COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts COTECT_EVAL_MAX_TURNS=100 COTECT_EVAL_TIMEOUT=600 COTECT_EVAL_DIFFICULTY=medium cargo test -p cotect eval_suite -- --ignored --nocapture",
-    "eval:hard": "cd tauri && COTECT_EVAL_ENDPOINT=http://server.local:8080/v1 COTECT_EVAL_MODEL=gemma4-26b-a4b COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts COTECT_EVAL_MAX_TURNS=100 COTECT_EVAL_TIMEOUT=600 COTECT_EVAL_DIFFICULTY=hard cargo test -p cotect eval_suite -- --ignored --nocapture",
-    "eval:xhard": "cd tauri && COTECT_EVAL_ENDPOINT=http://server.local:8080/v1 COTECT_EVAL_MODEL=gemma4-26b-a4b COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts COTECT_EVAL_MAX_TURNS=100 COTECT_EVAL_TIMEOUT=600 cargo test -p cotect eval_extra_hard -- --ignored --nocapture",
+    "eval": "COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts ./scripts/eval-model.sh --endpoint http://server.local:8080/v1 --max-turns 100 --timeout 600 --model",
+    "eval:medium": "COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts ./scripts/eval-model.sh --endpoint http://server.local:8080/v1 --max-turns 100 --timeout 600 --difficulty medium --model",
+    "eval:hard": "COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts ./scripts/eval-model.sh --endpoint http://server.local:8080/v1 --max-turns 100 --timeout 600 --difficulty hard --model",
+    "eval:xhard": "COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts ./scripts/eval-model.sh --endpoint http://server.local:8080/v1 --max-turns 100 --timeout 600 --xhard --model",
     "prepare": "husky"
   },
   "lint-staged": {

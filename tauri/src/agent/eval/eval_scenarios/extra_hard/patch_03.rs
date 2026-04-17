@@ -225,16 +225,17 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(
-            "We need to change `format_entry()` in formatter.py to return a \
-             tuple of (formatted_line, char_count) instead of just the string. \
-             This change cascades through renderer.py and exporter.py — all \
-             callers must be updated to handle the new return type.\n\n\
-             IMPORTANT: `format_header()` must NOT change — it has a different \
-             purpose and its callers depend on it returning a plain string.\n\n\
-             Step 1: Read all source files and trace every call to `format_entry()`.\n\
-             Step 2: Apply coordinated patches WITHOUT running the code first.\n\
-             Step 3: Run the existing `python3 test_report.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass."
+            "The report module's test suite (`test_report.py`) is failing after \
+             a spec change: downstream consumers now need character-count \
+             information alongside formatted entries, and the CSV export needs \
+             an additional column for it. The JSON export and header rendering \
+             paths must keep working exactly as they do today.\n\n\
+             Read every source file and the test suite to understand what the \
+             tests expect, then update the code so `python3 test_report.py` \
+             prints ALL_TESTS_PASSED.\n\n\
+             Apply your patches WITHOUT running the code first, then run the \
+             tests. If they fail, read the errors and iterate until all tests \
+             pass."
             .to_string()
         ),
             vec![
@@ -245,6 +246,9 @@ if __name__ == "__main__":
                 // renderer handles char counts, CSV has a count column,
                 // and JSON export is unchanged.
                 run_has("python3 test_report.py", &["ALL_TESTS_PASSED"]),
+                // format_header must remain a function (the test covers
+                // return-type behavior; this guards against deletion/rename).
+                file_has("formatter.py", &["def format_header("]),
             ]),
             vec![formatter_file, renderer_file, exporter_file]),
             vec![test_file])

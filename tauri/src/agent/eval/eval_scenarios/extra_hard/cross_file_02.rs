@@ -275,21 +275,35 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "Rename the notification status \"PENDING\" to \"QUEUED\" across the \
-             entire notification system. This affects {}, {}, and {} — every \
-             place that uses \"PENDING\" as a notification status must change \
-             to \"QUEUED\".\n\n\
-             IMPORTANT: {} has its own \"PENDING\" status for payments. That is \
-             a completely separate domain and must NOT be changed.\n\n\
-             Step 1: Read all files and identify every location that needs updating.\n\
-             Step 2: Apply all changes WITHOUT running the code first.\n\
-             Step 3: Run the existing `python3 test_rename.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass.",
-            notification_file, dispatcher_file, formatter_file, payments_file)),
+        with_blocked(with_scope(with_checks(pf(
+            "In this codebase, notifications currently start life in a status \
+             named \"PENDING\". Rename that notification status to \"QUEUED\" \
+             everywhere it appears in notification code — the status list, the \
+             default, all comparisons, the display label map, the icon map, and \
+             every helper that transitions notifications back to the initial \
+             state.\n\n\
+             There is also unrelated code in this repo that uses the string \
+             \"PENDING\" for a different concept (not notifications). Anything \
+             that represents that other concept must stay exactly as it is. \
+             Read the files carefully and decide which \"PENDING\" strings \
+             belong to the notification domain and which do not.\n\n\
+             Apply all edits first, then run the bundled test suite \
+             (`python3 test_rename.py`) and iterate until it prints \
+             ALL_TESTS_PASSED.".to_string()),
             vec![
                 complete(),
                 succeeded("shell"),
+                // Notification domain: old string fully gone, new string present
+                file_has(&notification_file, &["QUEUED"]),
+                file_lacks(&notification_file, &["PENDING"]),
+                file_has(&dispatcher_file, &["QUEUED"]),
+                file_lacks(&dispatcher_file, &["PENDING"]),
+                file_has(&formatter_file, &["QUEUED"]),
+                file_lacks(&formatter_file, &["PENDING"]),
+                // Payment domain left alone
+                file_has(&payments_file, &["PAYMENT_STATUS_PENDING", "\"PENDING\""]),
+                file_lacks(&payments_file, &["QUEUED"]),
+                // End-to-end behaviour actually works
                 run_has("python3 test_rename.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![notification_file, dispatcher_file, formatter_file, payments_file]),
