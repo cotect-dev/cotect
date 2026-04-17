@@ -29,12 +29,12 @@ def get_emails(users):
     return domains
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Refactor both functions in {p} to use Python comprehensions instead of explicit loops. \
-             `get_upper_names` should use a list comprehension, `get_emails` should use a set comprehension.")),
+            "Refactor both functions in {p} to be more concise and idiomatic Python. \
+             The explicit accumulator loops are verbose — each function can be expressed as a single \
+             expression. Preserve behavior: `get_upper_names` returns a list of uppercased names of \
+             active users, `get_emails` returns a set of unique domains from addresses containing '@'.")),
             vec![complete(),
-                 file_has("transform.py", &["return ["]),
-                 file_has("transform.py", &["return {"]),
-                 file_lacks("transform.py", &["result = []", "domains = set()"])]),
+                 file_lacks("transform.py", &["result = []", "result.append(", "domains = set()", "domains.add("])]),
             vec![p])
     }
     v.push(scen!("refactor_to_comprehensions", Category::Refactor, Difficulty::Medium, I, s_loops_to_comprehension));
@@ -59,12 +59,14 @@ function fetchUser(id, callback) {
 }
 ").unwrap();
         with_scope(with_checks(pf(format!(
-            "Refactor {p} to use async/await instead of nested callbacks. The function should become \
-             `async function fetchUser(id)` that awaits makeRequest and parseJSON, and returns data.user. \
-             Errors should propagate naturally via exceptions rather than callback(err, null).")),
+            "Refactor {p} to eliminate the nested callback pyramid. Modernize the control flow so that \
+             errors propagate naturally instead of being threaded through `callback(err, ...)` arguments, \
+             and so the two sequential async steps read linearly. The function should still fetch a user \
+             by id, parse the JSON response, and yield `data.user`. Assume `makeRequest` and `parseJSON` \
+             can be adapted/wrapped as needed.")),
             vec![complete(),
-                 file_has("api.js", &["async function fetchUser", "await"]),
-                 file_lacks("api.js", &["callback(err", "callback(null"])]),
+                 file_has("api.js", &["await"]),
+                 file_lacks("api.js", &["callback(err", "callback(null", "function(err,"])]),
             vec![p])
     }
     v.push(scen!("refactor_callbacks_to_async", Category::Refactor, Difficulty::Medium, I, s_callback_to_promise));
@@ -103,12 +105,14 @@ function fetchUser(id, callback) {
     }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "The function in {p} does validation, calculation, and response building all in one. \
-             Decompose it into three helper functions: `validate_order(order)`, `calculate_totals(order)`, \
-             and keep `process_order` as the orchestrator that calls them.")),
+            "The function in {p} mixes three distinct concerns — input validation, numeric calculation, \
+             and response assembly — in one long body. Split it so each concern lives in its own helper \
+             and `process_order` becomes a short orchestrator that delegates to them. Preserve the \
+             existing behavior and return shape exactly.")),
             vec![complete(),
-                 file_has("processor.py", &["def validate_order", "def calculate_totals", "def process_order"]),
-                 file_has("processor.py", &["validate_order(order)", "calculate_totals(order)"])]),
+                 file_has("processor.py", &["def process_order"]),
+                 // At least three top-level `def` statements means process_order plus two helpers.
+                 run_ok("python3 -c \"import re,sys; sys.exit(0 if len(re.findall(r'^def \\\\w+', open('processor.py').read(), re.M))>=3 else 1)\"")]),
             vec![p])
     }
     v.push(scen!("refactor_decompose_function", Category::Refactor, Difficulty::Hard, I, s_decompose_god_function));
@@ -134,15 +138,20 @@ export function canTransition(from: string, to: string): boolean {
 }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "In {p}, status values are raw strings repeated everywhere. Refactor: \
-             1) Create an enum `Status` with members Pending, Approved, Rejected, Archived. \
-             2) Update all three functions to use the enum instead of string literals.")),
+            "In {p}, status values are raw strings repeated across multiple functions — a classic \
+             stringly-typed smell. Introduce a proper type so the valid statuses are declared once and \
+             reused, then update the three functions to reference that type instead of comparing against \
+             string literals. Preserve the existing function signatures and behavior.")),
             vec![complete(),
-                 file_has("status.ts", &["enum Status"]),
-                 file_has("status.ts", &["Status.Pending", "Status.Approved", "Status.Rejected", "Status.Archived"]),
-                 // string literals are OK inside enum value assignments like `Pending = "pending"`
-                 // but the function bodies should use enum members not raw strings
-                 file_lacks("status.ts", &["=== \"pending\"", "=== \"approved\"", "=== \"rejected\"", "=== \"archived\""])]),
+                 // A type abstraction must exist: enum, const-enum, or an `as const` object literal.
+                 Check::RunOutputContains(
+                     "grep -qE '(enum[[:space:]]+[A-Z]|as[[:space:]]+const)' status.ts && echo TYPE_OK".into(),
+                     10,
+                     vec!["TYPE_OK".into()],
+                 ),
+                 // String-literal comparisons in function bodies must be gone.
+                 file_lacks("status.ts", &["=== \"pending\"", "=== \"approved\"", "=== \"rejected\"", "=== \"archived\"",
+                                           "== \"pending\"", "== \"approved\"", "== \"rejected\"", "== \"archived\""])]),
             vec![p])
     }
     v.push(scen!("refactor_strings_to_enum", Category::Refactor, Difficulty::Hard, I, s_enum_from_strings));

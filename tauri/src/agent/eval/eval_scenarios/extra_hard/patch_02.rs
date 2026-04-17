@@ -296,29 +296,39 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(
-            "We need to change the `orders` table to store totals as decimals \
-             instead of integers (to support cents). The `invoices` and `payments` \
-             tables must remain unchanged — they use whole-number totals by design.\n\n\
-             You need to update the schema, queries, and models so that ONLY \
-             order-related code uses decimal totals.\n\n\
-             Step 1: Read all source files and identify every place that needs \
-             to change for orders (and only orders).\n\
-             Step 2: Apply your patches WITHOUT running the code first.\n\
-             Step 3: Run the existing `python3 test_billing.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass."
+            "The billing service is losing money. The `test_billing.py` suite \
+             is failing because order totals are being truncated — customers \
+             are charged 19.99 + 5.50 but the system reports 24 instead of \
+             25.49. Other billing entities (invoices, payments) appear to be \
+             working correctly.\n\n\
+             Read all source files and `test_billing.py`, figure out which \
+             parts of the orders code path are broken, and fix them. Be careful \
+             not to break anything that is currently working.\n\n\
+             Apply your patches WITHOUT running the code first, then run \
+             `python3 test_billing.py` to verify. If tests fail, read the \
+             errors and iterate until all tests pass."
             .to_string()
         ),
             vec![
                 complete(),
                 succeeded("shell"),
                 // Primary: all tests pass — the test suite inserts 19.99
-                // and 5.50 and verifies they sum to 25.49, which proves
-                // the column type was changed to support decimals.
+                // and 5.50 and verifies they sum to 25.49, plus asserts
+                // Order.total is float while Invoice/Payment.total stay int.
                 run_has("python3 test_billing.py", &["ALL_TESTS_PASSED"]),
-                // Order model must use float
-                file_has("models.py", &["total: float"]),
-                // Legacy migration function must not change (still has INTEGER reference)
-                file_has("schema.py", &["total INTEGER"]),
+                // Orders schema must no longer declare total as INTEGER —
+                // the distinctive order_number line sits right above the
+                // total column, so this pins the orders table specifically.
+                file_lacks("schema.py", &[
+                    "order_number TEXT NOT NULL UNIQUE,\n            total INTEGER",
+                ]),
+                // Legacy migration function comment must remain untouched.
+                file_has("schema.py", &["orders: total INTEGER"]),
+                // Invoices and payments tables must remain INTEGER.
+                file_has("schema.py", &[
+                    "invoice_number TEXT NOT NULL UNIQUE,\n            total INTEGER",
+                    "payment_ref TEXT NOT NULL UNIQUE,\n            total INTEGER",
+                ]),
             ]),
             vec![schema_file, queries_file, models_file]),
             vec![test_file])

@@ -197,9 +197,11 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The permission system is broken: editors are being denied access to \
-             edit posts, while viewers can somehow edit. The role hierarchy seems \
-             inverted for some roles.\n\n\
+            "The permission system is behaving incorrectly. Users with the \
+             'editor' role are getting 403 responses from the edit-post route, \
+             while users with the 'viewer' role are unexpectedly receiving 200 \
+             responses from that same route. Other routes also return the wrong \
+             statuses for certain roles.\n\n\
              Step 1: Read {} and {} carefully. Identify the root cause and \
              apply your fix WITHOUT running the code first.\n\
              Step 2: Run the existing `python3 test_permissions.py` to check your work.\n\
@@ -212,6 +214,8 @@ if __name__ == "__main__":
                 // Primary: the test suite must pass — it comprehensively covers
                 // admin/editor/viewer/guest access levels, role hierarchy ordering,
                 // and correct permission grants/denials across all route handlers.
+                // Multiple valid fixes are possible (correct _role_level mapping,
+                // or swap parameter usage throughout); tests only assert behavior.
                 run_has("python3 test_permissions.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![perms_file, routes_file]),

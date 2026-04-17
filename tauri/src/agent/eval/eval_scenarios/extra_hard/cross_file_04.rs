@@ -321,26 +321,36 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "Add a required `source` parameter to `log_event()` in {} as the \
-             first argument (before level and message). The source should be a \
-             string identifying which module produced the log entry (e.g., \
-             \"auth\", \"api\", \"jobs\"). Update the log entry dict to include \
-             the source field.\n\n\
-             Then update EVERY caller of `log_event()` and `log_debug()` across \
-             {}, {}, and {} to pass an appropriate source string. The \
-             `log_debug()` convenience function must also accept and forward the \
-             source parameter.\n\n\
-             The `_log_metric()` function in api.py is unrelated and must not \
-             change.\n\n\
-             Step 1: Read all files and find every call to log_event/log_debug.\n\
-             Step 2: Apply all changes WITHOUT running the code first.\n\
-             Step 3: Run the existing `python3 test_logging.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass.",
-            logger_file, auth_file, api_file, jobs_file)),
+        with_blocked(with_scope(with_checks(pf(
+            "The shared logging primitive in this project records log entries \
+             with only a level and a message. Change its contract: it must now \
+             take a required `source` string as the FIRST positional argument \
+             (before level and message) and the resulting log entry dict must \
+             carry a `source` field. Any convenience wrappers around it must \
+             also accept and forward `source` as their first positional \
+             argument.\n\n\
+             Every call site in the project that produces log entries has to \
+             be updated to pass a sensible source string identifying which \
+             subsystem the log came from. Forgetting a single call site will \
+             break the code at runtime. Find the call sites yourself.\n\n\
+             Any helper that talks to a different subsystem (for example a \
+             separate metrics mechanism) is out of scope and must not change.\n\n\
+             Apply all edits first, then run the bundled test suite \
+             (`python3 test_logging.py`) and iterate until it prints \
+             ALL_TESTS_PASSED.".to_string()),
             vec![
                 complete(),
                 succeeded("shell"),
+                // Logger: old signatures gone (new ones must accept `source`)
+                file_lacks(&logger_file, &["def log_event(level: str, message: str)"]),
+                file_lacks(&logger_file, &["def log_debug(message: str)"]),
+                // Every caller file now mentions its own source label
+                file_has(&auth_file, &["\"auth\""]),
+                file_has(&api_file, &["\"api\""]),
+                file_has(&jobs_file, &["\"jobs\""]),
+                // Unrelated metrics helper preserved
+                file_has(&api_file, &["def _log_metric"]),
+                // End-to-end behaviour actually works
                 run_has("python3 test_logging.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![logger_file, auth_file, api_file, jobs_file]),

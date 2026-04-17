@@ -63,9 +63,8 @@ function gamma() {
 }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "The code in {p} has multiple syntax errors: \
-             `Vec:new()` should be `Vec::new()`, and there's a missing semicolon after `to_uppercase()`. \
-             Fix all errors so the code compiles.")),
+            "The code in {p} does not compile. Fix it so it compiles as valid Rust. \
+             Preserve the intended behavior (uppercasing each string into a new Vec).")),
             vec![complete(),
                  file_has("broken.rs", &["Vec::new()", "to_uppercase();"]),
                  file_lacks("broken.rs", &["Vec:new()", "to_uppercase()\n"])]),
@@ -77,7 +76,7 @@ function gamma() {
         let p = ap(dir, "config.yaml");
         std::fs::write(&p, "server:\n  host: 0.0.0.0\n  port: 8080\n  workers: 4\n\ndatabase:\n  url: postgres://localhost/app\n  pool_size: 10\n").unwrap();
         with_scope(with_checks(pf(format!(
-            "Read {p} (it's YAML-like), then change the port to 9090 and pool_size to 20. \
+            "In {p}, change the port to 9090 and pool_size to 20. \
              Keep all other values unchanged.")),
             vec![complete(),
                  file_has("config.yaml", &["port: 9090", "pool_size: 20", "host: 0.0.0.0", "workers: 4"]),

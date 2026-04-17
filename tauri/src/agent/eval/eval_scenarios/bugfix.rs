@@ -17,10 +17,12 @@ export async function fetchUserName(id: string): Promise<string> {
 }
 ").unwrap();
         with_scope(with_checks(pf(format!(
-            "The async function in {p} calls fetch() and .json() without await, so it operates on \
-             Promise objects instead of resolved values. Add the missing await keywords.")),
-            vec![complete(), file_has("fetcher.ts", &["await fetch", "await response.json()"]),
-                 file_lacks("fetcher.ts", &["\n  const response = fetch(", "\n  const data = response.json()"])]),
+            "The async function in {p} returns the wrong value — callers get a Promise-related object \
+             back instead of the user's name. Make it return the resolved user name as declared by \
+             the function signature.")),
+            vec![complete(),
+                 file_has("fetcher.ts", &["await "]),
+                 file_lacks("fetcher.ts", &["\n  const response = fetch(`", "\n  const data = response.json()"])]),
             vec![p])
     }
     v.push(scen!("bugfix_missing_await", Category::Bugfix, Difficulty::Medium, I, s_async_missing_await));
@@ -36,11 +38,22 @@ def add_to_total(value):
 def get_total():
     return total
 ").unwrap();
+        let d = dir.to_string_lossy().into_owned();
         with_scope(with_checks(pf(format!(
-            "In {p}, the add_to_total function tries to modify the module-level `total` variable but \
-             creates a local variable instead (UnboundLocalError). Fix it by adding the `global` \
-             declaration or by restructuring the code.")),
-            vec![complete(), file_has("counter.py", &["global total"])]),
+            "In {p}, calling add_to_total(5) followed by get_total() does not return 5 as you would \
+             expect — the module-level state never actually changes and the function is broken. \
+             Fix the bug so that add_to_total correctly updates the running total shared with get_total.")),
+            vec![complete(),
+                 file_has("counter.py", &["total"]),
+                 Check::RunOutputContains(
+                     format!("python3 -c \"import sys; sys.path.insert(0, '{d}'); \
+from counter import add_to_total, get_total; \
+add_to_total(5); assert get_total() == 5, f'after 5: {{get_total()}}'; \
+add_to_total(3); assert get_total() == 8, f'after 3: {{get_total()}}'; \
+print('COUNTER_OK')\""),
+                     10,
+                     vec!["COUNTER_OK".into()],
+                 )]),
             vec![p])
     }
     v.push(scen!("bugfix_python_scope", Category::Bugfix, Difficulty::Medium, I, s_wrong_scope));
@@ -63,11 +76,12 @@ def delete_user(conn: sqlite3.Connection, user_id: int):
     conn.commit()
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Both functions in {p} are vulnerable to SQL injection because they use f-string interpolation. \
-             Refactor them to use parameterized queries (placeholders like '?') instead.")),
+            "Both functions in {p} build SQL by interpolating user-controlled values straight into \
+             the query string, which is unsafe and will break on quotes or malicious input. \
+             Fix both functions so untrusted values can no longer alter the query structure.")),
             vec![complete(),
-                 file_has("db.py", &["?"]),
-                 file_lacks("db.py", &["f\"SELECT", "f\"DELETE"])]),
+                 file_lacks("db.py", &["f\"SELECT", "f\"DELETE", "f'SELECT", "f'DELETE",
+                                       "{username}", "{user_id}"])]),
             vec![p])
     }
     v.push(scen!("bugfix_sql_injection", Category::Bugfix, Difficulty::Hard, I, s_sql_injection));
@@ -92,13 +106,12 @@ func Delete(key string) {
 }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "The cache in {p} uses a plain map accessed by Get/Set/Delete without any synchronisation. \
-             In Go, concurrent map access causes a fatal runtime panic. Fix it by protecting the map \
-             with a sync.Mutex or sync.RWMutex.")),
+            "The cache in {p} exposes Get/Set/Delete over a shared map, but if two goroutines call \
+             these concurrently the Go runtime will panic with a concurrent map access error. \
+             Make the cache safe to call from multiple goroutines at the same time.")),
             vec![complete(),
                  file_has("cache.go", &["sync."]),
-                 file_has("cache.go", &["Lock()", "Unlock()"]),
-                 file_lacks("cache.go", &["\nvar store = make(map[string]string)\n"])]),
+                 file_lacks("cache.go", &["func Set(key, value string) {\n\tstore[key] = value\n}"])]),
             vec![p])
     }
     v.push(scen!("bugfix_race_condition_go", Category::Bugfix, Difficulty::Hard, I, s_race_condition));
@@ -122,11 +135,13 @@ def read_json(path: str):
     return data
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Both functions in {p} open files but never close them, causing resource leaks. \
-             Refactor both to use `with` statements (context managers) so the files are always closed.")),
+            "Both functions in {p} open files but leave the file handles dangling after they return, \
+             relying on the garbage collector to eventually release them. Fix both functions so \
+             every file they open is reliably closed before the function returns, including when \
+             an exception is raised partway through.")),
             vec![complete(),
-                 file_has("reader.py", &["with open"]),
-                 file_lacks("reader.py", &["\n    f = open("])]),
+                 file_lacks("reader.py", &["\n    f = open(path, \"r\")\n    count = 0",
+                                           "\n    f = open(path, \"r\")\n    data = json.load(f)"])]),
             vec![p])
     }
     v.push(scen!("bugfix_resource_leak", Category::Bugfix, Difficulty::Hard, I, s_resource_leak));

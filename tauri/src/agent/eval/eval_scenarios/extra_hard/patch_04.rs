@@ -315,27 +315,32 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(
-            "We're renaming the `user_name` field to `display_name` for the \
-             profile entity ONLY. The session and audit_log entities must keep \
-             their `user_name` fields — those refer to the login username, \
-             not the display name.\n\n\
-             This requires coordinated changes across config.py, processor.py, \
-             and validator.py. Be precise: every entity has a `user_name` field \
-             but only the profile entity's should change.\n\n\
-             Step 1: Read all source files and identify every profile-specific \
-             reference to `user_name`.\n\
-             Step 2: Apply surgical patches WITHOUT running the code first.\n\
-             Step 3: Run the existing `python3 test_entities.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass."
+            "The `test_entities.py` suite is failing. Product changed how we \
+             represent profile data, but sibling entities (session, audit_log) \
+             are expected to keep their current shape — their tests still \
+             pass and must continue to pass.\n\n\
+             Read every source file and the failing test suite to understand \
+             what the profile code path needs to look like now. Make the \
+             necessary changes across config.py, processor.py, and \
+             validator.py so `python3 test_entities.py` prints \
+             ALL_TESTS_PASSED without breaking the session and audit_log \
+             tests.\n\n\
+             Apply your patches WITHOUT running the code first, then run the \
+             tests. If they fail, read the errors and iterate until all tests \
+             pass."
             .to_string()
         ),
             vec![
                 complete(),
                 succeeded("shell"),
-                // Primary: all tests pass
+                // Primary: all tests pass — the suite checks that profile
+                // uses the new name, session/audit_log still use user_name,
+                // and _RESERVED_NAMES is unchanged.
                 run_has("python3 test_entities.py", &["ALL_TESTS_PASSED"]),
-                // Profile schema must use display_name
-                file_has("config.py", &["display_name"]),
+                // The historical reserved-names list must not be modified.
+                file_has("validator.py", &[
+                    "_RESERVED_NAMES = [\"user_name\", \"password\", \"admin\", \"root\", \"system\"]",
+                ]),
             ]),
             vec![config_file, processor_file, validator_file]),
             vec![test_file])

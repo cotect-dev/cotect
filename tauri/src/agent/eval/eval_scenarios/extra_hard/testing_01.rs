@@ -188,22 +188,30 @@ else:
         std::fs::write(&buggy_copy, std::fs::read_to_string(&src_file).unwrap()).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The string utility module {} may have bugs. Your task is to write a \
-             comprehensive test file `test_strutil.py` that tests all three \
-             methods according to their docstrings. Your tests should catch \
-             any behavior that doesn't match the documented specification.\n\n\
-             Step 1: Read the source code and its docstrings carefully.\n\
-             Step 2: Write `test_strutil.py` with thorough tests for every method. \
-             Use `from strutil import StringUtil` and print \"ALL_TESTS_PASSED\" \
-             at the end if all assertions pass.\n\
-             Step 3: Run `python3 test_strutil.py` to see which tests catch bugs.",
+             "The string utility module at {} is suspected to contain defects \
+             where the implementation diverges from its documented contract. \
+             Write a test suite that would catch any such divergence — \
+             a correct implementation must pass every assertion, and any \
+             deviation from the specified behaviour must cause at least one \
+             failure.\n\n\
+             Deliverable: a Python test script whose filename matches \
+             `test_*.py`. The current source in this directory is suspected \
+             to be buggy — running your test script directly against it is \
+             expected to fail; that is the point, not a problem to paper \
+             over by weakening assertions. To validate end-to-end, run \
+             `python3 run_tests.py`: it prints exactly `ALL_TESTS_PASSED` \
+             once your tests both catch the defects and still pass on a \
+             faithful implementation. Stop as soon as you see that \
+             sentinel — don't keep iterating. You may choose any testing \
+             approach (plain asserts, unittest, pytest, custom harness) \
+             as long as this contract is honoured.",
             src_file)),
             vec![
                 complete(),
                 succeeded("shell"),
                 run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
             ]),
-            vec![src_file.clone(), ap(dir, "test_strutil.py")]),
+            vec![src_file.clone()]),
             vec![fixed_file, runner, buggy_copy])
     }
     v.push(scen!("xhard_testing_01_string_util", Category::Testing, Difficulty::Hard, I, setup));

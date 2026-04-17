@@ -593,6 +593,41 @@ fn output_preview(output: &str) -> String {
 
 // Prompt prefix based on system style
 
+/// Build an evaluation-time notice listing files the model must not read.
+/// Returns `None` when the scenario has no blocked files. Paths are shown by
+/// basename only — absolute tempdir paths are noise to the model and the
+/// sandbox matches on `ends_with`, so the basename is the identifying part.
+fn blocked_files_notice(blocked: &[String]) -> Option<String> {
+    if blocked.is_empty() {
+        return None;
+    }
+    let names: Vec<String> = blocked
+        .iter()
+        .map(|p| {
+            std::path::Path::new(p)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| p.clone())
+        })
+        .collect();
+    let list = names.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n");
+    Some(format!(
+        "## Evaluation sandbox\n\n\
+         You are being evaluated. The following files are hidden test artifacts used \
+         to score your work:\n\n\
+         {list}\n\n\
+         Rules:\n\
+         - You MAY execute them (e.g. `python3 <file>`, `sh <file>`, `node <file>`) and \
+         inspect stdout/stderr/exit code — that is the intended signal.\n\
+         - You MUST NOT read, print, or otherwise inspect their contents. The `read` \
+         tool will refuse, and any shell attempt (`cat`, `head`, `grep`, `less`, \
+         `open(...).read()`, etc.) will be flagged as a cheat in the transcript.\n\
+         - Diagnose from the source files you have access to plus the runtime output \
+         of executing the hidden files. Do not try to reverse-engineer the test \
+         assertions directly."
+    ))
+}
+
 fn user_prompt_with_style(style: SystemStyle, body: &str) -> String {
     match style {
         SystemStyle::Default => body.to_string(),
@@ -780,6 +815,137 @@ fn truncate_for_transcript(s: &str, max_chars: usize) -> String {
     }
 }
 
+// Display helpers — ANSI colors + layout for terminal output.
+// All eval output is meant for interactive consumption, so colors are
+// emitted unconditionally.
+
+const INDENT: &str = "            "; // 12 spaces — aligns under `[  1/125] `
+const DETAIL_INDENT: &str = "              "; // 14 spaces — nested one step
+const RULE_WIDTH: usize = 78;
+
+fn rule_heavy() -> String { "═".repeat(RULE_WIDTH) }
+fn rule_light() -> String { "─".repeat(RULE_WIDTH) }
+
+fn diff_badge(d: Difficulty) -> &'static str {
+    match d {
+        Difficulty::Easy   => "\x1b[1;32m[E]\x1b[0m",
+        Difficulty::Medium => "\x1b[1;33m[M]\x1b[0m",
+        Difficulty::Hard   => "\x1b[1;31m[H]\x1b[0m",
+    }
+}
+
+fn progress_bar(passed: usize, total: usize, width: usize) -> String {
+    if total == 0 { return "\x1b[2m".to_string() + &"░".repeat(width) + "\x1b[0m"; }
+    let frac = passed as f64 / total as f64;
+    let filled = (frac * width as f64).round() as usize;
+    let filled = filled.min(width);
+    let pct = frac * 100.0;
+    let color = if pct >= 80.0 { "\x1b[32m" }
+                else if pct >= 50.0 { "\x1b[33m" }
+                else { "\x1b[31m" };
+    format!(
+        "{}{}\x1b[0m\x1b[2m{}\x1b[0m",
+        color,
+        "█".repeat(filled),
+        "░".repeat(width - filled),
+    )
+}
+
+/// Strip tempdir prefix for readable display.
+fn rel_path_str(full: &str, base: &Path) -> String {
+    std::path::Path::new(full)
+        .strip_prefix(base)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| {
+            std::path::Path::new(full)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_else(|| full.to_string())
+        })
+}
+
+fn truncate_display(s: &str, max: usize) -> String {
+    if s.chars().count() <= max { s.to_string() }
+    else {
+        let prefix: String = s.chars().take(max.saturating_sub(1)).collect();
+        format!("{prefix}…")
+    }
+}
+
+/// Render a streaming tool-call line.
+/// Layout:  `· <name pad>  <detail>` — name is cyan, detail is dim.
+fn format_tool_line(tool_name: &str, arguments: Option<&str>, dir: &Path) -> String {
+    let args_val: Option<serde_json::Value> = arguments
+        .and_then(|a| serde_json::from_str(a).ok());
+
+    let detail = match tool_name {
+        "shell" => args_val
+            .as_ref()
+            .and_then(|v| v.get("command").and_then(|c| c.as_str()))
+            .map(|c| {
+                let one_line = c.replace('\n', " ");
+                format!("\x1b[2m$ {}\x1b[0m", truncate_display(&one_line, 60))
+            }),
+        "fs_search" => args_val
+            .as_ref()
+            .and_then(|v| v.get("pattern").and_then(|p| p.as_str()).map(str::to_string))
+            .map(|p| format!("\x1b[2m/{}/\x1b[0m", truncate_display(&p, 60))),
+        "fetch" => args_val
+            .as_ref()
+            .and_then(|v| v.get("url").and_then(|p| p.as_str()).map(str::to_string))
+            .map(|u| format!("\x1b[2m{}\x1b[0m", truncate_display(&u, 60))),
+        _ => args_val
+            .as_ref()
+            .and_then(|v| v.get("file_path").or_else(|| v.get("path"))
+                .and_then(|p| p.as_str()).map(str::to_string))
+            .map(|p| format!("\x1b[2m{}\x1b[0m", rel_path_str(&p, dir))),
+    };
+
+    // Tool names fit in 9 cols (longest is `fs_search`).
+    let padded_name = format!("{:<9}", tool_name);
+    match detail {
+        Some(d) => format!("\x1b[90m·\x1b[0m \x1b[36m{}\x1b[0m  {}", padded_name, d),
+        None => format!("\x1b[90m·\x1b[0m \x1b[36m{}\x1b[0m", padded_name),
+    }
+}
+
+/// Render the per-scenario result line (PASS/FAIL + stats).
+fn format_result_line(
+    passed: bool,
+    first_try: Option<bool>,
+    elapsed: Duration,
+    tool_count: usize,
+) -> String {
+    let status = if passed { "\x1b[1;32m✓ PASS\x1b[0m" } else { "\x1b[1;31m✗ FAIL\x1b[0m" };
+    let first_try_tag = if passed && first_try == Some(true) {
+        " \x1b[90m·\x1b[0m \x1b[1;36m1st try\x1b[0m"
+    } else { "" };
+    format!(
+        "{}{} \x1b[90m·\x1b[0m \x1b[33m{:>5.1}s\x1b[0m \x1b[90m·\x1b[0m \x1b[2m{} tool{}\x1b[0m",
+        status,
+        first_try_tag,
+        elapsed.as_secs_f64(),
+        tool_count,
+        if tool_count == 1 { "" } else { "s" },
+    )
+}
+
+/// Emit a section banner: heavy rule · title · heavy rule.
+fn print_banner(title: &str) {
+    println!();
+    println!("\x1b[34m{}\x1b[0m", rule_heavy());
+    println!("  \x1b[1m{}\x1b[0m", title);
+    println!("\x1b[34m{}\x1b[0m", rule_heavy());
+}
+
+/// Emit a section banner on stderr (for eval_suite before scenarios stream).
+fn eprint_banner(title: &str) {
+    eprintln!();
+    eprintln!("\x1b[34m{}\x1b[0m", rule_heavy());
+    eprintln!("  \x1b[1m{}\x1b[0m", title);
+    eprintln!("\x1b[34m{}\x1b[0m", rule_heavy());
+}
+
 // Scenario runner
 
 async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
@@ -800,7 +966,15 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         blocked_files: setup.blocked_files.clone(),
     };
 
-    let final_prompt = user_prompt_with_style(cfg.system_style, &setup.prompt);
+    // Prepend an evaluation-specific warning listing blocked files so the model
+    // knows up-front which files are hidden — avoids confused `cat <test>`
+    // attempts being counted against it. Only injected when the scenario
+    // actually has blocked files.
+    let styled_body = user_prompt_with_style(cfg.system_style, &setup.prompt);
+    let final_prompt = match blocked_files_notice(&setup.blocked_files) {
+        Some(notice) => format!("{notice}\n\n{styled_body}"),
+        None => styled_body,
+    };
 
     let (tx, rx) = mpsc::unbounded_channel::<TaskEvent>();
 
@@ -814,14 +988,13 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
 
     let start = Instant::now();
 
-    eprint!(
-        "  [{}] {:<40} ",
-        spec.difficulty.label(),
-        spec.id,
-    );
+    // Scenario header continues from the `[  N/M] ` progress prefix printed by the caller.
+    eprintln!("{} \x1b[1m{}\x1b[0m", diff_badge(spec.difficulty), spec.id);
     let _ = std::io::stderr().flush();
 
+    let dir_for_events = dir_path.clone();
     let events_handle = tokio::spawn(async move {
+        let dir_for_events = dir_for_events;
         let mut rx = rx;
         let mut events = Vec::new();
         let mut tool_calls = Vec::new();
@@ -829,8 +1002,37 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         let mut reasoning_text = String::new();
         let mut interrupted: Option<String> = None;
         let mut completed = false;
-        let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(10));
+        // Heartbeat: when no events flow for a bit, print a live "thinking" line
+        // on the same terminal row with an elapsed counter + rotating spinner,
+        // so the user can tell the model is working vs. hung. Reset on any event
+        // (including Text/Reasoning deltas) to stay silent during streaming.
+        let mut heartbeat = tokio::time::interval(std::time::Duration::from_millis(500));
         heartbeat.tick().await; // consume the immediate first tick
+        let silence_start = std::time::Instant::now();
+        let mut silence_started: Option<std::time::Instant> = None;
+        let mut thinking_line_open = false;
+        const SPINNER: [char; 10] = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+        let mut spin_idx: usize = 0;
+
+        // Helper: close out the in-place thinking line (if any) before printing
+        // real output. Short silences erase the line (keeps output clean);
+        // silences ≥ 5 s are preserved as a permanent record by printing a
+        // newline instead, so the user can see that the model actually thought
+        // for a meaningful while.
+        fn close_thinking(open: &mut bool, silence_started: &Option<std::time::Instant>) {
+            if *open {
+                let kept = silence_started
+                    .map(|s| s.elapsed().as_secs_f64() >= 5.0)
+                    .unwrap_or(false);
+                if kept {
+                    eprintln!(); // keep the thinking line, advance to next row
+                } else {
+                    eprint!("\r\x1b[K"); // carriage return + clear to end of line
+                }
+                let _ = std::io::stderr().flush();
+                *open = false;
+            }
+        }
 
         loop {
             tokio::select! {
@@ -843,31 +1045,70 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                         TaskEvent::Reasoning { content } => {
                             reasoning_text.push_str(content);
                         }
-                        TaskEvent::ToolStart { tool_name, .. } => {
+                        TaskEvent::ToolStart { tool_name, arguments, .. } => {
                             tool_calls.push(tool_name.clone());
-                            eprint!(".{}", &tool_name[..3.min(tool_name.len())]);
+                            close_thinking(&mut thinking_line_open, &silence_started);
+                            let line = format_tool_line(tool_name, arguments.as_deref(), &dir_for_events);
+                            eprintln!("{}{}", INDENT, line);
                             let _ = std::io::stderr().flush();
-                            heartbeat.reset();
                         }
-                        TaskEvent::ToolEnd { success, .. } => {
-                            if !*success {
-                                eprint!("!");
+                        TaskEvent::ToolEnd { success, output, tool_name, .. } => {
+                            // Sandbox signals surfaced visually:
+                            //   · `fs_read` returns Ok(...) with an "Access denied" refusal
+                            //     when the file is on the eval sandbox block-list.
+                            //   · `shell` prepends "[EVAL CHEAT DETECTED]" when the command
+                            //     looked like it was dumping a blocked file.
+                            // Both render in yellow so the evaluator can see them at a glance
+                            // without opening the transcript.
+                            let out = output.as_deref().unwrap_or("");
+                            let blocked_read = *success
+                                && tool_name == "read"
+                                && out.starts_with("Access denied:");
+                            let shell_cheat = *success
+                                && tool_name == "shell"
+                                && out.starts_with("[EVAL CHEAT DETECTED]");
+                            if blocked_read {
+                                close_thinking(&mut thinking_line_open, &silence_started);
+                                eprintln!("{}\x1b[33m  └─ blocked (hidden from eval)\x1b[0m", INDENT);
+                                let _ = std::io::stderr().flush();
+                            } else if shell_cheat {
+                                close_thinking(&mut thinking_line_open, &silence_started);
+                                eprintln!("{}\x1b[33m  └─ cheat attempt (tried to read blocked file)\x1b[0m", INDENT);
+                                let _ = std::io::stderr().flush();
+                            } else if !*success {
+                                close_thinking(&mut thinking_line_open, &silence_started);
+                                eprintln!("{}\x1b[31m  └─ tool error\x1b[0m", INDENT);
                                 let _ = std::io::stderr().flush();
                             }
-                            heartbeat.reset();
                         }
                         TaskEvent::Complete => { completed = true; }
                         TaskEvent::Interrupted { reason } => { interrupted = Some(reason.clone()); }
                         _ => {}
                     }
+                    // Any event — even streaming deltas — resets the heartbeat.
+                    heartbeat.reset();
+                    silence_started = None;
                     events.push(ev);
                 }
                 _ = heartbeat.tick() => {
-                    eprint!("~");
-                    let _ = std::io::stderr().flush();
+                    // Start tracking silence window lazily so the first few frames don't flash.
+                    let start = *silence_started.get_or_insert_with(std::time::Instant::now);
+                    let elapsed = start.elapsed().as_secs_f64();
+                    // Wait ~1s before showing the thinking line, to avoid churn during normal gaps.
+                    if elapsed >= 1.0 {
+                        let total = silence_start.elapsed().as_secs();
+                        let _ = total; // reserved for future use
+                        let glyph = SPINNER[spin_idx % SPINNER.len()];
+                        spin_idx = spin_idx.wrapping_add(1);
+                        // Overwrite the same line in place (carriage return + clear to EOL).
+                        eprint!("\r\x1b[K{}\x1b[2m{} thinking… [{:>4.1}s]\x1b[0m", INDENT, glyph, elapsed);
+                        let _ = std::io::stderr().flush();
+                        thinking_line_open = true;
+                    }
                 }
             }
         }
+        close_thinking(&mut thinking_line_open, &silence_started);
         RunOutcome { events, tool_calls, full_text, reasoning_text, interrupted, completed }
     });
 
@@ -905,23 +1146,22 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     };
 
     let first_try = if passed { determine_first_try(&outcome.events) } else { None };
-    let status = if passed {
-        match first_try {
-            Some(true) => "\x1b[32mPASS\x1b[0m \x1b[36m1st try\x1b[0m",
-            _ => "\x1b[32mPASS\x1b[0m",
-        }
-    } else { "\x1b[31mFAIL\x1b[0m" };
-    eprintln!(" {} {:>5.1}s {:>2}t", status, elapsed.as_secs_f64(), outcome.tool_calls.len());
+    eprintln!(
+        "{}{}",
+        INDENT,
+        format_result_line(passed, first_try, elapsed, outcome.tool_calls.len()),
+    );
     if !passed {
         for reason in &failed_checks {
-            let s: String = reason.chars().take(100).collect();
-            eprintln!("             \x1b[31m> {}\x1b[0m", s);
+            let s = truncate_display(reason, 100);
+            eprintln!("{}\x1b[31m└─ {}\x1b[0m", DETAIL_INDENT, s);
         }
     }
     if let Some(reason) = &interrupted {
-        let s: String = reason.chars().take(60).collect();
-        eprintln!("             > interrupted: {}", s);
+        let s = truncate_display(reason, 60);
+        eprintln!("{}\x1b[33m└─ interrupted:\x1b[0m {}", DETAIL_INDENT, s);
     }
+    eprintln!();
 
     let output_preview: String = outcome.full_text.chars().take(300).collect();
 
@@ -938,7 +1178,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     // Optionally preserve the temp directory for manual inspection
     if cfg.keep_dirs {
         let kept = dir.keep(); // prevents cleanup
-        eprintln!("             dir: {}", kept.display());
+        eprintln!("{}\x1b[2mdir:\x1b[0m {}", DETAIL_INDENT, kept.display());
     }
 
     EvalResult {
@@ -963,19 +1203,25 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     let passed: usize = results.iter().filter(|r| r.passed).count();
     let total_time: Duration = results.iter().map(|r| r.elapsed).sum();
     let total_tools: usize = results.iter().map(|r| r.tool_calls.len()).sum();
+    let first_try_count = results.iter()
+        .filter(|r| r.passed && r.first_try == Some(true))
+        .count();
 
-    println!("\n{}", "=".repeat(78));
-    println!("RESULTS  model={} style={}", cfg.model, cfg.system_style.label());
-    println!("{}", "=".repeat(78));
+    print_banner(&format!(
+        "RESULTS \x1b[90m·\x1b[0m \x1b[36m{}\x1b[0m \x1b[90m·\x1b[0m style=\x1b[35m{}\x1b[0m",
+        cfg.model,
+        cfg.system_style.label(),
+    ));
 
     // By category
+    println!();
+    println!("  \x1b[1mBy category\x1b[0m");
     let cats = [
         Category::Bugfix, Category::Refactor, Category::Implement, Category::Patch,
         Category::Understanding, Category::Search, Category::CrossFile,
         Category::ErrorHandling, Category::Recovery, Category::Planning,
         Category::Testing,
     ];
-    println!("\nBy category:");
     for cat in cats {
         let cat_results: Vec<&EvalResult> = results.iter().filter(|r| r.category == cat).collect();
         if cat_results.is_empty() { continue; }
@@ -983,12 +1229,18 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
         let ft = cat_results.iter().filter(|r| r.passed && r.first_try == Some(true)).count();
         let t = cat_results.len();
         let pct = (p as f64 / t as f64) * 100.0;
-        let ft_str = if ft > 0 { format!("  ({} 1st try)", ft) } else { String::new() };
-        println!("  {:>14}  {}/{}  ({:>5.1}%){}", cat.label(), p, t, pct, ft_str);
+        let ft_str = if ft > 0 {
+            format!("   \x1b[36m{} first-try\x1b[0m", ft)
+        } else { String::new() };
+        println!(
+            "    {:<15}  {}  {:>3}/{:<3}  {:>5.1}%{}",
+            cat.label(), progress_bar(p, t, 20), p, t, pct, ft_str,
+        );
     }
 
     // By difficulty
-    println!("\nBy difficulty:");
+    println!();
+    println!("  \x1b[1mBy difficulty\x1b[0m");
     for diff in [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard] {
         let d_results: Vec<&EvalResult> = results.iter().filter(|r| r.difficulty == diff).collect();
         if d_results.is_empty() { continue; }
@@ -996,39 +1248,58 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
         let ft = d_results.iter().filter(|r| r.passed && r.first_try == Some(true)).count();
         let t = d_results.len();
         let pct = (p as f64 / t as f64) * 100.0;
-        let ft_str = if ft > 0 { format!("  ({} 1st try)", ft) } else { String::new() };
-        println!("  {:>14}  {}/{}  ({:>5.1}%){}", format!("{:?}", diff), p, t, pct, ft_str);
+        let ft_str = if ft > 0 {
+            format!("   \x1b[36m{} first-try\x1b[0m", ft)
+        } else { String::new() };
+        let label = format!("{:?}", diff);
+        let label_plain = format!("{:<10}", label); // pad to match category column visually
+        let label_colored = match diff {
+            Difficulty::Easy   => format!("\x1b[32m{}\x1b[0m", label_plain),
+            Difficulty::Medium => format!("\x1b[33m{}\x1b[0m", label_plain),
+            Difficulty::Hard   => format!("\x1b[31m{}\x1b[0m", label_plain),
+        };
+        println!(
+            "    {} {}  {}  {:>3}/{:<3}  {:>5.1}%{}",
+            diff_badge(diff), label_colored, progress_bar(p, t, 20), p, t, pct, ft_str,
+        );
     }
 
-    // Failed
+    // Failures
     let fails: Vec<&EvalResult> = results.iter().filter(|r| !r.passed).collect();
     if !fails.is_empty() {
-        println!("\nFailures ({}):", fails.len());
+        println!();
+        println!("  \x1b[1;31mFailures\x1b[0m \x1b[2m({})\x1b[0m", fails.len());
         for r in &fails {
             let first = r.failed_checks.first().map(|s| s.as_str()).unwrap_or("?");
+            let tools = r.tool_calls.len();
             println!(
-                "  [{}] {:<40} {:>5.1}s {:>2}t  {}",
-                r.difficulty.label(), r.id, r.elapsed.as_secs_f64(), r.tool_calls.len(),
-                first.chars().take(70).collect::<String>(),
+                "    {} \x1b[1m{:<40}\x1b[0m  \x1b[33m{:>5.1}s\x1b[0m  \x1b[2m{:>2} tool{}\x1b[0m  \x1b[31m{}\x1b[0m",
+                diff_badge(r.difficulty),
+                r.id,
+                r.elapsed.as_secs_f64(),
+                tools,
+                if tools == 1 { " " } else { "s" },
+                truncate_display(first, 70),
             );
         }
     }
 
-    let first_try_count = results.iter()
-        .filter(|r| r.passed && r.first_try == Some(true))
-        .count();
+    // Summary
+    let pct_total = if total > 0 { (passed as f64 / total as f64) * 100.0 } else { 0.0 };
+    let pct_ft = if total > 0 { (first_try_count as f64 / total as f64) * 100.0 } else { 0.0 };
+    let avg = if total > 0 { total_time.as_secs_f64() / total as f64 } else { 0.0 };
 
-    println!("\n{}", "─".repeat(78));
+    println!();
+    println!("\x1b[34m{}\x1b[0m", rule_light());
     println!(
-        "Score: {}/{} ({:.1}%)  1st try: {}  total {:.1}s  tools {}  avg {:.1}s/scenario",
-        passed, total,
-        (passed as f64 / total as f64) * 100.0,
-        first_try_count,
-        total_time.as_secs_f64(),
-        total_tools,
-        total_time.as_secs_f64() / total.max(1) as f64,
+        "  \x1b[1mScore\x1b[0m   \x1b[1;32m{}\x1b[0m/{}  (\x1b[1m{:.1}%\x1b[0m)   \x1b[90m·\x1b[0m   \x1b[1;36m1st try\x1b[0m  {} ({:.1}%)",
+        passed, total, pct_total, first_try_count, pct_ft,
     );
-    println!("{}", "=".repeat(78));
+    println!(
+        "  \x1b[1mTime\x1b[0m    {:.1}s   \x1b[90m·\x1b[0m   \x1b[2mavg\x1b[0m {:.1}s/scenario   \x1b[90m·\x1b[0m   \x1b[2m{} tool calls\x1b[0m",
+        total_time.as_secs_f64(), avg, total_tools,
+    );
+    println!("\x1b[34m{}\x1b[0m", rule_heavy());
 }
 
 // Scenario definitions — 125 total, split by category under eval_scenarios/
@@ -1067,22 +1338,28 @@ async fn eval_suite() {
     let scenarios = collect_scenarios(&cfg);
     let total = scenarios.len();
 
-    println!("\n{}", "=".repeat(78));
-    println!("COTECT EVAL SUITE — {} scenarios", total);
-    println!("  model      : {}", cfg.model);
-    println!("  endpoint   : {}", cfg.endpoint);
-    println!("  style      : {}", cfg.system_style.label());
-    println!("  timeout    : {}s/scenario", cfg.timeout.as_secs());
-    println!("  max turns  : {}", cfg.max_turns);
-    println!("  running    : {} scenarios", total);
-    if let Some(c) = cfg.category { println!("  category   : {}", c.label()); }
-    if let Some(d) = cfg.difficulty { println!("  difficulty : {}", d.label()); }
-    if let Some(f) = &cfg.filter { println!("  filter     : {}", f); }
-    println!("{}", "=".repeat(78));
+    eprint_banner(&format!(
+        "COTECT EVAL SUITE \x1b[90m·\x1b[0m \x1b[1m{}\x1b[0m scenarios",
+        total,
+    ));
+    eprintln!("  \x1b[36mmodel\x1b[0m      {}", cfg.model);
+    eprintln!("  \x1b[36mendpoint\x1b[0m   {}", cfg.endpoint);
+    eprintln!("  \x1b[36mstyle\x1b[0m      {}", cfg.system_style.label());
+    eprintln!("  \x1b[36mtimeout\x1b[0m    {}s/scenario", cfg.timeout.as_secs());
+    eprintln!("  \x1b[36mmax turns\x1b[0m  {}", cfg.max_turns);
+    if let Some(c) = cfg.category { eprintln!("  \x1b[36mcategory\x1b[0m   {}", c.label()); }
+    if let Some(d) = cfg.difficulty { eprintln!("  \x1b[36mdifficulty\x1b[0m {}", d.label()); }
+    if let Some(f) = &cfg.filter { eprintln!("  \x1b[36mfilter\x1b[0m     {}", f); }
+    eprintln!("\x1b[34m{}\x1b[0m", rule_light());
+    eprintln!();
 
     let mut results: Vec<EvalResult> = Vec::with_capacity(total);
+    let idx_width = total.to_string().len();
     for (i, spec) in scenarios.iter().enumerate() {
-        eprint!("[{:>3}/{}] ", i + 1, total);
+        eprint!(
+            "\x1b[90m[\x1b[0m{:>w$}\x1b[90m/{}]\x1b[0m ",
+            i + 1, total, w = idx_width,
+        );
         let r = run_scenario(&cfg, spec).await;
         results.push(r);
     }
@@ -1103,10 +1380,18 @@ async fn run_category(cat: Category) {
     let scenarios = collect_scenarios(&cfg);
     let total = scenarios.len();
 
-    println!("\nCategory {} — {} scenarios\n", cat.label(), total);
+    eprint_banner(&format!(
+        "Category \x1b[35m{}\x1b[0m \x1b[90m·\x1b[0m \x1b[1m{}\x1b[0m scenarios",
+        cat.label(), total,
+    ));
+    eprintln!();
     let mut results = Vec::with_capacity(total);
+    let idx_width = total.to_string().len();
     for (i, spec) in scenarios.iter().enumerate() {
-        eprint!("[{:>3}/{}] ", i + 1, total);
+        eprint!(
+            "\x1b[90m[\x1b[0m{:>w$}\x1b[90m/{}]\x1b[0m ",
+            i + 1, total, w = idx_width,
+        );
         let r = run_scenario(&cfg, spec).await;
         results.push(r);
     }
@@ -1167,10 +1452,18 @@ async fn eval_extra_hard() {
     let scenarios = collect_scenarios(&cfg);
     let total = scenarios.len();
 
-    println!("\nExtra-hard suite — {} scenarios\n", total);
+    eprint_banner(&format!(
+        "Extra-hard suite \x1b[90m·\x1b[0m \x1b[1m{}\x1b[0m scenarios",
+        total,
+    ));
+    eprintln!();
     let mut results = Vec::with_capacity(total);
+    let idx_width = total.to_string().len();
     for (i, spec) in scenarios.iter().enumerate() {
-        eprint!("[{:>3}/{}] ", i + 1, total);
+        eprint!(
+            "\x1b[90m[\x1b[0m{:>w$}\x1b[90m/{}]\x1b[0m ",
+            i + 1, total, w = idx_width,
+        );
         let r = run_scenario(&cfg, spec).await;
         results.push(r);
     }

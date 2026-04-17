@@ -22,13 +22,14 @@ def post_data(url: str, payload: dict) -> dict:
     return response.json()
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Add Python `logging` to {p}: \
-             1) Import logging and create a module-level logger: `logger = logging.getLogger(__name__)`\n\
-             2) Log the URL at INFO level before each request\n\
-             3) Log errors at ERROR level if an exception is raised (use try/except, re-raise after logging)")),
+            "Instrument the HTTP helpers in {p} with Python `logging`. \
+             Each request (both GET and POST) should produce a log record at INFO level that \
+             references the target URL before the network call is made. \
+             If a request raises, the error must be recorded (ERROR level or equivalent) and the \
+             exception must still propagate to the caller (do not silently swallow it).")),
             vec![complete(),
-                 file_has("service.py", &["import logging", "getLogger", "logger.info", "except"]),
-                 file_has("service.py", &["raise"])]),
+                 file_has("service.py", &["import logging", "getLogger", ".info("]),
+                 file_has("service.py", &["try:", "except"])]),
             vec![p])
     }
     v.push(scen!("patch_add_logging", Category::Patch, Difficulty::Medium, I, s_add_logging));
@@ -60,11 +61,12 @@ def post_data(url: str, payload: dict) -> dict:
 }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Refactor the Repository class in {p} to be generic: `Repository<T extends {{ id: string }}>`. \
-             Replace all `any` types with the generic parameter `T`. Keep the logic identical.")),
+            "Make the Repository class in {p} generic so callers can store any item type that \
+             carries a string `id` field, while keeping the existing behaviour of every method \
+             untouched. The class should no longer rely on `any` for the stored item type.")),
             vec![complete(),
-                 file_has("repo.ts", &["Repository<T", "extends", "id: string", "items: T[]", "getAll(): T[]"]),
-                 file_lacks("repo.ts", &[": any", "any[]"])]),
+                 file_has("repo.ts", &["Repository<", "extends", "id"]),
+                 file_lacks("repo.ts", &[": any", "any[]", "Array<any>"])]),
             vec![p])
     }
     v.push(scen!("patch_add_generics", Category::Patch, Difficulty::Hard, I, s_add_generics));
@@ -95,13 +97,14 @@ export function debounce(fn, ms) {
 "#).unwrap();
         let tp = ap(dir, "helpers.ts");
         with_scope(with_checks(pf(format!(
-            "Convert the JavaScript file at {p} to TypeScript at {tp}. \
-             Add proper type annotations to all function parameters and return types. \
-             Use generics where appropriate (e.g. flatten should work on nested arrays of any type, \
-             groupBy should be generic over the item type).")),
+            "Port the helpers in {p} over to TypeScript at {tp}, preserving behaviour. \
+             Every exported helper must have typed parameters and a typed return value, and \
+             the API should stay usable for callers working with arbitrary element types \
+             (i.e. not erased to `any`).")),
             vec![complete(),
-                 file_has("helpers.ts", &["function flatten", "function groupBy", "function debounce"]),
-                 file_has("helpers.ts", &["<T>", ": number", "Record<"])]),
+                 file_has("helpers.ts", &["flatten", "groupBy", "debounce", "export"]),
+                 file_has("helpers.ts", &["<", ": "]),
+                 file_lacks("helpers.ts", &[": any", "<any>", "any[]", "as any"])]),
             vec![p])
     }
     v.push(scen!("patch_js_to_typescript", Category::Patch, Difficulty::Hard, I, s_convert_to_typescript));
@@ -129,11 +132,13 @@ def is_prime(n: int) -> bool:
     return True
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Read {p}, then create a test file at {tp} using pytest. Write at least 3 tests for each \
-             function (gcd, lcm, is_prime) — including edge cases like 0, 1, negative numbers, and primes.")),
+            "Read {p} and add a companion test file at {tp} that covers all three functions it \
+             exports. The suite should exercise each function with several inputs, including \
+             the tricky corners of their domains, so that a regression in any branch would fail \
+             at least one test. The file must be runnable under pytest as-is.")),
             vec![complete(),
                  file_has("test_math_utils.py", &["def test_", "gcd", "lcm", "is_prime", "assert"]),
-                 file_has("test_math_utils.py", &["import"])]),
+                 file_has("test_math_utils.py", &["math_utils"])]),
             vec![p])
     }
     v.push(scen!("patch_write_tests", Category::Patch, Difficulty::Hard, I, s_add_tests));

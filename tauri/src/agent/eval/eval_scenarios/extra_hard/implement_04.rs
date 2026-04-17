@@ -90,17 +90,19 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
         })
 
     # TODO: implement subscribe(self, key_or_wildcard: str, callback) -> int
-    # Register a callback to be called when the specified key changes.
-    # If key_or_wildcard is "*", the callback fires for ALL key changes.
-    # The callback signature: callback(event) where event is a dict with
-    #   {"action": str, "key": str, "old_value": any, "new_value": any}
-    # Returns a subscription ID (int) that can be used to unsubscribe.
+    # Register a callback. Returns an integer subscription id that is unique
+    # across all live subscriptions on this store.
+    # When a key changes via set(), delete(), or reset(), every subscription
+    # whose key_or_wildcard equals the changed key OR equals "*" must have
+    # its callback invoked once with a single event argument — a dict
+    # containing keys "action", "key", "old_value", "new_value" describing
+    # the change. The "action" is "set" for set() and "delete" for delete()
+    # and reset(). Subscriptions for unrelated keys must not fire.
 
     # TODO: implement unsubscribe(self, sub_id: int) -> bool
-    # Remove a subscription by ID. Returns True if it existed.
-
-    # TODO: wire the notification into _record_change so subscribers
-    # are notified after every state change.
+    # Remove the subscription with the given id. Returns True if a
+    # subscription with that id existed, False otherwise. After removal,
+    # the callback must not be invoked by subsequent state changes.
 "#).unwrap();
 
         let computed_file = ap(dir, "computed.py");
@@ -118,18 +120,15 @@ class ComputedValue:
         area.value  # => 100  (auto-updated)
     """
 
-    # TODO: implement __init__(self, store, keys, compute_fn)
-    # - store: StateStore instance to watch
-    # - keys: list of key names to subscribe to
-    # - compute_fn: function that takes current values of the keys
-    #   (in order) and returns the computed result
-    # - Should subscribe to each key and recompute when any changes
-    # - Initial value should be computed immediately
-    # - If any key is missing from the store, pass None for that argument
-
-    # TODO: implement value property that returns the current computed value
-
-    # TODO: implement dispose() that unsubscribes from all keys
+    # TODO: ComputedValue(store, keys, compute_fn)
+    # Contract:
+    # - Constructor takes a StateStore, a list of key names, and a function.
+    # - The attribute `value` returns compute_fn(v0, v1, ...) where vi is
+    #   the current value of keys[i] in the store (or None if absent).
+    # - `value` reflects changes made to any of the watched keys, without
+    #   the caller needing to trigger a refresh.
+    # - dispose() detaches this ComputedValue from the store so later store
+    #   changes no longer affect `value`.
     pass
 "#).unwrap();
 
@@ -325,17 +324,13 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The state store in {} needs an observer/subscription system, and \
-             {} needs a `ComputedValue` class that auto-updates when store \
-             state changes.\n\n\
-             Implement `subscribe()`, `unsubscribe()`, and the notification \
-             wiring in the store, then implement the `ComputedValue` class \
-             that watches store keys and recomputes when they change.\n\n\
-             Step 1: Read both files and implement the required methods \
-             WITHOUT running the code first.\n\
-             Step 2: Run the existing `python3 test_observer.py` to check your work.\n\
-             Step 3: If any tests fail, read the error output, adjust your \
-             implementation, and re-run until all tests pass.",
+            "Implement the subscription API on `StateStore` in {} and the \
+             `ComputedValue` class in {} according to the contracts in the \
+             TODO comments. The store must notify subscribers whenever a \
+             key changes through any public mutation (set, delete, reset), \
+             and ComputedValue must expose a `value` that always reflects \
+             the latest relevant store state until `dispose()` is called.\n\n\
+             Verify with `python3 test_observer.py`.",
             store_file, computed_file)),
             vec![
                 complete(),

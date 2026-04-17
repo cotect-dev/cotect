@@ -41,12 +41,18 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
     // Return Ok (not Err) so this doesn't eat into the error budget —
     // the model shouldn't be penalized for discovering a restriction.
     if state.blocked_files.iter().any(|b| resolved.ends_with(b) || &resolved == b) {
-        return Ok(
-            "This file is part of the test harness and cannot be read during evaluation. \
-             You can still run it (e.g. `python3 <filename>`) to see test results. \
-             Focus on the source code files listed in your project scope."
-                .to_string(),
-        );
+        return Ok(format!(
+            "Access denied: `{}` is a hidden test file and you are being evaluated on this \
+             task. Reading the test assertions would defeat the evaluation, so the harness \
+             is withholding this file's contents. You may execute it (e.g. `python3 {}`, \
+             `sh {}`, `node {}`) and inspect its stdout/stderr/exit code — that's the \
+             intended signal. Any attempt to circumvent this restriction by reading the \
+             file through other means will be flagged in the transcript as a cheat.",
+            input.file_path,
+            input.file_path,
+            input.file_path,
+            input.file_path,
+        ));
     }
 
     // Check file size

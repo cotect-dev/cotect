@@ -73,9 +73,10 @@ class Task:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Task":
-        """Deserialize a task from a dictionary.
+        """Inverse of to_dict: construct a Task with all fields restored.
 
-        Must restore all fields including id, status, and timestamps.
+        For every Task t, Task.from_dict(t.to_dict()) must yield a Task
+        equal to t across the public attributes.
         """
         # TODO: implement this method
         raise NotImplementedError("from_dict not yet implemented")
@@ -149,16 +150,14 @@ class TaskBoard:
         })
 
     # TODO: implement save(self, path: str) -> None
-    # Serialize the entire board to a JSON file at the given path.
-    # Must include: title, created_at, all tasks, history, and _next_id.
-    # Use Task.to_dict() for task serialization.
+    # Persist the board to the given path so that load() can reconstruct it.
 
     # TODO: implement load(cls, path: str) -> "TaskBoard" as a @classmethod
-    # Deserialize a board from a JSON file.
-    # Must restore all state so the board is fully functional
-    # (adding new tasks should continue from the correct ID, etc.)
-    # Use Task.from_dict() to restore tasks.
-    # Should raise FileNotFoundError if path doesn't exist.
+    # Reconstruct a board previously written by save(). The returned board
+    # must be indistinguishable from the original for the public API
+    # (title, created_at, list_tasks/get_task, history, stats) and must
+    # continue task id assignment from where the original left off.
+    # Raises FileNotFoundError if the path does not exist.
 "#).unwrap();
 
         let test_file = ap(dir, "test_board.py");
@@ -364,15 +363,21 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The task manager in {} and {} needs persistence. Implement the \
-             `Task.from_dict()` classmethod and the `TaskBoard.save()` and \
-             `TaskBoard.load()` methods so that boards can be saved to JSON \
-             files and fully restored.\n\n\
-             Step 1: Read both files and understand the existing patterns, \
-             then implement the methods WITHOUT running the code first.\n\
-             Step 2: Run the existing `python3 test_board.py` to check your work.\n\
-             Step 3: If any tests fail, read the error output, adjust your \
-             implementation, and re-run until all tests pass.",
+            "Add persistence to the task manager in {} and {}.\n\n\
+             Contract:\n\
+             - Task.from_dict(d) is the exact inverse of Task.to_dict(): \
+               for any Task t, Task.from_dict(t.to_dict()) reproduces every \
+               public attribute (id, title, description, priority, tags, \
+               status, created_at, updated_at) with the original types \
+               (timestamps remain datetime objects after the round-trip).\n\
+             - TaskBoard.save(path) writes the board to the given path.\n\
+             - TaskBoard.load(path) is a @classmethod that returns a board \
+               whose observable behaviour matches the one that was saved: \
+               same title, same created_at (as datetime), same tasks with \
+               all fields restored, same history, and the next add_task() \
+               continues the id sequence from where the original left off. \
+               Raises FileNotFoundError if path does not exist.\n\n\
+             Verify with `python3 test_board.py`.",
             task_file, board_file)),
             vec![
                 complete(),

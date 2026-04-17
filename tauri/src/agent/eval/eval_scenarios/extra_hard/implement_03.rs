@@ -113,15 +113,25 @@ class DataService:
         return self._repo
 
     # TODO: implement cached_get(self, key: str) -> dict | None
-    # Should return the same result as get_record() but with caching:
-    # - First call for a key: fetch from repo and store in cache
-    # - Subsequent calls within TTL: return cached value without hitting repo
-    # - After TTL expires: fetch from repo again and refresh cache
-    # - Cache should hold at most CACHE_MAX_SIZE entries (evict oldest on overflow)
-    # - save_record() and delete_record() must invalidate the cache entry for that key
+    # Returns the same value as get_record(key) for the caller, but avoids
+    # querying the repository when an un-expired cached result exists.
+    # Behaviour contract:
+    # - Repeated calls for the same key within CACHE_TTL_SECONDS must not
+    #   reach the repository again.
+    # - Once more than CACHE_TTL_SECONDS have elapsed since the value was
+    #   cached, the next call must consult the repository again.
+    # - At most CACHE_MAX_SIZE distinct keys are remembered; when the limit
+    #   is exceeded, the least-recently-inserted key is forgotten first.
+    # - save_record(key, ...) and delete_record(key) must cause the next
+    #   cached_get(key) to reflect the new repository state.
+    # - get_record() (the uncached entry point) must continue to bypass the
+    #   cache entirely.
 
     # TODO: implement cache_stats(self) -> dict
-    # Return {"hits": int, "misses": int, "size": int}
+    # Returns {"hits": int, "misses": int, "size": int} where:
+    #   - "hits" counts cached_get calls served from the cache,
+    #   - "misses" counts cached_get calls that consulted the repository,
+    #   - "size" is the number of keys currently cached.
 "#).unwrap();
 
         let test_file = ap(dir, "test_service.py");
@@ -304,16 +314,12 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The data service in {} needs a caching layer. Implement the \
-             `cached_get()` and `cache_stats()` methods as described in the \
-             TODO comments. The cache must use TTL-based expiry and respect \
-             the max size from config. Write and save operations must \
-             invalidate affected cache entries.\n\n\
-             Step 1: Read all source files, then implement the caching \
-             WITHOUT running the code first.\n\
-             Step 2: Run the existing `python3 test_service.py` to check your work.\n\
-             Step 3: If any tests fail, read the error output, adjust your \
-             implementation, and re-run until all tests pass.",
+            "Add caching to the `DataService` in {} by implementing \
+             `cached_get` and `cache_stats` as specified in the TODO \
+             contracts. The behaviour is fully defined there: TTL is \
+             CACHE_TTL_SECONDS, capacity is CACHE_MAX_SIZE, writes invalidate \
+             the affected key, and cache_stats reports hits/misses/size.\n\n\
+             Verify with `python3 test_service.py`.",
             service_file)),
             vec![
                 complete(),

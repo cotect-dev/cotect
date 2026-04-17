@@ -99,14 +99,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
         ))
 
     # TODO: implement search(self, **kwargs) -> list[dict]
-    # Should support filtering by:
-    #   name_contains: str - substring match (case-insensitive)
-    #   category: str - exact category match (case-insensitive)
-    #   min_price: float - inclusive lower bound
-    #   max_price: float - inclusive upper bound
-    #   in_stock: bool - if True, only items with quantity > 0
-    # Returns matching items sorted by ID (same format as list_items).
-    # With no filters, returns all items.
+    # Accepted keyword arguments (all optional):
+    #   name_contains: str
+    #   category: str
+    #   min_price: float
+    #   max_price: float
+    #   in_stock: bool
+    # Returns items (same dict shape as list_items) matching every provided
+    # filter. Items returned must not share identity with internal state.
 "#).unwrap();
 
         let test_file = ap(dir, "test_inventory.py");
@@ -259,16 +259,24 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The inventory system in {} needs a `search()` method that filters \
-             items by multiple optional criteria: name substring, category, \
-             price range, and in-stock status. Read the existing code to \
-             understand the patterns used, then implement the method following \
-             the TODO comment.\n\n\
-             Step 1: Read the code and implement the `search()` method \
-             WITHOUT running the code first.\n\
-             Step 2: Run the existing `python3 test_inventory.py` to check your work.\n\
-             Step 3: If any tests fail, read the error output, adjust your \
-             implementation, and re-run until all tests pass.",
+            "Implement the `search()` method on the `Inventory` class in {}.\n\n\
+             Contract:\n\
+             - Signature: search(self, **kwargs) -> list[dict].\n\
+             - Kwargs (any subset may be omitted): name_contains (str), \
+               category (str), min_price (float), max_price (float), \
+               in_stock (bool).\n\
+             - name_contains matches items whose name contains the substring, \
+               case-insensitive.\n\
+             - category matches items whose category equals the given value, \
+               case-insensitive.\n\
+             - min_price and max_price are inclusive bounds on price.\n\
+             - in_stock=True keeps only items with quantity > 0; \
+               in_stock=False is equivalent to not filtering on stock.\n\
+             - With no kwargs, returns every item.\n\
+             - Results have the same shape as list_items() (dicts with id, \
+               name, category, price, quantity), sorted by id, and mutating \
+               a returned dict must not affect internal state.\n\n\
+             Verify with `python3 test_inventory.py`.",
             inv_file)),
             vec![
                 complete(),

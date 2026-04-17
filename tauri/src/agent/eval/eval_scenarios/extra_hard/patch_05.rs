@@ -310,18 +310,17 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(
-            "We need to thread a `X-RateLimit-Remaining` header through the \
-             HTTP middleware pipeline so it appears in every response. The header \
-             value should be the number of remaining requests in the rate limiter.\n\n\
-             The rate limiter must set this value in the context, the middleware \
-             chain must preserve it through each stage, and the handler must \
-             include it in the response headers.\n\n\
-             IMPORTANT: Don't modify CorsMiddleware's CORS_HEADERS or the \
-             pipeline's _debug_headers method.\n\n\
-             Step 1: Read all source files and trace the context flow.\n\
-             Step 2: Apply coordinated patches WITHOUT running the code first.\n\
-             Step 3: Run the existing `python3 test_pipeline.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass."
+            "The HTTP pipeline's test suite (`test_pipeline.py`) is failing. \
+             The tests describe the contract the pipeline should satisfy for \
+             rate-limiting visibility and the existing CORS and auth behavior \
+             must remain intact.\n\n\
+             Read all source files (limiter.py, middleware.py, handler.py, \
+             pipeline.py) and the test suite to understand what information \
+             needs to flow through the pipeline, then make the necessary \
+             changes so `python3 test_pipeline.py` prints ALL_TESTS_PASSED.\n\n\
+             Apply your patches WITHOUT running the code first, then run the \
+             tests. If they fail, read the errors and iterate until all tests \
+             pass."
             .to_string()
         ),
             vec![
@@ -331,6 +330,14 @@ if __name__ == "__main__":
                 // header is present, decrements, appears on denied requests,
                 // CORS headers are preserved, and auth still works.
                 run_has("python3 test_pipeline.py", &["ALL_TESTS_PASSED"]),
+                // CORS header constants must stay byte-identical.
+                file_has("middleware.py", &[
+                    "\"X-Cors-Allow-Origin\": \"*\"",
+                    "\"X-Cors-Allow-Methods\": \"GET, POST, PUT, DELETE\"",
+                    "\"X-Cors-Max-Age\": \"3600\"",
+                ]),
+                // The _debug_headers helper must be preserved verbatim.
+                file_has("pipeline.py", &["def _debug_headers(self, context: dict) -> None:"]),
             ]),
             vec![limiter_file, middleware_file, handler_file, pipeline_file]),
             vec![test_file])

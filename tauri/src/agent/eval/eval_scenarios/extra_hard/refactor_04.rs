@@ -314,10 +314,12 @@ if __name__ == "__main__":
 
         with_blocked(with_scope(with_checks(pf(
             "The three validator modules (email_validator.py, username_validator.py, \
-             password_validator.py) have nearly identical structure. Refactor them:\n\
-             - Extract a shared base class with the common validate() pattern.\n\
-             - Consolidate duplicated methods.\n\
-             - Remove dead code (e.g. unused helper methods).\n\n\
+             password_validator.py) each re-implement the same validate() skeleton: \
+             reject empty input, preprocess, run length/format checks, and return a \
+             {valid, errors} dict. A bug fix in that skeleton today means editing \
+             three files and keeping them in sync. Reorganize the code so that \
+             skeleton lives in one place, while every existing test still passes \
+             unchanged.\n\n\
              Step 1: Read all files and identify the common pattern.\n\
              Step 2: Apply your refactoring.\n\
              Step 3: Run the existing `python3 test_validators.py` to verify. If tests fail, \
@@ -329,7 +331,9 @@ if __name__ == "__main__":
                 succeeded("shell"),
                 // Primary: tests must pass — they verify email case-insensitivity,
                 // username case-preservation, password not modified, common
-                // password rejection, and all validation rules.
+                // password rejection, and all validation rules. The suite also
+                // enforces consolidation (counting how many classes define
+                // their own validate() method).
                 run_has("python3 test_validators.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![email_file, username_file, password_file]),

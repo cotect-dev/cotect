@@ -315,25 +315,25 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The DataPipeline class in {} is a god class that handles loading, \
-             transforming, validating, and exporting data all in one place. \
-             Decompose it into separate concerns:\n\
-             - Extract loading logic into a DataLoader class or module.\n\
-             - Extract transformation and validation into a DataTransformer class.\n\
-             - Keep DataPipeline as a slim orchestrator.\n\
-             - Remove dead code, unused methods, and over-engineered features \
-               like the plugin registry and chunked processing.\n\n\
-             Step 1: Read the code and plan the decomposition.\n\
+            "The DataPipeline class in {} has grown to handle loading (CSV and \
+             JSON), encoding cleanup, transform registration, validation, chunked \
+             processing, and export all inside one class. It is now hard to read, \
+             hard to test in isolation, and any change touches unrelated concerns. \
+             Reorganize the code so each concern is easier to understand and \
+             modify on its own, while keeping every externally observable behavior \
+             — including the full public API the tests rely on — exactly the same.\n\n\
+             Step 1: Read the code and plan your reorganization.\n\
              Step 2: Apply your refactoring.\n\
              Step 3: Run the existing `python3 test_pipeline.py` to verify. If tests fail, \
-             you may have removed something that's actually used.",
+             you may have removed or relocated something that's actually used.",
             pipeline_file)),
             vec![
                 complete(),
                 succeeded("shell"),
                 // Primary: tests must pass — they cover CSV/JSON loading,
                 // mojibake cleanup, custom transforms, validation, strict mode,
-                // chunked processing, and export.
+                // chunked processing, and export. The suite also enforces
+                // decomposition via a line-count check on DataPipeline.
                 run_has("python3 test_pipeline.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![pipeline_file]),

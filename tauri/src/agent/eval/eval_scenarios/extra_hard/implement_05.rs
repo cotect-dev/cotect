@@ -128,52 +128,59 @@ class App:
             return Response(404, "Not Found")
         return handler(request)
 
-    # TODO: implement use(self, middleware) -> None
-    # Add a middleware to the pipeline. Middleware should be applied in
-    # the order they are added (first added = first to process request).
+    # TODO: implement use(self, middleware) -> None and extend handle().
     #
-    # The handle() method must be updated to run the request through
-    # all middleware before reaching the handler, and the response
-    # through all middleware after the handler (in reverse order).
-    #
-    # Each middleware has:
+    # Middleware contract (every registered middleware object implements):
     #   process_request(request: Request) -> Request | Response
-    #     - If it returns a Request, continue the chain
-    #     - If it returns a Response, short-circuit (skip handler and
-    #       remaining request middleware, but still run response middleware)
     #   process_response(response: Response) -> Response
-    #     - Always called, even on short-circuit, to allow cleanup/header adding
+    #
+    # Behaviour for handle(request):
+    # - For each middleware in registration order, call process_request with
+    #   the current request. If it returns a Request, that becomes the
+    #   current request for the next middleware / handler. If it returns a
+    #   Response, the remaining request-phase middleware are skipped and
+    #   the route handler is not invoked — that response becomes the
+    #   starting response for the response phase.
+    # - If no middleware short-circuited, the matching route handler runs
+    #   (or a 404 Response is produced when no route matches).
+    # - Then, for every registered middleware in reverse registration
+    #   order, call process_response with the current response; its return
+    #   value replaces the current response. Every middleware sees the
+    #   response, including when an earlier middleware short-circuited.
+    # - The final response is returned.
 "#).unwrap();
 
         let middleware_file = ap(dir, "middleware.py");
         std::fs::write(&middleware_file, r#"from request import Request, Response
 
 
-# TODO: implement the following middleware classes.
-# Each must have:
-#   process_request(self, request: Request) -> Request | Response
-#   process_response(self, response: Response) -> Response
+# TODO: implement three middleware classes. Each must expose
+# process_request(self, request) and process_response(self, response) and
+# follow the App middleware contract described in app.py.
 
 
 # LoggingMiddleware:
-#   - Has a 'log' attribute (list of strings)
-#   - process_request: appends "{method} {path}" to self.log, returns request
-#   - process_response: returns response unchanged
+#   - Constructible with no arguments.
+#   - Exposes a `log` attribute whose value, after handling N requests
+#     through this middleware, is a list of N strings of the form
+#     "{request.method} {request.path}", in the order requests arrived.
+#   - Never short-circuits and never modifies the response.
 
 # AuthMiddleware:
-#   - __init__(self, token: str) - the valid auth token
-#   - process_request: checks for "Authorization" header matching
-#     "Bearer {token}". If missing or wrong, returns Response(401, "Unauthorized").
-#     If valid, returns request.
-#   - process_response: returns response unchanged
+#   - Constructor: AuthMiddleware(token: str).
+#   - When a request carries an "Authorization" header with value exactly
+#     "Bearer " + token, the request proceeds unchanged. Otherwise the
+#     middleware produces a Response with status 401; in that case the
+#     route handler must not run.
+#   - Never modifies the response during the response phase.
 
 # CorsMiddleware:
-#   - __init__(self, allowed_origin: str = "*")
-#   - process_request: returns request unchanged
-#   - process_response: adds these headers to every response:
-#       "Access-Control-Allow-Origin": self.allowed_origin
-#       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE"
-#     returns the modified response
+#   - Constructor: CorsMiddleware(allowed_origin: str = "*").
+#   - Never short-circuits the request.
+#   - Every response that passes through this middleware gains the header
+#     "Access-Control-Allow-Origin" set to allowed_origin and an
+#     "Access-Control-Allow-Methods" header (value describing allowed
+#     methods).
 "#).unwrap();
 
         let test_file = ap(dir, "test_app.py");
@@ -349,16 +356,12 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The HTTP application in {} needs a middleware system. Implement \
-             the `use()` method on App and update `handle()` to run requests \
-             through middleware. Also implement the three middleware classes \
-             in {}: LoggingMiddleware, AuthMiddleware, and CorsMiddleware.\n\n\
-             Step 1: Read all source files and understand the request/response \
-             flow, then implement the middleware system WITHOUT running the \
-             code first.\n\
-             Step 2: Run the existing `python3 test_app.py` to check your work.\n\
-             Step 3: If any tests fail, read the error output, adjust your \
-             implementation, and re-run until all tests pass.",
+            "Add a middleware pipeline to the App in {} (implement `use` and \
+             extend `handle`) and implement the three middleware classes — \
+             LoggingMiddleware, AuthMiddleware, CorsMiddleware — in {}. \
+             Follow the contracts in the TODO comments; the exact ordering, \
+             short-circuit, and response-phase rules are specified there.\n\n\
+             Verify with `python3 test_app.py`.",
             app_file, middleware_file)),
             vec![
                 complete(),

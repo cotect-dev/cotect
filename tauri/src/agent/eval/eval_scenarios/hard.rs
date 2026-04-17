@@ -2,6 +2,8 @@
 //! frontier models. Every scenario contains a "gotcha": a red herring,
 //! an unintuitive answer, a multi-file dependency chain, or a subtle
 //! semantic trap that requires genuine reasoning rather than pattern-matching.
+//! Pass criteria prefer behavior-level checks (`run_has`) over brittle string
+//! matches so that any correct solution, not one specific fix, passes.
 
 use std::path::Path;
 
@@ -39,14 +41,21 @@ def apply_discount(subtotal: float, tax: float) -> float:
     total = subtotal + tax
     return total
 "#).unwrap();
+        let run_cmd = format!(
+            "python3 -c 'import billing; print(billing.calculate_total([{{\"price\": 60, \"quantity\": 2}}]))'",
+        );
         with_scope(with_checks(pf(format!(
             "The function `calculate_total` in {p} is supposed to apply an 8% tax and \
-             a $5 discount for orders over $100, but the discount is never actually applied. \
-             Find and fix the bug. The discount must be subtracted from the subtotal before adding tax.")),
+             a $5 discount for orders over $100. Customers report that the discount never \
+             shows up on their totals. Investigate and fix the bug so both the tax and the \
+             discount are correctly reflected in the returned total.")),
             vec![complete(),
                  file_has("billing.py", &["discount"]),
-                 file_has("billing.py", &["subtotal - discount"]),
-                 file_lacks("billing.py", &["total = subtotal + tax"])]),
+                 file_lacks("billing.py", &["total = subtotal + tax"]),
+                 // For $120 subtotal with 8% tax and $5 discount:
+                 // correct: (120 - 5) + 120*0.08 = 115 + 9.6 = 124.6
+                 // buggy:   120 + 120*0.08 = 129.6
+                 run_has(&run_cmd, &["124.6"])]),
             vec![p])
     }
     v.push(scen!("hard_shadow_variable_trap", Category::Bugfix, Difficulty::Hard, I, s_shadow_variable_trap));
@@ -83,13 +92,17 @@ def register_user(data: dict) -> dict:
 
     return {"user_id": 1, "email": email}
 "#).unwrap();
+        let run_cmd = "python3 -c 'import api; print(api.register_user({\"email\": \"user@example.com\"}))'";
         with_scope(with_checks(pf(format!(
-            "Users report that `register_user` in {api} rejects valid emails like 'user@example.com'. \
-             Find the bug and fix it. Read all relevant files.")),
+            "Users report that `register_user` rejects valid emails like 'user@example.com', \
+             'alice@foo.org' and 'bob@corp.info'. The entry point is in {api}. \
+             Investigate the codebase and fix whatever is actually causing the rejection.")),
             vec![complete(),
-                 // The fix must be in validator.py — the regex TLD length
-                 file_has("validator.py", &["{2,"]),
-                 file_lacks("validator.py", &[r#"[a-zA-Z]{2}$"#])]),
+                 // The buggy regex must be gone
+                 file_lacks("validator.py", &[r#"[a-zA-Z]{2}$"#]),
+                 // Behavior: a 3-letter TLD must now be accepted (no "error" key in the dict)
+                 run_has(run_cmd, &["user_id"]),
+                 run_lacks(run_cmd, &["error"])]),
             vec![api, validator])
     }
     v.push(scen!("hard_red_herring_cross_file", Category::Bugfix, Difficulty::Hard, I, s_red_herring_cross_file));
@@ -115,13 +128,25 @@ def register_user(data: dict) -> dict:
         return text
     return text[:max_bytes]
 "#).unwrap();
+        // Behavior checks via helper script (avoids shell quoting around the emoji).
+        // "Hi 😊" (7 bytes UTF-8) with max_bytes=6 must not split the emoji; must return "Hi ".
+        // "Hello" with max_bytes=10 must return "Hello" unchanged.
+        std::fs::write(dir.join("_check.py"), "import truncate\n\
+r1 = truncate.truncate_to_bytes('Hi \\U0001F60A', 6)\n\
+r2 = truncate.truncate_to_bytes('Hello', 10)\n\
+print(repr(r1), len(r1.encode('utf-8')), repr(r2))\n").unwrap();
+        let run_cmd = "python3 _check.py";
         with_scope(with_checks(pf(format!(
-            "The function in {p} is supposed to truncate a string so its UTF-8 encoding \
-             fits within a byte limit, but it compares code points to bytes and slices incorrectly. \
-             Fix it to properly count UTF-8 bytes and truncate without splitting multi-byte characters.")),
+            "The function `truncate_to_bytes` in {p} is supposed to return the longest prefix \
+             of the input whose UTF-8 encoding fits within `max_bytes`, without splitting a \
+             multi-byte character. It misbehaves on inputs containing non-ASCII characters \
+             (e.g. emoji). Find and fix the issue.")),
             vec![complete(),
-                 file_has("truncate.py", &["encode"]),
-                 file_lacks("truncate.py", &["if len(text) <= max_bytes:", "return text[:max_bytes]"])]),
+                 file_lacks("truncate.py", &["if len(text) <= max_bytes:\n        return text\n    return text[:max_bytes]"]),
+                 // Behavior: "Hi " (3 bytes) is the correct output for "Hi 😊" at max_bytes=6
+                 run_has(run_cmd, &["'Hi '", "'Hello'"]),
+                 // Must NOT return the undecodable partial bytes or the full emoji string
+                 run_lacks(run_cmd, &["UnicodeDecodeError", "Traceback"])]),
             vec![p])
     }
     v.push(scen!("hard_unicode_truncation", Category::Bugfix, Difficulty::Hard, I, s_unicode_truncation));
@@ -147,7 +172,7 @@ var h = createHandlers();
 "#).unwrap();
         with_scope(with_checks(pf(format!(
             "Read {p}. What does `h[0]() + h[1]() + h[2]() + h[3]()` evaluate to? \
-             Trace the execution carefully — pay attention to `var` scoping in the loop. \
+             Trace the execution carefully. \
              State your final answer as the last number in your reply.")),
             // All closures capture the final value of i (which is 4 after the loop).
             // Each returns 4*4 = 16. Sum = 64.
@@ -179,8 +204,7 @@ var h = createHandlers();
 "#).unwrap();
         with_scope(with_checks(pf(format!(
             "Read {p}. What value does `evaluate()` return? \
-             Trace each computation carefully, paying attention to operator precedence \
-             and Python's treatment of booleans as integers. \
+             Trace each computation carefully. \
              State your final answer as the last number in your reply.")),
             vec![complete(), succeeded("read"), num(43)]),
             vec![p])
@@ -206,8 +230,7 @@ c = append_to(3, [])
 "#).unwrap();
         with_scope(with_checks(pf(format!(
             "Read {p}. After the three calls, what is `len(a) + len(b) + len(c)`? \
-             Be careful about Python's mutable default argument behavior. \
-             Remember that `a` and `b` may refer to the same list object. \
+             Trace each call carefully. \
              State your final answer as the last number in your reply.")),
             // a and b share the same default list. After append_to(1), default=[1].
             // After append_to(2), default=[1,2]. a and b both point to [1,2], so len=2 each.
@@ -275,17 +298,17 @@ c = append_to(3, [])
 
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "The report generated by {d}/pipeline/report.py shows 'Current tax rate: 20.0%' \
-             but it should show '20%' as a properly formatted percentage. However, there's a deeper \
-             issue: trace the value from source.py through to report.py. The raw rate is 0.15 (15%), \
-             adjusted to 0.20 (20%). In which file is the rate incorrectly multiplied by 100, \
-             and what is the actual displayed percentage? Trace all intermediate values. \
-             State the actual incorrect display percentage as the last number in your reply.")),
+            "Trace the value of the tax rate from {d}/pipeline/source.py all the way through to \
+             the string returned by `generate_report()` in {d}/pipeline/report.py. Identify which \
+             file (if any) introduces an incorrect scaling, and report what percentage string the \
+             final report actually prints today. \
+             State the numeric part of the final displayed percentage as the last number in your reply.")),
             vec![complete(), used_any(&["fs_search", "read"]),
-                 oc_all(&["convert.py", "100"]),
-                 // After multiply by 100, DISPLAY_RATE = 20.0, so format_rate returns "20.0%"
-                 // but this is actually 2000% of the original, which is wrong.
-                 // The raw display is 20.0 but it represents 0.20 * 100 = 20.0
+                 // Must name the offending file
+                 oc_any(&["convert.py", "convert"]),
+                 // Must explain the scaling error
+                 oc_any(&["multiplied by 100", "* 100", "times 100", "scaled by 100", "x 100"]),
+                 // Actual displayed number after the buggy *100 is 20.0
                  num(20)])
     }
     v.push(scen!("hard_data_flow_trace", Category::Search, Difficulty::Hard, R, s_data_flow_trace));
@@ -329,12 +352,16 @@ def send_request(url: str, payload: dict) -> dict:
     return {"error": "max retries exceeded"}
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "The client in {client} is supposed to use the retry count from {cfg}, \
-             but it hard-codes the value. Find all places where the hard-coded retry count \
-             is used and replace them with the config value. The config says max_retries=5.")),
+            "The client in {client} should take its retry behavior from the configuration file \
+             at {cfg}, but the runtime retry count does not match the configured value. \
+             Find every place where the retry count has drifted from the config and make them \
+             all read from the config consistently.")),
             vec![complete(),
-                 file_has("client.py", &["config[\"max_retries\"]"]),
-                 file_lacks("client.py", &["range(3)", "attempt < 2"])]),
+                 // Must reference max_retries from config (any access style)
+                 file_has("client.py", &["max_retries"]),
+                 // Both hard-coded sites must be gone
+                 file_lacks("client.py", &["range(3)"]),
+                 file_lacks("client.py", &["attempt < 2"])]),
             vec![client, cfg])
     }
     v.push(scen!("hard_config_code_mismatch", Category::CrossFile, Difficulty::Hard, I, s_config_code_mismatch));
@@ -391,16 +418,19 @@ export function handleRequest(userId: string): string {
 "#).unwrap();
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Add a required `ipAddress: string` field to the `RequestContext` interface in {d}/base.ts. \
-             Then update ALL files that create or use RequestContext consistently:\n\
-             - `createContext` must accept and include ipAddress\n\
-             - `logRequest` should log the IP address\n\
-             - `handleRequest` must pass an IP address (use '127.0.0.1' as default)\n\
-             Every file must compile. Update all four files.")),
+            "A new requirement: every `RequestContext` in {d} must carry the originating \
+             client IP address as a required string field named `ipAddress`. Update the \
+             interface, the factory, every consumer that logs or uses a context, and the \
+             top-level entry point so that the default IP '127.0.0.1' is threaded through. \
+             All files in {d} that touch RequestContext must stay consistent and compilable.")),
             vec![complete(),
-                 file_has("base.ts", &["ipAddress: string"]),
+                 // Interface must declare the field (allow with or without space before `string`)
                  file_has("base.ts", &["ipAddress"]),
+                 // Factory must accept it — createContext signature changed
+                 file_has("base.ts", &["createContext"]),
+                 // Logger should mention ipAddress
                  file_has("logging.ts", &["ipAddress"]),
+                 // handleRequest must pass the default IP through
                  file_has("app.ts", &["127.0.0.1"])])
     }
     v.push(scen!("hard_diamond_dependency", Category::CrossFile, Difficulty::Hard, I, s_diamond_dependency));
@@ -441,17 +471,22 @@ print(normalize_name("Mary-Jane O'Brien"))
 "#).unwrap();
 
         let d = dir.to_string_lossy().into_owned();
+        // Helper script that exercises the function and prints the result. Avoids shell
+        // quoting issues around the apostrophe in "O'Brien".
+        std::fs::write(dir.join("_check.py"),
+            "from lib import normalize_name\nprint(normalize_name(\"  Mary-Jane O'Brien  \"))\n").unwrap();
+        let run_cmd = format!("cd {d} && python3 _check.py");
         with_scope(with_checks(pf(format!(
-            "The function `normalize_name` imported in {d}/main.py strips hyphens and apostrophes \
-             from names like \"Mary-Jane O'Brien\", turning it into \"Maryjane Obrien\". \
-             Trace the import chain to find the actual implementation and fix it to preserve \
-             hyphens and apostrophes in names.")),
+            "Running `normalize_name(\"Mary-Jane O'Brien\")` (imported in {d}/main.py) returns \
+             \"Maryjane Obrien\" instead of preserving the punctuation in the name. \
+             Find the implementation and fix it so legitimate name characters (at minimum \
+             hyphens and apostrophes) are kept intact, while still collapsing whitespace and \
+             title-casing the result.")),
             vec![complete(),
-                 // Must find and fix in lib/core.py
-                 file_has("lib/core.py", &["-"]),
-                 file_has("lib/core.py", &["'"]),
-                 // The regex should allow hyphens and apostrophes
-                 file_lacks("lib/core.py", &["[^a-zA-Z\\s]"])]),
+                 // The buggy over-aggressive regex character class must be gone
+                 file_lacks("lib/core.py", &[r#"[^a-zA-Z\s]"#]),
+                 // Behavior: both hyphen and apostrophe preserved, case title'd
+                 run_has(&run_cmd, &["Mary-Jane", "O'Brien"])]),
             vec![ap(dir, "main.py")])
     }
     v.push(scen!("hard_reexport_chain_trace", Category::CrossFile, Difficulty::Hard, I, s_reexport_chain));
@@ -462,19 +497,23 @@ print(normalize_name("Mary-Jane O'Brien"))
 
     fn s_modular_exponentiation(dir: &Path) -> SetupResult {
         let p = ap(dir, "modpow.py");
+        let run_cmd = format!("python3 {p}");
         with_checks(pf(format!(
             "Create a Python file at {p} implementing `modpow(base: int, exp: int, mod: int) -> int` \
              that computes (base^exp) % mod efficiently using binary exponentiation (repeated squaring). \
-             Do NOT simply use Python's built-in pow(base, exp, mod) — implement the algorithm yourself. \
-             Handle edge cases: exp=0 should return 1 (if mod>1, else 0), mod=1 should always return 0. \
-             Include a `if __name__ == '__main__'` block that prints modpow(2, 100, 1000000007).")),
+             Do NOT delegate to Python's built-in three-argument `pow()` — implement the algorithm yourself. \
+             Handle edge cases: exp=0 returns 1 (or 0 if mod=1), mod=1 always returns 0. \
+             Include a `if __name__ == '__main__'` block that prints `modpow(2, 100, 1000000007)`.")),
             vec![complete(),
                  file_has("modpow.py", &["def modpow"]),
                  file_has("modpow.py", &["__name__"]),
-                 // Must implement the squaring loop, not delegate to built-in pow
-                 file_lacks("modpow.py", &["pow(base, exp, mod)", "pow(b, e, m)"]),
-                 // Must have the core loop mechanism
-                 file_has("modpow.py", &["while", "%"])])
+                 // Any three-arg pow() inside the file defeats the exercise.
+                 file_lacks("modpow.py", &[
+                     "pow(base, exp, mod)", "pow(base,exp,mod)",
+                     "pow(base, exp,mod)", "pow(base,exp, mod)",
+                 ]),
+                 // Behavior: 2**100 % 1000000007 == 976371285
+                 run_has(&run_cmd, &["976371285"])])
     }
     v.push(scen!("hard_impl_modpow", Category::Implement, Difficulty::Hard, I, s_modular_exponentiation));
 
@@ -483,18 +522,29 @@ print(normalize_name("Mary-Jane O'Brien"))
 
     fn s_topo_sort_with_cycles(dir: &Path) -> SetupResult {
         let p = ap(dir, "topo.py");
+        // Behavior check script (written at setup time).
+        std::fs::write(dir.join("_check.py"),
+            "import topo\n\
+print(topo.topo_sort({'a': [], 'b': ['a'], 'c': ['a', 'b']}))\n\
+try:\n\
+    topo.topo_sort({'a': ['b'], 'b': ['a']})\n\
+except topo.CycleError:\n\
+    print('CYCLE_DETECTED')\n").unwrap();
+        let run_cmd = "python3 _check.py";
         with_checks(pf(format!(
             "Create a Python file at {p} implementing:\n\
-             1. `topo_sort(graph: dict[str, list[str]]) -> list[str]` — Kahn's algorithm or DFS-based \
-                topological sort. The graph is an adjacency list where keys are nodes and values are \
-                lists of nodes they depend on (edges point FROM dependency TO dependent).\n\
-             2. It must raise `CycleError` (custom exception) if the graph contains a cycle.\n\
+             1. `topo_sort(graph: dict[str, list[str]]) -> list[str]` — topological sort. \
+                The graph is an adjacency list where keys are nodes and values are lists of \
+                their dependencies (edges point FROM dependency TO dependent).\n\
+             2. It must raise `CycleError` (a custom exception defined in this module) when the \
+                graph contains a cycle.\n\
              3. It must handle disconnected components.\n\
              4. Include an `if __name__ == '__main__'` block demonstrating both a valid DAG and a cycle.\n\
-             Example: `{{'a': [], 'b': ['a'], 'c': ['a', 'b']}}` means b depends on a, c depends on a and b. \
-             Valid order: ['a', 'b', 'c'].")),
+             Example: `{{'a': [], 'b': ['a'], 'c': ['a', 'b']}}` produces ['a', 'b', 'c'].")),
             vec![complete(),
-                 file_has("topo.py", &["def topo_sort", "class CycleError", "raise CycleError", "__name__"])])
+                 file_has("topo.py", &["def topo_sort", "class CycleError", "__name__"]),
+                 // Behavior: valid DAG produces a, b, c; cycle raises CycleError
+                 run_has(&run_cmd, &["'a'", "'b'", "'c'", "CYCLE_DETECTED"])])
     }
     v.push(scen!("hard_impl_topo_sort", Category::Implement, Difficulty::Hard, I, s_topo_sort_with_cycles));
 
@@ -533,19 +583,28 @@ def process_transaction(user_id: str, amount: float, tx_type: str) -> dict:
 def get_audit_log() -> list[str]:
     return list(_audit_log)
 "#).unwrap();
+        // Behavior check: drive both a rejection and a success, then inspect the audit log.
+        std::fs::write(dir.join("_check.py"),
+            "import processor\n\
+processor.process_transaction('u1', -5, 'debit')\n\
+processor.process_transaction('u1', 100, 'debit')\n\
+log = processor.get_audit_log()\n\
+print('|'.join(log))\n").unwrap();
+        let run_cmd = "python3 _check.py";
         with_scope(with_checks(pf(format!(
             "Refactor {p}: split `process_transaction` into three functions:\n\
              - `validate_transaction(user_id, amount, tx_type)` — returns None if valid, error dict otherwise\n\
              - `calculate_fee(amount, tx_type)` — returns the fee amount\n\
              - `process_transaction(user_id, amount, tx_type)` — orchestrator that calls the above\n\
-             CRITICAL: All audit logging to `_audit_log` must be preserved exactly as before, including \
-             the rejection logs in validation failures. Do not lose any logging.")),
+             The externally observable behavior of `process_transaction` (return values AND \
+             anything visible through `get_audit_log()`) must be preserved for all inputs, \
+             including invalid ones.")),
             vec![complete(),
                  file_has("processor.py", &["def validate_transaction", "def calculate_fee", "def process_transaction"]),
-                 // Audit logging must still exist
-                 file_has("processor.py", &["_audit_log.append", "REJECTED", "OK"]),
-                 // get_audit_log must still exist
-                 file_has("processor.py", &["def get_audit_log"])]),
+                 file_has("processor.py", &["def get_audit_log"]),
+                 // Behavior: both rejection and success entries must appear in the audit log
+                 // after the two calls above. The originals tag them with "REJECTED" / "OK".
+                 run_has(run_cmd, &["REJECTED", "OK"])]),
             vec![p])
     }
     v.push(scen!("hard_refactor_preserve_side_effects", Category::Refactor, Difficulty::Hard, I, s_refactor_with_side_effects));
@@ -651,14 +710,23 @@ export class Store<T extends Identifiable> {
 }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Add the following methods to the Store class in {p}:\n\
-             1. `findBy<K extends keyof T>(key: K, value: T[K]): T[]` — find items where item[key] === value\n\
-             2. `update(id: string, partial: Partial<Omit<T, 'id'>>): boolean` — update fields of an item (but never change its id)\n\
-             3. `count(): number` — return the number of items\n\
-             The methods must be type-safe: `update` must not allow changing the `id` field, \
-             and `findBy` must enforce that the value type matches the key's type.")),
+            "Add three methods to the Store class in {p}:\n\
+             1. `findBy` — given a field name and a value, returns all items whose field equals that value. \
+                Calling `store.findBy(\"name\", 42)` when items have `name: string` must be a compile error.\n\
+             2. `update` — given an id and a partial item, update the fields of the matching item \
+                and return whether it existed. Callers must NOT be able to change the `id` through this method.\n\
+             3. `count` — return the number of items currently stored.\n\
+             Use TypeScript's generic/utility types to enforce these constraints statically; do not \
+             rely on runtime checks alone.")),
             vec![complete(),
-                 file_has("store.ts", &["findBy", "keyof", "update", "Partial", "Omit", "count()"]),
+                 // Must use keyof-based indexing and Partial/Omit for type safety
+                 file_has("store.ts", &["findBy"]),
+                 file_has("store.ts", &["keyof"]),
+                 file_has("store.ts", &["update"]),
+                 file_has("store.ts", &["Partial"]),
+                 file_has("store.ts", &["Omit"]),
+                 file_has("store.ts", &["count"]),
+                 // Explicitly excluding 'id' is the whole point
                  file_has("store.ts", &["'id'"]),
                  // Must keep existing methods
                  file_has("store.ts", &["add(item", "get(id", "remove(id", "getAll()"])]),
@@ -716,16 +784,19 @@ def load_user_config(user_id: str) -> dict:
         return {"error": f"Config file not found: {path}", "type": "missing"}
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "The exception handling in {p} has a critical ordering bug. The `except AppError` clause \
-             catches all custom exceptions (NotFoundError, PermissionError, ValidationError) before \
-             their specific handlers can run. Also, Python's built-in PermissionError shadows our custom one. \
-             Fix the except clause ordering so specific exceptions are caught before general ones, \
-             and fix the naming conflict with the built-in PermissionError.")),
+            "The `load_user_config` function in {p} is supposed to return distinct error \
+             `type` values ('not_found', 'validation', 'permission', 'parse', 'missing', 'app') \
+             depending on which failure occurs. In practice, validation and permission failures \
+             are mis-classified and the function even throws on some missing-file cases. \
+             Investigate why the specific error `type`s aren't being produced and fix it.")),
             vec![complete(),
-                 // AppError must come AFTER its children, or be removed
-                 file_lacks("handler.py", &["    except AppError:\n        return {\"error\": \"Application error"]),
-                 // The specific handlers must exist
-                 file_has("handler.py", &["except ValidationError", "except json.JSONDecodeError", "except FileNotFoundError"])]),
+                 // The catch-all AppError handler before its children is the core bug — that exact
+                 // ordering must not remain. Agent may delete or relocate the clause.
+                 file_lacks("handler.py", &["    except AppError:\n        return {\"error\": \"Application error\", \"type\": \"app\"}\n    except NotFoundError:"]),
+                 // The specific handlers must still exist somewhere
+                 file_has("handler.py", &["except ValidationError"]),
+                 file_has("handler.py", &["except json.JSONDecodeError"]),
+                 file_has("handler.py", &["except FileNotFoundError"])]),
             vec![p])
     }
     v.push(scen!("hard_exception_ordering", Category::ErrorHandling, Difficulty::Hard, I, s_exception_ordering));
@@ -776,15 +847,15 @@ export async function runPipeline(url: string): Promise<PipelineResult> {
 }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "The async pipeline in {p} has error handling bugs: the `transform` function calls \
-             `validate` without `await`, meaning validation errors are silently dropped and the \
-             result contains an unresolved Promise instead of actual data. \
-             Fix the entire pipeline so that:\n\
-             1. All async calls are properly awaited\n\
-             2. Errors from any stage propagate to the caller\n\
-             3. The result contains actual data, not Promise objects")),
+            "The async pipeline in {p} misbehaves in two visible ways: (a) invalid input never \
+             causes `runPipeline` to reject — the caller gets a result instead of the validation \
+             error, and (b) the `data` field of the returned `PipelineResult` is a pending Promise \
+             rather than the transformed value. Fix the pipeline so failures propagate and the \
+             result carries the actual resolved data.")),
             vec![complete(),
+                 // Must await validate
                  file_has("pipeline.ts", &["await validate"]),
+                 // Must remove both buggy lines
                  file_lacks("pipeline.ts", &["validate(data).then(d => d)"]),
                  file_lacks("pipeline.ts", &["{ transformed: validated }"])]),
             vec![p])
@@ -803,12 +874,15 @@ export async function runPipeline(url: string): Promise<PipelineResult> {
 
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Read the config file at {d}/config.json and change the `theme` to `\"light\"`. \
-             The config may not be where you first expect — follow any redirections.")),
+            "Change the application's configured `theme` from dark to `\"light\"`. The \
+             obvious starting point is {d}/config.json.")),
             vec![complete(),
                  // The real edit must happen in the archive file
                  file_has("data/archive/settings.json", &["\"theme\": \"light\""]),
-                 file_lacks("data/archive/settings.json", &["\"theme\": \"dark\""])])
+                 file_lacks("data/archive/settings.json", &["\"theme\": \"dark\""]),
+                 // And the placeholder must not have been "fixed" in place (which would silently
+                 // leave the real config wrong)
+                 file_lacks("config.json", &["\"theme\": \"light\""])])
     }
     v.push(scen!("hard_recovery_redirect_file", Category::Recovery, Difficulty::Hard, I, s_missing_real_file));
 
@@ -890,18 +964,21 @@ def process_batch():
 
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Read ALL files under {d}/app/ to understand the architecture, then create a numbered plan \
-             for adding real-time WebSocket notifications (e.g., when an item is created or processed). \
-             Your plan MUST account for the actual constraints you find in the code: the database type, \
-             the concurrency model, the web framework, and the batch worker. At least 6 steps.")),
+            "Read the existing application under {d}/app/ and produce a numbered \
+             implementation plan (at least 6 steps) for adding real-time push notifications \
+             to clients whenever an item is created or its status changes. The plan must be \
+             grounded in the specific technology and runtime choices already present in the \
+             code — call out any that constrain or complicate the design.")),
             vec![complete(), used_any(&["fs_search", "read"]),
                  oc_all(&["1.", "2.", "3.", "4.", "5.", "6."]),
-                 // Must mention SQLite limitations
+                 // Must mention SQLite limitations (discovered from db.py)
                  oc_any(&["sqlite", "SQLite"]),
-                 // Must address the concurrency/WebSocket challenge with Flask
-                 oc_any(&["websocket", "WebSocket", "socket", "Socket"]),
-                 // Must mention the worker/background process
-                 oc_any(&["worker", "batch", "cron", "background"])])
+                 // Must propose a push mechanism (discovered constraint: Flask is sync)
+                 oc_any(&["websocket", "WebSocket", "SSE", "server-sent", "long-polling", "long polling"]),
+                 // Must mention the worker/background process (discovered from worker.py)
+                 oc_any(&["worker", "batch", "cron", "background"]),
+                 // Must recognize the sync framework constraint
+                 oc_any(&["Flask", "flask", "sync", "gunicorn", "WSGI"])])
     }
     v.push(scen!("hard_plan_hidden_constraints", Category::Planning, Difficulty::Hard, P, s_plan_with_hidden_constraints));
 
@@ -981,16 +1058,17 @@ fn main() {
 }
 "#).unwrap();
         with_scope(with_checks(pf(format!(
-            "Read {p}. This Rust code will NOT compile. Explain exactly why the borrow checker \
-             rejects it, which lifetime constraint is violated, and describe at least two different \
-             ways to fix it (e.g., returning an owned String, or extending the scope of `words`).")),
+            "Read {p}. This Rust program does not compile. Explain precisely what the compiler \
+             objects to and why, and propose at least two distinct ways to make it compile \
+             while keeping `main` functional.")),
             vec![complete(), succeeded("read"),
                  // Must identify the dangling reference / lifetime issue
-                 oc_any(&["borrow", "lifetime", "dangling", "dropped", "scope", "outlive", "borrowed"]),
-                 // Must mention that words is dropped while result still references it
-                 oc_any(&["words", "drop", "freed", "moved", "destroyed", "scope"]),
-                 // Must suggest fixes
-                 oc_any(&["String", "owned", "clone", "to_string", "to_owned", "extend", "move"])]),
+                 oc_any(&["borrow", "lifetime", "dangling", "outlive", "does not live long enough"]),
+                 // Must notice the dropped `words` vec
+                 oc_any(&["words", "drop", "freed", "destroyed", "out of scope"]),
+                 // Must propose at least two distinct remediations (owned return or scope fix)
+                 oc_any(&["String", "owned", "clone", "to_string", "to_owned"]),
+                 oc_any(&["scope", "outer", "move", "lift", "hoist", "declare"])]),
             vec![p])
     }
     v.push(scen!("hard_rust_borrow_puzzle", Category::Understanding, Difficulty::Hard, R, s_rust_borrow_puzzle));

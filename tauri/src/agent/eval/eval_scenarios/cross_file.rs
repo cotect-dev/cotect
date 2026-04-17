@@ -16,13 +16,21 @@ pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
         std::fs::write(&handler, "import { Config } from './types';\n\nconst defaultConfig: Config = { host: 'localhost', port: 8080 };\n").unwrap();
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Add an optional `timeout: number` field to the Config interface in {d}/types.ts. \
-             Then update the service.ts connect function to use it (defaulting to 30 if undefined). \
-             Also add timeout to the default config in handler.ts.")),
+            "The Config type in {d} needs a new optional connection timeout setting (in seconds). \
+             Wire it through so existing callers keep working and a sensible default is used when callers omit it.")),
             vec![complete(),
-                 file_has("types.ts", &["timeout"]),
-                 file_has("service.ts", &["timeout"]),
-                 file_has("handler.ts", &["timeout"])])
+                 // types.ts declares an optional timeout-ish field (case-insensitive, accepts camelCase/snake_case).
+                 Check::RunOutputContains(
+                     "grep -qi 'timeout' types.ts && grep -q '?' types.ts && echo TYPES_OK".into(),
+                     10,
+                     vec!["TYPES_OK".into()],
+                 ),
+                 // service.ts references the new field (default may live here via `??` or in handler.ts — either is valid).
+                 Check::RunOutputContains(
+                     "grep -qi 'timeout' service.ts && echo SERVICE_OK".into(),
+                     10,
+                     vec!["SERVICE_OK".into()],
+                 )])
     }
     v.push(scen!("cross_update_interface", Category::CrossFile, Difficulty::Medium, I, s_update_interface));
 
@@ -32,7 +40,7 @@ pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
         std::fs::write(dir.join("README.md"), "# MyApp v1.2.3\nSome docs.\n").unwrap();
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Find all files in {d} containing the version string '1.2.3' and update them to '2.0.0'.")),
+            "Cut a major release in {d}: bump the project's current version to 2.0.0 everywhere it's declared.")),
             vec![complete(),
                  file_has("package.json", &["2.0.0"]), file_lacks("package.json", &["1.2.3"]),
                  file_has("version.py", &["2.0.0"]), file_lacks("version.py", &["1.2.3"]),
@@ -75,14 +83,15 @@ def chunk(lst: list, size: int) -> list:
         std::fs::write(&caller, "from utils import capitalize, clamp, flatten\n\nprint(capitalize('hello'))\nprint(clamp(15, 0, 10))\nprint(flatten([[1,2],[3]]))\n").unwrap();
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Split {d}/utils.py into three files: string_utils.py (capitalize, snake_to_camel), \
-             math_utils.py (clamp, lerp), and list_utils.py (flatten, chunk). \
-             Update main.py to import from the new modules. Delete or empty utils.py.")),
+            "{d}/utils.py has grown into a grab-bag of unrelated helpers (strings, math, lists). \
+             Break it up into focused modules grouped by concern, and make sure main.py keeps working. \
+             The old dumping ground should no longer contain these helpers.")),
             vec![complete(),
                  file_has("string_utils.py", &["def capitalize", "def snake_to_camel"]),
                  file_has("math_utils.py", &["def clamp", "def lerp"]),
                  file_has("list_utils.py", &["def flatten", "def chunk"]),
-                 file_has("main.py", &["from string_utils import capitalize", "from math_utils import clamp", "from list_utils import flatten"])])
+                 file_has("main.py", &["from string_utils import capitalize", "from math_utils import clamp", "from list_utils import flatten"]),
+                 file_lacks("utils.py", &["def capitalize", "def clamp", "def flatten"])])
     }
     v.push(scen!("cross_split_module", Category::CrossFile, Difficulty::Hard, I, s_split_module));
 
@@ -112,14 +121,16 @@ def handle_request(request):
             return response
     return {'status': 200, 'body': 'OK'}
 "#).unwrap();
+        let _ = new_mw;
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "Create a new file {new_mw} with a `RateLimiter` class that has the same `process(self, request)` \
-             interface. It should track request counts per IP and return 429 if more than 100 requests. \
-             Then register it in {d}/app.py by importing and adding it to the middlewares list.")),
+            "The middleware stack in {d} currently handles logging and auth. \
+             Add rate limiting as a new middleware living in its own module, following the same shape as the existing ones, \
+             and wire it into the app so incoming requests flow through it. \
+             Over 100 requests from the same IP should be rejected with the appropriate HTTP status.")),
             vec![complete(),
                  file_has("rate_limiter.py", &["class RateLimiter", "def process", "429"]),
-                 file_has("app.py", &["RateLimiter", "rate_limiter"])])
+                 file_has("app.py", &["RateLimiter", "rate_limiter", "middlewares"])])
     }
     v.push(scen!("cross_add_middleware", Category::CrossFile, Difficulty::Hard, I, s_add_middleware_to_stack));
 
@@ -148,13 +159,12 @@ class Order:
 "#).unwrap();
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "The files {d}/user.py and {d}/order.py have a circular import. Fix this by using \
-             one of: TYPE_CHECKING guard, string annotations, or restructuring. \
-             Both classes must remain functional.")),
+            "Running `python -c 'import user'` in {d} blows up because user.py and order.py import each other at module load. \
+             Make both modules importable from a cold start while keeping the User and Order classes and their existing APIs intact.")),
             vec![complete(),
                  file_has("user.py", &["class User"]),
                  file_has("order.py", &["class Order"]),
-                 oc_any(&["TYPE_CHECKING", "string annotation", "forward reference", "restructur", "lazy", "__future__", "annotations", "import later", "deferred", "protocol"])])
+                 run_ok("python -c 'import user; import order; u=user.User(\"a\"); o=order.Order(u, 1.0); u.add_order(o); assert o.get_user_name()==\"a\"'")])
     }
     v.push(scen!("cross_fix_circular_import", Category::CrossFile, Difficulty::Hard, I, s_fix_circular_import));
 
@@ -177,11 +187,12 @@ class Order:
 "#).unwrap();
         let d = dir.to_string_lossy().into_owned();
         with_checks(pf(format!(
-            "The three API handlers under {d}/api/ all use different error and response patterns. \
-             Standardize them: each function should return a tuple `(response_dict, status_code)`. \
-             On error, return `({{'error': '...'}}, 4xx)`. On success, return `({{'data': ...}}, 200)`.")),
+            "The handlers under {d}/api/ each invented their own way to signal success and failure \
+             (one returns tuples, one raises, one returns None). Pick a single consistent contract \
+             and apply it uniformly across all three so callers can handle every endpoint the same way. \
+             Successful responses should carry their payload under a data key; failures should carry an error key and an appropriate HTTP status.")),
             vec![complete(),
-                 file_has("api/users.py", &["\"data\"", "200"]),
+                 file_has("api/users.py", &["\"error\"", "\"data\"", "200"]),
                  file_has("api/orders.py", &["\"error\"", "\"data\"", "200"]),
                  file_has("api/products.py", &["\"error\"", "\"data\"", "200"]),
                  file_lacks("api/orders.py", &["raise ValueError"]),

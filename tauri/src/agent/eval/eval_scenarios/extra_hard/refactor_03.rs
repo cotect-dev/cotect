@@ -272,14 +272,15 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(
-            "The metrics system has unnecessary indirection and duplicated code. \
-             Clean it up:\n\
-             - The MetricsMiddleware in middleware.py looks like a pointless wrapper \
-               around MetricsCollector — consider removing the indirection.\n\
-             - The MetricsFormatter in formatter.py has duplicated stat-formatting \
-               logic between format_summary() and format_detailed() — extract shared \
-               code into a helper.\n\
-             - Remove any unnecessary preprocessing or normalization methods.\n\n\
+            "The metrics system (collector.py, middleware.py, formatter.py) has \
+             code smells that make it harder to maintain:\n\
+             - MetricsMiddleware looks like thin indirection over MetricsCollector.\n\
+             - MetricsFormatter repeats the same stat-formatting numbers and \
+               field prefixes in both format_summary() and format_detailed(), so \
+               changing the number precision or which fields appear means editing \
+               both methods in lockstep.\n\
+             - The collector has preprocessing that may or may not be load-bearing.\n\n\
+             Improve the code without changing any externally observable behavior.\n\n\
              Step 1: Read all files and plan your refactoring.\n\
              Step 2: Apply changes WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_metrics.py` to verify. If tests fail, \
@@ -291,7 +292,8 @@ if __name__ == "__main__":
                 succeeded("shell"),
                 // Primary: tests must pass — they cover basic recording,
                 // case-insensitive names, middleware expiry windows,
-                // and formatter output.
+                // formatter output, and enforce formatter deduplication
+                // (by checking '.2f' does not appear in both methods).
                 run_has("python3 test_metrics.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![collector_file, middleware_file, formatter_file]),

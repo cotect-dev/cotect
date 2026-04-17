@@ -1,4 +1,4 @@
-//! Patch v2 — Test 01: Coordinated API version migration
+//! Patch v2 — Test 01: Coordinated API version migration.
 //!
 //! A 3-file REST API client where the base URL, version header, and
 //! response parser all reference "v1". The task is to migrate from
@@ -216,25 +216,26 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(
-            "We're migrating from API v1 to v2. The v2 API wraps all successful \
-             responses in a {\"data\": ...} envelope. You need to make \
-             coordinated changes across all source files so the client targets v2 \
-             and correctly unwraps responses.\n\n\
-             Step 1: Read all source files and understand the cross-file dependencies.\n\
-             Step 2: Apply all necessary patches WITHOUT running the code first.\n\
-             Step 3: Run the existing `python3 test_api.py` to verify. If tests fail, read the \
-             errors and iterate until all tests pass."
+            "The `test_api.py` suite in this directory is failing against our \
+             API client. The server has been upgraded and the existing client \
+             code no longer matches its contract. Investigate the source files \
+             and the failing tests, then make whatever changes are needed so \
+             that `python3 test_api.py` prints ALL_TESTS_PASSED.\n\n\
+             Read every source file first and understand how they fit together \
+             before editing. Apply your patches WITHOUT running the code, then \
+             run `python3 test_api.py` to verify. If tests fail, read the errors \
+             and iterate until all tests pass."
             .to_string()
         ),
             vec![
                 complete(),
                 succeeded("shell"),
-                // Primary: full test suite must pass
+                // Primary: full test suite must pass. The suite enforces
+                // BASE_URL on v2, X-API-Version=2, X-Client-Version unchanged,
+                // legacy endpoint still on v1, and responses correctly unwrapped.
                 run_has("python3 test_api.py", &["ALL_TESTS_PASSED"]),
-                // URL must be updated to v2
-                file_has("client.py", &["/api/v2"]),
-                // Legacy endpoint must NOT change
-                file_has("client.py", &["api/v1/{path}"]),
+                // Must have actually edited BASE_URL away from v1
+                file_lacks("client.py", &["BASE_URL = \"https://api.example.com/api/v1\""]),
             ]),
             vec![client_file, auth_file, parser_file]),
             vec![test_file])

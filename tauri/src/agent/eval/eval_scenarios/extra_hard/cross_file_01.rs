@@ -282,25 +282,37 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The data pipeline currently passes plain lists between components. \
-             Change `fetch_records()` in {} to return a `RecordSet` (already \
-             defined in {}) instead of a plain list. Then update every file \
-             that consumes its return value so the whole pipeline works.\n\n\
-             The `RecordSet` class does NOT behave like a list — consumers \
-             must access the `.records` attribute for iteration, indexing, \
-             and length checks.\n\n\
-             The `_fetch_raw()` helper must remain unchanged — it's internal \
-             plumbing. The `format_summary()` function in reporter.py is \
-             unrelated and must not change.\n\n\
-             Step 1: Read all source files and understand the data flow.\n\
-             Step 2: Apply all necessary changes WITHOUT running the code first.\n\
-             Step 3: Run the existing `python3 test_pipeline.py` to verify. If tests fail, \
-             read the errors and iterate until all tests pass.",
-            source_file, models_file)),
+        with_blocked(with_scope(with_checks(pf(
+            "This project has a data pipeline. A `RecordSet` wrapper class already \
+             exists in the codebase — find it and read its contract. The public \
+             entrypoint that the rest of the pipeline uses to retrieve records \
+             currently returns a plain list of dicts; change it so it returns a \
+             `RecordSet` carrying that list plus metadata (total_count, \
+             fetched_at). Every downstream caller must continue to work — \
+             `RecordSet` does not behave like a list, so consumers have to be \
+             adjusted.\n\n\
+             Explore the repo yourself to find the callers. Do not change any \
+             internal/private helper that is documented as returning a plain \
+             list, and do not touch functions that are unrelated to record \
+             fetching.\n\n\
+             Apply all edits first, then run the bundled test suite \
+             (`python3 test_pipeline.py`) and iterate until it prints \
+             ALL_TESTS_PASSED.".to_string()),
             vec![
                 complete(),
                 succeeded("shell"),
+                // Entry point now returns RecordSet wrapper
+                file_has(&source_file, &["RecordSet"]),
+                file_lacks(&source_file, &["def fetch_records(query: str) -> list[dict]"]),
+                // Consumers now reach through .records
+                file_has(&transformer_file, &[".records"]),
+                file_has(&aggregator_file, &[".records"]),
+                file_has(&reporter_file, &[".records"]),
+                // Internal helper still returns a plain list (unchanged signature)
+                file_has(&source_file, &["def _fetch_raw"]),
+                // format_summary unrelated helper preserved
+                file_has(&reporter_file, &["def format_summary"]),
+                // The bundled end-to-end test must actually pass
                 run_has("python3 test_pipeline.py", &["ALL_TESTS_PASSED"]),
             ]),
             vec![source_file, transformer_file, aggregator_file, reporter_file, models_file]),
