@@ -118,7 +118,7 @@ fn build_bigfile_js() -> String {
     s.push_str("// Maintainer note: historically this file has been 'cleaned up'\n");
     s.push_str("// several times and each pass introduced regressions. Please make\n");
     s.push_str("// surgical changes, add tests, and resist the urge to rewrite sections.\n");
-    s.push_str("\n");
+    s.push('\n');
     s.push_str("'use strict';\n\n");
 
     // --- Helper block 1: arithmetic (trivial, many TODOs that are NOT bugs)
