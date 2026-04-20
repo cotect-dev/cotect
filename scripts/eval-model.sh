@@ -247,11 +247,24 @@ printf '%s%s%s\n' "$C_RULE" "$RULE_LIGHT" "$C_RST"
 
 RESULT_TXT="${RUN_DIR}/result.txt"
 cd "$SCRIPT_DIR/../tauri"
-# Tee stdout+stderr into the run's result.txt while still showing a live
-# stream on the terminal. PIPESTATUS[0] captures cargo's exit code,
-# undisturbed by the downstream `tee`.
-cargo "${CARGO_ARGS[@]}" 2>&1 | tee "$RESULT_TXT"
+# Tee cargo's combined stdout+stderr through two sinks:
+#   1. the user's terminal, with ANSI colors and the CR-based live
+#      spinner intact (no transformation);
+#   2. result.txt, with ANSI SGR/erase sequences stripped and CR-based
+#      spinner rewrites collapsed to their final frame.
+# Keeping the archived log clean matters because the tempdir-pairing
+# awk below greps it for scenario headers and `dir:` lines — a raw
+# stream full of escape codes and overwrites is ungreppable.
+# PIPESTATUS[0] still captures cargo's exit code; the process
+# substitution runs asynchronously and its status is not in PIPESTATUS.
+cargo "${CARGO_ARGS[@]}" 2>&1 | tee >(
+    sed -E $'s/\x1b\\[[0-9;]*[mK]//g; s/.*\r//' > "$RESULT_TXT"
+)
 EVAL_EXIT="${PIPESTATUS[0]}"
+# Wait briefly for the tee's process substitution to flush result.txt
+# before the awk pairing reads from it. Without this, the awk can race
+# the final chunk of output to disk and miss the last few scenarios.
+sync; sleep 0.5
 
 # Pair each scenario id from the live log with its preserved `/tmp/.tmpX`
 # directory. The harness emits the tempdir path on a line immediately
