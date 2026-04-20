@@ -431,9 +431,8 @@ mod tests {
         let result = git_show_file(repo, "bin.dat".to_string()).await;
         // We just care that it doesn't panic and returns something — either Ok(lossy) or Err.
         // DiffNode handles both by rendering a placeholder.
-        match result {
-            Ok(s) => assert!(!s.is_empty()),
-            Err(_) => {} // also acceptable
+        if let Ok(s) = result {
+            assert!(!s.is_empty());
         }
     }
 
@@ -599,7 +598,7 @@ mod tests {
         // Malformed output: file lines before any @timestamp. Skip them.
         let input = "stray.rs\n@1700000000\nreal.rs\n";
         let map = parse_file_times_output(input);
-        assert!(map.get("stray.rs").is_none());
+        assert!(!map.contains_key("stray.rs"));
         assert_eq!(map.get("real.rs"), Some(&1700000000));
     }
 
