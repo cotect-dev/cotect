@@ -151,9 +151,11 @@ pub fn all_definitions() -> Vec<ToolDefinition> {
         make_def::<fs_patch::FSPatchInput>(
             "patch",
             "Replace an exact string in a file. The old_string must appear exactly once in the file. \
-             You MUST read the file first before patching it. The `old_string` and `new_string` \
-             parameters must NOT contain the `N: ` line-number prefixes that the `read` tool shows — \
-             those are display-only and not part of the file's actual content.",
+             If old_string is not found (or ambiguous), the tool returns the current file contents \
+             inline so you can correct your snippet on the next call — you do NOT need a separate \
+             `read` call first. The `old_string` and `new_string` parameters must NOT contain the \
+             `N: ` line-number prefixes that the `read` tool shows — those are display-only and \
+             not part of the file's actual content.",
         ),
         make_def::<fs_search::FSSearchInput>(
             "fs_search",
