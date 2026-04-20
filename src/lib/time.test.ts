@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { formatRelativeTime } from './time'
+import { formatDuration, formatRelativeTime } from './time'
 
 describe('formatRelativeTime', () => {
   beforeEach(() => {
@@ -41,5 +41,26 @@ describe('formatRelativeTime', () => {
     vi.setSystemTime(Date.now())
     expect(formatRelativeTime(now - 86400)).toBe('1d ago')
     expect(formatRelativeTime(now - 172800)).toBe('2d ago')
+  })
+})
+
+describe('formatDuration', () => {
+  it('returns 0s for zero ms', () => {
+    expect(formatDuration(0)).toBe('0s')
+  })
+
+  it('rounds down to whole seconds below 60s', () => {
+    expect(formatDuration(1_500)).toBe('1s')
+    expect(formatDuration(59_999)).toBe('59s')
+  })
+
+  it('switches to m+s format at 60s', () => {
+    expect(formatDuration(60_000)).toBe('1m 0s')
+    expect(formatDuration(90_000)).toBe('1m 30s')
+  })
+
+  it('handles many minutes', () => {
+    expect(formatDuration(125_000)).toBe('2m 5s')
+    expect(formatDuration(3_600_000)).toBe('60m 0s')
   })
 })

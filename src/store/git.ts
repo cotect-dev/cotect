@@ -32,8 +32,25 @@ export interface GitLogEntry {
   files: GitLogFile[]
 }
 
-export interface GitBranch {
-  current: string
+export type GitBranch =
+  | { kind: 'branch'; name: string }
+  | { kind: 'detached'; short_sha: string }
+  | { kind: 'initial' }
+
+/**
+ * User-facing label for the branch panel. Pure function so the branches UI
+ * stays a thin shell.
+ */
+export function branchLabel(branch: GitBranch | null): string {
+  if (!branch) return 'unknown'
+  switch (branch.kind) {
+    case 'branch':
+      return branch.name
+    case 'detached':
+      return `detached @ ${branch.short_sha}`
+    case 'initial':
+      return '(no commits yet)'
+  }
 }
 
 type GitError = 'GIT_NOT_FOUND' | 'NOT_A_REPO' | 'NO_COMMITS' | 'GIT_TIMEOUT' | 'PARTIAL_FAILURE' | null
@@ -184,62 +201,63 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
         currentHeadContent.sha === headSha
           ? currentHeadContent
           : { sha: headSha, files: {} }
+      // Update the main window's own state immediately so its UI doesn't wait
+      // on fileTimes computation, but defer the cross-window broadcast until
+      // fileTimes is ready so children never receive a stale snapshot.
       set({ ...newState, headContent: nextHeadContent, loading: false })
-      broadcastGitState({
-        ...newState,
-        headContent: nextHeadContent,
-        fileTimes: get().fileTimes,
-        sortMode: get().sortMode,
-      })
 
-      // Recompute per-file timestamps in the background. Fire-and-forget — the
-      // UI already renders with the old fileTimes while this runs.
+      const broadcastWithTimes = (fileTimes: Record<string, number>) => {
+        broadcastGitState({
+          ...newState,
+          headContent: nextHeadContent,
+          fileTimes,
+          sortMode: get().sortMode,
+        })
+      }
+
       if (newState.status && newState.status.files.length > 0) {
         const paths = newState.status.files.map((f) => f.path)
         const statusFiles = newState.status.files
-        invoke<Array<[string, number | null]>>('git_file_times', { repoPath, paths })
-          .then(async (result) => {
-            if (!Array.isArray(result)) return
-            const { stat } = await import('@tauri-apps/plugin-fs')
-            const headTimes: Record<string, number> = {}
+        try {
+          const result = await invoke<Array<[string, number | null]>>('git_file_times', { repoPath, paths })
+          const { stat } = await import('@tauri-apps/plugin-fs')
+          const headTimes: Record<string, number> = {}
+          if (Array.isArray(result)) {
             for (const [p, ts] of result) {
               if (ts !== null) headTimes[p] = ts
             }
-            const hybrid: Record<string, number> = {}
-            await Promise.all(
-              statusFiles.map(async (f) => {
-                let fsTime: number | null = null
-                try {
-                  const s = await stat(`${repoPath}/${f.path}`)
-                  const mtime = s.mtime ? s.mtime.getTime() : 0
-                  if (!Number.isNaN(mtime) && mtime > 0) fsTime = Math.floor(mtime / 1000)
-                } catch {
-                  // file doesn't exist on disk (deleted) — fall back to head time only
-                }
-                const headTime = headTimes[f.path] ?? null
-                if (f.status === 'A' || f.status === 'U') {
-                  if (fsTime !== null) hybrid[f.path] = fsTime
-                } else if (f.status === 'D') {
-                  if (headTime !== null) hybrid[f.path] = headTime
-                } else {
-                  const best = Math.max(headTime ?? 0, fsTime ?? 0)
-                  if (best > 0) hybrid[f.path] = best
-                }
-              }),
-            )
-            set({ fileTimes: hybrid })
-            broadcastGitState({
-              ...newState,
-              headContent: nextHeadContent,
-              fileTimes: hybrid,
-              sortMode: get().sortMode,
-            })
-          })
-          .catch((err) => {
-            console.warn('[git] fileTimes refresh failed:', err)
-          })
+          }
+          const hybrid: Record<string, number> = {}
+          await Promise.all(
+            statusFiles.map(async (f) => {
+              let fsTime: number | null = null
+              try {
+                const s = await stat(`${repoPath}/${f.path}`)
+                const mtime = s.mtime ? s.mtime.getTime() : 0
+                if (!Number.isNaN(mtime) && mtime > 0) fsTime = Math.floor(mtime / 1000)
+              } catch {
+                // file doesn't exist on disk (deleted) — fall back to head time only
+              }
+              const headTime = headTimes[f.path] ?? null
+              if (f.status === 'A' || f.status === 'U') {
+                if (fsTime !== null) hybrid[f.path] = fsTime
+              } else if (f.status === 'D') {
+                if (headTime !== null) hybrid[f.path] = headTime
+              } else {
+                const best = Math.max(headTime ?? 0, fsTime ?? 0)
+                if (best > 0) hybrid[f.path] = best
+              }
+            }),
+          )
+          set({ fileTimes: hybrid })
+          broadcastWithTimes(hybrid)
+        } catch (err) {
+          console.warn('[git] fileTimes refresh failed:', err)
+          broadcastWithTimes(get().fileTimes)
+        }
       } else {
         set({ fileTimes: {} })
+        broadcastWithTimes({})
       }
     } catch (err) {
       console.error('Git refresh failed:', err)

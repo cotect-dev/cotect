@@ -1,5 +1,6 @@
 import { memo, useState, useMemo, useSyncExternalStore, lazy, Suspense } from 'react'
 import type { Message } from '@/store/chat'
+import { formatDuration } from '@/lib/time'
 
 const ReactMarkdown = lazy(() => import('react-markdown'))
 
@@ -82,13 +83,6 @@ function StreamingText({ text }: { text: string }) {
       <p className="whitespace-pre-wrap">{text}</p>
     </div>
   )
-}
-
-function formatDuration(ms: number) {
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  return `${m}m ${s % 60}s`
 }
 
 function ThinkingBlock({ message }: { message: Message }) {

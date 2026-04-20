@@ -232,17 +232,39 @@ pub async fn git_log(repo_path: String, limit: Option<u32>, skip: Option<u32>) -
     Ok(parse_log_output(&output))
 }
 
-#[derive(Serialize)]
-pub struct GitBranch {
-    pub current: String,
+#[derive(Serialize, Debug)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GitBranch {
+    /// Normal case: HEAD points at a named branch ref.
+    Branch { name: String },
+    /// HEAD points directly at a commit (e.g. `git checkout <sha>`).
+    Detached { short_sha: String },
+    /// Freshly initialized repo with no commits — HEAD exists as a ref but
+    /// resolves to nothing.
+    Initial,
+}
+
+fn is_connection_error(msg: &str) -> bool {
+    msg == NOT_A_REPO || msg == GIT_NOT_FOUND || msg == GIT_TIMEOUT_STR
 }
 
 #[tauri::command]
 pub async fn git_branch(repo_path: String) -> Result<GitBranch, String> {
-    let output = run_git(&repo_path, &["rev-parse", "--abbrev-ref", "HEAD"]).await?;
-    Ok(GitBranch {
-        current: output.trim().to_string(),
-    })
+    // A freshly-initialized repo has a symbolic HEAD ref but no commit, so
+    // `symbolic-ref` alone would falsely report a branch. Ask for HEAD's sha
+    // first: that succeeds iff there's at least one commit.
+    match run_git(&repo_path, &["rev-parse", "--short", "HEAD"]).await {
+        Ok(short_sha_out) => {
+            let short_sha = short_sha_out.trim().to_string();
+            match run_git(&repo_path, &["symbolic-ref", "--short", "HEAD"]).await {
+                Ok(out) => Ok(GitBranch::Branch { name: out.trim().to_string() }),
+                Err(e) if is_connection_error(&e) => Err(e),
+                Err(_) => Ok(GitBranch::Detached { short_sha }),
+            }
+        }
+        Err(e) if is_connection_error(&e) => Err(e),
+        Err(_) => Ok(GitBranch::Initial),
+    }
 }
 
 #[tauri::command]
@@ -260,28 +282,71 @@ pub async fn git_show_file(repo_path: String, file_path: String) -> Result<Strin
     run_git(&repo_path, &["show", &spec]).await
 }
 
+/// Parse the output of `git log --name-only --format='@%ct' -- <paths>`.
+/// Output format (newest-first):
+///
+///     @1700001000
+///     path/a
+///     path/b
+///
+///     @1700000000
+///     path/c
+///
+/// Since `git log` emits commits newest-first, the first timestamp we see
+/// for any given path is the most recent commit that touched it.
+fn parse_file_times_output(output: &str) -> HashMap<String, i64> {
+    let mut map: HashMap<String, i64> = HashMap::new();
+    let mut current_ts: Option<i64> = None;
+    for line in output.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix('@') {
+            current_ts = rest.parse::<i64>().ok();
+            continue;
+        }
+        if let Some(ts) = current_ts {
+            map.entry(line.to_string()).or_insert(ts);
+        }
+    }
+    map
+}
+
 /// Returns, for each requested repo-relative path, the unix timestamp of the
 /// most recent commit that touched it. Paths that have never been committed
 /// (e.g. untracked files) return None. Order matches input order.
+///
+/// Implemented as a single `git log` pathspec-scoped invocation so that large
+/// dirty trees don't spawn N subprocesses.
 #[tauri::command]
 pub async fn git_file_times(
     repo_path: String,
     paths: Vec<String>,
 ) -> Result<Vec<(String, Option<i64>)>, String> {
-    let mut out = Vec::with_capacity(paths.len());
-    for path in paths {
-        let res = run_git(
-            &repo_path,
-            &["log", "-1", "--format=%ct", "--", &path],
-        )
-        .await;
-        let ts = match res {
-            Ok(s) => s.trim().parse::<i64>().ok(),
-            Err(_) => None,
-        };
-        out.push((path, ts));
+    if paths.is_empty() {
+        return Ok(Vec::new());
     }
-    Ok(out)
+
+    let mut args: Vec<&str> = vec!["log", "--name-only", "--format=@%ct", "--"];
+    for p in &paths {
+        args.push(p.as_str());
+    }
+
+    let times = match run_git(&repo_path, &args).await {
+        Ok(output) => parse_file_times_output(&output),
+        // Empty repo / no commits / pathspec miss all collapse to "no timestamps".
+        // Preserve the requested paths with None rather than propagating the error,
+        // so the caller can still render a file list without timestamps.
+        Err(_) => HashMap::new(),
+    };
+
+    Ok(paths
+        .into_iter()
+        .map(|p| {
+            let ts = times.get(&p).copied();
+            (p, ts)
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -399,6 +464,143 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "new.txt");
         assert!(result[0].1.is_none());
+    }
+
+    #[tokio::test]
+    async fn git_branch_reports_named_branch() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "x\n", "init");
+        // make_repo leaves the default branch (main or master depending on git config).
+        let branch = git_branch(repo).await.unwrap();
+        match branch {
+            GitBranch::Branch { name } => assert!(!name.is_empty()),
+            other => panic!("expected Branch, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn git_branch_reports_initial_for_empty_repo() {
+        let (_dir, repo) = make_repo();
+        // No commits yet — symbolic-ref fails, rev-parse HEAD fails.
+        let branch = git_branch(repo).await.unwrap();
+        assert!(matches!(branch, GitBranch::Initial), "got {branch:?}");
+    }
+
+    #[tokio::test]
+    async fn git_branch_reports_detached_after_checkout_of_sha() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "x\n", "first");
+        write_and_commit(&repo, "b.txt", "y\n", "second");
+
+        // Check out the first commit's SHA directly to get a detached HEAD.
+        let first_sha = StdCommand::new("git")
+            .arg("-C").arg(&repo)
+            .args(["rev-parse", "HEAD~1"])
+            .output().unwrap();
+        let sha = String::from_utf8_lossy(&first_sha.stdout).trim().to_string();
+        StdCommand::new("git")
+            .arg("-C").arg(&repo)
+            .args(["checkout", "--quiet", &sha])
+            .status().unwrap();
+
+        let branch = git_branch(repo).await.unwrap();
+        match branch {
+            GitBranch::Detached { short_sha } => {
+                assert!(!short_sha.is_empty());
+                assert!(sha.starts_with(&short_sha));
+            }
+            other => panic!("expected Detached, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn git_file_times_empty_input_returns_empty() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "hi\n", "init");
+
+        let result = git_file_times(repo, vec![]).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn git_file_times_handles_paths_with_spaces() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "has space.txt", "x\n", "init");
+
+        let result = git_file_times(repo, vec!["has space.txt".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "has space.txt");
+        assert!(result[0].1.is_some());
+    }
+
+    #[tokio::test]
+    async fn git_file_times_batches_many_paths_in_single_call() {
+        // Create 30 files across 3 commits. The batched implementation should
+        // still be fast; more importantly, all timestamps come back correctly.
+        let (_dir, repo) = make_repo();
+        for i in 0..10 {
+            write_and_commit(&repo, &format!("a{i}.txt"), "x\n", "batch 1");
+        }
+        for i in 0..10 {
+            write_and_commit(&repo, &format!("b{i}.txt"), "x\n", "batch 2");
+        }
+        for i in 0..10 {
+            write_and_commit(&repo, &format!("c{i}.txt"), "x\n", "batch 3");
+        }
+
+        let paths: Vec<String> = (0..10)
+            .flat_map(|i| [format!("a{i}.txt"), format!("b{i}.txt"), format!("c{i}.txt")])
+            .collect();
+
+        let result = git_file_times(repo, paths.clone()).await.unwrap();
+        assert_eq!(result.len(), paths.len());
+        for (p, ts) in &result {
+            assert!(ts.is_some(), "expected timestamp for {p}");
+        }
+    }
+
+    #[test]
+    fn parse_file_times_output_empty() {
+        let map = parse_file_times_output("");
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn parse_file_times_output_single_commit() {
+        let input = "@1700000000\nsrc/main.rs\nsrc/lib.rs\n";
+        let map = parse_file_times_output(input);
+        assert_eq!(map.get("src/main.rs"), Some(&1700000000));
+        assert_eq!(map.get("src/lib.rs"), Some(&1700000000));
+    }
+
+    #[test]
+    fn parse_file_times_output_keeps_newest_timestamp_per_path() {
+        // git log outputs newest commit first. If a file appears in both commits,
+        // we should keep the newest (first encountered) timestamp.
+        let input = "@1700001000\nshared.rs\n\n@1700000000\nshared.rs\nold.rs\n";
+        let map = parse_file_times_output(input);
+        assert_eq!(map.get("shared.rs"), Some(&1700001000));
+        assert_eq!(map.get("old.rs"), Some(&1700000000));
+    }
+
+    #[test]
+    fn parse_file_times_output_ignores_blank_lines_and_unknown_prefixes() {
+        let input = "\n@1700000000\n\nfoo.rs\nnot-a-timestamp\n";
+        let map = parse_file_times_output(input);
+        assert_eq!(map.get("foo.rs"), Some(&1700000000));
+        // "not-a-timestamp" is treated as a file path under the same commit.
+        assert_eq!(map.get("not-a-timestamp"), Some(&1700000000));
+    }
+
+    #[test]
+    fn parse_file_times_output_skips_files_before_first_commit_marker() {
+        // Malformed output: file lines before any @timestamp. Skip them.
+        let input = "stray.rs\n@1700000000\nreal.rs\n";
+        let map = parse_file_times_output(input);
+        assert!(map.get("stray.rs").is_none());
+        assert_eq!(map.get("real.rs"), Some(&1700000000));
     }
 
     #[tokio::test]
