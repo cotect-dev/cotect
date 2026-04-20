@@ -285,15 +285,23 @@ if __name__ == "__main__":
                 complete(),
                 succeeded("shell"),
                 run_has("python3 test_parser.py", &["ALL_TESTS_PASSED"]),
-                // Belt-and-braces: grep parser.py directly for the banned
-                // names in addition to the in-test tokeniser check.
-                // `eval(` avoids matching the permitted `evaluate` function.
+                // Belt-and-braces grep for banned call sites. Only match
+                // patterns that can't appear in prose (docstrings,
+                // comments, the banned-list recitation we explicitly ask
+                // the model to obey). The authoritative guard is the
+                // in-test tokeniser check in `test_parser.py`, which
+                // correctly excludes string literals and comments — so
+                // this secondary grep is deliberately conservative and
+                // only catches literal call syntax.
+                //
+                // Earlier versions included bare `numexpr` / `asteval`
+                // here, which false-failed when the model wrote a
+                // docstring like "implemented without numexpr, asteval,
+                // eval ...".
                 file_lacks("parser.py", &[
                     "eval(",
                     "compile(",
                     "ast.parse",
-                    "numexpr",
-                    "asteval",
                 ]),
             ]),
             vec![stub]),
