@@ -30,8 +30,7 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
         return f"_Node({self.value!r}, prev={pv!r}, next={nv!r})"
 "#).unwrap();
 
-        let dll_file = ap(dir, "linkedlist.py");
-        std::fs::write(&dll_file, r#"from node import _Node
+        let fixed_contents = r#"from node import _Node
 
 
 class DoublyLinkedList:
@@ -148,12 +147,9 @@ class DoublyLinkedList:
     def to_list(self):
         """Return all values as a Python list."""
         return list(self)
-"#).unwrap();
+"#;
 
-        // Buggy version: remove() doesn't update _tail, reverse() doesn't swap head/tail,
-        // take_while() includes one extra element
-        let dll_buggy = ap(dir, "linkedlist_buggy.py");
-        std::fs::write(&dll_buggy, r#"from node import _Node
+        let buggy_contents = r#"from node import _Node
 
 
 class DoublyLinkedList:
@@ -269,11 +265,17 @@ class DoublyLinkedList:
     def to_list(self):
         """Return all values as a Python list."""
         return list(self)
-"#).unwrap();
+"#;
 
-        // Fixed version
+        // Visible source must match the prompt's "current source is buggy" claim.
+        let dll_file = ap(dir, "linkedlist.py");
+        std::fs::write(&dll_file, buggy_contents).unwrap();
+
+        let dll_buggy = ap(dir, "linkedlist_buggy.py");
+        std::fs::write(&dll_buggy, buggy_contents).unwrap();
+
         let dll_fixed = ap(dir, "linkedlist_fixed.py");
-        std::fs::write(&dll_fixed, std::fs::read_to_string(&dll_file).unwrap()).unwrap();
+        std::fs::write(&dll_fixed, fixed_contents).unwrap();
 
         let runner = ap(dir, "run_tests.py");
         std::fs::write(&runner, r#"import subprocess, sys, os, shutil
