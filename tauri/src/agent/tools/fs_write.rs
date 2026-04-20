@@ -43,6 +43,13 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
         .await
         .map_err(|e| io_err("write file", path, e))?;
 
+    // Record the post-write content hash so a follow-up read on this path
+    // short-circuits with a "unchanged" stub — the model already holds this
+    // content in its conversation history as the write argument.
+    state
+        .set_read_hash(path, ToolState::hash_content(&input.content))
+        .await;
+
     let line_count = input.content.lines().count();
     let warning = if looks_like_line_numbered_dump(&input.content) {
         "\nWARNING: The content you wrote appears to have `N: ` line-number prefixes on most lines. \

@@ -1,27 +1,24 @@
-//! Scenario registry for the eval harness — 100 scenarios across multiple categories.
+//! Scenario registry for the eval harness — 25 expert-level scenarios.
 //!
-//! Each category lives in its own submodule for maintainability.
-//! The `hard` module has 25 scenarios with red herrings, gotchas, and multi-step reasoning.
-//! The `extra_hard_*` modules in `extra_hard/` add 30 expert-level scenarios.
-//! See `eval.rs` for the runner, check types, and report logic.
+//! The suite is organized across 12 categories: classical software-engineering
+//! skills (bugfix/refactor/implement/patch/cross-file/testing) plus the
+//! axes that previous rounds were silent on — security, concurrency,
+//! performance, long-context reasoning, git-driven regression hunting, and
+//! pure comprehension. See `eval.rs` for the runner, check types, report
+//! logic, and harness primitives (skip-on-missing-tool, diff budgets).
 
-mod bugfix;
-mod refactor;
-mod implement;
-mod patch;
-mod understanding;
-mod search;
-mod cross_file;
-mod error_handling;
-mod recovery;
-mod planning;
-mod hard;
 mod extra_hard_bugfix;
 mod extra_hard_refactor;
 mod extra_hard_patch;
 mod extra_hard_implement;
 mod extra_hard_testing;
 mod extra_hard_cross_file;
+mod extra_hard_security;
+mod extra_hard_concurrency;
+mod extra_hard_performance;
+mod extra_hard_context;
+mod extra_hard_search;
+mod extra_hard_understanding;
 
 use std::path::Path;
 
@@ -33,7 +30,12 @@ use super::{Category, Check, Difficulty, ScenarioSpec, SetupResult};
 
 /// Build a bare `SetupResult` with only a prompt.
 pub(crate) fn pf(prompt: impl Into<String>) -> SetupResult {
-    SetupResult { prompt: prompt.into(), scope_files: vec![], checks: vec![], blocked_files: vec![] }
+    SetupResult {
+        prompt: prompt.into(),
+        scope_files: vec![],
+        checks: vec![],
+        blocked_files: vec![],
+    }
 }
 
 pub(crate) fn with_checks(mut s: SetupResult, checks: Vec<Check>) -> SetupResult {
@@ -57,10 +59,12 @@ pub(crate) fn oc(needle: &str) -> Check {
     Check::OutputContains(needle.into())
 }
 
+#[allow(dead_code)]
 pub(crate) fn oc_all(needles: &[&str]) -> Check {
     Check::OutputContainsAll(needles.iter().map(|s| s.to_string()).collect())
 }
 
+#[allow(dead_code)]
 pub(crate) fn oc_any(needles: &[&str]) -> Check {
     Check::OutputContainsAny(needles.iter().map(|s| s.to_string()).collect())
 }
@@ -84,6 +88,7 @@ pub(crate) fn succeeded(tool: &str) -> Check {
     Check::ToolSucceeded(tool.into())
 }
 
+#[allow(dead_code)]
 pub(crate) fn used_any(tools: &[&str]) -> Check {
     Check::UsedAnyTool(tools.iter().map(|s| s.to_string()).collect())
 }
@@ -134,12 +139,32 @@ pub(crate) fn run_lacks(cmd: &str, needles: &[&str]) -> Check {
     Check::RunOutputLacks(cmd.into(), 30, needles.iter().map(|s| s.to_string()).collect())
 }
 
+/// Assert that the edited file differs from a reference snapshot by at most
+/// `max_changed` lines (unified-diff added+removed). `reference_abs` is an
+/// absolute path (typically written into the tempdir during setup);
+/// `target_rel` is the relative path of the edited file.
+#[allow(dead_code)]
+pub(crate) fn diff_at_most(reference_abs: &str, target_rel: &str, max_changed: usize) -> Check {
+    Check::FileDiffLinesAtMost(reference_abs.into(), target_rel.into(), max_changed)
+}
+
 /// Absolute path under the temp dir.
 pub(crate) fn ap(dir: &Path, rel: &str) -> String {
     dir.join(rel).to_string_lossy().into_owned()
 }
 
 /// Scenario construction shortcut.
+///
+/// Two forms:
+///
+///   scen!(id, cat, diff, role, setup)
+///       — default: no tool prerequisites.
+///
+///   scen!(id, cat, diff, role, setup, tools = &["cargo", "go", ...])
+///       — declare PATH executables the scenario needs. If any is missing
+///         the runner marks the scenario SKIPPED (not FAIL) before running
+///         setup, so scenarios whose setup itself shells out to `git` / `go`
+///         / `cargo` don't panic on under-provisioned hosts.
 macro_rules! scen {
     ($id:expr, $cat:expr, $diff:expr, $role:expr, $setup:ident) => {
         ScenarioSpec {
@@ -148,6 +173,17 @@ macro_rules! scen {
             difficulty: $diff,
             role: $role,
             setup: $setup,
+            required_tools: &[],
+        }
+    };
+    ($id:expr, $cat:expr, $diff:expr, $role:expr, $setup:ident, tools = $tools:expr) => {
+        ScenarioSpec {
+            id: $id,
+            category: $cat,
+            difficulty: $diff,
+            role: $role,
+            setup: $setup,
+            required_tools: $tools,
         }
     };
 }
@@ -157,23 +193,18 @@ pub(crate) use scen;
 // Aggregate all scenarios
 
 pub(super) fn make_scenarios() -> Vec<ScenarioSpec> {
-    let mut v = Vec::with_capacity(100);
-    bugfix::scenarios(&mut v);
-    refactor::scenarios(&mut v);
-    implement::scenarios(&mut v);
-    patch::scenarios(&mut v);
-    understanding::scenarios(&mut v);
-    search::scenarios(&mut v);
-    cross_file::scenarios(&mut v);
-    error_handling::scenarios(&mut v);
-    recovery::scenarios(&mut v);
-    planning::scenarios(&mut v);
-    hard::scenarios(&mut v);
+    let mut v = Vec::with_capacity(25);
     extra_hard_bugfix::scenarios(&mut v);
     extra_hard_refactor::scenarios(&mut v);
     extra_hard_patch::scenarios(&mut v);
     extra_hard_implement::scenarios(&mut v);
     extra_hard_testing::scenarios(&mut v);
     extra_hard_cross_file::scenarios(&mut v);
+    extra_hard_security::scenarios(&mut v);
+    extra_hard_concurrency::scenarios(&mut v);
+    extra_hard_performance::scenarios(&mut v);
+    extra_hard_context::scenarios(&mut v);
+    extra_hard_search::scenarios(&mut v);
+    extra_hard_understanding::scenarios(&mut v);
     v
 }

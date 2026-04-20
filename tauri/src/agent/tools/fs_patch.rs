@@ -76,6 +76,14 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
     tokio::fs::write(path, &new_content)
         .await
         .map_err(|e| io_err("write file", path, e))?;
+
+    // Record post-patch content hash so a follow-up read on this path
+    // short-circuits with a "unchanged" stub — the model already holds the
+    // patch diff and the surrounding context from the prior read.
+    state
+        .set_read_hash(path, ToolState::hash_content(&new_content))
+        .await;
+
     Ok(format!("Successfully patched '{path}'."))
 }
 

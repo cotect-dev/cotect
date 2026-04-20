@@ -11,7 +11,17 @@ pub(crate) mod test_helpers;
 pub const MAX_OUTPUT: usize = 100 * 1024; // 100 KB
 pub const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 
-use std::collections::HashSet;
+/// Maximum serialized-JSON length for a `shell` tool call's arguments.
+/// A legitimate command is easily under 1 KB; values above this threshold
+/// almost always mean the model has stuffed an entire file into a heredoc
+/// (`python3 << PYEOF ... PYEOF`) instead of using the `write` tool. Such
+/// calls then bloat context on every subsequent turn. 4 KB leaves plenty of
+/// headroom for real invocations.
+pub const MAX_SHELL_ARGS_BYTES: usize = 4 * 1024;
+
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -25,6 +35,15 @@ use super::types::{FunctionDef, ToolCall, ToolDefinition, AgentRole};
 #[derive(Debug)]
 pub struct ToolState {
     pub read_files: Mutex<HashSet<PathBuf>>,
+    /// Hash of the content returned on the last read for this path. Used by
+    /// `fs_read` to short-circuit re-reads of unchanged files: instead of
+    /// dumping the full file into context for the second time, it returns a
+    /// compact stub. Write/patch updates the hash to the post-write content,
+    /// so a read following a write correctly returns the stub as well (the
+    /// model already knows what it just wrote). The read call itself
+    /// always succeeds — deduplication happens only in the content we echo
+    /// back, never in the tool's success status.
+    pub read_hashes: Mutex<HashMap<PathBuf, u64>>,
     pub root_path: String,
     /// Absolute paths the agent is not allowed to read (eval-only).
     pub blocked_files: Vec<PathBuf>,
@@ -34,6 +53,7 @@ impl ToolState {
     pub fn new(root_path: String) -> Arc<Self> {
         Arc::new(Self {
             read_files: Mutex::new(HashSet::new()),
+            read_hashes: Mutex::new(HashMap::new()),
             root_path,
             blocked_files: Vec::new(),
         })
@@ -42,6 +62,7 @@ impl ToolState {
     pub fn with_blocked_files(root_path: String, blocked_files: Vec<String>) -> Arc<Self> {
         Arc::new(Self {
             read_files: Mutex::new(HashSet::new()),
+            read_hashes: Mutex::new(HashMap::new()),
             blocked_files: blocked_files.into_iter().map(PathBuf::from).collect(),
             root_path,
         })
@@ -53,6 +74,36 @@ impl ToolState {
 
     pub async fn has_read(&self, path: &str) -> bool {
         self.read_files.lock().await.contains(&PathBuf::from(path))
+    }
+
+    /// Return the content hash recorded for `path` on its last read, or None
+    /// if this path hasn't been read in the current session.
+    pub async fn last_read_hash(&self, path: &str) -> Option<u64> {
+        self.read_hashes
+            .lock()
+            .await
+            .get(&PathBuf::from(path))
+            .copied()
+    }
+
+    /// Record the content hash after a read, write, or patch. The value must
+    /// be the hash of the content that the model now holds in context (the
+    /// returned read body for reads, the newly-written content for writes /
+    /// patches).
+    pub async fn set_read_hash(&self, path: &str, hash: u64) {
+        self.read_hashes
+            .lock()
+            .await
+            .insert(PathBuf::from(path), hash);
+    }
+
+    /// Convenience: hash a string using the same scheme as `set_read_hash`
+    /// consumers, so callers in fs_read / fs_write / fs_patch agree on the
+    /// hash of a given content.
+    pub fn hash_content(content: &str) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        content.hash(&mut hasher);
+        hasher.finish()
     }
 }
 
@@ -85,7 +136,26 @@ pub async fn execute_tool(
         "write" => fs_write::execute(&parse_args(args)?, state).await,
         "patch" => fs_patch::execute(&parse_args(args)?, state).await,
         "fs_search" => fs_search::execute(&parse_args(args)?, state).await,
-        "shell" => shell::execute(&parse_args(args)?, state).await,
+        "shell" => {
+            // Oversized shell arguments (typically a heredoc with an entire
+            // file body) are rejected before execution. The full args blob
+            // still sits on the assistant message and inflates context; the
+            // error makes the bad pattern visible and steers the model to
+            // `write` instead. We don't execute the command — even if it
+            // would succeed, the context cost isn't worth it.
+            if args.len() > MAX_SHELL_ARGS_BYTES {
+                return Err(format!(
+                    "Shell arguments are {} bytes, which exceeds the {}-byte budget. \
+                     You probably stuffed an entire file into a heredoc. Use the \
+                     `write` tool to create or overwrite files, then invoke the \
+                     shell with a short command that references the file by path \
+                     (e.g. `python3 script.py`). If you genuinely need a long \
+                     inline script, break it into a helper file first via `write`.",
+                    args.len(), MAX_SHELL_ARGS_BYTES,
+                ));
+            }
+            shell::execute(&parse_args(args)?, state).await
+        }
         "fetch" => fetch::execute(&parse_args(args)?).await,
         _ => Err(format!("Unknown tool: {name}")),
     }
@@ -359,6 +429,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_execute_tool_shell_rejects_oversized_arguments() {
+        // Simulate a heredoc with a whole file pasted in — typical failure
+        // mode where the model regenerates a file via `python3 << PYEOF ...`
+        // instead of calling `write`. The shell tool should refuse before
+        // execution and steer the model to `write`.
+        let huge_body = "x".repeat(MAX_SHELL_ARGS_BYTES + 2_000);
+        let arguments = format!(r#"{{"command":"python3 << 'PYEOF'\n{}\nPYEOF"}}"#, huge_body);
+        let tool_call = ToolCall {
+            id: "call_heredoc".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "shell".into(),
+                arguments,
+            },
+        };
+        let state = ToolState::new("/tmp".into());
+        let result = execute_tool(&tool_call, &state).await;
+        assert!(result.is_err(), "oversized shell call must be rejected");
+        let msg = result.unwrap_err();
+        assert!(msg.contains("exceeds"), "error must explain the size cap");
+        assert!(msg.contains("`write`"), "error must point to the write tool");
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_shell_allows_normal_sized_arguments() {
+        // A reasonably sized shell command should still run. Using `echo` so
+        // the test is deterministic on any POSIX host.
+        let cmd: String = (0..50)
+            .map(|i| format!("arg{i}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let arguments = format!(r#"{{"command":"echo {cmd}"}}"#);
+        let tool_call = ToolCall {
+            id: "call_normal".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "shell".into(),
+                arguments,
+            },
+        };
+        let state = ToolState::new("/tmp".into());
+        let result = execute_tool(&tool_call, &state).await.unwrap();
+        assert!(result.contains("arg0"));
+        assert!(result.contains("arg49"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_state_read_hash_roundtrip() {
+        let state = ToolState::new("/project".into());
+        assert_eq!(state.last_read_hash("/project/x.txt").await, None);
+
+        let h = ToolState::hash_content("hello world");
+        state.set_read_hash("/project/x.txt", h).await;
+        assert_eq!(state.last_read_hash("/project/x.txt").await, Some(h));
+
+        // Hashes are content-derived — identical content hashes equal.
+        assert_eq!(h, ToolState::hash_content("hello world"));
+        assert_ne!(h, ToolState::hash_content("hello worlD"));
+    }
+
+    #[tokio::test]
     async fn test_execute_tool_search_real_dir() {
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("target.txt"), "unique_marker_1234\n").unwrap();
@@ -458,6 +589,58 @@ mod tests {
         };
         let write_result = execute_tool(&write_call, &state).await.unwrap();
         assert!(write_result.contains("Successfully wrote"));
+    }
+
+    #[tokio::test]
+    async fn test_read_after_write_returns_stub() {
+        // The post-write dedup is the point of read_hashes: after a write,
+        // the model already has the new content in its context via the
+        // write tool's own argument. A re-read must NOT duplicate that
+        // content back into context. Regression guard for the "paranoia
+        // re-read" pattern seen in eval transcripts.
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"seed").unwrap();
+        f.flush().unwrap();
+        let path = f.path().to_str().unwrap();
+        let state = ToolState::new("/tmp".into());
+
+        // Read + write (required by read-before-edit rule).
+        let read_call = ToolCall {
+            id: "r1".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "read".into(),
+                arguments: format!(r#"{{"file_path":"{}"}}"#, path),
+            },
+        };
+        execute_tool(&read_call, &state).await.unwrap();
+
+        let write_call = ToolCall {
+            id: "w1".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "write".into(),
+                arguments: format!(r#"{{"file_path":"{}","content":"post write body"}}"#, path),
+            },
+        };
+        execute_tool(&write_call, &state).await.unwrap();
+
+        // Re-read after write — should short-circuit.
+        let reread = ToolCall {
+            id: "r2".into(),
+            call_type: "function".into(),
+            function: super::super::types::FunctionCall {
+                name: "read".into(),
+                arguments: format!(r#"{{"file_path":"{}"}}"#, path),
+            },
+        };
+        let out = execute_tool(&reread, &state).await.unwrap();
+        assert!(
+            out.contains("unchanged since your previous"),
+            "read-after-write must return the dedup stub, got: {out}"
+        );
+        assert!(!out.contains("1: post write body"), "full content must not be echoed back");
     }
 
     #[tokio::test]

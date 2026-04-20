@@ -16,10 +16,7 @@
     "test:coverage": "vitest run --coverage",
     "test:rust": "cd tauri && cargo test",
     "test:all": "vitest run && cd tauri && cargo test",
-    "eval": "COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts ./scripts/eval-model.sh --endpoint http://server.local:8080/v1 --max-turns 100 --timeout 600 --model",
-    "eval:medium": "COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts ./scripts/eval-model.sh --endpoint http://server.local:8080/v1 --max-turns 100 --timeout 600 --difficulty medium --model",
-    "eval:hard": "COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts ./scripts/eval-model.sh --endpoint http://server.local:8080/v1 --max-turns 100 --timeout 600 --difficulty hard --model",
-    "eval:xhard": "COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts ./scripts/eval-model.sh --endpoint http://server.local:8080/v1 --max-turns 100 --timeout 600 --xhard --model",
+    "eval": "COTECT_EVAL_KEEP_DIRS=true COTECT_EVAL_TRANSCRIPTS=/tmp/eval_transcripts ./scripts/eval-model.sh --endpoint http://server.local:8080/v1 --max-turns 25 --timeout 600 --xhard --model",
     "prepare": "husky"
   },
   "lint-staged": {

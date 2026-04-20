@@ -73,6 +73,26 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
 
     state.mark_read(path).await;
 
+    // Re-read dedup: if the current file content matches what we handed the
+    // model on the last read (or the content of the last write / patch), the
+    // model already has this content in its conversation. Returning a compact
+    // stub instead of the full body keeps context lean. The call itself
+    // always succeeds — every read request gets a response. Range reads
+    // bypass the dedup since the stub would lie about what's in the window.
+    let is_range_read = input.start_line.is_some() || input.end_line.is_some();
+    if !is_range_read {
+        let now_hash = ToolState::hash_content(&content);
+        if state.last_read_hash(path).await == Some(now_hash) {
+            return Ok(format!(
+                "[File '{path}' is unchanged since your previous read or write in \
+                 this session — content omitted to keep context compact. Use the \
+                 earlier result. If you need a specific line range, pass \
+                 start_line / end_line.]"
+            ));
+        }
+        state.set_read_hash(path, now_hash).await;
+    }
+
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len();
 
@@ -231,5 +251,91 @@ mod tests {
         // Should not panic — end_line is clamped to start_line
         let result = execute(&input, &state).await.unwrap();
         assert!(result.contains("8: h"));
+    }
+
+    #[tokio::test]
+    async fn rereading_unchanged_file_returns_stub() {
+        let f = make_temp_file("unchanged content\nsecond line\n");
+        let state = make_state();
+        let path: String = f.path().to_str().unwrap().into();
+        let input = FSReadInput { file_path: path, start_line: None, end_line: None };
+
+        // First read: full content.
+        let first = execute(&input, &state).await.unwrap();
+        assert!(first.contains("1: unchanged content"));
+
+        // Second read, content untouched: friendly stub, still Ok.
+        let second = execute(&input, &state).await.unwrap();
+        assert!(second.contains("unchanged since your previous read"));
+        // The stub must NOT repeat the full content — that would defeat the
+        // entire point (context bloat).
+        assert!(!second.contains("1: unchanged content"));
+    }
+
+    #[tokio::test]
+    async fn repeated_dedup_always_returns_ok_stub() {
+        // Every re-read of an unchanged file returns an Ok stub; we never
+        // escalate to an error. Earlier we tried a 2nd-stub-as-Err
+        // mechanism but it only confused the model. Deduplication happens
+        // only in the content we echo back; the tool call itself always
+        // succeeds so the model gets a clear, uniform signal.
+        let f = make_temp_file("unchanged\n");
+        let state = make_state();
+        let path: String = f.path().to_str().unwrap().into();
+        let input = FSReadInput { file_path: path, start_line: None, end_line: None };
+
+        let _ = execute(&input, &state).await.unwrap();  // #1 full
+        let r2 = execute(&input, &state).await.unwrap(); // #2 stub
+        let r3 = execute(&input, &state).await.unwrap(); // #3 stub
+        let r4 = execute(&input, &state).await.unwrap(); // #4 stub
+
+        assert!(r2.contains("unchanged since your previous"));
+        assert!(r3.contains("unchanged since your previous"));
+        assert!(r4.contains("unchanged since your previous"));
+        // None of them carry the full file body.
+        assert!(!r2.contains("1: unchanged"));
+        assert!(!r3.contains("1: unchanged"));
+        assert!(!r4.contains("1: unchanged"));
+    }
+
+    #[tokio::test]
+    async fn rereading_modified_file_returns_full_content() {
+        let f = make_temp_file("original\n");
+        let state = make_state();
+        let path: String = f.path().to_str().unwrap().into();
+        let input = FSReadInput { file_path: path.clone(), start_line: None, end_line: None };
+
+        // First read seeds the hash.
+        let _ = execute(&input, &state).await.unwrap();
+
+        // Change the file on disk (without going through write/patch).
+        std::fs::write(&path, "mutated\n").unwrap();
+
+        // Re-read: hash differs → full content, no stub.
+        let after = execute(&input, &state).await.unwrap();
+        assert!(after.contains("1: mutated"));
+        assert!(!after.contains("unchanged since your previous"));
+    }
+
+    #[tokio::test]
+    async fn range_reads_bypass_dedup() {
+        // A stub response is wrong for range reads — the model asked for a
+        // specific window and the earlier full-read's output may not have
+        // shown that window. Range reads must always return content.
+        let f = make_temp_file("a\nb\nc\nd\ne\n");
+        let state = make_state();
+        let path: String = f.path().to_str().unwrap().into();
+        let full = FSReadInput { file_path: path.clone(), start_line: None, end_line: None };
+        let _ = execute(&full, &state).await.unwrap();
+
+        let ranged = FSReadInput {
+            file_path: path,
+            start_line: Some(2),
+            end_line: Some(3),
+        };
+        let out = execute(&ranged, &state).await.unwrap();
+        assert!(out.contains("2: b"));
+        assert!(out.contains("3: c"));
+        assert!(!out.contains("unchanged since your previous"));
     }
 }

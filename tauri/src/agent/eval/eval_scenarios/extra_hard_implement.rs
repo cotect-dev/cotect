@@ -5,25 +5,13 @@
 #[allow(unused_imports)]
 pub(crate) use super::*;
 
-#[path = "extra_hard/implement_01.rs"]
-mod _01;
-
-#[path = "extra_hard/implement_02.rs"]
-mod _02;
-
 #[path = "extra_hard/implement_03.rs"]
 mod _03;
-
-#[path = "extra_hard/implement_04.rs"]
-mod _04;
 
 #[path = "extra_hard/implement_05.rs"]
 mod _05;
 
 pub(super) fn scenarios(v: &mut Vec<ScenarioSpec>) {
-    _01::scenario(v);
-    _02::scenario(v);
     _03::scenario(v);
-    _04::scenario(v);
     _05::scenario(v);
 }
