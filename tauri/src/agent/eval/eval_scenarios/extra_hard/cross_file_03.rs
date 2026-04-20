@@ -125,11 +125,23 @@ def validate_user(user) -> list[str]:
 "#).unwrap();
 
         let test_file = ap(dir, "test_migration.py");
-        std::fs::write(&test_file, r#"import json
+        std::fs::write(&test_file, r#"import inspect
+import json
 from models import User
 from service import create_user, update_address, get_user_summary
 from serializer import to_json, from_json, serialize_list
 from validator import validate_user, validate_email
+
+
+def test_service_signatures_no_str_address():
+    """Service-layer signatures must reflect the new structured address."""
+    for fn in (create_user, update_address):
+        for name, p in inspect.signature(fn).parameters.items():
+            if "address" in name:
+                assert p.annotation is not str, (
+                    f"{fn.__name__}({name}) still annotated as str — "
+                    f"update the type hint to reflect the structured address"
+                )
 
 
 def test_user_address_is_dict():
@@ -245,6 +257,7 @@ def test_validate_email_unchanged():
 
 
 if __name__ == "__main__":
+    test_service_signatures_no_str_address()
     test_user_address_is_dict()
     test_display_address_formatted()
     test_create_user_with_dict_address()

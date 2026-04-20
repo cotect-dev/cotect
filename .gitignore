@@ -58,3 +58,6 @@ plans/
 
 # Claude
 .claude/
+
+# Top-level scratch / eval result dumps
+/*.txt

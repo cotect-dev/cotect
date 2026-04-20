@@ -87,6 +87,8 @@ class DoublyLinkedList:
                     self._head = curr.next
                 if curr.next:
                     curr.next.prev = curr.prev
+                else:
+                    self._tail = curr.prev
                 self._size -= 1
                 return
             curr = curr.next
@@ -207,6 +209,8 @@ class DoublyLinkedList:
                     self._head = curr.next
                 if curr.next:
                     curr.next.prev = curr.prev
+                else:
+                    self._tail = curr.prev
                 self._size -= 1
                 return
             curr = curr.next
@@ -284,19 +288,36 @@ if test_file is None:
     print("NO_TEST_FILE_FOUND")
     sys.exit(1)
 
+def _invoke(cmd, timeout_msg):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired as e:
+        class R: pass
+        r = R()
+        r.returncode = 124
+        r.stdout = (e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or ""))
+        r.stderr = timeout_msg
+        return r
+
 def swap_and_run(label, src_file):
     shutil.copy(src_file, "linkedlist.py")
     shutil.rmtree('__pycache__', ignore_errors=True)
-    return subprocess.run(
-        [sys.executable, '-B', test_file],
-        capture_output=True, text=True, timeout=30
+    timeout_msg = f"TIMEOUT after 30s (tests hung on {label} impl)"
+    # Prefer pytest (handles unittest.TestCase + bare test_ funcs); fall back
+    # to direct execution if pytest collected nothing (script-style tests).
+    r = _invoke(
+        [sys.executable, '-B', '-m', 'pytest', test_file, '-x', '--tb=short', '-q'],
+        timeout_msg,
     )
+    if r.returncode == 5:
+        r = _invoke([sys.executable, '-B', test_file], timeout_msg)
+    return r
 
 buggy_result = swap_and_run("BUGGY", "linkedlist_buggy.py")
-buggy_failed = buggy_result.returncode != 0 or "ALL_TESTS_PASSED" not in buggy_result.stdout
+buggy_failed = buggy_result.returncode != 0
 
 fixed_result = swap_and_run("FIXED", "linkedlist_fixed.py")
-fixed_passed = fixed_result.returncode == 0 and "ALL_TESTS_PASSED" in fixed_result.stdout
+fixed_passed = fixed_result.returncode == 0
 
 if buggy_failed and fixed_passed:
     print("ALL_TESTS_PASSED")

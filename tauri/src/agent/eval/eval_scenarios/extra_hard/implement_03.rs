@@ -126,6 +126,8 @@ class DataService:
     #   cached_get(key) to reflect the new repository state.
     # - get_record() (the uncached entry point) must continue to bypass the
     #   cache entirely.
+    # - Negative results (key not present in the repository, i.e. None) are
+    #   not stored in the cache and do not count toward CACHE_MAX_SIZE.
 
     # TODO: implement cache_stats(self) -> dict
     # Returns {"hits": int, "misses": int, "size": int} where:

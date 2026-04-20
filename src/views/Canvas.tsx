@@ -14,7 +14,7 @@ const proOptions = { hideAttribution: true }
 
 const CANVAS_PAD_X = 48
 
-// Initial viewport position — ensures nodes aren't hidden behind the menu bar
+// Initial viewport position — ensures nodes aren't hidden behind the menu
 // on the very first render before any effects have a chance to run.
 const defaultViewport = { x: CANVAS_PAD_X, y: CANVAS_PAD_Y, zoom: 1 }
 

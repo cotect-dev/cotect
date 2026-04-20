@@ -92,9 +92,12 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
             truncate("hello world", 8, "~") => "hello w~"
             truncate("hi", 10) => "hi"
         """
-        if len(text) > max_len:
-            return text[:max_len - len(suffix)] + suffix
-        return text
+        if len(text) <= max_len:
+            return text
+        cut = max_len - len(suffix)
+        if cut <= 0:
+            return suffix[:max_len]
+        return text[:cut] + suffix
 
     @staticmethod
     def pad_center(text: str, width: int, fill: str = " ") -> str:
@@ -152,26 +155,42 @@ if test_file is None:
     print("NO_TEST_FILE_FOUND")
     sys.exit(1)
 
+def _invoke(cmd, timeout_msg):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired as e:
+        class R: pass
+        r = R()
+        r.returncode = 124
+        r.stdout = (e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or ""))
+        r.stderr = timeout_msg
+        return r
+
 def run_against(label, module_file):
     backup = None
     if os.path.exists("strutil.py"):
         backup = open("strutil.py").read()
     shutil.copy(module_file, "strutil.py")
     shutil.rmtree('__pycache__', ignore_errors=True)
-    result = subprocess.run(
-        [sys.executable, '-B', test_file],
-        capture_output=True, text=True, timeout=30
+    timeout_msg = f"TIMEOUT after 30s (tests hung on {label} impl)"
+    # Prefer pytest (handles unittest.TestCase + bare test_ funcs); fall back
+    # to direct execution if pytest collected nothing (script-style tests).
+    result = _invoke(
+        [sys.executable, '-B', '-m', 'pytest', test_file, '-x', '--tb=short', '-q'],
+        timeout_msg,
     )
+    if result.returncode == 5:
+        result = _invoke([sys.executable, '-B', test_file], timeout_msg)
     if backup is not None:
         with open("strutil.py", "w") as f:
             f.write(backup)
     return result
 
 buggy_result = run_against("BUGGY", "strutil_buggy.py")
-buggy_failed = buggy_result.returncode != 0 or "ALL_TESTS_PASSED" not in buggy_result.stdout
+buggy_failed = buggy_result.returncode != 0
 
 fixed_result = run_against("FIXED", "strutil_fixed.py")
-fixed_passed = fixed_result.returncode == 0 and "ALL_TESTS_PASSED" in fixed_result.stdout
+fixed_passed = fixed_result.returncode == 0
 
 if buggy_failed and fixed_passed:
     print("ALL_TESTS_PASSED")
