@@ -864,6 +864,19 @@ fn rel_path_str(full: &str, base: &Path) -> String {
         })
 }
 
+/// Render a byte count as a short human-readable string (B / KB / MB).
+/// Used by the live status line to surface streamed-text volume during
+/// runaway-tail generation phases.
+fn fmt_bytes(n: usize) -> String {
+    if n < 1024 {
+        format!("{n} B")
+    } else if n < 1024 * 1024 {
+        format!("{:.1} KB", n as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", n as f64 / (1024.0 * 1024.0))
+    }
+}
+
 fn truncate_display(s: &str, max: usize) -> String {
     if s.chars().count() <= max { s.to_string() }
     else {
@@ -1002,10 +1015,19 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         let mut reasoning_text = String::new();
         let mut interrupted: Option<String> = None;
         let mut completed = false;
-        // Heartbeat: when no events flow for a bit, print a live "thinking" line
-        // on the same terminal row with an elapsed counter + rotating spinner,
-        // so the user can tell the model is working vs. hung. Reset on any event
-        // (including Text/Reasoning deltas) to stay silent during streaming.
+        // Heartbeat: print a live status line on the same terminal row between
+        // tool calls so the user can tell the model is working vs. hung.
+        // Distinguishes three states:
+        //   · `thinking…`  — true silence (no tokens flowing, just waiting on a tool call)
+        //   · `streaming…` — model is emitting text/reasoning but hasn't called a tool
+        //     for a while (catches "runaway tail" generation that would otherwise
+        //     look identical to silence)
+        //   · `tool error` / `cheat attempt` / etc. — surfaced inline on tool end
+        //
+        // The heartbeat is reset only by *action* events (tool start/end, complete,
+        // interrupted). Streaming text/reasoning bumps byte counters but does NOT
+        // reset the timer — so a model spewing 500 KB of post-tool reasoning still
+        // shows up as `streaming… [120s · 500 KB, no tool]` instead of looking idle.
         let mut heartbeat = tokio::time::interval(std::time::Duration::from_millis(500));
         heartbeat.tick().await; // consume the immediate first tick
         let silence_start = std::time::Instant::now();
@@ -1013,6 +1035,9 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         let mut thinking_line_open = false;
         const SPINNER: [char; 10] = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
         let mut spin_idx: usize = 0;
+        // Bytes of text/reasoning streamed since the last action event.
+        let mut text_bytes_since_action: usize = 0;
+        let mut reasoning_bytes_since_action: usize = 0;
 
         // Helper: close out the in-place thinking line (if any) before printing
         // real output. Short silences erase the line (keeps output clean);
@@ -1034,18 +1059,35 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
             }
         }
 
+        // True when the next action event should reset the silence/byte
+        // counters. Streaming events (Text/Reasoning) accumulate but do NOT
+        // reset, so a runaway generation tail stays visible as `streaming…`.
+        let reset_action_state = |silence_started: &mut Option<std::time::Instant>,
+                                   text_bytes: &mut usize,
+                                   reasoning_bytes: &mut usize,
+                                   heartbeat: &mut tokio::time::Interval| {
+            heartbeat.reset();
+            *silence_started = None;
+            *text_bytes = 0;
+            *reasoning_bytes = 0;
+        };
+
         loop {
             tokio::select! {
                 ev = rx.recv() => {
                     let Some(ev) = ev else { break };
+                    let mut is_action = false;
                     match &ev {
                         TaskEvent::Text { content, partial } => {
                             if *partial { full_text.push_str(content); } else { full_text = content.clone(); }
+                            text_bytes_since_action += content.len();
                         }
                         TaskEvent::Reasoning { content } => {
                             reasoning_text.push_str(content);
+                            reasoning_bytes_since_action += content.len();
                         }
                         TaskEvent::ToolStart { tool_name, arguments, .. } => {
+                            is_action = true;
                             tool_calls.push(tool_name.clone());
                             close_thinking(&mut thinking_line_open, &silence_started);
                             let line = format_tool_line(tool_name, arguments.as_deref(), &dir_for_events);
@@ -1053,6 +1095,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                             let _ = std::io::stderr().flush();
                         }
                         TaskEvent::ToolEnd { success, output, tool_name, .. } => {
+                            is_action = true;
                             // Sandbox signals surfaced visually:
                             //   · `fs_read` returns Ok(...) with an "Access denied" refusal
                             //     when the file is on the eval sandbox block-list.
@@ -1081,27 +1124,47 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                                 let _ = std::io::stderr().flush();
                             }
                         }
-                        TaskEvent::Complete => { completed = true; }
-                        TaskEvent::Interrupted { reason } => { interrupted = Some(reason.clone()); }
+                        TaskEvent::Complete => { completed = true; is_action = true; }
+                        TaskEvent::Interrupted { reason } => { interrupted = Some(reason.clone()); is_action = true; }
                         _ => {}
                     }
-                    // Any event — even streaming deltas — resets the heartbeat.
-                    heartbeat.reset();
-                    silence_started = None;
+                    if is_action {
+                        reset_action_state(
+                            &mut silence_started,
+                            &mut text_bytes_since_action,
+                            &mut reasoning_bytes_since_action,
+                            &mut heartbeat,
+                        );
+                    }
                     events.push(ev);
                 }
                 _ = heartbeat.tick() => {
                     // Start tracking silence window lazily so the first few frames don't flash.
                     let start = *silence_started.get_or_insert_with(std::time::Instant::now);
                     let elapsed = start.elapsed().as_secs_f64();
-                    // Wait ~1s before showing the thinking line, to avoid churn during normal gaps.
+                    // Wait ~1s before showing the live line, to avoid churn during normal gaps.
                     if elapsed >= 1.0 {
                         let total = silence_start.elapsed().as_secs();
                         let _ = total; // reserved for future use
                         let glyph = SPINNER[spin_idx % SPINNER.len()];
                         spin_idx = spin_idx.wrapping_add(1);
+                        let streamed = text_bytes_since_action + reasoning_bytes_since_action;
+                        let label = if streamed >= 256 {
+                            // Tokens flowing without a tool call — surface the
+                            // runaway tail so the user can tell the model is
+                            // generating but not acting (the failure mode in
+                            // xhard_testing_03 where ~500s of text streamed
+                            // post-tool with no completion event).
+                            format!(
+                                "streaming… [{:>4.1}s · {}, no tool]",
+                                elapsed,
+                                fmt_bytes(streamed),
+                            )
+                        } else {
+                            format!("thinking… [{:>4.1}s]", elapsed)
+                        };
                         // Overwrite the same line in place (carriage return + clear to EOL).
-                        eprint!("\r\x1b[K{}\x1b[2m{} thinking… [{:>4.1}s]\x1b[0m", INDENT, glyph, elapsed);
+                        eprint!("\r\x1b[K{}\x1b[2m{} {}\x1b[0m", INDENT, glyph, label);
                         let _ = std::io::stderr().flush();
                         thinking_line_open = true;
                     }
@@ -1109,6 +1172,23 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
             }
         }
         close_thinking(&mut thinking_line_open, &silence_started);
+        // Surface a final summary if the run ended (timeout / completion) while
+        // the model was still streaming text or reasoning without ever calling
+        // another tool. This is what makes "runaway tail" failures visible in
+        // the static, post-run log even after the spinner is gone.
+        let stream_tail = text_bytes_since_action + reasoning_bytes_since_action;
+        if stream_tail >= 256 {
+            let elapsed_since_action = silence_started
+                .map(|s| s.elapsed().as_secs_f64())
+                .unwrap_or(0.0);
+            eprintln!(
+                "{}\x1b[33m  └─ tail: {} of text/reasoning over {:.1}s with no tool call\x1b[0m",
+                INDENT,
+                fmt_bytes(stream_tail),
+                elapsed_since_action,
+            );
+            let _ = std::io::stderr().flush();
+        }
         RunOutcome { events, tool_calls, full_text, reasoning_text, interrupted, completed }
     });
 

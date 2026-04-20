@@ -276,19 +276,32 @@ def swap_all(suffix):
             shutil.copy(src, target)
     shutil.rmtree('__pycache__', ignore_errors=True)
 
+def _invoke(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired as e:
+        class R: pass
+        r = R()
+        r.returncode = 124
+        r.stdout = (e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or ""))
+        r.stderr = "TIMEOUT after 30s (tests hung)"
+        return r
+
 def run_tests():
-    return subprocess.run(
-        [sys.executable, '-B', test_file],
-        capture_output=True, text=True, timeout=30
-    )
+    # Prefer pytest (handles unittest.TestCase + bare test_ funcs); fall back
+    # to direct execution if pytest collected nothing (script-style tests).
+    r = _invoke([sys.executable, '-B', '-m', 'pytest', test_file, '-x', '--tb=short', '-q'])
+    if r.returncode == 5:
+        r = _invoke([sys.executable, '-B', test_file])
+    return r
 
 swap_all("buggy")
 buggy_result = run_tests()
-buggy_failed = buggy_result.returncode != 0 or "ALL_TESTS_PASSED" not in buggy_result.stdout
+buggy_failed = buggy_result.returncode != 0
 
 swap_all("fixed")
 fixed_result = run_tests()
-fixed_passed = fixed_result.returncode == 0 and "ALL_TESTS_PASSED" in fixed_result.stdout
+fixed_passed = fixed_result.returncode == 0
 
 if buggy_failed and fixed_passed:
     print("ALL_TESTS_PASSED")

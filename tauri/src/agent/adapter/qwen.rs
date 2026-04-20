@@ -83,6 +83,13 @@ pub(crate) struct QwenStreamParser {
     has_structured_tool_calls: bool,
     /// Tool call index counter for fallback parsing.
     fallback_tool_index: usize,
+    /// True once we've seen an XML pseudo-tool-call marker (`<function=`,
+    /// `<parameter=`, `</parameter>`, or `</function>`) in content. Some
+    /// Qwen fine-tunes emit Llama-3 style XML tool calls raw, without the
+    /// `<tool_call>` wrapper. Once we see a marker we drain everything
+    /// remaining in the stream into `accumulated_text` so `flush_remaining`
+    /// can parse it (or emit `__format_error__` for unsalvageable fragments).
+    xml_pseudo_active: bool,
 }
 
 impl QwenStreamParser {
@@ -95,6 +102,7 @@ impl QwenStreamParser {
             in_thinking: false,
             has_structured_tool_calls: false,
             fallback_tool_index: 0,
+            xml_pseudo_active: false,
         }
     }
 }
@@ -272,6 +280,28 @@ impl QwenStreamParser {
                 return;
             }
 
+            // Detect XML pseudo-tool-call markers (Llama-3 / Claude style
+            // emitted raw, without a <tool_call> wrapper). Once we see one,
+            // drain the rest of the stream into accumulated_text so the
+            // fallback parser can pick it up at flush time.
+            if self.xml_pseudo_active {
+                let raw: String = self.text_buffer.drain(..).collect();
+                self.accumulated_text.push_str(&raw);
+                return;
+            }
+            if let Some(pos) = find_xml_pseudo_marker(&self.text_buffer) {
+                if pos > 0 {
+                    let text: String = self.text_buffer.drain(..pos).collect();
+                    if !text.is_empty() {
+                        events.push(LlmStreamEvent::TextDelta(text));
+                    }
+                }
+                self.xml_pseudo_active = true;
+                let raw: String = self.text_buffer.drain(..).collect();
+                self.accumulated_text.push_str(&raw);
+                return;
+            }
+
             // No markers found — emit text safely
             let safe = safe_emit_len_multi(
                 &self.text_buffer,
@@ -282,6 +312,10 @@ impl QwenStreamParser {
                     "</tool_call>",
                     "<tool_response>",
                     "</tool_response>",
+                    "<function=",
+                    "</function>",
+                    "<parameter=",
+                    "</parameter>",
                 ],
             );
             if safe == 0 {
@@ -358,11 +392,34 @@ impl QwenStreamParser {
             remaining = rest;
         }
 
-        // If no <tool_call> tags found, try bare JSON parsing
+        // If no <tool_call> tags found, try bare JSON parsing or XML pseudo-call.
         if !found_any {
             let trimmed = text.trim();
             if trimmed.starts_with('{') && trimmed.contains("\"name\"") {
                 self.emit_single_tool_call(trimmed, events);
+            } else if let Some(start) = trimmed.find("<function=") {
+                // Llama-3 / Claude-style XML call emitted without <tool_call>
+                // wrapper. parse_xml_function_call handles a single call;
+                // emit_single_tool_call routes parse failures through
+                // emit_format_error automatically.
+                self.emit_single_tool_call(&trimmed[start..], events);
+            } else if has_xml_param_fragment(trimmed) {
+                // The opening <function=NAME> tag is missing but parameter /
+                // closing fragments are present — the model emitted a
+                // malformed call. Surface a format error so it retries
+                // instead of silently believing the call ran.
+                let idx = self.fallback_tool_index;
+                self.fallback_tool_index += 1;
+                events.push(emit_format_error(
+                    idx,
+                    trimmed,
+                    "Detected stray XML tool-call fragments \
+                     (<parameter=...>, </parameter>, or </function>) without \
+                     a matching <function=NAME> opening tag. The call was \
+                     not executed. Emit tool calls inside <tool_call>...\
+                     </tool_call> using JSON: \
+                     {\"name\": \"tool_name\", \"arguments\": {...}}",
+                ));
             } else if !trimmed.is_empty() {
                 // Not a tool call — emit as text
                 let clean = strip_raw_tool_tokens(trimmed);
@@ -575,9 +632,51 @@ fn strip_raw_tool_tokens(text: &str) -> String {
     ])
 }
 
+/// Find the first byte offset of any XML pseudo-tool-call marker in `text`,
+/// or `None` if no marker is present. Markers: `<function=`, `<parameter=`,
+/// `</parameter>`, `</function>`.
+fn find_xml_pseudo_marker(text: &str) -> Option<usize> {
+    [
+        "<function=",
+        "<parameter=",
+        "</parameter>",
+        "</function>",
+    ]
+    .iter()
+    .filter_map(|m| text.find(m))
+    .min()
+}
+
+/// True when the text contains XML pseudo-tool-call fragments without a
+/// matching `<function=NAME>` opener. Used to detect partial / malformed
+/// emissions so we can return a format error instead of silently treating
+/// the fragments as plain prose.
+fn has_xml_param_fragment(text: &str) -> bool {
+    if text.contains("<function=") {
+        return false;
+    }
+    text.contains("<parameter=")
+        || text.contains("</parameter>")
+        || text.contains("</function>")
+}
+
 /// Check if text contains a tool-call pattern that needs fallback parsing.
+///
+/// Detects three shapes:
+///   1. `<tool_call>...</tool_call>` (Hermes/Qwen native).
+///   2. `<function=NAME>...</function>` (Llama-3 / Claude-style XML — some
+///      Qwen fine-tunes emit this raw, without the `<tool_call>` wrapper).
+///   3. Dangling `<parameter=...>` / `</parameter>` / `</function>` fragments
+///      (the model started writing an XML call but the opening tag got lost
+///      to truncation or formatting confusion). These are unparseable but
+///      we still want to surface a format error so the model retries instead
+///      of believing its phantom call was executed.
 fn contains_tool_call_pattern(text: &str) -> bool {
     text.contains("<tool_call>")
+        || text.contains("<function=")
+        || text.contains("<parameter=")
+        || text.contains("</parameter>")
+        || text.contains("</function>")
 }
 
 
@@ -975,6 +1074,61 @@ mod tests {
         let (name, args) = parse_qwen_tool_call("<function=status></function>").unwrap();
         assert_eq!(name, "status");
         assert_eq!(args, "{}");
+    }
+
+    #[test]
+    fn fallback_parses_bare_xml_function_call_without_tool_call_wrapper() {
+        // Some Qwen fine-tunes emit Llama-style XML tool calls directly into
+        // the content stream, never wrapping them in <tool_call>...</tool_call>.
+        // We treat a parseable <function=...>...</function> block as a real
+        // tool call so the model still makes progress.
+        let mut parser = QwenStreamParser::new();
+        parser.process_sse_data(
+            r#"{"choices":[{"delta":{"content":"Sure, I'll write the file.\n<function=write>\n<parameter=file_path>\n/tmp/foo.py\n</parameter>\n<parameter=content>\nprint('hi')\n</parameter>\n</function>"},"finish_reason":null}]}"#,
+        );
+        let e = parser.process_sse_data(
+            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        );
+        let calls: Vec<_> = e
+            .iter()
+            .filter_map(|ev| match ev {
+                LlmStreamEvent::ToolCallDelta { name: Some(n), arguments_chunk, .. } => {
+                    Some((n.clone(), arguments_chunk.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 1, "expected exactly one tool call, got {calls:?}");
+        assert_eq!(calls[0].0, "write");
+        let parsed: serde_json::Map<String, Value> = serde_json::from_str(&calls[0].1).unwrap();
+        assert_eq!(parsed["file_path"], "/tmp/foo.py");
+        assert_eq!(parsed["content"], "print('hi')");
+    }
+
+    #[test]
+    fn fallback_emits_format_error_for_dangling_xml_fragments() {
+        // Reproduces the failure mode observed in xhard_refactor_04: the
+        // model emitted <parameter=...> blocks and a closing </function>
+        // without ever opening <function=NAME>. The pre-fix behaviour was
+        // to silently drop the fragments as plain text, leaving the model
+        // to believe its tool call had executed.
+        let mut parser = QwenStreamParser::new();
+        parser.process_sse_data(
+            r#"{"choices":[{"delta":{"content":"</parameter>\n<parameter=file_path>\n/tmp/x.py\n</parameter>\n<parameter=content>\nbody\n</parameter>\n</function>"},"finish_reason":null}]}"#,
+        );
+        let e = parser.process_sse_data(
+            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        );
+        let format_errors: Vec<_> = e
+            .iter()
+            .filter_map(|ev| match ev {
+                LlmStreamEvent::ToolCallDelta { name: Some(n), arguments_chunk, .. }
+                    if n == "__format_error__" => Some(arguments_chunk.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(format_errors.len(), 1, "expected one format error, got events: {e:?}");
+        assert!(format_errors[0].contains("stray XML tool-call fragments"));
     }
 
     #[test]
