@@ -33,6 +33,7 @@ export interface ProviderConfig {
   api_key?: string
   model: string
   format?: string
+  disable_thinking?: boolean
 }
 
 export interface AgentConfig {

@@ -94,13 +94,22 @@ impl Orchestrator {
             ..EnvironmentInfo::default()
         };
 
-        let system_prompt = system_prompt::build_system_prompt(
+        let mut system_prompt = system_prompt::build_system_prompt(
             request.role,
             &request.scope,
             &env,
             &[], // File contents are loaded lazily by the agent via read tool
             None,
         );
+
+        // Append `/no_think` for Qwen providers that opted out of thinking.
+        // The soft switch is officially Qwen 3 only, but 3.5/3.6 finetunes
+        // often still honour it. Complementary to server-side flags.
+        if provider.disable_thinking == Some(true)
+            && matches!(provider.resolved_format(), crate::agent::adapter::PromptFormat::Qwen)
+        {
+            system_prompt.push_str("\n\n/no_think\n");
+        }
 
         let mut context = ConversationContext::new(system_prompt, tool_defs);
         context.append_user(&request.prompt);
@@ -1039,6 +1048,7 @@ mod tests {
             api_key: None,
             model: "test-model".into(),
             format: None,
+            disable_thinking: None,
         };
         let request = TaskRequest {
             id: "test-task".into(),
@@ -1055,6 +1065,67 @@ mod tests {
             conversation_id: None,
         };
         Orchestrator::new(&provider, &request, sender)
+    }
+
+    fn provider_with(format_hint: &str, disable_thinking: Option<bool>) -> ProviderConfig {
+        ProviderConfig {
+            id: "test".into(),
+            name: "Test".into(),
+            endpoint: "http://localhost:11434/v1".into(),
+            api_key: None,
+            model: format_hint.into(),
+            format: None,
+            disable_thinking,
+        }
+    }
+
+    fn test_request() -> TaskRequest {
+        TaskRequest {
+            id: "t".into(),
+            prompt: "noop".into(),
+            scope: TaskScope {
+                root_path: "/tmp".into(),
+                files: vec![],
+                directory: None,
+                declarations: vec![],
+                description: None,
+                blocked_files: vec![],
+            },
+            role: AgentRole::Implement,
+            conversation_id: None,
+        }
+    }
+
+    #[test]
+    fn test_no_think_suffix_applied_for_qwen_when_opted_in() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let provider = provider_with("qwen3.6-35b-a3b", Some(true));
+        let orch = Orchestrator::new(&provider, &test_request(), tx);
+        let sys = orch.context.messages()[0].content.clone();
+        assert!(
+            sys.contains("/no_think"),
+            "Qwen + disable_thinking=true must append /no_think; got:\n{sys}"
+        );
+    }
+
+    #[test]
+    fn test_no_think_suffix_absent_when_opt_out_is_default() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let provider = provider_with("qwen3.6-35b-a3b", None);
+        let orch = Orchestrator::new(&provider, &test_request(), tx);
+        let sys = orch.context.messages()[0].content.clone();
+        assert!(!sys.contains("/no_think"));
+    }
+
+    #[test]
+    fn test_no_think_suffix_only_for_qwen_format() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        // Gemma has its own thinking mechanism — the Qwen soft switch shouldn't
+        // leak into its prompt even if the user toggles disable_thinking.
+        let provider = provider_with("unsloth/gemma-4-26B-A4B-it", Some(true));
+        let orch = Orchestrator::new(&provider, &test_request(), tx);
+        let sys = orch.context.messages()[0].content.clone();
+        assert!(!sys.contains("/no_think"));
     }
 
 }

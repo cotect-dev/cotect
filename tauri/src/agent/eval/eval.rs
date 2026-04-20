@@ -53,6 +53,7 @@ struct EvalConfig {
     transcript_dir: Option<std::path::PathBuf>,
     format_override: Option<super::adapter::PromptFormat>,
     keep_dirs: bool,
+    disable_thinking: Option<bool>,
 }
 
 impl EvalConfig {
@@ -89,6 +90,12 @@ impl EvalConfig {
             .ok()
             .and_then(|v| parse_format_override(&v));
         let keep_dirs = std::env::var("COTECT_EVAL_KEEP_DIRS").ok().is_some_and(|v| v == "1" || v == "true");
+        // Opt the model out of thinking mode. For Qwen this appends `/no_think`
+        // to the system prompt; for other formats it's a no-op today. Pair
+        // with `--reasoning-budget 0` on the server for a hard cap.
+        let disable_thinking = std::env::var("COTECT_EVAL_NO_THINK")
+            .ok()
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"));
 
         if let Some(ref d) = transcript_dir {
             let _ = std::fs::create_dir_all(d);
@@ -108,6 +115,7 @@ impl EvalConfig {
             transcript_dir,
             format_override,
             keep_dirs,
+            disable_thinking,
         })
     }
 
@@ -119,6 +127,7 @@ impl EvalConfig {
             api_key: self.api_key.clone(),
             model: self.model.clone(),
             format: self.format_override,
+            disable_thinking: self.disable_thinking,
         }
     }
 }
@@ -1554,6 +1563,9 @@ async fn eval_suite() {
     eprintln!("  \x1b[36mstyle\x1b[0m      {}", cfg.system_style.label());
     eprintln!("  \x1b[36mtimeout\x1b[0m    {}s/scenario", cfg.timeout.as_secs());
     eprintln!("  \x1b[36mmax turns\x1b[0m  {}", cfg.max_turns);
+    if cfg.disable_thinking == Some(true) {
+        eprintln!("  \x1b[36mthinking\x1b[0m   disabled (/no_think for Qwen)");
+    }
     if let Some(c) = cfg.category { eprintln!("  \x1b[36mcategory\x1b[0m   {}", c.label()); }
     if let Some(d) = cfg.difficulty { eprintln!("  \x1b[36mdifficulty\x1b[0m {}", d.label()); }
     if let Some(f) = &cfg.filter { eprintln!("  \x1b[36mfilter\x1b[0m     {}", f); }
