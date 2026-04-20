@@ -1100,7 +1100,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         // The heartbeat is reset only by *action* events (tool start/end, complete,
         // interrupted). Streaming text/reasoning bumps byte counters but does NOT
         // reset the timer — so a model spewing 500 KB of post-tool reasoning still
-        // shows up as `streaming… [120s · 500 KB, no tool]` instead of looking idle.
+        // shows up as `streaming… [120s · 500 KB]` instead of looking idle.
         let mut heartbeat = tokio::time::interval(std::time::Duration::from_millis(500));
         heartbeat.tick().await; // consume the immediate first tick
         let silence_start = std::time::Instant::now();
@@ -1223,13 +1223,13 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                         spin_idx = spin_idx.wrapping_add(1);
                         let streamed = text_bytes_since_action + reasoning_bytes_since_action;
                         let label = if streamed >= 256 {
-                            // Tokens flowing without a tool call — surface the
-                            // runaway tail so the user can tell the model is
-                            // generating but not acting (the failure mode in
-                            // xhard_testing_03 where ~500s of text streamed
-                            // post-tool with no completion event).
+                            // Tokens flowing between tool calls — surface the
+                            // tail so the user can tell the model is
+                            // generating but not acting (runaway-reasoning
+                            // failure mode). "streaming" alone already
+                            // implies no tool call is in flight.
                             format!(
-                                "streaming… [{:>4.1}s · {}, no tool]",
+                                "streaming… [{:>4.1}s · {}]",
                                 elapsed,
                                 fmt_bytes(streamed),
                             )
