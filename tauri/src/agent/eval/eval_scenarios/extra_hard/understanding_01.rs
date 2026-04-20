@@ -146,15 +146,27 @@ class BatchResult:
                     "0.5".into(),    // jitter low end
                     "1.5".into(),    // jitter high end
                 ]),
-                // The exponential growth shape — accept either the literal
-                // `2 **` form, or natural-language equivalents.
+                // The exponential growth shape — accept any reasonable
+                // way the model can express "base 2": Python operator
+                // (`2 **`, `2**`), math notation (`2^`, `2 ^`), English
+                // verbs (doubles / doubled / doubling), powers-of-2
+                // phrasing, or `base 2` / `factor of 2`. The intent is
+                // to reject answers that say "exponential backoff" in
+                // the abstract without specifying the base — not to
+                // grade the model's syntactic preference.
                 Check::OutputContainsAny(vec![
                     "2 ** ".into(),
                     "2**".into(),
+                    "2^".into(),
+                    "2 ^".into(),
                     "doubles".into(),
                     "doubled".into(),
                     "doubling".into(),
                     "powers of 2".into(),
+                    "power of 2".into(),
+                    "base 2".into(),
+                    "factor of 2".into(),
+                    "multiplied by 2".into(),
                 ]),
                 // Attempt count — same lenient match as before.
                 Check::OutputContainsAny(vec![
