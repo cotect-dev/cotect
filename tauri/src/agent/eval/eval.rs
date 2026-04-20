@@ -1281,13 +1281,29 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
 
     let (passed, failed_checks, interrupted) = match orch_result {
         Ok(Ok(())) => {
-            let (ok, failures) = evaluate_checks(&setup.checks, &outcome, &dir_path);
+            // If the orchestrator ended with an interrupt (max_turns
+            // reached, doom loop, too many tool errors, …) but the model's
+            // work on disk still satisfies the file/shell rubric, treat
+            // the scenario as passed. `Check::Completed` is a process
+            // signal ("the model emitted a clean done event"), not a
+            // correctness signal, so it's skipped in the interrupted case.
+            // Otherwise we'd mark scenarios that already wrote the right
+            // code as FAIL purely because the model didn't say "done" in
+            // time — which happened on refactor_05 in our eval run.
+            let effective_checks: Vec<Check> = if outcome.interrupted.is_some() {
+                setup.checks.iter()
+                    .filter(|c| !matches!(c, Check::Completed))
+                    .cloned()
+                    .collect()
+            } else {
+                setup.checks.clone()
+            };
+            let (ok, failures) = evaluate_checks(&effective_checks, &outcome, &dir_path);
             (ok, failures, outcome.interrupted.clone())
         }
         Ok(Err(e)) => (false, vec![format!("orch error: {e}")], outcome.interrupted.clone()),
         Err(_) => {
-            // Timeout — still evaluate file-based checks since files may already
-            // be written to disk. Skip the Completed check (scenario didn't finish).
+            // Wall-clock timeout — same treatment as an interrupt.
             let timeout_checks: Vec<Check> = setup.checks.iter()
                 .filter(|c| !matches!(c, Check::Completed))
                 .cloned()

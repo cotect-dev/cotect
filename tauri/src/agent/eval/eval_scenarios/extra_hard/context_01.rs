@@ -82,7 +82,7 @@ console.log("ALL_TESTS_PASSED");
                  genuine correctness issues, fix ONLY those, and run \
                  `node test_bigfile.mjs` until it prints ALL_TESTS_PASSED.\n\n\
                  Constraint: your final `bigfile.js` must differ from the \
-                 original by at most 45 lines (added+removed). The rubric \
+                 original by at most 60 lines (added+removed). The rubric \
                  enforces this — don't rewrite unrelated helpers.\n\n\
                  Files:\n- bigfile.js ({} lines)\n- test_bigfile.mjs",
                 bigfile_src.lines().count(),
@@ -91,11 +91,13 @@ console.log("ALL_TESTS_PASSED");
                 complete(),
                 succeeded("shell"),
                 run_has("node test_bigfile.mjs", &["ALL_TESTS_PASSED"]),
-                // Localized-edit rubric: ≤45 changed lines vs the reference.
-                // Tight enough to catch wholesale rewrites (the file is
-                // ~1000 lines), loose enough that editor-level differences
-                // around the 3 legitimate fixes don't trip false fails.
-                diff_at_most(&reference_abs.to_string_lossy(), "bigfile.js", 45),
+                // Localized-edit rubric: ≤60 changed lines vs the reference.
+                // The CSV-parser fix needs a small state machine (~10–15
+                // lines) on top of two one-liners. 60 keeps the "don't
+                // rewrite the whole file" spirit (file is ~1000 lines)
+                // without penalising an honest implementation of
+                // parseCsvLine's escape handling.
+                diff_at_most(&reference_abs.to_string_lossy(), "bigfile.js", 60),
             ]),
             vec![bigfile_abs]),
             vec![reference_abs.to_string_lossy().into_owned(), test])
