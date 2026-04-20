@@ -2,15 +2,17 @@
 //!
 //! `dedupe(xs)` must return a deduplicated vector that preserves the FIRST
 //! occurrence of each value in input order. The seed implementation is
-//! O(n²) because it uses `Vec::contains` inside the loop — on the 50_000-
-//! element input with heavy duplication the benchmark test wall-clocks past
-//! 30 seconds.
+//! O(n²) because it uses `Vec::contains` inside the loop — on the 200_000-
+//! element input with heavy duplication the benchmark wall-clocks well
+//! past the 150ms budget.
 //!
 //! Fix: use a `HashSet` to track seen keys; the Vec collects order.
 //!
 //! The test asserts correctness (order + values) AND a wall-clock budget
-//! of 500ms in `--release` mode. The model must recognize the quadratic
-//! lookup and swap it for a set-based dedupe.
+//! of 150 ms in `--release` mode. That budget is tight enough that
+//! "slightly smarter quadratic" variants (sorting first, early-break on
+//! `Vec::contains`, etc.) still fail — the model must pick a set-based
+//! O(n) approach.
 
 use std::path::Path;
 
@@ -66,11 +68,15 @@ fn correctness() {
 }
 
 #[test]
-fn perf_budget_50k() {
-    // 50_000 elements with many duplicates. The buggy O(n²) version takes
-    // tens of seconds; a HashSet-based fix completes in well under 100ms.
-    let input: Vec<i64> = (0..50_000).map(|i| (i % 5000) as i64).collect();
-    let expected_len = 5000;
+fn perf_budget_200k() {
+    // 200_000 elements, many duplicates. This input scale is deliberately
+    // beyond what a "smarter Vec::contains" or early-break optimisation
+    // can save — O(n²) takes tens of seconds, even O(n log n) sorts
+    // struggle, while a HashSet-based linear pass lands in <100ms. The
+    // 150ms budget forces the correct data-structure choice, not a
+    // clever-looking quadratic variant.
+    let input: Vec<i64> = (0..200_000).map(|i| (i % 10_000) as i64).collect();
+    let expected_len = 10_000;
 
     let start = Instant::now();
     let out = dedupe(input);
@@ -78,15 +84,15 @@ fn perf_budget_50k() {
 
     assert_eq!(out.len(), expected_len, "output length mismatch");
 
-    // First-occurrence order: the first 5000 values of the input are 0..5000
-    // and later copies should not displace them.
+    // First-occurrence order: the first 10 000 values of the input are
+    // 0..10_000 and later copies should not displace them.
     for (i, v) in out.iter().enumerate() {
         assert_eq!(*v, i as i64, "index {}: order broken", i);
     }
 
     assert!(
-        elapsed.as_millis() < 500,
-        "dedupe took {}ms for 50k input (budget 500ms) — still quadratic",
+        elapsed.as_millis() < 150,
+        "dedupe took {}ms for 200k input (budget 150ms) — need a set-based O(n) approach",
         elapsed.as_millis(),
     );
 
@@ -99,15 +105,17 @@ fn perf_budget_50k() {
 
         with_scope(with_checks(pf(
             "The `dedupe` crate in this tempdir has a correctness-correct \
-             but performance-quadratic implementation. The `perf_budget_50k` \
-             integration test enforces a 500ms wall-clock budget on a \
-             50_000-element input and currently times out.\n\n\
+             but performance-quadratic implementation. The `perf_budget_200k` \
+             integration test enforces a 150 ms wall-clock budget on a \
+             200_000-element input and currently times out.\n\n\
              Rewrite `dedupe` in `src/lib.rs` so `cargo test --release` \
-             passes both `correctness` and `perf_budget_50k` and prints \
+             passes both `correctness` and `perf_budget_200k` and prints \
              ALL_TESTS_PASSED. Keep the signature \
              `pub fn dedupe(xs: Vec<i64>) -> Vec<i64>` and preserve \
-             first-occurrence insertion order. No new crate dependencies \
-             — the Rust standard library is enough."
+             first-occurrence insertion order. The 150 ms budget is tight \
+             enough that you must use a set-based O(n) approach — \
+             sorting-first or smart-loop variants won't fit. No new crate \
+             dependencies; the Rust standard library is enough."
             .to_string()
         ),
             vec![

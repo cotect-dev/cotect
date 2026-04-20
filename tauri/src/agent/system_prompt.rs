@@ -161,7 +161,7 @@ fn tool_rules(role: AgentRole) -> String {
     rules.push_str(
         "- Invoke tools through the structured tool-calling interface. Do not emit `<tool_call>`, `<function=...>`, or raw tool-call JSON as part of your text response — those will not be executed and the turn will end prematurely.\n\
          - Always read a file before modifying it (write or patch). Blind modifications will be rejected.\n\
-         - Your conversation context persists across turns. Once you've read a file, its contents remain available to you for the rest of the session — do not re-read the same file unless it was just modified. Unchanged re-reads return a compact stub; use the earlier result.\n\
+         - Your conversation context persists across turns. Once you've read a file, its contents remain available to you for the rest of the session — do not re-read the same file unless it was just modified or you genuinely need a fresh view.\n\
          - A successful `patch` or `write` confirms the edit landed — trust the tool's response and move on to the next step (typically running the test). Do not verify writes via `read` / `xxd` / encoding probes.\n\
          - The read tool prefixes each line with its line number as `<N>: <line>` — these prefixes are NOT part of the file content. When constructing patch `old_string` values, use only the raw line text without the `<N>: ` prefix.\n\
          - The patch tool requires `old_string` to match the file content EXACTLY (including whitespace and indentation). If a patch fails with \"not found\", re-read the file to check the exact bytes, and strip any line-number prefixes from what you copy.\n\
