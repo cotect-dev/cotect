@@ -19,9 +19,7 @@ pub const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 /// headroom for real invocations.
 pub const MAX_SHELL_ARGS_BYTES: usize = 4 * 1024;
 
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -35,15 +33,6 @@ use super::types::{FunctionDef, ToolCall, ToolDefinition, AgentRole};
 #[derive(Debug)]
 pub struct ToolState {
     pub read_files: Mutex<HashSet<PathBuf>>,
-    /// Hash of the content returned on the last read for this path. Used by
-    /// `fs_read` to short-circuit re-reads of unchanged files: instead of
-    /// dumping the full file into context for the second time, it returns a
-    /// compact stub. Write/patch updates the hash to the post-write content,
-    /// so a read following a write correctly returns the stub as well (the
-    /// model already knows what it just wrote). The read call itself
-    /// always succeeds — deduplication happens only in the content we echo
-    /// back, never in the tool's success status.
-    pub read_hashes: Mutex<HashMap<PathBuf, u64>>,
     pub root_path: String,
     /// Absolute paths the agent is not allowed to read (eval-only).
     pub blocked_files: Vec<PathBuf>,
@@ -53,7 +42,6 @@ impl ToolState {
     pub fn new(root_path: String) -> Arc<Self> {
         Arc::new(Self {
             read_files: Mutex::new(HashSet::new()),
-            read_hashes: Mutex::new(HashMap::new()),
             root_path,
             blocked_files: Vec::new(),
         })
@@ -62,7 +50,6 @@ impl ToolState {
     pub fn with_blocked_files(root_path: String, blocked_files: Vec<String>) -> Arc<Self> {
         Arc::new(Self {
             read_files: Mutex::new(HashSet::new()),
-            read_hashes: Mutex::new(HashMap::new()),
             blocked_files: blocked_files.into_iter().map(PathBuf::from).collect(),
             root_path,
         })
@@ -74,36 +61,6 @@ impl ToolState {
 
     pub async fn has_read(&self, path: &str) -> bool {
         self.read_files.lock().await.contains(&PathBuf::from(path))
-    }
-
-    /// Return the content hash recorded for `path` on its last read, or None
-    /// if this path hasn't been read in the current session.
-    pub async fn last_read_hash(&self, path: &str) -> Option<u64> {
-        self.read_hashes
-            .lock()
-            .await
-            .get(&PathBuf::from(path))
-            .copied()
-    }
-
-    /// Record the content hash after a read, write, or patch. The value must
-    /// be the hash of the content that the model now holds in context (the
-    /// returned read body for reads, the newly-written content for writes /
-    /// patches).
-    pub async fn set_read_hash(&self, path: &str, hash: u64) {
-        self.read_hashes
-            .lock()
-            .await
-            .insert(PathBuf::from(path), hash);
-    }
-
-    /// Convenience: hash a string using the same scheme as `set_read_hash`
-    /// consumers, so callers in fs_read / fs_write / fs_patch agree on the
-    /// hash of a given content.
-    pub fn hash_content(content: &str) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        content.hash(&mut hasher);
-        hasher.finish()
     }
 }
 
@@ -476,20 +433,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_tool_state_read_hash_roundtrip() {
-        let state = ToolState::new("/project".into());
-        assert_eq!(state.last_read_hash("/project/x.txt").await, None);
-
-        let h = ToolState::hash_content("hello world");
-        state.set_read_hash("/project/x.txt", h).await;
-        assert_eq!(state.last_read_hash("/project/x.txt").await, Some(h));
-
-        // Hashes are content-derived — identical content hashes equal.
-        assert_eq!(h, ToolState::hash_content("hello world"));
-        assert_ne!(h, ToolState::hash_content("hello worlD"));
-    }
-
-    #[tokio::test]
     async fn test_execute_tool_search_real_dir() {
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("target.txt"), "unique_marker_1234\n").unwrap();
@@ -592,12 +535,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_read_after_write_returns_stub() {
-        // The post-write dedup is the point of read_hashes: after a write,
-        // the model already has the new content in its context via the
-        // write tool's own argument. A re-read must NOT duplicate that
-        // content back into context. Regression guard for the "paranoia
-        // re-read" pattern seen in eval transcripts.
+    async fn test_read_after_write_returns_full_content() {
+        // Every read returns the full file contents — no stubs, no
+        // harness commentary. This is a regression guard for an earlier
+        // "dedup stub" experiment that confused the model after writes.
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
         f.write_all(b"seed").unwrap();
@@ -605,7 +546,6 @@ mod tests {
         let path = f.path().to_str().unwrap();
         let state = ToolState::new("/tmp".into());
 
-        // Read + write (required by read-before-edit rule).
         let read_call = ToolCall {
             id: "r1".into(),
             call_type: "function".into(),
@@ -626,7 +566,6 @@ mod tests {
         };
         execute_tool(&write_call, &state).await.unwrap();
 
-        // Re-read after write — should short-circuit.
         let reread = ToolCall {
             id: "r2".into(),
             call_type: "function".into(),
@@ -637,10 +576,9 @@ mod tests {
         };
         let out = execute_tool(&reread, &state).await.unwrap();
         assert!(
-            out.contains("unchanged since your previous"),
-            "read-after-write must return the dedup stub, got: {out}"
+            out.contains("1: post write body"),
+            "read after write must return the updated content: {out}"
         );
-        assert!(!out.contains("1: post write body"), "full content must not be echoed back");
     }
 
     #[tokio::test]

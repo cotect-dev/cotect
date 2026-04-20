@@ -1183,15 +1183,6 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                             let shell_cheat = *success
                                 && tool_name == "shell"
                                 && out.starts_with("[EVAL CHEAT DETECTED]");
-                            // Dedup-stub indicator: when fs_read short-circuits an
-                            // unchanged re-read, the return value begins with
-                            // `[File '...' is unchanged since`. Surface it
-                            // inline so the eval watcher can SEE the dedup firing
-                            // (otherwise a stub return and a full-file return
-                            // render identically in the heartbeat).
-                            let dedup_stub = *success
-                                && tool_name == "read"
-                                && out.contains("unchanged since your previous");
                             if blocked_read {
                                 close_thinking(&mut thinking_line_open, &silence_started);
                                 eprintln!("{}\x1b[33m  └─ blocked (hidden from eval)\x1b[0m", INDENT);
@@ -1199,10 +1190,6 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                             } else if shell_cheat {
                                 close_thinking(&mut thinking_line_open, &silence_started);
                                 eprintln!("{}\x1b[33m  └─ cheat attempt (tried to read blocked file)\x1b[0m", INDENT);
-                                let _ = std::io::stderr().flush();
-                            } else if dedup_stub {
-                                close_thinking(&mut thinking_line_open, &silence_started);
-                                eprintln!("{}\x1b[2;36m  └─ dedup stub (file unchanged, no content sent)\x1b[0m", INDENT);
                                 let _ = std::io::stderr().flush();
                             } else if !*success {
                                 close_thinking(&mut thinking_line_open, &silence_started);

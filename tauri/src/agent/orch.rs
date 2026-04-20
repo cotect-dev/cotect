@@ -46,6 +46,20 @@ impl ToolErrorTracker {
 }
 
 /// The agentic orchestration loop.
+///
+/// Budgets and circuit-breakers:
+/// - `max_turns` is the only hard ceiling on how long the model can work.
+/// - `error_tracker` stops the loop when a single tool fails repeatedly
+///   (malformed arguments, blocked reads, etc.) — 5 per tool.
+/// - `doom_detector` intervenes when tool-call patterns loop (exact
+///   repeat, near-identical, thinking-in-shell).
+///
+/// Reasoning length by itself is NOT a failure mode — the model may
+/// stream as much deliberation as it wants between tool calls. Earlier
+/// versions capped reasoning bytes per turn and cumulatively across
+/// turns; both were removed because they interrupted legitimate
+/// multi-step planning and gave the model confusing "commit now"
+/// reminders while it was making progress.
 pub struct Orchestrator {
     llm: LlmClient,
     context: ConversationContext,
@@ -55,23 +69,6 @@ pub struct Orchestrator {
     doom_detector: DoomLoopDetector,
     max_turns: usize,
     tool_call_counter: usize,
-    /// Total text + reasoning bytes emitted across turns since the last
-    /// successfully-executed tool call. Used to catch the multi-turn
-    /// reasoning spiral — per-turn cutoffs (in `consume_stream`) don't
-    /// prevent a model from splitting 30 KB of reasoning across three turns
-    /// of 10 KB each. The cumulative ceiling is checked in the outer run
-    /// loop after each turn.
-    bytes_since_last_tool: usize,
-    /// Set of tool names that have been invoked (successfully or not) in
-    /// this session. Lets the streaming-cutoff reminder be scenario-aware:
-    /// if the model has 15 KB of reasoning but hasn't called `write` yet
-    /// in a scenario that plainly needs one, the reminder explicitly
-    /// suggests it.
-    tools_invoked: std::collections::HashSet<String>,
-    /// Last shell exit code we observed, if any. Non-zero means the model
-    /// should be acting on the error; if the model is instead streaming
-    /// reasoning, the cutoff reminder points at the error.
-    last_shell_exit_code: Option<i32>,
 }
 
 impl Orchestrator {
@@ -116,14 +113,10 @@ impl Orchestrator {
             error_tracker: ToolErrorTracker::new(5),
             doom_detector: DoomLoopDetector::default(),
             // 30 turns is enough for even complex refactors when the model
-            // stays on task; beyond that it's almost always a spiral. Bumped
-            // down from 100 after eval runs showed ≥30-turn scenarios were
-            // uniformly pathological (streaming-tail, doom-loop, or both).
+            // stays on task; beyond that it's almost always a tool-call
+            // loop (which the doom detector will also catch).
             max_turns: 30,
             tool_call_counter: 0,
-            bytes_since_last_tool: 0,
-            tools_invoked: std::collections::HashSet::new(),
-            last_shell_exit_code: None,
         }
     }
 
@@ -140,20 +133,8 @@ impl Orchestrator {
         let mut turn_count = 0;
         let mut empty_turn_count = 0;
         let mut stream_timeout_count = 0;
-        let mut streaming_cutoff_count = 0;
         const MAX_EMPTY_TURNS: usize = 3;
         const MAX_STREAM_TIMEOUTS: usize = 2;
-        /// How many times the streaming-tail cutoff can fire before we give
-        /// up. Two is the sweet spot: one warning, then abort. Higher values
-        /// burn per-scenario budget on a model that clearly isn't going to
-        /// commit to a tool call.
-        const MAX_STREAMING_CUTOFFS: usize = 2;
-        /// Cumulative bytes of text+reasoning allowed across *multiple turns*
-        /// between tool calls. Catches the spiral where the model splits its
-        /// reasoning across turns of just under the per-turn cap, slipping
-        /// past the `consume_stream` cutoff. 14 KB ≈ 3 500 tokens — enough
-        /// for a genuinely multi-step plan, well short of runaway.
-        const MAX_CUMULATIVE_BYTES_BETWEEN_TOOLS: usize = 14_000;
 
         while !should_yield {
             // 1. Doom loop check — warn at 3 repetitions, abort at 5.
@@ -255,55 +236,6 @@ impl Orchestrator {
                 stream_timeout_count = 0;
             }
 
-            // Streaming-tail cutoff — fires in either of two cases:
-            //   1. `consume_stream` aborted a single stream after >10 KB of
-            //      text/reasoning without any tool-call delta (per-turn).
-            //   2. The cumulative text+reasoning across turns since the last
-            //      tool call exceeded `MAX_CUMULATIVE_BYTES_BETWEEN_TOOLS`.
-            //      We detect (2) at end-of-turn below by accumulating bytes;
-            //      when it trips we retroactively mark this turn as a cutoff
-            //      and fall through to the same handling path.
-            let cumulative_cutoff = !has_tools
-                && self.bytes_since_last_tool + turn.content.len() + turn.reasoning.len()
-                    > MAX_CUMULATIVE_BYTES_BETWEEN_TOOLS;
-            let is_cutoff = finish == Some("streaming_tail_cutoff") || cumulative_cutoff;
-            if is_cutoff {
-                streaming_cutoff_count += 1;
-                if streaming_cutoff_count >= MAX_STREAMING_CUTOFFS {
-                    let reason = if cumulative_cutoff {
-                        format!(
-                            "Model streamed {} KB of reasoning across turns without \
-                             calling a tool ({streaming_cutoff_count} cutoffs in a row). Stopping.",
-                            (self.bytes_since_last_tool + turn.content.len() + turn.reasoning.len()) / 1024,
-                        )
-                    } else {
-                        format!(
-                            "Model kept streaming reasoning without calling tools \
-                             ({streaming_cutoff_count} cutoffs in a row). Stopping."
-                        )
-                    };
-                    self.sender.send(TaskEvent::Interrupted { reason }).ok();
-                    should_yield = true;
-                } else {
-                    let reminder = self.build_cutoff_reminder(cumulative_cutoff);
-                    self.context.inject_system_reminder(&reminder);
-                    // Reset the cumulative counter so the next turn gets a
-                    // clean budget — otherwise the reminder itself + any
-                    // follow-up stream would immediately re-trip.
-                    self.bytes_since_last_tool = 0;
-                    continue;
-                }
-            } else if has_tools {
-                // Any turn that actually produced tools resets the cutoff streak.
-                streaming_cutoff_count = 0;
-            }
-
-            // Accumulate bytes toward the cumulative cutoff for the next
-            // iteration (only counts turns that didn't produce tools).
-            if !has_tools {
-                self.bytes_since_last_tool += turn.content.len() + turn.reasoning.len();
-            }
-
             // If the model hit its token limit with no tool calls, treat it as
             // a yield — the model ran out of generation budget. Continuing would
             // just loop endlessly (common with reasoning-heavy models like Gemma 4).
@@ -394,7 +326,6 @@ impl Orchestrator {
                             // of giving up and producing a final text-only response.
                             if tool_call.function.name == "shell" {
                                 if let Some(code) = extract_shell_exit_code(&output) {
-                                    self.last_shell_exit_code = Some(code);
                                     if code != 0 {
                                         output.push_str(
                                             "\n\n[NOTE: The command exited with a non-zero code. \
@@ -424,11 +355,6 @@ impl Orchestrator {
 
                     self.doom_detector
                         .record(&tool_call.function.name, &tool_call.function.arguments);
-                    // Record tool usage (for scenario-aware reminders) and
-                    // reset the cross-turn reasoning counter — the model
-                    // just committed to an action, so the budget refreshes.
-                    self.tools_invoked.insert(tool_call.function.name.clone());
-                    self.bytes_since_last_tool = 0;
                 }
             } else if has_content {
                 // Text-only turn — add assistant text to context
@@ -477,90 +403,25 @@ impl Orchestrator {
     /// Build a streaming-cutoff reminder tailored to what we've observed
     /// so far:
     ///
-    /// * If the model hasn't used `write` yet, hint that writing might be
-    ///   the missing step — catches the failure mode where the scenario
-    ///   requires the model to author a file (tests, a new module) and
-    ///   it's spending the whole budget reasoning about what to write.
-    /// * If the last shell command returned a non-zero exit, point at that
-    ///   error — the model is streaming instead of reacting to it.
-    /// * Otherwise, the generic "commit to an action" nudge.
-    fn build_cutoff_reminder(&self, cumulative: bool) -> String {
-        let mut msg = String::with_capacity(640);
-        if cumulative {
-            msg.push_str(
-                "Your reasoning has accumulated past the cumulative budget without \
-                 calling a tool. Commit to the next concrete action RIGHT NOW — no \
-                 more planning prose."
-            );
-        } else {
-            msg.push_str(
-                "Your previous response was cut off because you emitted more than \
-                 10 KB of reasoning without calling a tool. Commit to the next \
-                 concrete action now. Keep narration to one or two sentences before \
-                 the tool call."
-            );
-        }
-
-        // Scenario-aware hint #1: the model never used `write` — and the
-        // scenario probably needs it. Many testing-category scenarios fail
-        // this way ("read the source, run the test runner, never author the
-        // test file").
-        if !self.tools_invoked.contains("write") {
-            msg.push_str(
-                "\n\nYou have not called `write` in this session. If the task \
-                 requires creating a new file (tests, helper module, seed data), \
-                 that's almost certainly your next action — call `write` now."
-            );
-        }
-
-        // Scenario-aware hint #2: a shell command just failed and the
-        // model is reasoning rather than reacting.
-        if let Some(code) = self.last_shell_exit_code {
-            if code != 0 {
-                msg.push_str(&format!(
-                    "\n\nThe last shell command exited with code {code}. Read the \
-                     error message in its output and take a direct corrective \
-                     action — do not re-derive what failed through prose."
-                ));
-            }
-        }
-
-        msg
-    }
-
     /// Consume the LLM stream, forwarding text/reasoning to the UI sender
     /// and accumulating tool calls. Returns the full turn result.
     ///
-    /// Streaming-tail cutoff: if the model emits more than
-    /// `STREAMING_TAIL_BYTE_CUTOFF` bytes of text/reasoning in this turn
-    /// without producing any `ToolCallDelta`, the stream is terminated early
-    /// with `finish_reason = "streaming_tail_cutoff"`. The outer loop treats
-    /// this as a soft interrupt: it injects a system reminder nudging the
-    /// model to commit to an action and starts a new turn. Prevents the
-    /// "reasoning spiral" failure mode where a model generates 50+ KB of
-    /// deliberation between tool calls and burns the per-scenario timeout.
+    /// Reasoning length is not capped here. The model may stream as much
+    /// deliberation as it needs between tool calls — the only upper bounds
+    /// on a run are `max_turns`, the error-budget tracker, and the doom-
+    /// loop detector. Earlier per-turn byte cutoffs interrupted legitimate
+    /// multi-step planning and were removed.
     async fn consume_stream(
         &self,
         mut rx: mpsc::UnboundedReceiver<LlmStreamEvent>,
     ) -> anyhow::Result<LlmTurnResult> {
-        /// Maximum bytes of combined text+reasoning allowed in a turn before
-        /// the model has emitted any tool-call chunk. 10 KB ≈ 2500 tokens at
-        /// ~4 chars/token — enough for rich reasoning, short of a spiral.
-        const STREAMING_TAIL_BYTE_CUTOFF: usize = 10_000;
-
         let mut result = LlmTurnResult::default();
         let mut tool_call_builders: BTreeMap<usize, ToolCallBuilder> = BTreeMap::new();
-        let mut bytes_without_tool: usize = 0;
-        let mut any_tool_delta = false;
-        let mut cutoff_fired = false;
 
         while let Some(event) = rx.recv().await {
             match event {
                 LlmStreamEvent::TextDelta(text) => {
                     result.content.push_str(&text);
-                    if !any_tool_delta {
-                        bytes_without_tool += text.len();
-                    }
                     self.sender
                         .send(TaskEvent::Text {
                             content: text,
@@ -570,9 +431,6 @@ impl Orchestrator {
                 }
                 LlmStreamEvent::ReasoningDelta(text) => {
                     result.reasoning.push_str(&text);
-                    if !any_tool_delta {
-                        bytes_without_tool += text.len();
-                    }
                     self.sender
                         .send(TaskEvent::Reasoning { content: text })
                         .ok();
@@ -583,7 +441,6 @@ impl Orchestrator {
                     name,
                     arguments_chunk,
                 } => {
-                    any_tool_delta = true;
                     let builder = tool_call_builders.entry(index).or_default();
                     if let Some(id) = id {
                         builder.id = id;
@@ -601,19 +458,6 @@ impl Orchestrator {
                     return Err(anyhow::anyhow!("LLM stream error: {msg}"));
                 }
             }
-
-            // Streaming-tail cutoff check — abort early if the model is
-            // clearly spiralling on reasoning. Dropping `rx` closes the
-            // stream on the LLM-client side.
-            if !any_tool_delta && bytes_without_tool > STREAMING_TAIL_BYTE_CUTOFF {
-                result.finish_reason = Some("streaming_tail_cutoff".into());
-                cutoff_fired = true;
-                break;
-            }
-        }
-
-        if cutoff_fired {
-            drop(rx);
         }
 
         // Finalize tool calls from builders (BTreeMap iterates in order)
@@ -1213,63 +1057,4 @@ mod tests {
         Orchestrator::new(&provider, &request, sender)
     }
 
-    #[test]
-    fn test_cutoff_reminder_suggests_write_when_absent() {
-        // Baseline: no tools used yet. Reminder should point to `write`
-        // since many scenarios that trigger this failure need file creation.
-        let (tx, _rx) = mpsc::unbounded_channel::<TaskEvent>();
-        let orch = make_test_orchestrator(tx);
-        let msg = orch.build_cutoff_reminder(false);
-        assert!(msg.contains("not called `write`"), "got: {msg}");
-        assert!(msg.contains("call `write` now"), "got: {msg}");
-    }
-
-    #[test]
-    fn test_cutoff_reminder_omits_write_hint_after_write() {
-        let (tx, _rx) = mpsc::unbounded_channel::<TaskEvent>();
-        let mut orch = make_test_orchestrator(tx);
-        orch.tools_invoked.insert("write".into());
-        let msg = orch.build_cutoff_reminder(false);
-        assert!(!msg.contains("not called `write`"), "write hint must drop once write was used: {msg}");
-    }
-
-    #[test]
-    fn test_cutoff_reminder_surfaces_last_nonzero_exit_code() {
-        let (tx, _rx) = mpsc::unbounded_channel::<TaskEvent>();
-        let mut orch = make_test_orchestrator(tx);
-        orch.last_shell_exit_code = Some(1);
-        let msg = orch.build_cutoff_reminder(false);
-        assert!(msg.contains("exited with code 1"), "got: {msg}");
-        assert!(msg.contains("corrective action"), "got: {msg}");
-    }
-
-    #[test]
-    fn test_cutoff_reminder_ignores_zero_exit_code() {
-        let (tx, _rx) = mpsc::unbounded_channel::<TaskEvent>();
-        let mut orch = make_test_orchestrator(tx);
-        orch.last_shell_exit_code = Some(0);
-        let msg = orch.build_cutoff_reminder(false);
-        assert!(!msg.contains("exited with code"), "zero exit should not surface: {msg}");
-    }
-
-    #[test]
-    fn test_cutoff_reminder_cumulative_vs_per_turn_wording_differs() {
-        let (tx, _rx) = mpsc::unbounded_channel::<TaskEvent>();
-        let orch = make_test_orchestrator(tx);
-        let per_turn = orch.build_cutoff_reminder(false);
-        let cumulative = orch.build_cutoff_reminder(true);
-        assert!(per_turn.contains("10 KB"), "per-turn reminder: {per_turn}");
-        assert!(cumulative.contains("cumulative budget"), "cumulative reminder: {cumulative}");
-    }
-
-    #[test]
-    fn test_fresh_orchestrator_has_zero_accumulated_bytes() {
-        // Guard: the cumulative counter must start at 0 so a single
-        // slightly-chatty turn doesn't immediately trip the cutoff.
-        let (tx, _rx) = mpsc::unbounded_channel::<TaskEvent>();
-        let orch = make_test_orchestrator(tx);
-        assert_eq!(orch.bytes_since_last_tool, 0);
-        assert!(orch.tools_invoked.is_empty());
-        assert!(orch.last_shell_exit_code.is_none());
-    }
 }

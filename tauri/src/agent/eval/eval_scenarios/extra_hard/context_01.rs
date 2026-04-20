@@ -82,7 +82,7 @@ console.log("ALL_TESTS_PASSED");
                  genuine correctness issues, fix ONLY those, and run \
                  `node test_bigfile.mjs` until it prints ALL_TESTS_PASSED.\n\n\
                  Constraint: your final `bigfile.js` must differ from the \
-                 original by at most 30 lines (added+removed). The rubric \
+                 original by at most 45 lines (added+removed). The rubric \
                  enforces this — don't rewrite unrelated helpers.\n\n\
                  Files:\n- bigfile.js ({} lines)\n- test_bigfile.mjs",
                 bigfile_src.lines().count(),
@@ -91,8 +91,11 @@ console.log("ALL_TESTS_PASSED");
                 complete(),
                 succeeded("shell"),
                 run_has("node test_bigfile.mjs", &["ALL_TESTS_PASSED"]),
-                // Localized-edit rubric: ≤30 changed lines vs the reference.
-                diff_at_most(&reference_abs.to_string_lossy(), "bigfile.js", 30),
+                // Localized-edit rubric: ≤45 changed lines vs the reference.
+                // Tight enough to catch wholesale rewrites (the file is
+                // ~1000 lines), loose enough that editor-level differences
+                // around the 3 legitimate fixes don't trip false fails.
+                diff_at_most(&reference_abs.to_string_lossy(), "bigfile.js", 45),
             ]),
             vec![bigfile_abs]),
             vec![reference_abs.to_string_lossy().into_owned(), test])
