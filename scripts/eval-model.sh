@@ -17,6 +17,9 @@
 #   --scenario NAME   Run a single scenario instead of the full suite
 #                     Use a substring match, e.g.: --scenario bugfix, --scenario refactor_rename
 #   --all             Run all individual scenarios (not just the suite runner)
+#   --no-think        Disable thinking mode (Qwen /no_think soft switch —
+#                     most reliable when paired with server-side
+#                     --reasoning-budget 0)
 #
 # Examples:
 #   # Local Ollama
@@ -48,6 +51,7 @@ SCENARIO=""
 DIFFICULTY=""
 SUITE=""
 RUN_ALL=false
+NO_THINK=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -61,6 +65,7 @@ while [[ $# -gt 0 ]]; do
         --suite)      SUITE="$2"; shift 2 ;;
         --xhard)      SUITE="xhard"; shift ;;
         --all)        RUN_ALL=true; shift ;;
+        --no-think)   NO_THINK=true; shift ;;
         -h|--help)
             sed -n '2,/^$/p' "$0" | sed 's/^#//; s/^ //'
             exit 0
@@ -170,6 +175,7 @@ fi
 [[ -n "$API_KEY" ]]   && export COTECT_EVAL_API_KEY="$API_KEY"
 [[ -n "$MAX_TURNS" ]] && export COTECT_EVAL_MAX_TURNS="$MAX_TURNS"
 [[ -n "$TIMEOUT" ]]   && export COTECT_EVAL_TIMEOUT="$TIMEOUT"
+$NO_THINK            && export COTECT_EVAL_NO_THINK=1
 
 CARGO_ARGS=(test -p cotect)
 if [[ -n "$SCENARIO" ]]; then

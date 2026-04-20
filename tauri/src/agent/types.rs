@@ -97,6 +97,17 @@ pub struct ProviderConfig {
     /// [`crate::agent::adapter::detect_format`].
     #[serde(default)]
     pub format: Option<crate::agent::adapter::PromptFormat>,
+    /// Suppress the model's thinking/reasoning mode when the adapter supports
+    /// a soft switch. For Qwen-format providers, `Some(true)` appends
+    /// `/no_think` to the system prompt (Qwen 3 soft switch; unofficial on
+    /// 3.5/3.6 but often still effective, and harmless if ignored).
+    ///
+    /// The more reliable way to pin a Qwen model to non-thinking mode is
+    /// server-side: launch llama.cpp with `--reasoning-budget 0` and
+    /// `--chat-template-kwargs '{"enable_thinking":false}'`. This flag is
+    /// complementary, not a substitute.
+    #[serde(default)]
+    pub disable_thinking: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,6 +126,7 @@ impl Default for AgentConfig {
                 api_key: None,
                 model: String::new(),
                 format: None,
+                disable_thinking: None,
             }],
             active_provider_id: "ollama".into(),
         }
@@ -346,6 +358,37 @@ mod tests {
         assert_eq!(config.providers.len(), 1);
         assert_eq!(config.providers[0].id, "ollama");
         assert_eq!(config.active_provider_id, "ollama");
+        assert_eq!(config.providers[0].disable_thinking, None);
+    }
+
+    #[test]
+    fn test_provider_config_disable_thinking_deserializes_default_none() {
+        // Existing configs on disk won't have the new field — make sure serde
+        // tolerates its absence.
+        let json = r#"{
+            "id": "test",
+            "name": "Test",
+            "endpoint": "http://localhost:8080/v1",
+            "model": "qwen3:7b"
+        }"#;
+        let cfg: ProviderConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.disable_thinking, None);
+    }
+
+    #[test]
+    fn test_provider_config_disable_thinking_roundtrip() {
+        let cfg = ProviderConfig {
+            id: "q".into(),
+            name: "Q".into(),
+            endpoint: "http://localhost:8080/v1".into(),
+            api_key: None,
+            model: "qwen3.6-35b".into(),
+            format: None,
+            disable_thinking: Some(true),
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        let round: ProviderConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(round.disable_thinking, Some(true));
     }
 
     #[test]
