@@ -211,5 +211,86 @@ printf '  %ssuite    %s   %s\n'              "$C_LBL"  "$C_RST"  "$SUITE_LABEL"
 printf '%s%s%s\n'                            "$C_RULE" "$RULE_LIGHT" "$C_RST"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RUNS_DIR="${REPO_ROOT}/eval_runs"
+mkdir -p "$RUNS_DIR"
+
+# Sweep any previous run directories that never completed (no `.done`
+# marker). Runs that crash mid-execution, get Ctrl+C'd, or otherwise
+# fail to reach the post-run archive step leave behind incomplete
+# directories that would otherwise pile up indefinitely.
+while IFS= read -r -d '' dir; do
+    if [[ ! -f "$dir/.done" ]]; then
+        printf '  %ssweep%s    %sremoved incomplete prior run: %s%s\n' \
+            "$C_LBL" "$C_RST" "$C_DIM" "$(basename "$dir")" "$C_RST"
+        rm -rf "$dir"
+    fi
+done < <(find "$RUNS_DIR" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+
+# Derive a filesystem-safe name from the model id. Slashes and colons
+# appear in common model names (e.g. `unsloth/Qwen3.6-35B-A3B-GGUF`).
+MODEL_SLUG="$(printf '%s' "$MODEL" | tr '/:' '__')"
+TIMESTAMP="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+RUN_DIR="${RUNS_DIR}/${TIMESTAMP}_${MODEL_SLUG}"
+mkdir -p "$RUN_DIR/transcripts" "$RUN_DIR/tempdirs"
+
+# Route the harness-side per-scenario transcripts into this run. We also
+# force tempdir preservation so we can archive the model's final files;
+# both envs are safe to override unconditionally (callers that set them
+# explicitly are the ones who most want artifacts kept).
+export COTECT_EVAL_TRANSCRIPTS="$RUN_DIR/transcripts"
+export COTECT_EVAL_KEEP_DIRS=true
+
+printf '  %ssave to  %s   %s%s%s\n' \
+    "$C_LBL" "$C_RST" "$C_DIM" "${RUN_DIR#$REPO_ROOT/}" "$C_RST"
+printf '%s%s%s\n' "$C_RULE" "$RULE_LIGHT" "$C_RST"
+
+RESULT_TXT="${RUN_DIR}/result.txt"
 cd "$SCRIPT_DIR/../tauri"
-cargo "${CARGO_ARGS[@]}"
+# Tee stdout+stderr into the run's result.txt while still showing a live
+# stream on the terminal. PIPESTATUS[0] captures cargo's exit code,
+# undisturbed by the downstream `tee`.
+cargo "${CARGO_ARGS[@]}" 2>&1 | tee "$RESULT_TXT"
+EVAL_EXIT="${PIPESTATUS[0]}"
+
+# Pair each scenario id from the live log with its preserved `/tmp/.tmpX`
+# directory. The harness emits the tempdir path on a line immediately
+# following the scenario header, so a simple state machine is enough.
+awk '
+    /^\[[[:space:]]*[0-9]+\/[0-9]+\]/ {
+        match($0, /xhard_[A-Za-z0-9_]+/)
+        if (RLENGTH > 0) sid = substr($0, RSTART, RLENGTH)
+        next
+    }
+    /dir:[[:space:]]+\/tmp\/\.tmp/ && sid != "" {
+        match($0, /\/tmp\/\.tmp[A-Za-z0-9]+/)
+        if (RLENGTH > 0) print sid "\t" substr($0, RSTART, RLENGTH)
+        sid = ""
+    }
+' "$RESULT_TXT" | while IFS=$'\t' read -r sid src; do
+    [[ -d "$src" ]] || continue
+    dest="$RUN_DIR/tempdirs/$sid"
+    mkdir -p "$dest"
+    # Copy the model's files, skipping build artifacts and caches that
+    # are regeneratable and inflate the archive 10× (Rust target/ alone
+    # is ~2 MB). The archived tree is what you'd want to read back later
+    # to diagnose a failure.
+    rsync -a \
+        --exclude 'target/' \
+        --exclude 'node_modules/' \
+        --exclude '__pycache__/' \
+        --exclude '*.pyc' \
+        --exclude '.pytest_cache/' \
+        "$src/" "$dest/"
+done
+
+# Mark the run as complete. Subsequent invocations' sweep step will keep
+# this directory; anything without a .done marker is removed.
+touch "$RUN_DIR/.done"
+
+printf '\n  %ssaved%s    %s%s%s\n' \
+    "$C_LBL" "$C_RST" "$C_VAL" "${RUN_DIR#$REPO_ROOT/}" "$C_RST"
+printf '  %ssize%s     %s\n' \
+    "$C_LBL" "$C_RST" "$(du -sh "$RUN_DIR" 2>/dev/null | cut -f1)"
+
+exit "$EVAL_EXIT"

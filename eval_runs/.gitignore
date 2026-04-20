@@ -1,0 +1,9 @@
+# Save evaluation-run artifacts here — each `yarn eval` invocation creates
+# a timestamped subdirectory containing the full cargo stdout (result.txt),
+# the per-scenario transcripts, and the preserved tempdirs with the
+# model's final file outputs.
+#
+# The directory is tracked (this .gitignore file anchors it) but nothing
+# inside it is.
+*
+!.gitignore
