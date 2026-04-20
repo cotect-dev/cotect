@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
-import { useGitStore, sortedFiles, startGitWatcher, stopGitWatcher, type GitStatus, type GitLogEntry, type GitBranch } from './git'
+import { useGitStore, sortedFiles, branchLabel, startGitWatcher, stopGitWatcher, type GitStatus, type GitLogEntry, type GitBranch } from './git'
 
 // Tauri APIs are auto-mocked via setup.ts. Cast for type-safe assertions.
 const mockInvoke = invoke as Mock
@@ -84,7 +84,7 @@ describe('useGitStore', () => {
   describe('refresh', () => {
     const mockStatus: GitStatus = { files: [{ path: 'a.ts', status: 'M', insertions: 5, deletions: 2 }], total_insertions: 5, total_deletions: 2 }
     const mockLog: GitLogEntry[] = [{ hash: 'abc1234', message: 'init', author: 'dev', timestamp: 1000, insertions: 10, deletions: 0, files: [] }]
-    const mockBranch: GitBranch = { current: 'main' }
+    const mockBranch: GitBranch = { kind: 'branch', name: 'main' }
     const mockTimestamp = 1234567890
 
     it('does nothing when repoPath is empty', async () => {
@@ -226,6 +226,30 @@ describe('useGitStore', () => {
       expect(s.loading).toBe(false)
     })
 
+    it('broadcasts git-sync exactly once per refresh when there are changed files', async () => {
+      useGitStore.setState({ repoPath: '/repo' })
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'git_status') return Promise.resolve(mockStatus)
+        if (cmd === 'git_log') return Promise.resolve(mockLog)
+        if (cmd === 'git_branch') return Promise.resolve(mockBranch)
+        if (cmd === 'git_last_commit_time') return Promise.resolve(mockTimestamp)
+        if (cmd === 'git_file_times') return Promise.resolve([['a.ts', 5555]])
+        return Promise.resolve(null)
+      })
+
+      await useGitStore.getState().refresh()
+      // Wait a tick for the deferred fileTimes computation to settle.
+      await new Promise((r) => setTimeout(r, 0))
+
+      const syncEmits = mockEmit.mock.calls.filter(([name]) => name === 'git-sync')
+      expect(syncEmits).toHaveLength(1)
+      expect(syncEmits[0][1]).toMatchObject({
+        isGitRepo: true,
+        status: mockStatus,
+        fileTimes: { 'a.ts': 5555 },
+      })
+    })
+
     it('sets PARTIAL_FAILURE when some commands fail (log fails, others succeed)', async () => {
       useGitStore.setState({ repoPath: '/repo' })
       mockInvoke.mockImplementation((cmd: string) => {
@@ -353,5 +377,24 @@ describe('sortedFiles selector', () => {
     const files = sortedFiles(useGitStore.getState())
     expect(files[0].path).toBe('src/b.ts')
     expect(files.slice(1).map((f) => f.path)).toEqual(['src/a.ts', 'README.md'])
+  })
+})
+
+describe('branchLabel', () => {
+  it('returns the branch name for a named branch', () => {
+    expect(branchLabel({ kind: 'branch', name: 'main' })).toBe('main')
+    expect(branchLabel({ kind: 'branch', name: 'feature/x' })).toBe('feature/x')
+  })
+
+  it('returns "detached @ <sha>" for a detached HEAD', () => {
+    expect(branchLabel({ kind: 'detached', short_sha: 'abc1234' })).toBe('detached @ abc1234')
+  })
+
+  it('returns "(no commits yet)" for an initial repo', () => {
+    expect(branchLabel({ kind: 'initial' })).toBe('(no commits yet)')
+  })
+
+  it('returns "unknown" when branch is null', () => {
+    expect(branchLabel(null)).toBe('unknown')
   })
 })

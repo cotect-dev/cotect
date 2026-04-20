@@ -4,6 +4,7 @@ import { useBrowserStore } from '@/store/browser'
 import type { AgentRole } from '@/services/agent'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { formatDuration } from '@/lib/time'
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
   pending: 'bg-yellow-500/20 text-yellow-400',
@@ -231,11 +232,4 @@ export default function Tasks() {
       <NewTaskForm />
     </div>
   )
-}
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  return `${m}m ${s % 60}s`
 }
