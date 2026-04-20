@@ -12,8 +12,8 @@
 #
 # Optional:
 #   --api-key KEY     API key / bearer token (omit for local Ollama)
-#   --max-turns N     Max agent turns per scenario (default: 20)
-#   --timeout SECS    Seconds before a scenario times out (default: 120)
+#   --max-turns N     Max agent turns per scenario (default: 25)
+#   --timeout SECS    Seconds before a scenario times out (default: 600)
 #   --scenario NAME   Run a single scenario instead of the full suite
 #                     Use a substring match, e.g.: --scenario bugfix, --scenario refactor_rename
 #   --all             Run all individual scenarios (not just the suite runner)

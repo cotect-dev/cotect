@@ -1,7 +1,7 @@
-//! Elaborate model evaluation harness: 125 scenarios across 10 categories
-//! and 3 difficulty tiers (plus 25 "extra hard" scenarios). The goal is to stress-test an agentic model's
-//! ability to reason, use tools, recover from errors, and complete multi-
-//! step workflows.
+//! Model evaluation harness: 30 "extra hard" scenarios designed to stress-test
+//! an agentic model's ability to reason, use tools, recover from errors, and
+//! complete multi-step workflows. Easier tiers were dropped — modern local
+//! models pass them reliably and they produce no useful signal.
 //!
 //! Run the full suite with:
 //!   COTECT_EVAL_ENDPOINT=http://server.local:8080/v1 \
@@ -15,7 +15,7 @@
 //!                               error_handling, recovery, planning
 //!   COTECT_EVAL_DIFFICULTY   — easy | medium | hard
 //!   COTECT_EVAL_MAX_TURNS    — per-scenario turn cap (default: 25)
-//!   COTECT_EVAL_TIMEOUT      — per-scenario timeout seconds (default: 120)
+//!   COTECT_EVAL_TIMEOUT      — per-scenario timeout seconds (default: 600)
 //!   COTECT_EVAL_SYSTEM_STYLE — default | terse | detailed | cot | answer_first
 //!   COTECT_EVAL_LIMIT        — only run first N matching scenarios
 //!   COTECT_EVAL_FORMAT       — prompt format: auto (default) | plain | gemma |
@@ -60,14 +60,22 @@ impl EvalConfig {
         let endpoint = std::env::var("COTECT_EVAL_ENDPOINT").ok()?;
         let model = std::env::var("COTECT_EVAL_MODEL").ok()?;
         let api_key = std::env::var("COTECT_EVAL_API_KEY").ok();
+        // Turn budget: 25 is enough for every scenario in the suite when the
+        // model stays on task; beyond ~30 every extra turn is a spiral.
         let max_turns = std::env::var("COTECT_EVAL_MAX_TURNS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(25);
+        // Per-scenario wall-clock budget. Defaults to 600s — agentic tasks
+        // at ~30 tok/s need room for a genuinely iterative read → edit →
+        // test → patch cycle. The streaming-tail cutoff + doom-loop
+        // detector trim pathological tails well before this fires. The
+        // rubric-side `Check::RunExitOk` timeouts remain independent
+        // (30s per shell test by default).
         let timeout_secs = std::env::var("COTECT_EVAL_TIMEOUT")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(120u64);
+            .unwrap_or(600u64);
         let filter = std::env::var("COTECT_EVAL_FILTER").ok().filter(|s| !s.is_empty());
         let category = std::env::var("COTECT_EVAL_CATEGORY").ok().and_then(Category::parse);
         let difficulty = std::env::var("COTECT_EVAL_DIFFICULTY").ok().and_then(Difficulty::parse);
@@ -140,10 +148,11 @@ pub(super) enum Category {
     Understanding,
     Search,
     CrossFile,
-    ErrorHandling,
-    Recovery,
-    Planning,
     Testing,
+    Security,
+    Concurrency,
+    Performance,
+    Context,
 }
 
 impl Category {
@@ -156,10 +165,11 @@ impl Category {
             "understanding" | "understand" => Some(Self::Understanding),
             "search" => Some(Self::Search),
             "cross_file" | "crossfile" | "cross-file" => Some(Self::CrossFile),
-            "error_handling" | "errorhandling" | "error-handling" | "errh" => Some(Self::ErrorHandling),
-            "recovery" => Some(Self::Recovery),
-            "planning" | "plan" => Some(Self::Planning),
             "testing" | "test" => Some(Self::Testing),
+            "security" | "sec" => Some(Self::Security),
+            "concurrency" | "concur" => Some(Self::Concurrency),
+            "performance" | "perf" => Some(Self::Performance),
+            "context" | "ctx" => Some(Self::Context),
             _ => None,
         }
     }
@@ -173,10 +183,11 @@ impl Category {
             Self::Understanding => "understanding",
             Self::Search => "search",
             Self::CrossFile => "cross_file",
-            Self::ErrorHandling => "error_handling",
-            Self::Recovery => "recovery",
-            Self::Planning => "planning",
             Self::Testing => "testing",
+            Self::Security => "security",
+            Self::Concurrency => "concurrency",
+            Self::Performance => "performance",
+            Self::Context => "context",
         }
     }
 }
@@ -261,6 +272,11 @@ pub(super) struct ScenarioSpec {
     pub(super) difficulty: Difficulty,
     pub(super) role: AgentRole,
     pub(super) setup: SetupFn,
+    /// Executables that must be available in PATH for the scenario to run.
+    /// If any is missing the runner marks SKIPPED (rather than FAIL) before
+    /// calling setup, so scenarios whose setup itself needs the tool (e.g.
+    /// `git init` for the regression hunt) don't panic on hosts without it.
+    pub(super) required_tools: &'static [&'static str],
 }
 
 /// A single pass/fail check applied after a scenario runs.
@@ -303,6 +319,11 @@ pub(super) enum Check {
     /// Run a shell command in the temp dir. Pass if stdout+stderr does NOT contain any needle.
     /// Fields: (command, timeout_seconds, needles).
     RunOutputLacks(String, u64, Vec<String>),
+    /// File at `target_rel` must differ from `reference_abs` by AT MOST
+    /// `max_changed_lines` (counted via `diff` added+removed lines). Used to
+    /// enforce localized edits on a large seed file — e.g. "touch only these
+    /// three TODOs, leave the other 2497 lines alone".
+    FileDiffLinesAtMost(String, String, usize),
 }
 
 // Result collection
@@ -314,6 +335,10 @@ struct EvalResult {
     category: Category,
     difficulty: Difficulty,
     passed: bool,
+    /// True when the scenario never ran because a required tool (cargo, go,
+    /// node, ...) is absent from PATH. Skipped scenarios are excluded from
+    /// pass/fail totals in the final report.
+    skipped: bool,
     /// Whether the first shell test run already passed (None if no test run detected).
     first_try: Option<bool>,
     turns: usize,
@@ -541,6 +566,25 @@ fn evaluate_one_check(check: &Check, outcome: &RunOutcome, dir: &Path) -> Option
                 if !found.is_empty() {
                     Some(format!("command `{}` output contains forbidden: {:?}",
                         cmd_preview(cmd), found))
+                } else { None }
+            })
+        }
+        Check::FileDiffLinesAtMost(reference_abs, target_rel, max_changed) => {
+            let target_abs = dir.join(target_rel);
+            if !target_abs.exists() {
+                return Some(format!("file missing: {}", target_rel));
+            }
+            let cmd = format!(
+                "diff -u {:?} {:?} | grep -E '^[+-][^+-]' | wc -l",
+                reference_abs, target_abs,
+            );
+            run_check_shell(&cmd, 30, dir, |output, _code| {
+                let count: usize = output.trim().parse().unwrap_or(usize::MAX);
+                if count > *max_changed {
+                    Some(format!(
+                        "file {} diffs by {} lines vs reference, max allowed {}",
+                        target_rel, count, max_changed,
+                    ))
                 } else { None }
             })
         }
@@ -964,6 +1008,35 @@ fn eprint_banner(title: &str) {
 async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     use std::io::Write;
 
+    // Tool-availability preflight: if the scenario needs `cargo`/`go`/`node`/...
+    // and the host doesn't have it, skip rather than fail. This runs BEFORE
+    // `setup` so scenarios whose setup itself shells out to the tool (e.g.
+    // `git init` for the regression-hunt scenario) don't panic on hosts that
+    // simply lack the binary. Lets multi-language scenarios ship without
+    // forcing every toolchain onto every eval host.
+    if let Some(missing) = first_missing_tool(spec.required_tools) {
+        eprintln!("{} \x1b[1m{}\x1b[0m", diff_badge(spec.difficulty), spec.id);
+        eprintln!(
+            "{}\x1b[2;33m⊘ SKIP\x1b[0m \x1b[90m·\x1b[0m missing tool: \x1b[33m{}\x1b[0m",
+            INDENT, missing,
+        );
+        eprintln!();
+        return EvalResult {
+            id: spec.id.into(),
+            category: spec.category,
+            difficulty: spec.difficulty,
+            passed: false,
+            skipped: true,
+            first_try: None,
+            turns: 0,
+            tool_calls: vec![],
+            elapsed: Duration::from_secs(0),
+            failed_checks: vec![format!("skipped: missing tool `{}`", missing)],
+            output_preview: String::new(),
+            interrupted: None,
+        };
+    }
+
     let dir = TempDir::new().expect("tempdir");
     let dir_path = dir.path().to_path_buf();
 
@@ -1110,6 +1183,15 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                             let shell_cheat = *success
                                 && tool_name == "shell"
                                 && out.starts_with("[EVAL CHEAT DETECTED]");
+                            // Dedup-stub indicator: when fs_read short-circuits an
+                            // unchanged re-read, the return value begins with
+                            // `[File '...' is unchanged since`. Surface it
+                            // inline so the eval watcher can SEE the dedup firing
+                            // (otherwise a stub return and a full-file return
+                            // render identically in the heartbeat).
+                            let dedup_stub = *success
+                                && tool_name == "read"
+                                && out.contains("unchanged since your previous");
                             if blocked_read {
                                 close_thinking(&mut thinking_line_open, &silence_started);
                                 eprintln!("{}\x1b[33m  └─ blocked (hidden from eval)\x1b[0m", INDENT);
@@ -1117,6 +1199,10 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                             } else if shell_cheat {
                                 close_thinking(&mut thinking_line_open, &silence_started);
                                 eprintln!("{}\x1b[33m  └─ cheat attempt (tried to read blocked file)\x1b[0m", INDENT);
+                                let _ = std::io::stderr().flush();
+                            } else if dedup_stub {
+                                close_thinking(&mut thinking_line_open, &silence_started);
+                                eprintln!("{}\x1b[2;36m  └─ dedup stub (file unchanged, no content sent)\x1b[0m", INDENT);
                                 let _ = std::io::stderr().flush();
                             } else if !*success {
                                 close_thinking(&mut thinking_line_open, &silence_started);
@@ -1266,6 +1352,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         category: spec.category,
         difficulty: spec.difficulty,
         passed,
+        skipped: false,
         first_try,
         turns: approx_turns,
         tool_calls: outcome.tool_calls,
@@ -1276,14 +1363,34 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     }
 }
 
+/// Return the first required tool absent from PATH, or None if all are present.
+fn first_missing_tool(tools: &[&'static str]) -> Option<&'static str> {
+    for tool in tools {
+        let status = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("command -v {} >/dev/null 2>&1", tool))
+            .status();
+        if !matches!(status, Ok(s) if s.success()) {
+            return Some(*tool);
+        }
+    }
+    None
+}
+
 // Report printing
 
 fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
-    let total = results.len();
-    let passed: usize = results.iter().filter(|r| r.passed).count();
-    let total_time: Duration = results.iter().map(|r| r.elapsed).sum();
-    let total_tools: usize = results.iter().map(|r| r.tool_calls.len()).sum();
-    let first_try_count = results.iter()
+    // Skipped scenarios (missing toolchain) don't count toward totals — treat
+    // as "not run" rather than "failed". They're surfaced separately in the
+    // summary line so users know why the scored total is lower than the spec
+    // count.
+    let skipped: usize = results.iter().filter(|r| r.skipped).count();
+    let scored: Vec<&EvalResult> = results.iter().filter(|r| !r.skipped).collect();
+    let total = scored.len();
+    let passed: usize = scored.iter().filter(|r| r.passed).count();
+    let total_time: Duration = scored.iter().map(|r| r.elapsed).sum();
+    let total_tools: usize = scored.iter().map(|r| r.tool_calls.len()).sum();
+    let first_try_count = scored.iter()
         .filter(|r| r.passed && r.first_try == Some(true))
         .count();
 
@@ -1299,11 +1406,11 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     let cats = [
         Category::Bugfix, Category::Refactor, Category::Implement, Category::Patch,
         Category::Understanding, Category::Search, Category::CrossFile,
-        Category::ErrorHandling, Category::Recovery, Category::Planning,
-        Category::Testing,
+        Category::Testing, Category::Security, Category::Concurrency,
+        Category::Performance, Category::Context,
     ];
     for cat in cats {
-        let cat_results: Vec<&EvalResult> = results.iter().filter(|r| r.category == cat).collect();
+        let cat_results: Vec<&&EvalResult> = scored.iter().filter(|r| r.category == cat).collect();
         if cat_results.is_empty() { continue; }
         let p = cat_results.iter().filter(|r| r.passed).count();
         let ft = cat_results.iter().filter(|r| r.passed && r.first_try == Some(true)).count();
@@ -1322,7 +1429,7 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     println!();
     println!("  \x1b[1mBy difficulty\x1b[0m");
     for diff in [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard] {
-        let d_results: Vec<&EvalResult> = results.iter().filter(|r| r.difficulty == diff).collect();
+        let d_results: Vec<&&EvalResult> = scored.iter().filter(|r| r.difficulty == diff).collect();
         if d_results.is_empty() { continue; }
         let p = d_results.iter().filter(|r| r.passed).count();
         let ft = d_results.iter().filter(|r| r.passed && r.first_try == Some(true)).count();
@@ -1345,7 +1452,7 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     }
 
     // Failures
-    let fails: Vec<&EvalResult> = results.iter().filter(|r| !r.passed).collect();
+    let fails: Vec<&&EvalResult> = scored.iter().filter(|r| !r.passed).collect();
     if !fails.is_empty() {
         println!();
         println!("  \x1b[1;31mFailures\x1b[0m \x1b[2m({})\x1b[0m", fails.len());
@@ -1364,6 +1471,20 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
         }
     }
 
+    // Skipped (missing toolchain)
+    let skips: Vec<&EvalResult> = results.iter().filter(|r| r.skipped).collect();
+    if !skips.is_empty() {
+        println!();
+        println!("  \x1b[1;33mSkipped\x1b[0m \x1b[2m({})\x1b[0m", skips.len());
+        for r in &skips {
+            let reason = r.failed_checks.first().map(|s| s.as_str()).unwrap_or("missing tool");
+            println!(
+                "    {} \x1b[1m{:<40}\x1b[0m  \x1b[2m{}\x1b[0m",
+                diff_badge(r.difficulty), r.id, reason,
+            );
+        }
+    }
+
     // Summary
     let pct_total = if total > 0 { (passed as f64 / total as f64) * 100.0 } else { 0.0 };
     let pct_ft = if total > 0 { (first_try_count as f64 / total as f64) * 100.0 } else { 0.0 };
@@ -1371,9 +1492,12 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
 
     println!();
     println!("\x1b[34m{}\x1b[0m", rule_light());
+    let skip_tag = if skipped > 0 {
+        format!("   \x1b[90m·\x1b[0m   \x1b[1;33mskipped\x1b[0m  {}", skipped)
+    } else { String::new() };
     println!(
-        "  \x1b[1mScore\x1b[0m   \x1b[1;32m{}\x1b[0m/{}  (\x1b[1m{:.1}%\x1b[0m)   \x1b[90m·\x1b[0m   \x1b[1;36m1st try\x1b[0m  {} ({:.1}%)",
-        passed, total, pct_total, first_try_count, pct_ft,
+        "  \x1b[1mScore\x1b[0m   \x1b[1;32m{}\x1b[0m/{}  (\x1b[1m{:.1}%\x1b[0m)   \x1b[90m·\x1b[0m   \x1b[1;36m1st try\x1b[0m  {} ({:.1}%){}",
+        passed, total, pct_total, first_try_count, pct_ft, skip_tag,
     );
     println!(
         "  \x1b[1mTime\x1b[0m    {:.1}s   \x1b[90m·\x1b[0m   \x1b[2mavg\x1b[0m {:.1}s/scenario   \x1b[90m·\x1b[0m   \x1b[2m{} tool calls\x1b[0m",
@@ -1382,7 +1506,7 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     println!("\x1b[34m{}\x1b[0m", rule_heavy());
 }
 
-// Scenario definitions — 125 total, split by category under eval_scenarios/
+// Scenario definitions — 30 extra-hard scenarios under eval_scenarios/
 
 #[path = "eval_scenarios/mod.rs"]
 mod eval_scenarios;
@@ -1508,19 +1632,23 @@ async fn eval_category_cross_file() { run_category(Category::CrossFile).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_error_handling() { run_category(Category::ErrorHandling).await; }
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore]
-async fn eval_category_recovery() { run_category(Category::Recovery).await; }
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore]
-async fn eval_category_planning() { run_category(Category::Planning).await; }
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn eval_category_testing() { run_category(Category::Testing).await; }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn eval_category_security() { run_category(Category::Security).await; }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn eval_category_concurrency() { run_category(Category::Concurrency).await; }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn eval_category_performance() { run_category(Category::Performance).await; }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn eval_category_context() { run_category(Category::Context).await; }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
