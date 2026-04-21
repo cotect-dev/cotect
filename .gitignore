@@ -59,5 +59,8 @@ plans/
 # Claude
 .claude/
 
+# Git worktrees
+.worktrees/
+
 # Top-level scratch / eval result dumps
 /*.txt
