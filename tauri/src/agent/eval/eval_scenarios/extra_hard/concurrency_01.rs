@@ -53,9 +53,6 @@ func Run(ctx context.Context, workers int, consumed *int64) error {
 				if !ok {
 					return
 				}
-				// Sentinel: zero value signals shutdown. BUG — only the
-				// first worker to see it exits; the others keep blocking
-				// on recv because the producer sent exactly ONE sentinel.
 				if v == 0 {
 					return
 				}
@@ -73,7 +70,6 @@ func Run(ctx context.Context, workers int, consumed *int64) error {
 				return
 			}
 		}
-		// Signal shutdown with a single sentinel.
 		ch <- 0
 	}()
 
@@ -125,12 +121,11 @@ func TestCleanShutdownFourWorkers(t *testing.T) {
 
         with_scope(with_checks(pf(
             "The `pipeline` package in this tempdir (Go, go.mod present) \
-             has a concurrency bug: with more than one worker, `Run` \
-             never returns and the test times out.\n\n\
-             Fix it so `go test -run TestCleanShutdownFourWorkers` prints \
-             ALL_TESTS_PASSED within a 2-second deadline. Preserve the \
-             signature of `Run(ctx context.Context, workers int, \
-             consumed *int64) error`. No third-party dependencies."
+             has a bug: `go test -run TestCleanShutdownFourWorkers` times \
+             out. Fix it so the test prints ALL_TESTS_PASSED within the \
+             deadline. Preserve the signature of `Run(ctx context.Context, \
+             workers int, consumed *int64) error`. No third-party \
+             dependencies."
             .to_string()
         ),
             vec![

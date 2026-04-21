@@ -26,12 +26,7 @@ use super::*;
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let src = ap(dir, "scheduler.py");
-        std::fs::write(&src, r#""""Daily scheduler — fires a callback at a given local wall-clock time.
-
-BUG: uses naive local datetimes, so a job scheduled in a zone with DST
-fires twice during the fall-back hour. See `test_scheduler.py` for the
-failing case.
-"""
+        std::fs::write(&src, r#""""Daily scheduler — fires a callback at a given local wall-clock time."""
 
 from datetime import datetime, time, date
 from typing import Callable, Optional
@@ -159,17 +154,13 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(
-            "`scheduler.py::DailyScheduler` fires a callback once per day at \
-             a configured local wall-clock time. It's currently broken at \
-             DST transitions: a job scheduled for 01:30 in America/New_York \
-             fires TWICE on 2025-11-02 (once at 01:30 EDT, once at 01:30 \
-             EST). See `test_scheduler.py` for the failing case.\n\n\
+            "`scheduler.py::DailyScheduler` fires a callback once per day \
+             at a configured local wall-clock time. The test suite \
+             `test_scheduler.py` is currently failing.\n\n\
              Fix `DailyScheduler` so `python3 test_scheduler.py` prints \
-             ALL_TESTS_PASSED. The test drives the scheduler with tz-aware \
-             UTC datetimes through the DST boundary and expects exactly one \
-             callback invocation. The normal-day test must also still pass.\n\n\
-             Use the stdlib `zoneinfo` module (Python 3.9+). No third-party \
-             libraries."
+             ALL_TESTS_PASSED. The test passes tz-aware UTC datetimes to \
+             `tick()`. Use the stdlib `zoneinfo` module (Python 3.9+). \
+             No third-party libraries."
             .to_string()
         ),
             vec![

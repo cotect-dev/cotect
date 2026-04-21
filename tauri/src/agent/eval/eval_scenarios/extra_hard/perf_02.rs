@@ -91,22 +91,13 @@ class MockDB:
 "#).unwrap();
 
         let service = ap(dir, "service.py");
-        std::fs::write(&service, r#""""User-facing service layer.
-
-`fetch_user_names(user_ids)` currently loops over ids one at a time —
-a classic N+1 pattern. Fix so the number of `MockDB` calls scales with
-batches, not with the size of `user_ids`, while preserving insertion
-order in the return value.
-"""
+        std::fs::write(&service, r#""""User-facing service layer."""
 
 from repo import MockDB
 
 
 def fetch_user_names(user_ids):
-    """Return the display names of `user_ids`, in the same order as the
-    input. Must scale — the test runs with 1 000 ids under a strict
-    database-call budget.
-    """
+    """Return the display names of `user_ids`, in the same order as the input."""
     names = []
     for uid in user_ids:
         user = MockDB.get_user(uid)
@@ -163,16 +154,10 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(
-            "The `fetch_user_names` function in `service.py` has a classic \
-             N+1 database problem: it calls `MockDB.get_user` once per id, \
-             so looking up 1 000 users makes 1 000 database round trips. \
-             `test_service.py` enforces a budget of at most 5 `MockDB` calls \
-             for a 1 000-id input, and also checks that the output order \
-             matches the input order (the batched API returns rows in \
-             arbitrary order).\n\n\
-             Read `repo.py` to find the batched lookup, rewrite \
-             `fetch_user_names` to use it, and run `python3 test_service.py` \
-             until it prints ALL_TESTS_PASSED.\n\n\
+            "`test_service.py` is failing. The test suite exercises \
+             correctness, output ordering, and a database-call budget. \
+             Fix `fetch_user_names` in `service.py` so that \
+             `python3 test_service.py` prints ALL_TESTS_PASSED.\n\n\
              Keep the signature `fetch_user_names(user_ids: list[int]) -> list[str]`."
             .to_string()
         ),

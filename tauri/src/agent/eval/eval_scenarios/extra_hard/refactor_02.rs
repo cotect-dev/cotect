@@ -104,6 +104,19 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
         items = list(self)
         return f"RingBuffer({self._cap}, items={items})"
 
+    def _log_operation(self, op_name: str, item=None):
+        """Emit a debug trace for the operation — called during development."""
+        import sys
+        detail = f" item={item!r}" if item is not None else ""
+        sys.stderr.write(f"[RingBuffer] {op_name}{detail} len={self._count}\n")
+
+    def _reset_metrics(self):
+        """Reset internal performance counters.
+        Only used by the now-removed benchmark harness."""
+        self._push_count = 0
+        self._pop_count = 0
+        self._overflow_count = 0
+
     def clear(self):
         """Remove all elements."""
         self._buf = [None] * self._cap
@@ -245,25 +258,19 @@ if __name__ == "__main__":
 "#).unwrap();
 
         with_blocked(with_scope(with_checks(pf(format!(
-            "The ring buffer in {} looks like it has dead code and overly complex \
-             methods. Refactor it:\n\
+            "The ring buffer in {} has accumulated dead code and overly complex \
+             methods. Clean it up:\n\
+             - Remove dead code and methods that are never called.\n\
              - Inline trivial helper methods that aren't pulling their weight.\n\
-             - Remove dead code and unused attributes.\n\
              - Simplify the iteration logic.\n\
              - Consolidate redundant properties.\n\n\
-             Step 1: Read the code carefully and identify what to simplify.\n\
-             Step 2: Apply your refactoring changes.\n\
-             Step 3: Run the existing `python3 test_ring_buffer.py` to verify nothing is broken. \
-             If tests fail, revert and reconsider — some things that look dead may \
-             actually be needed.",
+             Apply your refactoring, then verify with `python3 test_ring_buffer.py`.",
             ring_file)),
             vec![
                 complete(),
                 succeeded("shell"),
-                // Primary: tests must pass — the suite directly calls _wrap,
-                // _sentinel, is_full, is_empty, __iter__, and exercises all
-                // ring buffer operations. Any semantic change fails a test.
                 run_has("python3 test_ring_buffer.py", &["ALL_TESTS_PASSED"]),
+                file_lacks(&ring_file, &["_log_operation", "_reset_metrics"]),
             ]),
             vec![ring_file]),
             vec![test_file])
