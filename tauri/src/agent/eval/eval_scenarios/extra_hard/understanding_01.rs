@@ -29,15 +29,16 @@ use super::*;
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let workflow = ap(dir, "workflow.py");
-        std::fs::write(&workflow, r#"from retry import run_with_retry
+        std::fs::write(&workflow, r#"from retry import run_with_retry, _CONSERVATIVE_PROFILE
 from state import StepResult, BatchResult
 from idempotency import IdempotencyStore
 
 
 class Workflow:
-    def __init__(self, steps, idem_store=None):
+    def __init__(self, steps, idem_store=None, retry_profile=None):
         self._steps = steps
         self._idem = idem_store or IdempotencyStore()
+        self._retry = retry_profile or _CONSERVATIVE_PROFILE
 
     def execute(self, inputs):
         batch = BatchResult()
@@ -48,7 +49,7 @@ class Workflow:
                 batch.add(step.name, cached)
                 continue
             try:
-                value = run_with_retry(lambda: step.run(inputs), max_attempts=3)
+                value = run_with_retry(lambda: step.run(inputs), profile=self._retry)
             except Exception as exc:
                 batch.add_error(step.name, exc)
                 continue
@@ -61,8 +62,28 @@ class Workflow:
         std::fs::write(&retry, r#"import random
 import time
 
+_DEFAULT_PROFILE = {
+    "max_attempts": 5,
+    "base_delay": 0.1,
+    "jitter_lo": 0.8,
+    "jitter_hi": 1.2,
+}
 
-def run_with_retry(fn, max_attempts=3, base_delay=0.05):
+_CONSERVATIVE_PROFILE = {
+    "max_attempts": 3,
+    "base_delay": 0.05,
+    "jitter_lo": 0.5,
+    "jitter_hi": 1.5,
+}
+
+
+def run_with_retry(fn, profile=None, **overrides):
+    cfg = dict(profile or _DEFAULT_PROFILE)
+    cfg.update(overrides)
+    max_attempts = cfg["max_attempts"]
+    base_delay = cfg["base_delay"]
+    jitter_lo = cfg["jitter_lo"]
+    jitter_hi = cfg["jitter_hi"]
     attempt = 0
     while True:
         try:
@@ -72,8 +93,18 @@ def run_with_retry(fn, max_attempts=3, base_delay=0.05):
             if attempt >= max_attempts:
                 raise
             delay = base_delay * (2 ** (attempt - 1))
-            delay *= random.uniform(0.5, 1.5)
+            delay *= random.uniform(jitter_lo, jitter_hi)
             time.sleep(delay)
+
+
+def run_with_backoff(fn, max_retries=3, initial_wait=0.2):
+    for i in range(max_retries + 1):
+        try:
+            return fn()
+        except Exception:
+            if i == max_retries:
+                raise
+            time.sleep(initial_wait * (3 ** i))
 "#).unwrap();
 
         let state = ap(dir, "state.py");
@@ -116,21 +147,13 @@ class BatchResult:
 "#).unwrap();
 
         with_scope(with_checks(pf(
-            "Read the four Python files in this tempdir (workflow.py, \
-             retry.py, state.py, idempotency.py) and produce a behavioural \
-             specification for `Workflow.execute`.\n\n\
-             Your final response MUST be under 300 words and MUST include \
-             all of the following, derived from the code (not from this \
-             prompt):\n\
-             - The maximum number of attempts per step.\n\
-             - The exact base delay value and the multiplier applied on \
-               each successive attempt.\n\
-             - The numeric range of the jitter applied to each sleep.\n\
-             - What KEY the idempotency cache is indexed by (name it \
-               precisely — is it the step name, the inputs, or something \
-               derived from both?).\n\
-             - What the engine does to the sibling steps of one that \
-               exhausts its retries.\n\n\
+            "Read the Python files in this tempdir and produce a \
+             behavioural specification for `Workflow.execute`.\n\n\
+             Your final response MUST be under 300 words and MUST cover \
+             the retry strategy (exact numeric parameters — not the \
+             defaults from any profile that isn't actually used), the \
+             idempotency mechanism, and the failure-handling semantics, \
+             all derived from tracing the actual code paths.\n\n\
              Do NOT copy language from this prompt. Describe the actual \
              behaviour. Do not modify any files."
             .to_string()
@@ -190,6 +213,15 @@ class BatchResult:
                     "siblings".into(),
                     "partial".into(),
                     "isolated".into(),
+                ]),
+                // Negative: must not report the _DEFAULT_PROFILE values
+                // as the actual retry params. The workflow uses
+                // _CONSERVATIVE_PROFILE, not the default.
+                Check::OutputDoesNotContain(vec![
+                    "5 attempts".into(),
+                    "five attempts".into(),
+                    "up to 5".into(),
+                    "max_attempts=5".into(),
                 ]),
             ]),
             vec![workflow, retry, state, idem])

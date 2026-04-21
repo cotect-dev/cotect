@@ -42,11 +42,11 @@ every caller. The names are consistent across the entire codebase.
 # Higher number = more privilege.
 def _role_level(role: str) -> int:
     levels = {
-        "guest":     0,
-        "viewer":    20,
-        "editor":    10,
-        "moderator": 30,
-        "admin":     40,
+        "guest":     10,
+        "viewer":    30,
+        "editor":    20,
+        "moderator": 40,
+        "admin":     50,
     }
     return levels.get(role.lower(), -1)
 

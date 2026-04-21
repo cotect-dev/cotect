@@ -151,8 +151,7 @@ fn build_bigfile_js() -> String {
     // --- Clamp helpers (section 2) — clampInt has a REAL BUG ---
     s.push_str("// ---------- Section 2: clamp helpers ----------\n\n");
 
-    s.push_str("// TODO: BUG — when `n > hi`, this returns `hi - 1` instead of `hi`.\n");
-    s.push_str("//   Off-by-one on the upper clamp; lower clamp is fine.\n");
+    s.push_str("// TODO: consider switching to Math.clamp once it lands in the spec.\n");
     s.push_str("export function clampInt(n, lo, hi) {\n");
     s.push_str("    if (n < lo) return lo;\n");
     s.push_str("    if (n > hi) return hi - 1;\n"); // <-- bug 1
@@ -185,8 +184,7 @@ fn build_bigfile_js() -> String {
     s.push_str("    return s.trim().split(/\\s+/).length;\n");
     s.push_str("}\n\n");
 
-    s.push_str("// TODO: BUG — compare is case-sensitive; 'Aa' should be a palindrome.\n");
-    s.push_str("//   Normalize case (and ideally strip non-alphanumerics) before compare.\n");
+    s.push_str("// TODO: might want a locale-aware variant for non-ASCII strings.\n");
     s.push_str("export function isPalindrome(s) {\n");
     s.push_str("    const r = s.split('').reverse().join('');\n");
     s.push_str("    return s === r;\n"); // <-- bug 2
@@ -212,9 +210,7 @@ fn build_bigfile_js() -> String {
     // --- CSV / parsing section 4 — parseCsvLine has a REAL BUG ---
     s.push_str("// ---------- Section 4: parsing helpers ----------\n\n");
 
-    s.push_str("// TODO: BUG — naive split on ',' corrupts quoted fields.\n");
-    s.push_str("//   `a,\"b,c\",d` should parse as [\"a\", \"b,c\", \"d\"] (3 fields).\n");
-    s.push_str("//   A small state machine respecting double-quote escape is fine.\n");
+    s.push_str("// TODO: RFC 4180 compliance would be nice eventually.\n");
     s.push_str("export function parseCsvLine(line) {\n");
     s.push_str("    return (line || '').split(',');\n"); // <-- bug 3
     s.push_str("}\n\n");

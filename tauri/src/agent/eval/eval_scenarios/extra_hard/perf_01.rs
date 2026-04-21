@@ -45,7 +45,6 @@ opt-level = 3
 pub fn dedupe(xs: Vec<i64>) -> Vec<i64> {
     let mut result: Vec<i64> = Vec::new();
     for x in xs {
-        // Linear scan on every push — quadratic in input size.
         if !result.contains(&x) {
             result.push(x);
         }
@@ -69,12 +68,6 @@ fn correctness() {
 
 #[test]
 fn perf_budget_200k() {
-    // 200_000 elements, many duplicates. This input scale is deliberately
-    // beyond what a "smarter Vec::contains" or early-break optimisation
-    // can save — O(n²) takes tens of seconds, even O(n log n) sorts
-    // struggle, while a HashSet-based linear pass lands in <100ms. The
-    // 150ms budget forces the correct data-structure choice, not a
-    // clever-looking quadratic variant.
     let input: Vec<i64> = (0..200_000).map(|i| (i % 10_000) as i64).collect();
     let expected_len = 10_000;
 
@@ -112,10 +105,8 @@ fn perf_budget_200k() {
              passes both `correctness` and `perf_budget_200k` and prints \
              ALL_TESTS_PASSED. Keep the signature \
              `pub fn dedupe(xs: Vec<i64>) -> Vec<i64>` and preserve \
-             first-occurrence insertion order. The 150 ms budget is tight \
-             enough that you must use a set-based O(n) approach — \
-             sorting-first or smart-loop variants won't fit. No new crate \
-             dependencies; the Rust standard library is enough."
+             first-occurrence insertion order. No new crate dependencies; \
+             the Rust standard library is enough."
             .to_string()
         ),
             vec![
