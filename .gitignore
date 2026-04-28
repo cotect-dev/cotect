@@ -53,6 +53,9 @@ docs/
 # Plans
 plans/
 
+# Eval runs
+eval_runs/
+
 # Superpowers brainstorm sessions
 .superpowers/
 
