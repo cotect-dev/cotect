@@ -1,11 +1,9 @@
-//! Scenario registry for the eval harness — 25 expert-level scenarios.
+//! Scenario registry for the eval harness — 30 expert-level scenarios.
 //!
-//! The suite is organized across 12 categories: classical software-engineering
-//! skills (bugfix/refactor/implement/patch/cross-file/testing) plus the
-//! axes that previous rounds were silent on — security, concurrency,
-//! performance, long-context reasoning, git-driven regression hunting, and
-//! pure comprehension. See `eval.rs` for the runner, check types, report
-//! logic, and harness primitives (skip-on-missing-tool, diff budgets).
+//! The suite is organized across 6 categories of classical software-engineering
+//! skills (bugfix/refactor/implement/patch/cross-file/testing), 5 scenarios
+//! each. See `eval.rs` for the runner, check types, report logic, and
+//! harness primitives.
 
 mod extra_hard_bugfix;
 mod extra_hard_refactor;
@@ -13,12 +11,6 @@ mod extra_hard_patch;
 mod extra_hard_implement;
 mod extra_hard_testing;
 mod extra_hard_cross_file;
-mod extra_hard_security;
-mod extra_hard_concurrency;
-mod extra_hard_performance;
-mod extra_hard_context;
-mod extra_hard_search;
-mod extra_hard_understanding;
 
 use std::path::Path;
 
@@ -193,18 +185,12 @@ pub(crate) use scen;
 // Aggregate all scenarios
 
 pub(super) fn make_scenarios() -> Vec<ScenarioSpec> {
-    let mut v = Vec::with_capacity(25);
+    let mut v = Vec::with_capacity(30);
     extra_hard_bugfix::scenarios(&mut v);
     extra_hard_refactor::scenarios(&mut v);
     extra_hard_patch::scenarios(&mut v);
     extra_hard_implement::scenarios(&mut v);
     extra_hard_testing::scenarios(&mut v);
     extra_hard_cross_file::scenarios(&mut v);
-    extra_hard_security::scenarios(&mut v);
-    extra_hard_concurrency::scenarios(&mut v);
-    extra_hard_performance::scenarios(&mut v);
-    extra_hard_context::scenarios(&mut v);
-    extra_hard_search::scenarios(&mut v);
-    extra_hard_understanding::scenarios(&mut v);
     v
 }

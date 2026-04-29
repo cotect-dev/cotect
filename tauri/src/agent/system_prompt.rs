@@ -122,6 +122,10 @@ fn working_principles() -> &'static str {
      sentence. If you cannot name it, the code probably does not need changing — tell the user \
      that instead of editing. \"More idiomatic\" and \"cleaner\" are not concrete problems; a \
      named bug, a measurable improvement, or an explicit user request are.\n\
+     - **\"No change required\" is a valid outcome.** When the user asks you to investigate or \
+     refactor something and the code is already correct, say so and stop. A short, accurate \
+     report that nothing needs changing is more useful than a manufactured edit. Do not invent \
+     work to look productive.\n\
      - **Minimal, targeted changes.** Do not add features, refactor, or clean up code beyond what \
      the task requires. A bug fix does not need surrounding cleanup; a one-shot task does not \
      need a helper abstraction.\n\
@@ -143,21 +147,36 @@ fn working_principles() -> &'static str {
 fn workflow_block() -> &'static str {
     "## Workflow\n\
      \n\
-     - **Investigate first.** Read the files you are about to touch, and any caller or callee \
-     whose behaviour your change depends on. The Architecture Context below is your starting \
-     scope — read those files first; branch outside only when the task genuinely requires it.\n\
+     - **Investigate first, in one batch.** Read the files you are about to touch, and any \
+     caller or callee whose behaviour your change depends on. The Architecture Context below is \
+     your starting scope — read those files first; branch outside only when the task genuinely \
+     requires it. When the scope has more than one file, your first tool call should be a single \
+     `read` with `{\"file_paths\": [\"/abs/a\", \"/abs/b\", \"/abs/c\"]}`, not three separate \
+     reads. Three reads in one call is one round-trip; three separate calls is three. There is \
+     no rule against reading any particular file unless the user explicitly says so; read \
+     whatever helps.\n\
+     - **Enumerate before coordinated edits.** Before any change that touches multiple files \
+     (renames, signature changes, parameter additions, return-type changes), run `fs_search` \
+     for the symbol or pattern across the scope to enumerate every call site. Reads only show \
+     you what you remember to look at; search shows you what you missed. A renamed symbol that \
+     still appears in one forgotten file is a runtime bug.\n\
      - **Plan briefly for multi-file work.** Hold a short mental plan: what changes, in which \
      file, in what order. Think briefly between actions — prefer running a check over reasoning \
      at length about what it would return. A failing test tells you more than a paragraph of \
      speculation.\n\
-     - **Edit in batched logical units.** One complete `patch` beats five fragments. Re-read a \
-     file only when something you just wrote could have shifted what you need to see next.\n\
+     - **Edit by patching, not rewriting.** Use `patch` to change existing files. It accepts \
+     three interchangeable forms — pick whichever is shortest to write: \
+     (a) line range — `start_line` + `end_line` + `new_string`; \
+     (b) exact string — `old_string` (must match once) + `new_string`; \
+     (c) anchored elision — `old_string` like `\"def foo():\\n[...]\\n    return None\"` + \
+     `new_string`. The `[...]` placeholder matches everything between the prefix and suffix \
+     anchors, useful for replacing whole functions or blocks without copying the body. \
+     For pure deletion, pass an empty `new_string`. Use `write` only for new files or \
+     wholesale rewrites. Both `patch` and `write` return the post-edit file body in the same \
+     shape `read` produces — you don't need a follow-up `read` to see what you just wrote.\n\
      - **Verify after meaningful edits.** Run the most specific check available — a single test \
      file, a focused build, a type-check. Treat green as done. Treat red as your next subtask; \
-     iterate until it passes. Never declare the task done while a relevant check is failing.\n\
-     - **Verify renames structurally.** When renaming a symbol or changing a signature, \
-     `fs_search` the old name across the scope and confirm zero hits before stopping. The test \
-     passing does not prove the old name is gone from files the test does not exercise."
+     iterate until it passes. Never declare the task done while a relevant check is failing."
 }
 
 /// Tool-use failure modes observed in the wild. Shared across roles because every role uses tools.
@@ -171,12 +190,28 @@ fn anti_patterns() -> &'static str {
      - **Do not use `shell` as a scratchpad.** Trivial probes like `python3 -c \"# thinking \
      about x\"` or `echo checking...` are reasoning dressed up as a tool call. Think in the \
      reasoning channel; reach for `shell` only to run a real command with side effects.\n\
-     - **Do not re-read a file you just read or just wrote.** Your conversation context persists \
-     across turns — the content is already available unless a tool has modified the file since.\n\
+     - **Do not re-read a file you just read or just wrote.** `patch` and `write` already \
+     return the post-edit file body in the same line-numbered shape `read` produces — that \
+     response IS the new state of the file. The previous read's content is also still \
+     available in your conversation context unless a tool has modified the file since.\n\
      - **Do not emit tool-call markup in prose.** Never write `<tool_call>`, `<function=...>`, or \
      raw tool-call JSON into your text output. Use the structured tool-call channel — anything \
      else will not execute and the turn ends prematurely.\n\
-     - **Do not loop silently.** If you find yourself re-reading or re-patching the same file \
+     - **Do not invent rules that nobody set.** There is no prohibition against reading any \
+     file unless the user — or, in evaluation, the harness — has explicitly marked it \
+     off-limits. When a tool reports `Access denied`, respect it; do not try to circumvent it \
+     via `shell` (`cat`, `python3 -c \"open(...)\"`, etc.) — that is a circumvention and is \
+     flagged. Phrases like \"the rules say I must not read the test file\" when the rules say \
+     no such thing also waste turns; the asymmetry is the rules say what they say, neither more \
+     nor less.\n\
+     - **Do not relitigate decisions you already made.** Hedging phrases (\"Wait, actually...\", \
+     \"Let me reconsider...\", \"Hmm, but...\") two or three times in a row are a signal to \
+     call a tool, not to keep deliberating. If you've stated a conclusion twice, act on it; \
+     the failing test or successful patch will tell you if you were wrong.\n\
+     - **Do not regress to `write` to recover from a `patch` error.** If a `patch` hits a \
+     bad line range or an ambiguous match, fix the input and re-issue the `patch` — full-file \
+     rewrites tend to drop unrelated content (helpers, imports, methods you forgot were there).\n\
+     - **Do not loop silently.** If you find yourself re-reading or re-editing the same file \
      without new information, stop and say what is blocking you. Repeating the same call with \
      tiny variations is not progress."
 }
@@ -268,29 +303,32 @@ fn tool_rules(role: AgentRole) -> String {
     let mut rules = String::from("## Tool Usage Rules\n\n");
 
     rules.push_str(
-        "- Invoke tools through the structured tool-calling channel only. Never emit \
+        "- **Never re-read a file you just wrote or patched.** This is the single most common \
+         waste pattern. `patch` and `write` already return the post-edit file body in the \
+         same line-numbered shape `read` produces — that response IS the new state of the \
+         file. A follow-up `read` would just re-fetch what you already have.\n\
+         - Invoke tools through the structured tool-calling channel only. Never emit \
          `<tool_call>`, `<function=...>`, or raw tool-call JSON in your prose — those will not \
          be executed and the turn ends prematurely.\n\
          - `read` prefixes each line with `N: ` for reference only. These prefixes are NOT part \
-         of the file content — strip them before passing text to `patch` or `write`.\n\
-         - `patch` requires `old_string` to match the file bytes exactly, including whitespace \
-         and indentation. On a miss it returns the current file contents inline, so you can fix \
-         your snippet on the next call — you do not need a separate `read` first. If \
-         `old_string` appears multiple times, add surrounding lines until it is unique.\n\
-         - Prefer `patch` (surgical replacement) over `write` (full overwrite) for existing \
-         files. Reach for `write` only when creating a new file or when a full rewrite is \
-         genuinely smaller than the equivalent patch. A blind `write` over an unread file is \
-         rejected.\n\
-         - A successful `patch` or `write` response confirms the edit landed. Trust it and move \
-         to the next step (typically a verification command) — do not verify the write with \
-         another `read` or encoding probe.\n\
+         of the file content — strip them before passing text to `patch` or `write`. The line \
+         numbers `N` are exactly what `patch`'s `start_line`/`end_line` form refers to.\n\
+         - `patch` is the primary tool for modifying existing files. It accepts three \
+         interchangeable forms: by line range (`start_line`+`end_line`+`new_string`), by exact \
+         string (`old_string`+`new_string`, must match once), or by anchored elision \
+         (`old_string` containing `[...]` between two anchor lines). For pure deletion pass \
+         empty `new_string`. On any failure the tool returns the file body inline — fix the \
+         input and retry rather than falling back to `write`.\n\
+         - Use `write` for creating new files or when a wholesale rewrite is genuinely smaller \
+         than the equivalent `patch`. A blind `write` over an unread file is rejected.\n\
          - Keep `shell` arguments short and reference files by path. Oversized argument blobs \
          (typically a whole file stuffed into a heredoc) are rejected because they bloat context \
          on every subsequent turn.\n\
          - `shell` runs in the project root unless you pass `cwd`. Every `shell` call needs a \
          clear description of what the command does.\n\
          - Prefer `fs_search` over `shell grep`, and prefer specific regex patterns over broad \
-         ones — narrower queries return fewer irrelevant hits.\n\
+         ones — narrower queries return fewer irrelevant hits. Reach for `fs_search` *before* \
+         coordinated multi-file edits to enumerate every call site.\n\
          - Your conversation context persists across turns. Once you have read a file, its \
          contents remain available for the rest of the session unless you have modified it.\n",
     );
@@ -646,13 +684,103 @@ mod tests {
         let implement = build_system_prompt(AgentRole::Implement, &scope, &env, &[], None);
         assert!(implement.contains("## Workflow"));
         assert!(implement.contains("Verify after meaningful edits"));
-        assert!(implement.contains("Verify renames structurally"));
+        assert!(
+            implement.contains("Enumerate before coordinated edits"),
+            "workflow must promote fs_search before multi-file edits",
+        );
+        assert!(
+            implement.contains("return the post-edit file body"),
+            "workflow must explain that patch/write already return the post-edit body",
+        );
 
         let research = build_system_prompt(AgentRole::Research, &scope, &env, &[], None);
         assert!(!research.contains("## Workflow"));
 
         let plan = build_system_prompt(AgentRole::Plan, &scope, &env, &[], None);
         assert!(!plan.contains("## Workflow"));
+    }
+
+    #[test]
+    fn test_anti_patterns_cover_new_failure_modes() {
+        // Coverage assertions for the failure modes the eval surfaced:
+        // hallucinated rules, reasoning loops, write-as-edit-recovery,
+        // re-read-after-edit (now obviated by patch/write returning
+        // the post-edit body), and shell circumvention of
+        // access-denied responses.
+        let block = anti_patterns();
+        assert!(
+            block.contains("post-edit file body"),
+            "no-re-read antipattern must explain that patch/write return the post-edit body",
+        );
+        assert!(
+            block.contains("invent rules that nobody set"),
+            "anti-patterns must call out fabricated rules",
+        );
+        assert!(
+            block.contains("relitigate decisions"),
+            "anti-patterns must call out reasoning-loop rederivation",
+        );
+        assert!(
+            block.contains("regress to `write`"),
+            "anti-patterns must forbid write-as-edit-recovery",
+        );
+        // The "no fabricated rules" antipattern must also forbid the
+        // inverse — circumventing a real `Access denied` via shell.
+        // refactor_02 in eval surfaced this: the model used `python3
+        // -c "open(...)"` to bypass a blocked-file restriction.
+        assert!(
+            block.contains("Access denied"),
+            "anti-patterns must cite the access-denied response by name",
+        );
+        assert!(
+            block.contains("circumvent"),
+            "anti-patterns must explicitly forbid circumventing access-denied",
+        );
+    }
+
+    #[test]
+    fn test_working_principles_endorse_no_change_outcome() {
+        // The trap-style refactor scenarios surfaced this: the model
+        // could not land on "no change required" even when its own
+        // analysis pointed there.
+        let block = working_principles();
+        assert!(
+            block.contains("\"No change required\" is a valid outcome"),
+            "working principles must license the no-change outcome",
+        );
+    }
+
+    #[test]
+    fn test_tool_rules_lead_with_no_reread() {
+        // Recency-tail position is the strongest spot in the prompt;
+        // the no-re-read rule lives there now because it's the most
+        // violated rule across the eval.
+        let rules = tool_rules(AgentRole::Implement);
+        let no_reread_idx = rules
+            .find("Never re-read a file you just wrote or patched")
+            .expect("no-re-read rule must be present");
+        let structured_channel_idx = rules
+            .find("structured tool-calling channel")
+            .expect("structured-channel rule must be present");
+        assert!(
+            no_reread_idx < structured_channel_idx,
+            "no-re-read rule should come first in tool rules",
+        );
+    }
+
+    #[test]
+    fn test_tool_rules_describe_patch_forms() {
+        // `patch` is the primary mutation surface; tool rules must
+        // teach its three interchangeable addressing forms.
+        let rules = tool_rules(AgentRole::Implement);
+        assert!(
+            rules.contains("`patch` is the primary tool")
+                || rules.contains("`patch` accepts three"),
+            "tool rules must teach the three patch forms",
+        );
+        assert!(rules.contains("start_line"));
+        assert!(rules.contains("old_string"));
+        assert!(rules.contains("[...]"));
     }
 
     #[test]
@@ -712,10 +840,6 @@ mod tests {
         let rules = tool_rules(AgentRole::Implement);
         assert!(rules.contains("N: "), "N-prefix warning must remain");
         assert!(rules.contains("blind `write`"), "blind-write warning must remain");
-        assert!(
-            rules.contains("returns the current file contents inline"),
-            "forgiving-patch explanation must remain"
-        );
         assert!(
             rules.contains("structured tool-calling channel"),
             "tool-call-channel rule must remain"

@@ -52,6 +52,53 @@ fn coarse_signature(tool_name: &str, arguments: &str) -> u64 {
     hash_string(&format!("{}:{}", tool_name, normalised))
 }
 
+/// Strip cosmetic bash decorations from a shell tool's arguments so that
+/// `python3 t.py`, `python3 t.py 2>&1`, `python3 t.py 2>&1 || true`, and
+/// `python3 t.py 2>&1; echo "EXIT: $?"` all produce the same exact hash.
+/// Aimed only at the noise patterns observed in eval runs.
+///
+/// Returns the cleaned bash command (extracted from the JSON arguments
+/// blob). Used only for the EXACT hash — the coarse signature still uses
+/// the raw arguments so the long-prefix collision detector keeps working
+/// for `python3 -c ...; print(1)/(2)/(3)`-style near-duplicates that
+/// share a long prefix but differ in tail content.
+pub(crate) fn normalise_shell_arguments(arguments: &str) -> String {
+    let command = match extract_command_field(arguments) {
+        Some(c) => c,
+        None => return arguments.to_string(),
+    };
+
+    let mut s = command;
+
+    // Output redirects — strip in place. Conservative list; we only
+    // handle the very common forms.
+    let redirect_patterns = [
+        " 2>&1", " 2>/dev/null", " >/dev/null", " &>/dev/null",
+        " 1>&2",
+    ];
+    for pat in &redirect_patterns {
+        s = s.replace(pat, "");
+    }
+
+    // Trailing noise — exit-code echo wrappers, fallthrough wrappers.
+    // Order matters: strip `2>&1` first (above), then these trailing
+    // patterns, so chained noise (`go test 2>&1 || true`) collapses
+    // through both passes.
+    let trailing_noise = [
+        "; echo \"EXIT: $?\"",
+        "; echo \"---EXIT: $?\"",
+        "; echo $?",
+        " || true",
+        " | cat",
+    ];
+    for pat in &trailing_noise {
+        s = s.replace(pat, "");
+    }
+
+    // Collapse repeated whitespace runs to a single space.
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Heuristic: does this shell command look like the model is using the shell
 /// as a scratchpad for reasoning rather than actually running code?
 ///
@@ -191,7 +238,18 @@ impl DoomLoopDetector {
 
     /// Record a tool call in the history.
     pub fn record(&mut self, tool_name: &str, arguments: &str) {
-        let exact = hash_string(arguments);
+        // For the exact hash, normalise shell arguments so that bash
+        // cosmetics (output redirects, exit-code echo wrappers,
+        // `|| true`) don't disguise consecutive reruns of the same
+        // failing test as distinct calls. The coarse signature still
+        // uses the raw args so the long-prefix detector continues to
+        // work for `python3 -c ...; print(1)/(2)/(3)` near-duplicates.
+        let exact_input = if tool_name == "shell" {
+            normalise_shell_arguments(arguments)
+        } else {
+            arguments.to_string()
+        };
+        let exact = hash_string(&exact_input);
         let coarse = coarse_signature(tool_name, arguments);
         self.history.push((tool_name.to_string(), exact, coarse));
         if is_thinking_in_shell(tool_name, arguments) {
@@ -587,6 +645,102 @@ mod tests {
             extract_command_field(args).as_deref(),
             Some("echo \"nested quote\""),
         );
+    }
+
+    #[test]
+    fn test_shell_redirect_variants_collapse_to_same_signature() {
+        // Three reruns of the same failing test that differ only in
+        // bash cosmetics must hash to the same coarse signature so the
+        // doom detector flags the stall on the third call.
+        let mut d = DoomLoopDetector::default();
+        d.record(
+            "shell",
+            r##"{"command":"python3 test_x.py"}"##,
+        );
+        d.record(
+            "shell",
+            r##"{"command":"python3 test_x.py 2>&1"}"##,
+        );
+        d.record(
+            "shell",
+            r##"{"command":"python3 test_x.py 2>&1 || true"}"##,
+        );
+        assert!(
+            d.check().is_some(),
+            "shell reruns differing only in redirects/fallthroughs must trip the alarm",
+        );
+    }
+
+    #[test]
+    fn test_shell_exit_echo_wrapper_normalised() {
+        // `; echo "EXIT: $?"` and `; echo "---EXIT: $?"` are model tics
+        // for "see the exit code without re-reading the docs"; they
+        // must not protect duplicate calls from the coarse detector.
+        let mut d = DoomLoopDetector::default();
+        d.record(
+            "shell",
+            r##"{"command":"cargo build"}"##,
+        );
+        d.record(
+            "shell",
+            r##"{"command":"cargo build; echo \"EXIT: $?\""}"##,
+        );
+        d.record(
+            "shell",
+            r##"{"command":"cargo build; echo \"---EXIT: $?\""}"##,
+        );
+        assert!(d.check().is_some());
+    }
+
+    #[test]
+    fn test_shell_normalisation_does_not_collapse_distinct_commands() {
+        // Different actual commands must still have different signatures.
+        let mut d = DoomLoopDetector::default();
+        d.record("shell", r##"{"command":"cargo build 2>&1"}"##);
+        d.record("shell", r##"{"command":"cargo test 2>&1"}"##);
+        d.record("shell", r##"{"command":"cargo check 2>&1"}"##);
+        assert_eq!(
+            d.check(),
+            None,
+            "redirect-stripping must not erase real command differences",
+        );
+    }
+
+    #[test]
+    fn test_normalise_shell_arguments_strips_redirects() {
+        let n = normalise_shell_arguments(
+            r##"{"command":"python3 test.py 2>&1"}"##,
+        );
+        // Redirect dropped; command preserved.
+        assert!(n.contains("python3 test.py"));
+        assert!(!n.contains("2>&1"));
+    }
+
+    #[test]
+    fn test_normalise_shell_arguments_strips_trailing_or_true() {
+        let n = normalise_shell_arguments(
+            r##"{"command":"npm test || true"}"##,
+        );
+        assert!(n.contains("npm test"));
+        assert!(!n.contains("|| true"));
+    }
+
+    #[test]
+    fn test_normalise_shell_arguments_strips_chained_noise() {
+        let n = normalise_shell_arguments(
+            r##"{"command":"go test 2>&1 || true"}"##,
+        );
+        assert!(n.contains("go test"));
+        assert!(!n.contains("2>&1"));
+        assert!(!n.contains("|| true"));
+    }
+
+    #[test]
+    fn test_normalise_shell_arguments_passes_clean_command_through() {
+        let n = normalise_shell_arguments(
+            r##"{"command":"ls -la"}"##,
+        );
+        assert_eq!(n, "ls -la");
     }
 
     #[test]

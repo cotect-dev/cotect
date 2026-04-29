@@ -134,33 +134,71 @@ pub fn all_definitions() -> Vec<ToolDefinition> {
     vec![
         make_def::<fs_read::FSReadInput>(
             "read",
-            "Read a file from the filesystem. Returns the file content with each line prefixed by its \
-             1-indexed line number in the format `N: <content>` (e.g. `1: first line\\n2: second line`). \
-             The `N: ` prefix is added by this tool for your reference ONLY — it is NOT part of the \
-             actual file content. When using `patch` or `write` afterwards, you MUST strip these \
-             prefixes: target only the raw content after `N: ` in your old_string/content arguments. \
-             You can optionally specify start_line and end_line to read a specific range.",
+            "Read one or more files from the filesystem. \
+             SINGLE file: `{\"file_path\": \"/abs/path.py\"}` (optionally `start_line`/`end_line` \
+             for a range). \
+             MULTIPLE files in ONE call: `{\"file_paths\": [\"/abs/a.py\", \"/abs/b.py\", \
+             \"/abs/c.py\"]}`. Cap is 20 paths per call. \
+             Prefer the batch form whenever your task touches more than one file — three reads \
+             in one call costs one round-trip; three separate calls cost three. The default \
+             posture during investigation is: read every scope file in one batch, then plan. \
+             Returns content with each line prefixed by its 1-indexed line number in the format \
+             `N: <content>` (e.g. `1: first line\\n2: second line`). The `N: ` prefix is added by \
+             this tool for your reference ONLY — it is NOT part of the actual file content. The \
+             line numbers shown here are exactly what `patch`'s line-range form refers to; when \
+             passing text to `patch` or `write`, strip the `N: ` prefix and use only the raw \
+             content. \
+             For files over 400 lines, prefer `fs_search` for symbol or call-site enumeration — \
+             scrolling a long file mentally is unreliable.",
         ),
         make_def::<fs_write::FSWriteInput>(
             "write",
-            "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. \
-             You MUST read the file first before writing to it. The `content` parameter is written \
-             verbatim — do NOT include the `N: ` line-number prefixes that the `read` tool shows you; \
-             those are display-only and not part of the actual file.",
+            "Write content to a file. Creates the file if it doesn't exist, overwrites if it \
+             does. Requires a prior `read` for existing files. The `content` parameter is the \
+             file's literal new bytes; the `N: ` line-number prefixes that `read` shows are \
+             display-only and should be stripped from any text you copy into `content`.\n\
+             Returns the post-write file body line-numbered in the same shape `read` returns \
+             — the response is the file you just wrote, so a follow-up `read` would be \
+             redundant.\n\
+             Example: {\"file_path\": \"/abs/path\", \"content\": \"...\"}",
         ),
         make_def::<fs_patch::FSPatchInput>(
             "patch",
-            "Replace an exact string in a file. The old_string must appear exactly once in the file. \
-             If old_string is not found (or ambiguous), the tool returns the current file contents \
-             inline so you can correct your snippet on the next call — you do NOT need a separate \
-             `read` call first. The `old_string` and `new_string` parameters must NOT contain the \
-             `N: ` line-number prefixes that the `read` tool shows — those are display-only and \
-             not part of the file's actual content.",
+            "Replace a region of a file with new content. Pick whichever of these three forms \
+             is shortest to write for your situation — they all do the same thing.\n\
+             FORM A — by line number. Use when you've just read the file and know the lines: \
+             {\"file_path\": \"/abs/p\", \"start_line\": 22, \"end_line\": 25, \
+             \"new_string\": \"...\"}. For pure deletion pass an empty `new_string`.\n\
+             FORM B — by exact string. The classic shape; works without line numbers: \
+             {\"file_path\": \"/abs/p\", \"old_string\": \"x = 1\", \"new_string\": \"x = 2\"}. \
+             `old_string` must occur exactly once in the file.\n\
+             FORM C — by anchored elision. Useful when the region is too long to copy \
+             verbatim. The literal `[...]` placeholder in `old_string` matches everything \
+             between the prefix and suffix anchors: \
+             {\"file_path\": \"/abs/p\", \"old_string\": \"def foo():\\n[...]\\n    return None\", \
+             \"new_string\": \"def foo():\\n    return 42\"}. The prefix and suffix must each \
+             occur exactly once (prefix once in the file, suffix once after the prefix).\n\
+             Whitespace at the very start and end of `old_string` and `new_string` is \
+             ignored — the file's existing indentation around the splice point stays put. \
+             So a 3-space `def foo():` anchor cleanly hits a 4-space-indented line in the \
+             file. Inner whitespace inside the anchor still has to match exactly.\n\
+             Returns the post-edit file body line-numbered in the same shape `read` returns \
+             — the response is the file you just patched, so a follow-up `read` would be \
+             redundant.\n\
+             On any failure (out-of-range line, not-found, ambiguous), the tool returns the \
+             current file body inline so you can fix the input and retry. The `N: ` prefix \
+             `read` shows is display-only; strip it from any text you copy into `old_string` \
+             or `new_string`.",
         ),
         make_def::<fs_search::FSSearchInput>(
             "fs_search",
-            "Search for a regex pattern across files. Returns matching lines with file paths \
-             and line numbers. Optionally filter by glob pattern.",
+            "Regex search across files. Returns matching lines with file paths and line numbers. \
+             Optionally filter by glob pattern. \
+             USE THIS BEFORE coordinated multi-file edits (renames, signature changes, \
+             parameter additions, return-type changes) — it enumerates call sites you might \
+             miss by reading file by file. A renamed symbol that still appears in one forgotten \
+             file is a runtime bug; `fs_search` for the old name and confirm zero hits before \
+             stopping. Also use to locate symbols in files too long to scan mentally.",
         ),
         make_def::<shell::ShellInput>(
             "shell",
@@ -215,6 +253,9 @@ mod tests {
     fn test_all_definitions_returns_6_tools() {
         let defs = all_definitions();
         assert_eq!(defs.len(), 6);
+        let names: Vec<&str> = defs.iter().map(|d| d.function.name.as_str()).collect();
+        assert!(names.contains(&"patch"));
+        assert!(!names.contains(&"edit"), "edit tool was unified into patch");
     }
 
     #[test]
@@ -230,6 +271,9 @@ mod tests {
     fn test_definitions_for_implement_returns_all() {
         let defs = definitions_for_role(AgentRole::Implement);
         assert_eq!(defs.len(), 6);
+        let names: Vec<&str> = defs.iter().map(|d| d.function.name.as_str()).collect();
+        assert!(names.contains(&"patch"));
+        assert!(!names.contains(&"edit"));
     }
 
     #[test]
@@ -494,11 +538,15 @@ mod tests {
             call_type: "function".into(),
             function: super::super::types::FunctionCall {
                 name: "patch".into(),
-                arguments: format!(r#"{{"file_path":"{}","old_string":"original content here","new_string":"modified content here"}}"#, path),
+                arguments: format!(
+                    r#"{{"file_path":"{}","start_line":1,"end_line":1,"new_string":"modified content here"}}"#,
+                    path,
+                ),
             },
         };
         let patch_result = execute_tool(&patch_call, &state).await.unwrap();
-        assert!(patch_result.contains("Successfully patched"));
+        // Response is the post-edit file body in `read`-shape.
+        assert!(patch_result.contains("1: modified content here"));
 
         let on_disk = std::fs::read_to_string(path).unwrap();
         assert!(on_disk.contains("modified content here"));
@@ -533,7 +581,8 @@ mod tests {
             },
         };
         let write_result = execute_tool(&write_call, &state).await.unwrap();
-        assert!(write_result.contains("Successfully wrote"));
+        // Response is the post-write file body in `read`-shape.
+        assert!(write_result.contains("1: completely new content"));
     }
 
     #[tokio::test]

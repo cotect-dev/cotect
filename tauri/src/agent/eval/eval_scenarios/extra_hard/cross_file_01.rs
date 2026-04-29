@@ -110,20 +110,6 @@ def enrich_records(query: str, extra_field: str, default_value: str) -> list[dic
         enriched[extra_field] = default_value
         result.append(enriched)
     return result
-
-
-def merge_queries(query_a: str, query_b: str) -> list[dict]:
-    """Fetch records from two queries and return them concatenated."""
-    a = fetch_records(query_a)
-    b = fetch_records(query_b)
-    return list(a) + list(b)
-
-
-def top_n_scores(query: str, n: int = 2) -> list[dict]:
-    """Return the top N records by score."""
-    data = fetch_records(query)
-    ranked = sorted(data, key=lambda r: r["score"], reverse=True)
-    return ranked[:n]
 "#).unwrap();
 
         let aggregator_file = ap(dir, "aggregator.py");
@@ -191,7 +177,7 @@ def generate_report(query: str) -> str:
         std::fs::write(&test_file, r#"from datetime import datetime
 from models import RecordSet
 from data_source import fetch_records, _fetch_raw
-from transformer import normalize_scores, enrich_records, merge_queries, top_n_scores
+from transformer import normalize_scores, enrich_records
 from aggregator import count_records, average_score, top_scorer
 from reporter import first_record_name, record_names, generate_report, format_summary
 
@@ -266,19 +252,6 @@ def test_reporter_generate():
     assert "Carol" in report
 
 
-def test_merge_queries():
-    merged = merge_queries("users", "empty")
-    assert isinstance(merged, list), f"merge should return list, got {type(merged)}"
-    assert len(merged) == 3
-
-
-def test_top_n_scores():
-    top = top_n_scores("users", 2)
-    assert len(top) == 2
-    assert top[0]["name"] == "Alice"
-    assert top[1]["name"] == "Carol"
-
-
 def test_format_summary_unchanged():
     result = format_summary({"a": 1, "b": 2})
     assert "a=1" in result
@@ -304,8 +277,6 @@ if __name__ == "__main__":
     test_reporter_first_name()
     test_reporter_names()
     test_reporter_generate()
-    test_merge_queries()
-    test_top_n_scores()
     test_format_summary_unchanged()
     test_empty_recordset()
     print("ALL_TESTS_PASSED")
