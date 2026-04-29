@@ -128,16 +128,59 @@ class App:
             return Response(404, "Not Found")
         return handler(request)
 
-    # TODO: implement use(self, middleware) -> None and extend handle()
-    # to run middleware in registration order before/after the handler.
+    # TODO: implement use(self, middleware) -> None and extend handle().
+    #
+    # Middleware contract (every registered middleware object implements):
+    #   process_request(request: Request) -> Request | Response
+    #   process_response(response: Response) -> Response
+    #
+    # Behaviour for handle(request):
+    # - For each middleware in registration order, call process_request with
+    #   the current request. If it returns a Request, that becomes the
+    #   current request for the next middleware / handler. If it returns a
+    #   Response, the remaining request-phase middleware are skipped and
+    #   the route handler is not invoked — that response becomes the
+    #   starting response for the response phase.
+    # - If no middleware short-circuited, the matching route handler runs
+    #   (or a 404 Response is produced when no route matches).
+    # - Then, for every registered middleware in reverse registration
+    #   order, call process_response with the current response; its return
+    #   value replaces the current response. Every middleware sees the
+    #   response, including when an earlier middleware short-circuited.
+    # - The final response is returned.
 "#).unwrap();
 
         let middleware_file = ap(dir, "middleware.py");
         std::fs::write(&middleware_file, r#"from request import Request, Response
 
 
-# TODO: implement LoggingMiddleware, AuthMiddleware, CorsMiddleware.
-# See the middleware contract in app.py.
+# TODO: implement three middleware classes. Each must expose
+# process_request(self, request) and process_response(self, response) and
+# follow the App middleware contract described in app.py.
+
+
+# LoggingMiddleware:
+#   - Constructible with no arguments.
+#   - Exposes a `log` attribute whose value, after handling N requests
+#     through this middleware, is a list of N strings of the form
+#     "{request.method} {request.path}", in the order requests arrived.
+#   - Never short-circuits and never modifies the response.
+
+# AuthMiddleware:
+#   - Constructor: AuthMiddleware(token: str).
+#   - When a request carries an "Authorization" header with value exactly
+#     "Bearer " + token, the request proceeds unchanged. Otherwise the
+#     middleware produces a Response with status 401; in that case the
+#     route handler must not run.
+#   - Never modifies the response during the response phase.
+
+# CorsMiddleware:
+#   - Constructor: CorsMiddleware(allowed_origin: str = "*").
+#   - Never short-circuits the request.
+#   - Every response that passes through this middleware gains the header
+#     "Access-Control-Allow-Origin" set to allowed_origin and an
+#     "Access-Control-Allow-Methods" header (value describing allowed
+#     methods).
 "#).unwrap();
 
         let test_file = ap(dir, "test_app.py");

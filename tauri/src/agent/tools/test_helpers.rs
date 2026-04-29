@@ -23,7 +23,8 @@ pub fn make_temp_file(content: &str) -> NamedTempFile {
 /// Helper to mark a file as "read" via the fs_read tool (for write/patch enforcement).
 pub async fn read_file(state: &Arc<ToolState>, path: &str) {
     let input = super::fs_read::FSReadInput {
-        file_path: path.into(),
+        file_path: Some(path.into()),
+        file_paths: None,
         start_line: None,
         end_line: None,
     };

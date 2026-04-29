@@ -51,6 +51,11 @@ export type TaskEvent =
   | { type: 'error'; message: string }
   | { type: 'complete' }
   | { type: 'interrupted'; reason: string }
+  // One-shot signal that the model has been streaming reasoning for a
+  // long time without calling any tool. UI may surface a "model is
+  // deliberating" indicator. Not a circuit-breaker — orchestration
+  // continues unchanged.
+  | { type: 'reasoning_stall'; elapsed_ms: number; reasoning_bytes: number }
 
 export async function startTask(request: TaskRequest): Promise<void> {
   await invoke('agent_start_task', { request })

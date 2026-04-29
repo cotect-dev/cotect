@@ -82,6 +82,20 @@ pub enum TaskEvent {
     Interrupted {
         reason: String,
     },
+    /// Emitted when the model has been streaming reasoning/text for a
+    /// long time without calling any tool. The frontend can surface
+    /// this as a "model is deliberating" indicator with an optional
+    /// "ask me to commit" affordance — useful when the user is watching
+    /// the stream and wants to know whether it's making progress or
+    /// stuck. Not a circuit-breaker: the orchestrator does NOT inject
+    /// any reminder or cap in response. One event per stall, reset on
+    /// the next tool call.
+    ReasoningStall {
+        /// Wall milliseconds since the last tool call (or task start).
+        elapsed_ms: u64,
+        /// Bytes of reasoning + text streamed since the last tool call.
+        reasoning_bytes: usize,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -194,5 +194,13 @@ function handleTaskEvent(taskId: string, event: TaskEvent) {
         completedAt: Date.now(),
       }))
       break
+
+    case 'reasoning_stall':
+      // One-shot signal that the model has been streaming reasoning
+      // for a long time without acting. Surfaced for future UI work
+      // (e.g. "model is deliberating" indicator). Currently
+      // intentionally a no-op — orchestration is unchanged and the
+      // existing reasoning stream is already visible to the user.
+      break
   }
 }

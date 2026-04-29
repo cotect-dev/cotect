@@ -362,6 +362,11 @@ struct EvalResult {
 
 struct RunOutcome {
     events: Vec<TaskEvent>,
+    /// Wall seconds since scenario start at which each `events[i]` was
+    /// received. Same length as `events`. Used by the transcript writer
+    /// to surface inter-tool gaps in saved markdown — invaluable when
+    /// scrolling through a long run looking for where the budget went.
+    event_times: Vec<f64>,
     tool_calls: Vec<String>,
     full_text: String,
     reasoning_text: String,
@@ -770,8 +775,17 @@ fn build_transcript(
     // Event timeline — skip streaming deltas (reasoning/partial text) to keep
     // it readable. The consolidated Reasoning and Final Output sections above
     // already include the full text.
+    //
+    // Tool events get two timestamps:
+    //   `T+XX.Xs` — wall seconds since scenario start (matches the live
+    //               heartbeat's `T+` column)
+    //   `Δ XX.Xs` — gap to the previous tool event, so you can scroll
+    //               the transcript and see at a glance where the
+    //               wall-clock budget went between actions.
     let _ = writeln!(s, "## Event Timeline\n");
+    let mut last_tool_time: Option<f64> = None;
     for (i, ev) in outcome.events.iter().enumerate() {
+        let t = outcome.event_times.get(i).copied().unwrap_or(0.0);
         match ev {
             TaskEvent::Text { content, partial } => {
                 if !partial {
@@ -782,7 +796,16 @@ fn build_transcript(
                 // Skipped — see consolidated "Reasoning" section above.
             }
             TaskEvent::ToolStart { tool_name, file_path, description, arguments } => {
-                let _ = writeln!(s, "**{i}. Tool start: `{}`**  file={:?}  desc={:?}", tool_name, file_path, description);
+                let gap_marker = match last_tool_time {
+                    None => " · Δ start".to_string(),
+                    Some(prev) => format!(" · Δ{:.1}s", t - prev),
+                };
+                last_tool_time = Some(t);
+                let _ = writeln!(
+                    s,
+                    "**{i}. [T+{:.1}s{}] Tool start: `{}`**  file={:?}  desc={:?}",
+                    t, gap_marker, tool_name, file_path, description,
+                );
                 if let Some(args) = arguments {
                     // Pretty-print JSON arguments if possible, otherwise raw
                     let display = serde_json::from_str::<serde_json::Value>(args)
@@ -798,19 +821,23 @@ fn build_transcript(
                 let marker = if *success { "OK" } else { "ERR" };
                 let out = output.as_deref().unwrap_or("");
                 let out = truncate_for_transcript(out, 4000);
-                let _ = writeln!(s, "**{i}. Tool end: `{}` [{marker}]**\n```\n{}\n```\n", tool_name, out);
+                let _ = writeln!(
+                    s,
+                    "**{i}. [T+{:.1}s] Tool end: `{}` [{marker}]**\n```\n{}\n```\n",
+                    t, tool_name, out,
+                );
             }
             TaskEvent::Error { message } => {
-                let _ = writeln!(s, "**{i}. Error:** {}\n", message);
+                let _ = writeln!(s, "**{i}. [T+{:.1}s] Error:** {}\n", t, message);
             }
             TaskEvent::Interrupted { reason } => {
-                let _ = writeln!(s, "**{i}. Interrupted:** {}\n", reason);
+                let _ = writeln!(s, "**{i}. [T+{:.1}s] Interrupted:** {}\n", t, reason);
             }
             TaskEvent::Complete => {
-                let _ = writeln!(s, "**{i}. Complete.**\n");
+                let _ = writeln!(s, "**{i}. [T+{:.1}s] Complete.**\n", t);
             }
             other => {
-                let _ = writeln!(s, "**{i}. Other event:** {:?}\n", other);
+                let _ = writeln!(s, "**{i}. [T+{:.1}s] Other event:** {:?}\n", t, other);
             }
         }
     }
@@ -938,6 +965,33 @@ fn truncate_display(s: &str, max: usize) -> String {
     }
 }
 
+/// Build the dim-grey timestamp prefix that precedes every tool-call
+/// line in the live heartbeat. Two pieces of info on one row:
+///
+/// - `T+XX.Xs` — wall seconds since the scenario started. Lets you
+///   correlate against the final `elapsed` total.
+/// - `Δ XX.Xs` — gap since the previous tool call. The "delay
+///   between tool calls" the eye scans for. First tool of a scenario
+///   shows ` start ` instead of a delta.
+///
+/// Output width is fixed (~19 visible chars). Non-tool heartbeat lines
+/// (streaming/thinking) keep the original 12-space `INDENT` and so
+/// don't line up perfectly with tool lines — that's intentional, the
+/// tool line is the permanent record and gets the wider prefix.
+fn format_tool_timestamp_prefix(
+    last_tool_start_at: &mut Option<std::time::Instant>,
+    scenario_start: std::time::Instant,
+) -> String {
+    let now = std::time::Instant::now();
+    let total = now.duration_since(scenario_start).as_secs_f64();
+    let gap_part = match *last_tool_start_at {
+        None => " start ".to_string(),
+        Some(prev) => format!("Δ{:5.1}s", now.duration_since(prev).as_secs_f64()),
+    };
+    *last_tool_start_at = Some(now);
+    format!("\x1b[90m[T+{:5.1}s {}]\x1b[0m ", total, gap_part)
+}
+
 /// Render a streaming tool-call line.
 /// Layout:  `· <name pad>  <detail>` — name is cyan, detail is dim.
 fn format_tool_line(tool_name: &str, arguments: Option<&str>, dir: &Path) -> String {
@@ -960,11 +1014,35 @@ fn format_tool_line(tool_name: &str, arguments: Option<&str>, dir: &Path) -> Str
             .as_ref()
             .and_then(|v| v.get("url").and_then(|p| p.as_str()).map(str::to_string))
             .map(|u| format!("\x1b[2m{}\x1b[0m", truncate_display(&u, 60))),
-        _ => args_val
-            .as_ref()
-            .and_then(|v| v.get("file_path").or_else(|| v.get("path"))
-                .and_then(|p| p.as_str()).map(str::to_string))
-            .map(|p| format!("\x1b[2m{}\x1b[0m", rel_path_str(&p, dir))),
+        _ => {
+            // Single-path tools surface the path. Batch reads (`read`
+            // with `file_paths: [...]`) surface a count + the first
+            // path so the heartbeat doesn't go blank.
+            args_val
+                .as_ref()
+                .and_then(|v| {
+                    if let Some(p) = v.get("file_path").or_else(|| v.get("path"))
+                        .and_then(|p| p.as_str())
+                    {
+                        return Some(format!("\x1b[2m{}\x1b[0m", rel_path_str(p, dir)));
+                    }
+                    if let Some(arr) = v.get("file_paths").and_then(|p| p.as_array()) {
+                        let first = arr.first().and_then(|p| p.as_str()).unwrap_or("?");
+                        let extra = arr.len().saturating_sub(1);
+                        let suffix = if extra > 0 {
+                            format!(" \x1b[90m+{} more\x1b[0m", extra)
+                        } else {
+                            String::new()
+                        };
+                        return Some(format!(
+                            "\x1b[2m{}\x1b[0m{}",
+                            rel_path_str(first, dir),
+                            suffix,
+                        ));
+                    }
+                    None
+                })
+        }
     };
 
     // Tool names fit in 9 cols (longest is `fs_search`).
@@ -1082,6 +1160,11 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     };
 
     let start = Instant::now();
+    // Copy of the scenario start time captured by the events task. Used
+    // to compute the `T+` (since-start) and `Δ` (since-previous-tool)
+    // timestamps that prefix each tool-call line so the user can see at
+    // a glance where the wall-clock budget went.
+    let start_for_events = start;
 
     // Scenario header continues from the `[  N/M] ` progress prefix printed by the caller.
     eprintln!("{} \x1b[1m{}\x1b[0m", diff_badge(spec.difficulty), spec.id);
@@ -1092,6 +1175,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         let dir_for_events = dir_for_events;
         let mut rx = rx;
         let mut events = Vec::new();
+        let mut event_times: Vec<f64> = Vec::new();
         let mut tool_calls = Vec::new();
         let mut full_text = String::new();
         let mut reasoning_text = String::new();
@@ -1120,6 +1204,10 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         // Bytes of text/reasoning streamed since the last action event.
         let mut text_bytes_since_action: usize = 0;
         let mut reasoning_bytes_since_action: usize = 0;
+        // Timestamp tracker for the per-tool `[T+...s Δ...s]` prefix.
+        // `None` until the first tool fires; updated on every ToolStart
+        // so the next tool's Δ shows the gap from THIS one.
+        let mut last_tool_start_at: Option<std::time::Instant> = None;
 
         // Helper: close out the in-place thinking line (if any) before printing
         // real output. Short silences erase the line (keeps output clean);
@@ -1173,7 +1261,11 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                             tool_calls.push(tool_name.clone());
                             close_thinking(&mut thinking_line_open, &silence_started);
                             let line = format_tool_line(tool_name, arguments.as_deref(), &dir_for_events);
-                            eprintln!("{}{}", INDENT, line);
+                            let prefix = format_tool_timestamp_prefix(
+                                &mut last_tool_start_at,
+                                start_for_events,
+                            );
+                            eprintln!("{}{}", prefix, line);
                             let _ = std::io::stderr().flush();
                         }
                         TaskEvent::ToolEnd { success, output, tool_name, .. } => {
@@ -1218,6 +1310,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
                             &mut heartbeat,
                         );
                     }
+                    event_times.push(start_for_events.elapsed().as_secs_f64());
                     events.push(ev);
                 }
                 _ = heartbeat.tick() => {
@@ -1271,7 +1364,15 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
             );
             let _ = std::io::stderr().flush();
         }
-        RunOutcome { events, tool_calls, full_text, reasoning_text, interrupted, completed }
+        RunOutcome {
+            events,
+            event_times,
+            tool_calls,
+            full_text,
+            reasoning_text,
+            interrupted,
+            completed,
+        }
     });
 
     let orch_result = tokio::time::timeout(cfg.timeout, async {
@@ -1282,8 +1383,13 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
 
     let elapsed = start.elapsed();
     let outcome = events_handle.await.unwrap_or_else(|_| RunOutcome {
-        events: vec![], tool_calls: vec![], full_text: String::new(), reasoning_text: String::new(),
-        interrupted: Some("join failed".into()), completed: false,
+        events: vec![],
+        event_times: vec![],
+        tool_calls: vec![],
+        full_text: String::new(),
+        reasoning_text: String::new(),
+        interrupted: Some("join failed".into()),
+        completed: false,
     });
 
     let approx_turns = (outcome.tool_calls.len() + 1).min(cfg.max_turns);

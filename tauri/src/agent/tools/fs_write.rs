@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::ToolState;
+use super::fs_patch::number_lines;
 use super::fs_read::resolve_path;
 use crate::agent::utils::{io_err, line_has_number_prefix, read_first_err};
 
@@ -26,13 +27,13 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
         return Err(format!("Access denied: {path} is a protected file"));
     }
 
-    // Read-before-edit enforcement: reject writes to files not previously read
+    // Read-before-edit enforcement: reject overwrites of files not previously read.
     let file_exists = tokio::fs::metadata(path).await.is_ok();
     if file_exists && !state.has_read(path).await {
         return Err(read_first_err(path, "writing to"));
     }
 
-    // Create parent directories if needed
+    // Create parent directories if needed.
     if let Some(parent) = Path::new(path).parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -43,16 +44,26 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
         .await
         .map_err(|e| io_err("write file", path, e))?;
 
-    let line_count = input.content.lines().count();
-    let warning = if looks_like_line_numbered_dump(&input.content) {
-        "\nWARNING: The content you wrote appears to have `N: ` line-number prefixes on most lines. \
-         These prefixes come from the `read` tool's display format and are NOT part of the actual \
-         file content. The file was written VERBATIM as you provided it, so it now contains those \
-         prefixes as literal text. You probably want to re-write this file without the `N: ` prefixes."
-    } else {
-        ""
-    };
-    Ok(format!("Successfully wrote {line_count} lines to '{path}'.{warning}"))
+    state.mark_read(path).await;
+
+    // If the model accidentally wrote line-number-prefixed content
+    // (mistaking `read`'s display format for the actual file body),
+    // surface it as an error response — the file is now genuinely
+    // wrong on disk and a re-write is the right next step.
+    if looks_like_line_numbered_dump(&input.content) {
+        return Ok(format!(
+            "WARNING: the content you wrote appears to have `N: ` line-number prefixes on \
+             most lines. Those come from `read`'s display format and are NOT part of the \
+             actual file content. The file was written verbatim — meaning it now contains \
+             those prefixes as literal text. Re-issue `write` (or `patch`) without the \
+             `N: ` prefixes.\n\nCurrent file contents:\n\n{}",
+            number_lines(&input.content),
+        ));
+    }
+
+    // Return the post-write file body in `read`-shape so the model
+    // sees what it just put on disk — no separate read needed.
+    Ok(number_lines(&input.content))
 }
 
 /// Returns true if most non-empty lines in `s` look like `N: <content>` (the read tool's display
@@ -75,7 +86,7 @@ mod tests {
     use crate::agent::tools::test_helpers::{make_state, make_temp_file};
 
     #[tokio::test]
-    async fn write_new_file_succeeds() {
+    async fn write_new_file_returns_post_write_body() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("new_file.txt");
         let state = make_state();
@@ -84,9 +95,9 @@ mod tests {
             file_path: path.to_str().unwrap().into(),
             content: "hello\nworld\n".into(),
         };
-        let result = execute(&input, &state).await.unwrap();
-        assert!(result.contains("Successfully wrote"));
-        assert!(result.contains("2 lines"));
+        let response = execute(&input, &state).await.unwrap();
+        // Response is the post-write file body in `read` shape.
+        assert_eq!(response, "1: hello\n2: world\n");
 
         let on_disk = std::fs::read_to_string(&path).unwrap();
         assert_eq!(on_disk, "hello\nworld\n");
@@ -113,7 +124,8 @@ mod tests {
         let path_str = f.path().to_str().unwrap().to_string();
 
         let read_input = fs_read::FSReadInput {
-            file_path: path_str.clone(),
+            file_path: Some(path_str.clone()),
+            file_paths: None,
             start_line: None,
             end_line: None,
         };
@@ -123,8 +135,8 @@ mod tests {
             file_path: path_str.clone(),
             content: "new content".into(),
         };
-        let result = execute(&input, &state).await.unwrap();
-        assert!(result.contains("Successfully wrote"));
+        let response = execute(&input, &state).await.unwrap();
+        assert_eq!(response, "1: new content\n");
 
         let on_disk = std::fs::read_to_string(&path_str).unwrap();
         assert_eq!(on_disk, "new content");
@@ -140,8 +152,7 @@ mod tests {
             file_path: path.to_str().unwrap().into(),
             content: "deep file".into(),
         };
-        let result = execute(&input, &state).await.unwrap();
-        assert!(result.contains("Successfully wrote"));
+        execute(&input, &state).await.unwrap();
         assert!(path.exists());
     }
 
@@ -155,7 +166,27 @@ mod tests {
             file_path: path.to_str().unwrap().into(),
             content: "".into(),
         };
-        let result = execute(&input, &state).await.unwrap();
-        assert!(result.contains("0 lines"));
+        let response = execute(&input, &state).await.unwrap();
+        // Empty file → empty response.
+        assert_eq!(response, "");
+    }
+
+    #[tokio::test]
+    async fn write_warns_on_line_numbered_dump() {
+        // The model accidentally pasted `read` output as content.
+        // The file is now wrong; surface the issue with the body
+        // inline so the model can re-issue cleanly.
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("oops.txt");
+        let state = make_state();
+
+        let bad = "1: import os\n2: \n3: def foo():\n4:     return None\n";
+        let input = FSWriteInput {
+            file_path: path.to_str().unwrap().into(),
+            content: bad.into(),
+        };
+        let response = execute(&input, &state).await.unwrap();
+        assert!(response.contains("WARNING"));
+        assert!(response.contains("`N: ` prefixes"));
     }
 }
