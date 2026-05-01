@@ -50,7 +50,6 @@ describe('constants', () => {
     ]
     expect(allPanelIds).toContain('changes')
     expect(allPanelIds).toContain('chat')
-    expect(allPanelIds).toContain('console')
   })
 
   it('HIDDEN_DIRECTORIES is a Set with expected entries', () => {

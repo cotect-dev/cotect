@@ -55,7 +55,7 @@ describe('layout store - pure functions', () => {
         expect(def.id).toBeTruthy()
         expect(def.label).toBeTruthy()
         expect(['left', 'right', 'bottom']).toContain(def.defaultPosition)
-        expect(['git', 'tools', 'agent']).toContain(def.group)
+        expect(['git', 'tools', 'agent', 'dev']).toContain(def.group)
       }
     })
   })
