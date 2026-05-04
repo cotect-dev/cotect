@@ -10,7 +10,8 @@ import {
   addEdge,
 } from '@xyflow/react'
 import { getPlatform } from '@/services/platform'
-import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN, isImageFile, getImageMimeType, IMAGE_PREVIEW_MAX_BYTES } from '@/lib/constants'
+import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, isImageFile, getImageMimeType, IMAGE_PREVIEW_MAX_BYTES } from '@/lib/constants'
+import { clampY } from '@/lib/canvasCamera'
 import type { AppNode } from '@/types/nodes'
 import { withPersistence } from '@/store/persistence'
 
@@ -685,18 +686,10 @@ function flattenAndRender(
     }
   }
 
-  // Simulate the camera's clamping behaviour (mirrors the pan-to-focus
-  // effect in Canvas.tsx). The camera only moves when the focused node
-  // would be outside the visible area; otherwise it stays put.
-  let newCameraY = cameraY
-  if (viewportHeight > 0) {
-    const nodeScreenY = focusedNodeY + newCameraY
-    if (nodeScreenY < CANVAS_MARGIN) {
-      newCameraY = -focusedNodeY + CANVAS_MARGIN
-    } else if (nodeScreenY + NODE_HEIGHT > viewportHeight - CANVAS_MARGIN) {
-      newCameraY = viewportHeight - CANVAS_MARGIN - focusedNodeY - NODE_HEIGHT
-    }
-  }
+  // Simulate the camera's clamping behaviour (shares the clampY helper with
+  // Canvas.tsx so the two never drift). The camera only moves when the
+  // focused node would be outside the visible area; otherwise it stays put.
+  const newCameraY = clampY(cameraY, focusedNodeY, viewportHeight)
   if (newCameraY !== cameraY) {
     set({ cameraY: newCameraY })
   }
