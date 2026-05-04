@@ -2,6 +2,14 @@
 
 Desktop application built with React, Vite, Tailwind CSS, and Tauri.
 
+## System Dependencies (macOS)
+
+GTK3 libraries are required for Tauri's Linux compatibility layer on macOS:
+
+```bash
+brew install pkgconf glib cairo atk gtk+3 pango gdk-pixbuf
+```
+
 ## Setup
 
 ```bash
