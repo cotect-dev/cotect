@@ -9,9 +9,12 @@ export const NODE_H_GAP = 32
 export const NODE_V_GAP = 16
 export const NODE_V_GAP_SMALL = 4
 
-// Padding from the edges of the canvas visible area
-export const CANVAS_PAD_Y = 56
+// Padding from the edges of the canvas visible area. CANVAS_PAD_Y must equal
+// CANVAS_MARGIN — the column-switch effect places the viewport at PAD_Y, while
+// the focused-node visibility clamp uses MARGIN; if they differ, the next
+// focus change re-triggers a Y shift of (MARGIN − PAD_Y) pixels.
 export const CANVAS_MARGIN = 60
+export const CANVAS_PAD_Y = CANVAS_MARGIN
 
 // Maximum byte size for image previews (base64-encoded into a data URL).
 // Images larger than this will show a placeholder instead of loading.

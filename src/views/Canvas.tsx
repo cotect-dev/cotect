@@ -12,7 +12,11 @@ import { notifyCanvasScrolled } from '@/components/Canvas/nodes/codeNodeRegistry
 
 const proOptions = { hideAttribution: true }
 
-const CANVAS_PAD_X = 48
+// The current column is placed CANVAS_PAD_X pixels to the right of the left
+// panel. This must match CANVAS_MARGIN — the threshold used by the focused-node
+// visibility effect — otherwise the column lands inside the clip zone and the
+// next focus change (e.g. up/down) would re-trigger an unwanted X shift.
+const CANVAS_PAD_X = CANVAS_MARGIN
 
 // Initial viewport position — ensures nodes aren't hidden behind the menu
 // on the very first render before any effects have a chance to run.
