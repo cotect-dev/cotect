@@ -8,12 +8,9 @@ import './index.css'
 import '@/store/console'
 import App from './App'
 
-// Warm the lazy chunks during main-bundle parse. Fire-and-forget dynamic
-// imports trigger vite's modulepreload machinery; the chunks download in
-// parallel with platform init and React hydration, so panel Suspense
-// boundaries (Chat, Settings, CodeNode, …) resolve without a visible flash
-// on first paint. A failure here is harmless — Suspense will re-fetch
-// on demand when the panel actually mounts.
+// Warm lazy chunks during main-bundle parse so panel Suspense boundaries
+// resolve without a visible flash. Failures are harmless — Suspense
+// re-fetches on demand when the panel actually mounts.
 function preloadChunk(mod: Promise<unknown>, name: string): void {
   mod.catch((err: unknown) => {
     console.warn(`[preload] ${name} failed, will retry on demand:`, err)
@@ -25,10 +22,9 @@ preloadChunk(import('@/components/Changes'), 'Changes')
 if (DEV) preloadChunk(import('@/components/Console'), 'Console')
 preloadChunk(import('@/components/Settings'), 'Settings')
 preloadChunk(import('@/components/History'), 'History')
-preloadChunk(import('@/components/Branches'), 'Branches')
 preloadChunk(import('@/components/Tasks'), 'Tasks')
-// ChatMessage's own dynamic imports — warm them alongside the Chat chunk
-// to avoid a two-level waterfall when the first message renders.
+// ChatMessage's own dynamic imports — warm alongside Chat to avoid a
+// two-level waterfall on the first message render.
 preloadChunk(import('remark-gfm'), 'remark-gfm')
 preloadChunk(import('react-syntax-highlighter/dist/esm/prism-async-light'), 'prism-async-light')
 preloadChunk(import('react-syntax-highlighter/dist/esm/styles/prism/one-dark'), 'one-dark')

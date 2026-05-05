@@ -29,9 +29,7 @@ let projectCache: Record<string, unknown> = {}
 let initialized = false
 let unlisteners: (() => void)[] = []
 
-// Debounce timers: one per namespace ('global' | 'project')
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
-// Pending writes: accumulated key-value pairs per namespace
 const pendingGlobal: Record<string, unknown> = {}
 const pendingProject: Record<string, unknown> = {}
 
@@ -42,7 +40,7 @@ export function withPersistence<T>(
   return (set, get, api) => {
     const initialState = creator(set, get, api)
 
-    // Capture default values for project-scoped fields (used on project switch when no saved state)
+    // Defaults applied on project switch when no saved state exists.
     const defaults: Record<string, unknown> = {}
     for (const [field] of Object.entries(options.fields)) {
       defaults[field] = (initialState as Record<string, unknown>)[field]
@@ -68,7 +66,6 @@ function getNamespace(scope: 'global' | 'project'): string {
 
 function serializeField(config: PersistFieldConfig, value: unknown): unknown {
   if (config.serialize) return config.serialize(value)
-  // Auto-convert Set and Map
   if (value instanceof Set) return [...value]
   if (value instanceof Map) return Object.fromEntries(value)
   return value
@@ -94,23 +91,18 @@ function flushScope(scope: 'global' | 'project') {
 
   if (Object.keys(pending).length === 0) return
 
-  // Merge pending into cache
   for (const [key, value] of Object.entries(pending)) {
     cache[key] = value
   }
-
-  // Clear pending
   for (const key of Object.keys(pending)) {
     delete pending[key]
   }
 
-  // Clear any pending timer
   if (debounceTimers[scope]) {
     clearTimeout(debounceTimers[scope])
     delete debounceTimers[scope]
   }
 
-  // Write to backend
   const platform = getPlatform()
   const windowId = platform.windows.getWindowId()
   const namespace = getNamespace(scope)
@@ -177,7 +169,6 @@ function startCrossWindowSync() {
   const platform = getPlatform()
   const windowId = platform.windows.getWindowId()
 
-  // Listen for global persistence changes
   const unlistenGlobal = platform.syncedState.listen('persist:global', ({ state, source }: { state: unknown; source: string }) => {
     if (source === windowId || !state || typeof state !== 'object') return
     globalCache = { ...(state as Record<string, unknown>) }
@@ -185,7 +176,6 @@ function startCrossWindowSync() {
   })
   unlisteners.push(unlistenGlobal)
 
-  // Listen for current project persistence changes
   if (currentProjectId) {
     const ns = `persist:project:${currentProjectId}`
     const unlistenProject = platform.syncedState.listen(ns, ({ state, source }: { state: unknown; source: string }) => {
@@ -237,10 +227,8 @@ export async function initPersistence(projectId: string): Promise<void> {
 }
 
 export async function switchProject(newProjectId: string): Promise<void> {
-  // Flush pending writes for old project
   flushScope('project')
 
-  // Stop old project listener
   for (const unlisten of unlisteners) {
     unlisten()
   }
@@ -248,11 +236,10 @@ export async function switchProject(newProjectId: string): Promise<void> {
 
   currentProjectId = newProjectId
 
-  // Load new project data
   const platform = getPlatform()
   const projectData = await platform.syncedState.get(`persist:project:${newProjectId}`)
 
-  // Reset project-scoped fields to defaults, then apply saved state
+  // Reset project-scoped fields to defaults before applying saved state.
   for (const entry of registeredStores) {
     const patch: Record<string, unknown> = {}
     for (const [field, config] of Object.entries(entry.fields)) {
@@ -271,14 +258,12 @@ export async function switchProject(newProjectId: string): Promise<void> {
     projectCache = {}
   }
 
-  // Restart cross-window sync with new project namespace
   startCrossWindowSync()
 }
 
 /**
- * Reload a specific store's persisted fields from the backend.
- * Used for cross-window panel transfers where the receiving window
- * needs to pick up the latest state immediately.
+ * Reload a store's persisted fields from the backend. Used for cross-window
+ * panel transfers where the receiving window needs latest state immediately.
  */
 export async function reloadStoreFromBackend(storeName: string): Promise<void> {
   const platform = getPlatform()

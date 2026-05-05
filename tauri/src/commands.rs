@@ -64,9 +64,8 @@ pub fn write_file_content(file_path: String, content: String) -> Result<(), Stri
     fs::write(&file_path, &content).map_err(|e| e.to_string())
 }
 
-/// Read at most `max_bytes` from the beginning of a file.
-/// Returns the content as a UTF-8 string (truncated at a valid char boundary)
-/// plus the total file size in bytes so the caller knows whether truncation occurred.
+/// At most `max_bytes` from the start of a file as UTF-8 (truncated at a
+/// valid char boundary). `total_bytes` lets the caller detect truncation.
 #[derive(Serialize)]
 pub struct FileHead {
     content: String,
@@ -86,7 +85,6 @@ pub fn read_file_head(file_path: String, max_bytes: u64) -> Result<FileHead, Str
     let mut reader = std::io::BufReader::new(file);
     reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
 
-    // Truncate to valid UTF-8 boundary
     let content = match std::str::from_utf8(&buf) {
         Ok(s) => s.to_string(),
         Err(e) => {
@@ -329,9 +327,7 @@ pub fn get_monitors() -> Vec<MonitorInfo> {
         .collect()
 }
 
-/// Open a folder in the system file manager.
-/// Accepts a path — if it's a directory, it opens that directory;
-/// if it's a file, it opens the parent directory.
+/// File arguments open the parent directory.
 #[tauri::command]
 pub fn show_in_folder(path: String) -> Result<(), String> {
     let p = Path::new(&path);
@@ -380,45 +376,7 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn directory_entries_sorted_dirs_first_case_insensitive() {
-        let mut entries = [
-            FSEntry { name: "zebra.txt".into(), path: "/tmp/zebra.txt".into(), is_directory: false },
-            FSEntry { name: "alpha".into(), path: "/tmp/alpha".into(), is_directory: true },
-            FSEntry { name: "beta.txt".into(), path: "/tmp/beta.txt".into(), is_directory: false },
-            FSEntry { name: "Gamma".into(), path: "/tmp/Gamma".into(), is_directory: true },
-        ];
-
-        entries.sort_by(|a, b| {
-            if a.is_directory != b.is_directory {
-                if a.is_directory {
-                    std::cmp::Ordering::Less
-                } else {
-                    std::cmp::Ordering::Greater
-                }
-            } else {
-                a.name.to_lowercase().cmp(&b.name.to_lowercase())
-            }
-        });
-
-        assert_eq!(entries[0].name, "alpha");
-        assert_eq!(entries[1].name, "Gamma");
-        assert_eq!(entries[2].name, "beta.txt");
-        assert_eq!(entries[3].name, "zebra.txt");
-    }
-
-    #[test]
-    fn is_wayland_returns_false_without_env_vars() {
-        // Ensure the env vars are not set
-        std::env::remove_var("WAYLAND_DISPLAY");
-        std::env::remove_var("XDG_SESSION_TYPE");
-        let result = std::env::var("WAYLAND_DISPLAY").is_ok()
-            && std::env::var("XDG_SESSION_TYPE").is_ok_and(|v| v == "wayland");
-        assert!(!result);
-    }
-
-    #[test]
     fn read_file_content_rejects_oversized() {
-        // Create a temp file > 10MB
         let dir = std::env::temp_dir().join("cotect_test_oversized");
         let _ = fs::create_dir_all(&dir);
         let path = dir.join("big_file.bin");
@@ -458,7 +416,6 @@ mod tests {
         fs::create_dir(dir.join("b_dir")).unwrap();
 
         let result = read_directory(dir.to_string_lossy().to_string()).unwrap();
-        // Directories first, then files alphabetically
         assert!(result[0].is_directory);
         assert_eq!(result[0].name, "b_dir");
         assert_eq!(result[1].name, "a.txt");

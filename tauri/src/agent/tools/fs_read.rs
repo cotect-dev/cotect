@@ -51,21 +51,15 @@ pub(super) fn resolve_path(raw: &str, root_path: &str) -> PathBuf {
 const MAX_BATCH_PATHS: usize = 20;
 
 pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<String, String> {
-    // Branch on which form the model used. Backward-compatible: an old
-    // call with just `file_path` keeps the original output format
-    // (line-numbered body, no `<file>` wrapper). A `file_paths` batch
-    // wraps each file in a `<file path="...">` block so the model can
-    // tell sections apart.
+    // Single `file_path` returns a line-numbered body; `file_paths` wraps
+    // each file in a `<file path="...">` block.
     match (&input.file_path, &input.file_paths) {
-        // Both set with a non-empty list → ambiguous; reject.
         (Some(_), Some(paths)) if !paths.is_empty() => Err(
             "Pass either `file_path` (single) OR `file_paths` (batch), not both. \
              For one file, use `file_path`. For multiple, use `file_paths`."
                 .into(),
         ),
-        // Single path (with optional empty `file_paths` ignored).
         (Some(p), _) => read_single(p, input.start_line, input.end_line, state).await,
-        // Batch path with at least one entry.
         (None, Some(paths)) if !paths.is_empty() => {
             if input.start_line.is_some() || input.end_line.is_some() {
                 return Err(
@@ -83,15 +77,12 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
             }
             read_batch(paths, state).await
         }
-        // Neither set, or `file_paths` was an empty array.
         _ => Err(
             "Provide either `file_path` (single) or `file_paths` (batch).".into(),
         ),
     }
 }
 
-/// Read one file. Used both directly (for the single-path API) and as
-/// the per-file step inside a batch read.
 async fn read_single(
     raw_path: &str,
     start_line: Option<u32>,
@@ -101,10 +92,8 @@ async fn read_single(
     read_single_inner(raw_path, start_line, end_line, state, false).await
 }
 
-/// `is_inside_batch` is true when the call originated from
-/// `read_batch`. The batch wrapper has its own framing and shouldn't
-/// receive the "use file_paths" hint we append on standalone
-/// single-path reads.
+/// `is_inside_batch` suppresses the "use file_paths" hint that standalone
+/// single-path reads append — the batch wrapper has its own framing.
 async fn read_single_inner(
     raw_path: &str,
     start_line: Option<u32>,
@@ -116,9 +105,8 @@ async fn read_single_inner(
     let path = resolved.to_string_lossy().to_string();
     let path = path.as_str();
 
-    // Check blocked files list (eval sandboxing).
-    // Return Ok (not Err) so this doesn't eat into the error budget —
-    // the model shouldn't be penalized for discovering a restriction.
+    // Eval sandboxing — return Ok (not Err) so blocked reads don't eat
+    // into the error budget. Discovering a restriction isn't a penalty.
     if state.blocked_files.iter().any(|b| resolved.ends_with(b) || &resolved == b) {
         return Ok(format!(
             "Access denied: `{raw}` is a hidden test file and you are being evaluated on this \
@@ -131,7 +119,6 @@ async fn read_single_inner(
         ));
     }
 
-    // Check file size
     let metadata = tokio::fs::metadata(path)
         .await
         .map_err(|e| io_err("read file", path, e))?;
@@ -147,19 +134,14 @@ async fn read_single_inner(
         .await
         .map_err(|e| io_err("read file", path, e))?;
 
-    // Count files the model has touched in this session BEFORE
-    // marking this one. Used at the tail of the response to suggest
-    // `file_paths: [...]` batching when the model is reading file
-    // by file in sequence (the pattern observed in eval).
+    // Count session reads BEFORE marking this one — drives the batching
+    // tip below when the model is reading sequentially.
     let prior_touched = {
         let map = state.read_files.lock().await;
         map.len()
     };
     state.mark_read(path).await;
 
-    // Reads always return the full file content. Earlier we experimented
-    // with a dedup stub for unchanged re-reads; it confused the model
-    // (especially after writes / patches) and was removed.
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len();
 
@@ -170,18 +152,14 @@ async fn read_single_inner(
         return Ok(format!("File '{path}' has {total} lines; start_line {start} is beyond the end."));
     }
 
-    // Clamp end to be at least start (model may pass end_line < start_line)
     let end = end.max(start);
 
     let slice = &lines[start - 1..end.min(total)];
     let mut output = String::with_capacity(slice.iter().map(|l| l.len() + 12).sum());
 
-    // For large reads (≥ LARGE_FILE_BANNER_LINES) prepend a banner. The
-    // observed failure mode is the model reading a long file once,
-    // mentally indexing only the first few hundred lines, then missing
-    // a call site lower down (cross_file_04 missed `run_report` this
-    // way). The banner steers the model toward `fs_search` for symbol
-    // lookups in big files.
+    // Prepend a banner on large reads — observed failure: model reads a
+    // long file but only mentally indexes the first few hundred lines.
+    // The banner steers toward `fs_search` for symbol lookups.
     if total >= LARGE_FILE_BANNER_LINES && start_line.is_none() && end_line.is_none() {
         let _ = writeln!(
             output,
@@ -201,9 +179,7 @@ async fn read_single_inner(
         let _ = write!(output, "\n[Showing lines {start}-{end} of {total}]");
     }
 
-    // Append a one-line note about the batch form on follow-up
-    // single-path reads. Self-correcting: the model already
-    // mid-investigation can adopt `file_paths` for its next call.
+    // Suggest the batch form on follow-up single-path reads.
     if !is_inside_batch && prior_touched > 0 {
         let _ = write!(
             output,
@@ -216,12 +192,8 @@ async fn read_single_inner(
     Ok(output)
 }
 
-/// Read several files in one call. Each file gets its own
-/// `<file path="..." lines="N">...</file>` block so the model can tell
-/// sections apart at a glance. Failures on individual paths are reported
-/// inline as `<file path="..." error="...">` blocks — the rest of the
-/// batch still comes through, so a typo in one path doesn't kill the
-/// whole call.
+/// Per-file `<file path=".." lines="N">..</file>` blocks; failures get
+/// `<file path=".." error="..">` so a typo doesn't kill the whole call.
 async fn read_batch(paths: &[String], state: &Arc<ToolState>) -> Result<String, String> {
     let mut out = String::new();
     let _ = writeln!(
@@ -249,7 +221,6 @@ async fn read_batch(paths: &[String], state: &Arc<ToolState>) -> Result<String, 
                 let _ = writeln!(out, "</file>\n");
             }
             Err(e) => {
-                // Sanitise the error so it fits cleanly in the attribute.
                 let sanitised = e.replace('"', "'").replace('\n', " ");
                 let _ = writeln!(
                     out,
@@ -262,9 +233,8 @@ async fn read_batch(paths: &[String], state: &Arc<ToolState>) -> Result<String, 
     Ok(out)
 }
 
-/// Threshold above which the read tool prepends a banner about file
-/// size. Tuned so most real source files stay quiet (~300 lines is the
-/// median) while genuinely large files surface the `fs_search` hint.
+/// Tuned so real source files stay quiet (~300-line median) while
+/// genuinely large files surface the `fs_search` hint.
 const LARGE_FILE_BANNER_LINES: usize = 400;
 
 #[cfg(test)]

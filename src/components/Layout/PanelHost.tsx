@@ -3,17 +3,12 @@ import { createPortal } from 'react-dom';
 import { PANEL_CONTENT, PANEL_IDS } from './panelContent';
 
 /**
- * PanelHost renders every known panel component exactly once into stable,
- * long-lived DOM containers.  `PanelSlot` can then reparent those containers
- * into whatever DropZone slot is currently active — without unmounting the
- * React tree.
- *
- * This lets the Chat (or any other panel) survive being dragged between zones
- * while keeping its full component state, streaming connections, scroll
- * positions, etc.
+ * Renders each panel component once into a stable, long-lived DOM container.
+ * `PanelSlot` reparents those containers into the active DropZone slot
+ * without unmounting the React tree, so dragging a panel between zones
+ * preserves its state, streaming connections, scroll position, etc.
  */
 interface PanelHostCtx {
-  /** Stable DOM container elements keyed by panel id. */
   getNode: (id: string) => HTMLDivElement | null;
 }
 
@@ -24,10 +19,8 @@ function usePanelHost() {
 }
 
 /**
- * Creates stable DOM elements (once, outside the React lifecycle) that serve
- * as portal targets.  React renders panel components *into* these elements via
- * `createPortal`.  The elements themselves can be freely moved around the DOM
- * by `PanelSlot` without affecting React's reconciliation.
+ * Stable DOM portal targets created outside the React lifecycle. `PanelSlot`
+ * moves them around the DOM without affecting React's reconciliation.
  */
 function createPanelContainers(): Record<string, HTMLDivElement> {
   const containers: Record<string, HTMLDivElement> = {};
@@ -43,9 +36,8 @@ function createPanelContainers(): Record<string, HTMLDivElement> {
 }
 
 export function PanelHostProvider({ children }: { children: ReactNode }) {
-  // useState with a lazy initializer guarantees createPanelContainers runs
-  // exactly once per provider mount — equivalent to a ref, but legal to read
-  // during render (refs are not).
+  // Lazy useState ensures createPanelContainers runs exactly once per
+  // provider mount and is legal to read during render (refs are not).
   const [containers] = useState(createPanelContainers);
 
   useEffect(() => {
@@ -85,9 +77,8 @@ function PanelFallback() {
 }
 
 /**
- * PanelSlot adopts (reparents) a panel's stable DOM container into its own
- * mount point.  When the slot unmounts or changes panel id, the container is
- * returned to `document.body` (hidden) so it isn't destroyed.
+ * Reparents a panel's stable container into its mount point. On unmount /
+ * id change the container is returned to body (hidden) so it survives.
  */
 export function PanelSlot({ id, visible }: { id: string; visible: boolean }) {
   const { getNode } = usePanelHost();
@@ -102,7 +93,7 @@ export function PanelSlot({ id, visible }: { id: string; visible: boolean }) {
     wrapper.style.display = 'block';
 
     return () => {
-      // Return to body (hidden) — the React portal keeps the component alive
+      // Return to body hidden — the React portal keeps the component alive.
       wrapper.style.display = 'none';
       if (wrapper.parentNode === mount) {
         document.body.appendChild(wrapper);
@@ -110,7 +101,6 @@ export function PanelSlot({ id, visible }: { id: string; visible: boolean }) {
     };
   }, [id, getNode]);
 
-  // Toggle visibility without re-adopting
   useEffect(() => {
     const wrapper = getNode(id);
     if (wrapper && wrapper.parentNode === mountRef.current) {

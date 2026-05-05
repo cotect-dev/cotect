@@ -38,10 +38,6 @@ export type GitBranch =
   | { kind: 'detached'; short_sha: string }
   | { kind: 'initial' }
 
-/**
- * User-facing label for the branch panel. Pure function so the branches UI
- * stays a thin shell.
- */
 export function branchLabel(branch: GitBranch | null): string {
   if (!branch) return 'unknown'
   switch (branch.kind) {
@@ -64,32 +60,33 @@ interface GitState {
   status: GitStatus | null
   log: GitLogEntry[] | null
   branch: GitBranch | null
+  branches: string[]
   lastCommitTimestamp: number | null
   /**
-   * Map of repo-relative path → HEAD content for that file.
-   * Lazily populated by loadHeadContent. Invalidated (replaced with empty) when
-   * HEAD SHA changes.
+   * Map of repo-relative path → HEAD content. Lazily populated by
+   * loadHeadContent; invalidated (replaced) when HEAD SHA changes.
    */
   headContent: { sha: string; files: Record<string, string> }
   loadHeadContent: (repoRelativePath: string) => Promise<string | null>
   /** Hybrid timestamps (unix seconds) per repo-relative dirty file path. */
   fileTimes: Record<string, number>
-  /** Current Changes-panel sort mode. Not persisted across restarts. */
   sortMode: 'path' | 'recent' | 'oldest'
   setSortMode: (mode: 'path' | 'recent' | 'oldest') => void
   loading: boolean
   refresh: () => Promise<void>
   initRepo: () => Promise<void>
+  checkoutBranch: (branchName: string) => Promise<void>
   setRepoPath: (path: string) => void
 }
 
-const failedGitState = (gitError: GitError): Pick<GitState, 'initialized' | 'isGitRepo' | 'gitError' | 'status' | 'log' | 'branch' | 'lastCommitTimestamp'> => ({
+const failedGitState = (gitError: GitError): Pick<GitState, 'initialized' | 'isGitRepo' | 'gitError' | 'status' | 'log' | 'branch' | 'branches' | 'lastCommitTimestamp'> => ({
   initialized: true,
   isGitRepo: false,
   gitError,
   status: null,
   log: null,
   branch: null,
+  branches: [],
   lastCommitTimestamp: null,
 })
 
@@ -101,6 +98,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
   status: null,
   log: null,
   branch: null,
+  branches: [],
   lastCommitTimestamp: null,
   headContent: { sha: '', files: {} },
   fileTimes: {},
@@ -141,10 +139,11 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
     set({ loading: true })
 
     try {
-      const [status, log, branch, lastCommitTime] = await Promise.allSettled([
+      const [status, log, branch, branches, lastCommitTime] = await Promise.allSettled([
         invoke<GitStatus>('git_status', { repoPath }),
         invoke<GitLogEntry[]>('git_log', { repoPath, limit: 50 }),
         invoke<GitBranch>('git_branch', { repoPath }),
+        invoke<string[]>('git_branches', { repoPath }),
         invoke<number>('git_last_commit_time', { repoPath }),
       ])
 
@@ -177,13 +176,12 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
           broadcastFailed(state)
           return
         }
-        // Unknown error from git_status — don't fall through to success path
         console.error('Git status failed with unknown error:', err)
         set({ ...failedGitState(null), loading: false })
         return
       }
 
-      const hasPartialFailure = [status, log, branch, lastCommitTime].some(
+      const hasPartialFailure = [status, log, branch, branches, lastCommitTime].some(
         (r) => r.status === 'rejected',
       )
 
@@ -194,6 +192,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
         status: status.status === 'fulfilled' ? status.value : null,
         log: log.status === 'fulfilled' ? log.value : null,
         branch: branch.status === 'fulfilled' ? branch.value : null,
+        branches: branches.status === 'fulfilled' ? branches.value : [],
         lastCommitTimestamp: lastCommitTime.status === 'fulfilled' ? lastCommitTime.value : null,
       }
       const headSha = log.status === 'fulfilled' && log.value && log.value[0] ? log.value[0].hash : ''
@@ -202,9 +201,8 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
         currentHeadContent.sha === headSha
           ? currentHeadContent
           : { sha: headSha, files: {} }
-      // Update the main window's own state immediately so its UI doesn't wait
-      // on fileTimes computation, but defer the cross-window broadcast until
-      // fileTimes is ready so children never receive a stale snapshot.
+      // Update locally first for snappy UI, but defer the cross-window
+      // broadcast until fileTimes is ready so children don't see a stale snapshot.
       set({ ...newState, headContent: nextHeadContent, loading: false })
 
       const broadcastWithTimes = (fileTimes: Record<string, number>) => {
@@ -237,7 +235,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
                 const mtime = s.mtime ? s.mtime.getTime() : 0
                 if (!Number.isNaN(mtime) && mtime > 0) fsTime = Math.floor(mtime / 1000)
               } catch {
-                // file doesn't exist on disk (deleted) — fall back to head time only
+                // file deleted on disk — fall back to head time only
               }
               const headTime = headTimes[f.path] ?? null
               if (f.status === 'A' || f.status === 'U') {
@@ -273,17 +271,22 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
     await get().refresh()
   },
 
+  checkoutBranch: async (branchName: string) => {
+    const { repoPath } = get()
+    if (!repoPath) return
+    await invoke('git_checkout', { repoPath, branch: branchName })
+    await get().refresh()
+  },
+
   setRepoPath: (path: string) => {
     if (path === get().repoPath) return
-    set({ repoPath: path, initialized: false, isGitRepo: false, gitError: null, status: null, log: null, branch: null, lastCommitTimestamp: null })
+    set({ repoPath: path, initialized: false, isGitRepo: false, gitError: null, status: null, log: null, branch: null, branches: [], lastCommitTimestamp: null })
   },
 })))
 
 /**
- * Return the files in the order required by the current sort mode.
  * - 'path': original order (tree building happens in the view layer).
- * - 'recent': descending by fileTimes, files with missing timestamps last in original order.
- * - 'oldest': ascending by fileTimes, files with missing timestamps last in original order.
+ * - 'recent'/'oldest': by fileTimes; missing timestamps land last in original order.
  */
 export function sortedFiles(state: Pick<GitState, 'status' | 'fileTimes' | 'sortMode'>): GitFileStatus[] {
   const files = state.status?.files ?? []
@@ -318,16 +321,15 @@ export interface GitSyncPayload {
   status: GitStatus | null
   log: GitLogEntry[] | null
   branch: GitBranch | null
+  branches: string[]
   lastCommitTimestamp: number | null
   headContent: { sha: string; files: Record<string, string> }
   fileTimes: Record<string, number>
   sortMode: 'path' | 'recent' | 'oldest'
 }
 
-/**
- * Pinned via `Pick<GitState, ...>`: adding a field to GitState without adding
- * it here fails typecheck, which is the drift this helper pair exists to catch.
- */
+// Pick<GitState, ...> intentionally pins each field so adding to GitState
+// without updating here fails typecheck — the drift these helpers catch.
 type GitSyncStateSlice = Pick<
   GitState,
   | 'initialized'
@@ -336,18 +338,17 @@ type GitSyncStateSlice = Pick<
   | 'status'
   | 'log'
   | 'branch'
+  | 'branches'
   | 'lastCommitTimestamp'
   | 'headContent'
   | 'fileTimes'
   | 'sortMode'
 >
 
-/** State slice → wire payload (sans `source`). */
 export function buildGitSyncPayload(state: GitSyncStateSlice): Omit<GitSyncPayload, 'source'> {
   return { ...state }
 }
 
-/** Wire payload → setState slice (drops `source`). */
 export function applyGitSyncPayload(payload: GitSyncPayload): Partial<GitState> {
   const { source: _source, ...rest } = payload
   return rest
@@ -368,7 +369,6 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
   const isMain = currentWindowId === 'main'
   const cleanups: (() => void)[] = []
 
-  // All windows listen for cross-window sync
   const syncListenPromise = listen('git-sync', (event) => {
     const payload = event.payload as GitSyncPayload
     if (payload.source !== currentWindowId) {
@@ -381,7 +381,7 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
     })
   })
 
-  // Only main window runs git commands and broadcasts
+  // Only the main window runs git commands and broadcasts.
   if (isMain) {
     const watches: Array<{ path: string; id: string; recursive: boolean }> = [
       { path: `${repoPath}/.git`, id: 'git', recursive: false },

@@ -31,21 +31,14 @@ where
     }
 }
 
-/// Determine if an error is retryable (transient).
 fn is_retryable(error: &anyhow::Error) -> bool {
     let msg = format!("{error:?}").to_lowercase();
-    // Server errors (5xx)
     msg.contains("status: 5") || msg.contains("status code: 5") || msg.contains("http 5") ||
-    // Specific 5xx codes
     msg.contains("500") || msg.contains("502") || msg.contains("503") || msg.contains("504") ||
-    // Rate limiting
     msg.contains("429") || msg.contains("too many requests") || msg.contains("rate limit") ||
-    // Connection errors
     msg.contains("connection refused") || msg.contains("connection reset") ||
     msg.contains("connection closed") || msg.contains("connection") ||
-    // Timeout errors
     msg.contains("timed out") || msg.contains("timeout") ||
-    // Explicit retryable marker
     msg.contains("retryable")
 }
 

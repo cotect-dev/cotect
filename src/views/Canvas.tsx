@@ -13,8 +13,7 @@ import { notifyCanvasScrolled } from '@/components/Canvas/nodes/codeNodeRegistry
 
 const proOptions = { hideAttribution: true }
 
-// Initial viewport before any effect runs. Matches anchorViewport(0, 0): no
-// panel measured yet, column 0 sitting at MARGIN from the canvas left edge.
+// Matches anchorViewport(0, 0): column 0 at MARGIN before any effect runs.
 const defaultViewport: RFViewport = { x: CANVAS_MARGIN, y: CANVAS_MARGIN, zoom: 1 }
 
 function CanvasFlow() {
@@ -31,7 +30,6 @@ function CanvasFlow() {
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
   const depthChainLength = useCanvasStore((s) => s.depthChain.length)
 
-  // Observe the actual rendered width of the left panel zone
   const [leftPanelWidth, setLeftPanelWidth] = useState(0)
   useEffect(() => {
     const el = document.querySelector('[data-zone="left"]') as HTMLElement | null
@@ -52,18 +50,16 @@ function CanvasFlow() {
     }
   }, [rootPath])
 
-  // Track previous panel width to compute deltas on resize
   const prevPanelWidth = useRef(leftPanelWidth)
-  // Keep a ref so deferred callbacks (e.g. fallback path on first mount)
-  // always read the latest panel width.
+  // Ref so deferred callbacks always read the latest panel width.
   const leftPanelWidthRef = useRef(leftPanelWidth)
   useEffect(() => {
     leftPanelWidthRef.current = leftPanelWidth
   }, [leftPanelWidth])
 
-  // Read panel width directly from the DOM. On first mount the ResizeObserver
-  // may not have fired yet — getBoundingClientRect inside useLayoutEffect
-  // runs after layout commit, so the value is real even before observers fire.
+  // Read panel width from the DOM: useLayoutEffect runs after layout commit,
+  // so getBoundingClientRect returns a real value even before the
+  // ResizeObserver has fired on first mount.
   const readPanelW = useCallback(() => {
     const panelEl = document.querySelector('[data-zone="left"]')
     return panelEl ? panelEl.getBoundingClientRect().width : leftPanelWidthRef.current
@@ -74,7 +70,6 @@ function CanvasFlow() {
     return { width: r?.width ?? 0, height: r?.height ?? 0 }
   }, [])
 
-  // Pan to keep focused node in view when focus or its position changes
   const focusedNode = focusedNodeId ? nodes.find((n) => n.id === focusedNodeId) : null
   const focusedNodeX = focusedNode?.position.x ?? 0
   const focusedNodeY = focusedNode?.position.y ?? 0
@@ -83,10 +78,7 @@ function CanvasFlow() {
     : null
 
   // Anchor on column change: place the new current column at panelW + MARGIN,
-  // then clamp to keep the focused node in view (no-op when anchor already
-  // lands the focus inside the safe zone). Animated for a smooth slide.
-  // useLayoutEffect runs synchronously after DOM commit, so getBoundingClientRect
-  // returns a real panel width even on first mount — no setTimeout magic number.
+  // then clamp to keep the focused node in view. Animated for a smooth slide.
   useLayoutEffect(() => {
     const panelW = readPanelW()
     leftPanelWidthRef.current = panelW
@@ -98,8 +90,8 @@ function CanvasFlow() {
     void reactFlow.setViewport({ ...target, zoom: 1 }, { duration: 100 })
   }, [currentColumnIndex, depthChainLength]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Shift viewport horizontally when the panel resizes, then re-clamp so a
-  // panel grow that covers the focused node is auto-corrected.
+  // Shift viewport on panel resize, then re-clamp so a panel grow that
+  // covers the focused node is auto-corrected.
   useEffect(() => {
     const delta = leftPanelWidth - prevPanelWidth.current
     prevPanelWidth.current = leftPanelWidth
@@ -112,9 +104,8 @@ function CanvasFlow() {
     void reactFlow.setViewport({ ...target, zoom: vp.zoom }, { duration: 0 })
   }, [leftPanelWidth]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Focus-clamp: when only the focused node changes (no column switch), clamp
-  // the current viewport to keep the new focus visible. Skipped on column
-  // changes since the anchor effect above already ran and includes the clamp.
+  // Focus-only change: clamp the viewport to keep the new focus visible.
+  // Skipped on column changes (the anchor effect already ran with a clamp).
   const prevColumnIndexRef = useRef(currentColumnIndex)
   useEffect(() => {
     const columnChanged = prevColumnIndexRef.current !== currentColumnIndex
@@ -135,17 +126,16 @@ function CanvasFlow() {
 
   useCanvasKeyboard(containerRef)
 
-  // Auto-focus container on mount so keyboard navigation works immediately
+  // Auto-focus container on mount so keyboard navigation works immediately.
   useEffect(() => {
     containerRef.current?.focus()
   }, [])
 
-  // Wheel handler: translate vertical scroll into viewport pan, or forward
-  // to the preview code node's scroller when a file is focused.
+  // Translate vertical wheel into viewport pan, or forward to the preview
+  // code node's scroller when a file is focused.
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.stopPropagation()
 
-    // When a file node is focused, hijack scrolling to the preview code node
     const store = useCanvasStore.getState()
     const focusedId = store.focusedNodeId
     if (focusedId) {
@@ -173,9 +163,8 @@ function CanvasFlow() {
     )
   }, [reactFlow])
 
-  // Whenever the viewport moves — wheel pan, animated set, anything — keep
-  // the store's cameraY in sync so flattenAndRender's preview-column math
-  // sees the live camera, not a stale value from the last navigation.
+  // Keep store cameraY in sync with every viewport movement so
+  // flattenAndRender's preview-column math sees the live camera.
   const handleViewportChange = useCallback((vp: RFViewport) => {
     notifyCanvasScrolled()
     if (useCanvasStore.getState().cameraY !== vp.y) {
@@ -183,8 +172,8 @@ function CanvasFlow() {
     }
   }, [])
 
-  // Report container height to the store so flattenAndRender can
-  // compute where the visible area starts for the preview column.
+  // Report container height so flattenAndRender knows where the visible
+  // area starts for the preview column.
   useEffect(() => {
     const el = containerRef.current
     if (!el) return

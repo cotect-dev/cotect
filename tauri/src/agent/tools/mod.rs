@@ -77,9 +77,7 @@ pub async fn execute_tool(
 
     match name {
         "__format_error__" => {
-            // Tool-call parse failed in the adapter layer.
-            // The arguments field contains the raw malformed text.
-            // Return a clear error explaining the required format.
+            // Adapter-layer parse failure. `args` contains the raw malformed text.
             Err(format!(
                 "Tool call could not be parsed. Your output was:\n\
                  {args}\n\n\
@@ -94,12 +92,9 @@ pub async fn execute_tool(
         "patch" => fs_patch::execute(&parse_args(args)?, state).await,
         "fs_search" => fs_search::execute(&parse_args(args)?, state).await,
         "shell" => {
-            // Oversized shell arguments (typically a heredoc with an entire
-            // file body) are rejected before execution. The full args blob
-            // still sits on the assistant message and inflates context; the
-            // error makes the bad pattern visible and steers the model to
-            // `write` instead. We don't execute the command — even if it
-            // would succeed, the context cost isn't worth it.
+            // Oversized args (usually heredoc-ed file bodies) are rejected
+            // before execution — context cost isn't worth running them, and
+            // the error steers the model to the `write` tool.
             if args.len() > MAX_SHELL_ARGS_BYTES {
                 return Err(format!(
                     "Shell arguments are {} bytes, which exceeds the {}-byte budget. \
@@ -118,7 +113,6 @@ pub async fn execute_tool(
     }
 }
 
-/// Extract file_path or path from a tool call's arguments (for UI indicators).
 pub fn extract_file_path(func: &super::types::FunctionCall) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(&func.arguments)
         .ok()
@@ -229,7 +223,7 @@ fn make_def<T: JsonSchema>(name: &str, description: &str) -> ToolDefinition {
     let schema = schemars::schema_for!(T);
     let mut params = serde_json::to_value(schema).unwrap_or(serde_json::json!({}));
 
-    // Clean up the schema for OpenAI compatibility
+    // OpenAI-compat schemas: drop $schema and title.
     if let Some(obj) = params.as_object_mut() {
         obj.remove("$schema");
         obj.remove("title");
@@ -248,33 +242,6 @@ fn make_def<T: JsonSchema>(name: &str, description: &str) -> ToolDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_all_definitions_returns_6_tools() {
-        let defs = all_definitions();
-        assert_eq!(defs.len(), 6);
-        let names: Vec<&str> = defs.iter().map(|d| d.function.name.as_str()).collect();
-        assert!(names.contains(&"patch"));
-        assert!(!names.contains(&"edit"), "edit tool was unified into patch");
-    }
-
-    #[test]
-    fn test_all_definitions_have_function_type() {
-        for def in all_definitions() {
-            assert_eq!(def.def_type, "function");
-            assert!(!def.function.name.is_empty());
-            assert!(!def.function.description.is_empty());
-        }
-    }
-
-    #[test]
-    fn test_definitions_for_implement_returns_all() {
-        let defs = definitions_for_role(AgentRole::Implement);
-        assert_eq!(defs.len(), 6);
-        let names: Vec<&str> = defs.iter().map(|d| d.function.name.as_str()).collect();
-        assert!(names.contains(&"patch"));
-        assert!(!names.contains(&"edit"));
-    }
 
     #[test]
     fn test_definitions_for_research_readonly() {

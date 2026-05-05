@@ -41,7 +41,7 @@ export interface AgentConfig {
   active_provider_id: string
 }
 
-// serde tag = "type" on the Rust side
+// Mirrors `serde(tag = "type")` on the Rust side.
 export type TaskEvent =
   | { type: 'text'; content: string; partial: boolean }
   | { type: 'reasoning'; content: string }
@@ -51,10 +51,8 @@ export type TaskEvent =
   | { type: 'error'; message: string }
   | { type: 'complete' }
   | { type: 'interrupted'; reason: string }
-  // One-shot signal that the model has been streaming reasoning for a
-  // long time without calling any tool. UI may surface a "model is
-  // deliberating" indicator. Not a circuit-breaker — orchestration
-  // continues unchanged.
+  // One-shot signal: model has streamed reasoning for a long time without
+  // calling a tool. Advisory only; not a circuit-breaker.
   | { type: 'reasoning_stall'; elapsed_ms: number; reasoning_bytes: number }
 
 export async function startTask(request: TaskRequest): Promise<void> {
@@ -77,7 +75,7 @@ export async function testConnection(config: ProviderConfig): Promise<string[]> 
   return invoke<string[]>('agent_test_connection', { config })
 }
 
-// Events are emitted by Rust on `agent-task-event:{taskId}`.
+/** Listens on the `agent-task-event:{taskId}` Tauri event. */
 export function listenToTask(
   taskId: string,
   callback: (event: TaskEvent) => void,

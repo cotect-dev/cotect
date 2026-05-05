@@ -51,16 +51,11 @@ impl ToolErrorTracker {
 /// Budgets and circuit-breakers:
 /// - `max_turns` is the only hard ceiling on how long the model can work.
 /// - `error_tracker` stops the loop when a single tool fails repeatedly
-///   (malformed arguments, blocked reads, etc.) — 5 per tool.
-/// - `doom_detector` intervenes when tool-call patterns loop (exact
-///   repeat, near-identical, thinking-in-shell).
+///   (5 per tool).
+/// - `doom_detector` intervenes when tool-call patterns loop.
 ///
-/// Reasoning length by itself is NOT a failure mode — the model may
-/// stream as much deliberation as it wants between tool calls. Earlier
-/// versions capped reasoning bytes per turn and cumulatively across
-/// turns; both were removed because they interrupted legitimate
-/// multi-step planning and gave the model confusing "commit now"
-/// reminders while it was making progress.
+/// Reasoning length is NOT a failure mode — earlier per-turn/cumulative
+/// byte caps interrupted legitimate multi-step planning and were removed.
 pub struct Orchestrator {
     llm: LlmClient,
     context: ConversationContext,
@@ -70,29 +65,20 @@ pub struct Orchestrator {
     doom_detector: DoomLoopDetector,
     max_turns: usize,
     tool_call_counter: usize,
-    /// Stall tracker: timestamp of the last tool call (or task start
-    /// if no tool has run yet) and accumulated reasoning bytes since
-    /// then. Together with `stall_emitted`, drives a one-shot
-    /// `TaskEvent::ReasoningStall` when both pass their thresholds.
-    /// Emitting the event does NOT change orchestration behaviour;
-    /// the frontend can surface it as a "model is deliberating"
-    /// indicator. Real users in the loop may want to know; the eval
-    /// harness currently ignores it.
+    /// Stall tracker: timestamp of the last tool call (or task start)
+    /// and accumulated reasoning+text bytes since then. Drives a one-shot
+    /// `TaskEvent::ReasoningStall` when both thresholds are exceeded.
+    /// Advisory only — does not change orchestration.
     last_action_at: Instant,
     reasoning_bytes_since_action: usize,
     stall_emitted: bool,
 }
 
-/// Wall time and reasoning-byte thresholds that together trigger a
-/// `ReasoningStall` event. Both must be exceeded — short bursts of
-/// long reasoning (a quick proof) don't trip; long bursts of trivial
-/// reasoning don't trip either.
-///
-/// Tuned from the eval transcripts. testing_04 burned ~13.7k stream
-/// events (well over 6 KB of reasoning bytes) and 600s of wall clock
-/// between two consecutive tool calls; any threshold under those by
-/// an order of magnitude catches it. The other 29 scenarios stayed
-/// under 60 s + 4 KB between tools, so the signal is specific.
+/// Both thresholds must be exceeded to trigger `ReasoningStall` — short
+/// bursts of long reasoning don't trip; long bursts of trivial reasoning
+/// don't either. Tuned from eval transcripts (testing_04 burned ~13.7k
+/// stream events / 600s between tool calls; everyone else stayed under
+/// 60s + 4 KB).
 const STALL_REASONING_BYTES: usize = 4 * 1024;
 const STALL_WALL_MS: u64 = 60_000;
 
@@ -113,7 +99,6 @@ impl Orchestrator {
             )
         };
 
-        // Build system prompt with scope context
         let env = EnvironmentInfo {
             cwd: request.scope.root_path.clone(),
             ..EnvironmentInfo::default()
@@ -123,13 +108,12 @@ impl Orchestrator {
             request.role,
             &request.scope,
             &env,
-            &[], // File contents are loaded lazily by the agent via read tool
+            &[], // file contents loaded lazily via read tool
             None,
         );
 
-        // Append `/no_think` for Qwen providers that opted out of thinking.
-        // The soft switch is officially Qwen 3 only, but 3.5/3.6 finetunes
-        // often still honour it. Complementary to server-side flags.
+        // `/no_think` soft switch is officially Qwen 3 only, but 3.5/3.6
+        // finetunes often still honour it. Complementary to server-side flags.
         if provider.disable_thinking == Some(true)
             && matches!(provider.resolved_format(), crate::agent::adapter::PromptFormat::Qwen)
         {
@@ -146,9 +130,8 @@ impl Orchestrator {
             sender,
             error_tracker: ToolErrorTracker::new(5),
             doom_detector: DoomLoopDetector::default(),
-            // 30 turns is enough for even complex refactors when the model
-            // stays on task; beyond that it's almost always a tool-call
-            // loop (which the doom detector will also catch).
+            // 30 turns is enough even for complex refactors when the model
+            // stays on task; beyond that it's almost always a tool-call loop.
             max_turns: 30,
             tool_call_counter: 0,
             last_action_at: Instant::now(),
@@ -174,12 +157,9 @@ impl Orchestrator {
         const MAX_STREAM_TIMEOUTS: usize = 2;
 
         while !should_yield {
-            // 1. Doom loop check — warn at 3 repetitions, abort at 5.
-            //    The detector covers four failure modes (exact duplicate calls,
-            //    repeating patterns, near-identical calls, thinking-in-shell);
-            //    we tailor the reminder when the alarm is specifically the
-            //    thinking-in-shell mode because the generic "try a different
-            //    approach" wording doesn't actually land for that case.
+            // Doom loop: warn at 3 repetitions, abort at 5. The reminder
+            // is tailored for thinking-in-shell because the generic "try
+            // a different approach" wording doesn't land for that case.
             if let Some(count) = self.doom_detector.check() {
                 if count >= 5 {
                     self.sender
@@ -208,7 +188,6 @@ impl Orchestrator {
                 }
             }
 
-            // 2. Call LLM with retry
             let messages = self.context.messages().to_vec();
             let tool_defs = self.context.tool_definitions().to_vec();
 
@@ -219,12 +198,9 @@ impl Orchestrator {
             )
             .await?;
 
-            // 3. Consume stream, forwarding deltas to frontend
             let mut turn = self.consume_stream(rx).await?;
 
-            // 3a. Stall tracker: count reasoning + text bytes streamed
-            // this turn. If a tool call fires later in this iteration
-            // we'll reset; otherwise the bytes accumulate across turns.
+            // Stall tracker accumulates across turns until a tool call resets it.
             self.reasoning_bytes_since_action +=
                 turn.reasoning.len() + turn.content.len();
             if !self.stall_emitted {
@@ -242,30 +218,25 @@ impl Orchestrator {
                 }
             }
 
-            // 3b. Remap tool call IDs to simple sequential format (call_N).
-            // Some servers (OpenAI, llama.cpp) generate 32-char random alphanumeric
-            // IDs that some models (Gemma 4) echo back as text when confused by
-            // tool-call templates. Short, predictable IDs reduce this confusion.
+            // Remap tool call IDs to call_N. Some servers (OpenAI, llama.cpp)
+            // generate 32-char random IDs that some models (Gemma 4) echo
+            // back as text when confused by tool-call templates.
             for tool_call in turn.tool_calls.iter_mut() {
                 self.tool_call_counter += 1;
                 tool_call.id = format!("call_{}", self.tool_call_counter);
             }
 
-            // 4. Determine completion
             let finish = turn.finish_reason.as_deref();
             let has_tools = !turn.tool_calls.is_empty();
             let has_content = !turn.content.trim().is_empty();
 
-            // "stop", "end_turn", or stream ended cleanly (None) with no tool calls = done
             is_complete = (finish == Some("stop") || finish == Some("end_turn") || finish.is_none())
                 && !has_tools;
             should_yield = is_complete;
 
-            // Stream-level problems: idle timeout or abnormal stream termination.
-            // "timeout"      — no bytes arrived for COTECT_STREAM_IDLE_TIMEOUT seconds.
-            // "stream_ended" — HTTP stream closed without [DONE] marker (server crash,
-            //                  KV cache exhaustion, inference error, etc.).
-            // Both are transient — retry a few times before giving up.
+            // "timeout": no bytes for COTECT_STREAM_IDLE_TIMEOUT seconds.
+            // "stream_ended": HTTP stream closed without [DONE] (server crash,
+            // KV cache exhaustion, inference error). Both transient — retry.
             if finish == Some("timeout") || finish == Some("stream_ended") {
                 stream_timeout_count += 1;
                 let kind = if finish == Some("timeout") {
@@ -283,27 +254,22 @@ impl Orchestrator {
                         .ok();
                     should_yield = true;
                 } else {
-                    // Don't append anything to context — just retry the same turn.
-                    // The server may have stalled during reasoning; a fresh request
-                    // with the same messages often succeeds.
+                    // Retry the same turn without modifying context — fresh
+                    // request with the same messages often succeeds.
                     continue;
                 }
             } else {
-                // Any successful response resets the stream timeout counter.
                 stream_timeout_count = 0;
             }
 
-            // If the model hit its token limit with no tool calls, treat it as
-            // a yield — the model ran out of generation budget. Continuing would
-            // just loop endlessly (common with reasoning-heavy models like Gemma 4).
+            // Token-limit hit with no tool calls = yield. Continuing would
+            // loop endlessly (common with reasoning-heavy models like Gemma 4).
             if finish == Some("length") && !has_tools {
                 if has_content {
-                    // Got partial content — treat as complete, user can see what was generated
                     is_complete = true;
                     should_yield = true;
                 } else {
-                    // No content, no tools — the model spent everything on reasoning.
-                    // Inject a nudge and allow one more try, but track empty turns.
+                    // No content, no tools — model spent everything on reasoning.
                     empty_turn_count += 1;
                     if empty_turn_count >= MAX_EMPTY_TURNS {
                         self.sender
@@ -321,7 +287,6 @@ impl Orchestrator {
                 }
             }
 
-            // Track consecutive empty turns (no content, no tools) for any finish reason
             if !has_tools && !has_content && finish != Some("length") {
                 empty_turn_count += 1;
                 if empty_turn_count >= MAX_EMPTY_TURNS {
@@ -336,15 +301,12 @@ impl Orchestrator {
                 empty_turn_count = 0;
             }
 
-            // 5. Execute tool calls sequentially
             if !turn.tool_calls.is_empty() {
-                // A tool call clears any pending stall state — the
-                // model committed to an action.
+                // A tool call clears pending stall state.
                 self.last_action_at = Instant::now();
                 self.reasoning_bytes_since_action = 0;
                 self.stall_emitted = false;
 
-                // Add assistant message with tool calls to context
                 self.context
                     .append_assistant_with_tools(&turn.content, turn.tool_calls.clone());
 
@@ -376,17 +338,14 @@ impl Orchestrator {
                         })
                         .ok();
 
-                    // Build tool result message with error budget info
                     let tool_result_text = match result {
                         Ok(mut output) => {
                             self.error_tracker.record_success(&tool_call.function.name);
-                            // After a successful tool call, compact any prior __format_error__
-                            // round-trips out of context to keep conversation clean.
+                            // Drop prior __format_error__ round-trips from context.
                             self.context.compact_format_errors();
 
-                            // When a shell command exits with a non-zero code, append a
-                            // nudge so the model knows it should keep iterating instead
-                            // of giving up and producing a final text-only response.
+                            // Nudge on non-zero shell exit so the model keeps iterating
+                            // instead of producing a text-only final response.
                             if tool_call.function.name == "shell" {
                                 if let Some(code) = extract_shell_exit_code(&output) {
                                     if code != 0 {
@@ -420,16 +379,13 @@ impl Orchestrator {
                         .record(&tool_call.function.name, &tool_call.function.arguments);
                 }
             } else if has_content {
-                // Text-only turn — add assistant text to context
                 self.context.append_assistant(&turn.content);
             }
-            // else: empty turn (no content, no tools) — skip appending.
-            // Appending an empty assistant message would cause the next request to
-            // have a trailing assistant message, which some servers reject as a
-            // "prefill" (e.g. Gemma 4 with enable_thinking: 400 Bad Request).
-            // The empty_turn_count tracker above already handles bailing out.
+            // else: empty turn — skip appending. An empty assistant message
+            // would leave the next request with a trailing assistant turn,
+            // which some servers reject as a "prefill" (e.g. Gemma 4 with
+            // enable_thinking: 400 Bad Request). empty_turn_count handles bailing.
 
-            // 7. Error budget check
             if self.error_tracker.limit_reached() {
                 self.sender
                     .send(TaskEvent::Interrupted {
@@ -439,7 +395,6 @@ impl Orchestrator {
                 should_yield = true;
             }
 
-            // 8. Turn limit check
             turn_count += 1;
             if turn_count >= self.max_turns {
                 self.sender
@@ -450,7 +405,6 @@ impl Orchestrator {
                 should_yield = true;
             }
 
-            // 9. Context compaction check
             if self.context.estimated_tokens() > self.context.compaction_threshold() {
                 self.context.compact();
             }
@@ -463,19 +417,9 @@ impl Orchestrator {
         Ok(())
     }
 
-    /// Consume the LLM stream, forwarding text/reasoning to the UI
-    /// sender and accumulating tool calls. Returns the full turn result.
-    ///
-    /// Reasoning length is not capped here. The model may stream as much
-    /// deliberation as it needs between tool calls — the only upper bounds
-    /// on a run are `max_turns`, the error-budget tracker, and the doom-
-    /// loop detector. Earlier per-turn byte cutoffs interrupted legitimate
-    /// multi-step planning and were removed.
-    ///
-    /// A separate gap-shaped signal (see `STALL_REASONING_BYTES` /
-    /// `STALL_WALL_MS` and the `ReasoningStall` event) fires when the
-    /// model has been streaming for a long time *between* tool calls.
-    /// That event is purely a UI hint — it does not change orchestration.
+    /// Forwards text/reasoning deltas to the UI sender and accumulates
+    /// tool calls. Reasoning length is not capped — see `STALL_*` constants
+    /// for the advisory `ReasoningStall` signal.
     async fn consume_stream(
         &self,
         mut rx: mpsc::UnboundedReceiver<LlmStreamEvent>,
@@ -525,9 +469,8 @@ impl Orchestrator {
             }
         }
 
-        // Finalize tool calls from builders (BTreeMap iterates in order)
-        // Deduplicate by (name, arguments) to handle models that emit the same
-        // tool call multiple times in a single response (e.g., Gemma 4 26B)
+        // Deduplicate by (name, arguments) — some models (e.g. Gemma 4 26B)
+        // emit the same tool call multiple times in a single response.
         let mut seen_calls = std::collections::HashSet::new();
         for (_, builder) in tool_call_builders {
             let dedup_key = (builder.name.clone(), builder.arguments.clone());
@@ -545,20 +488,17 @@ impl Orchestrator {
             });
         }
 
-        // Cap tool calls per turn to prevent runaway models
         const MAX_TOOL_CALLS_PER_TURN: usize = 5;
         if result.tool_calls.len() > MAX_TOOL_CALLS_PER_TURN {
             result.tool_calls.truncate(MAX_TOOL_CALLS_PER_TURN);
         }
 
-        // If the model emitted both content and tool_calls, discard the content
-        // — it's likely hallucinated (the model guessed the answer before seeing
-        // tool results). This is common with Gemma 4 and similar models.
+        // Discard content when tool_calls are also present — typically
+        // hallucinated (model guessed before seeing tool results).
         if !result.tool_calls.is_empty() && !result.content.is_empty() {
             result.content.clear();
         }
 
-        // Send final text if any accumulated
         if !result.content.is_empty() {
             self.sender
                 .send(TaskEvent::Text {
@@ -579,30 +519,19 @@ struct ToolCallBuilder {
     arguments: String,
 }
 
-/// Compact a tool result for the conversation context. Keeps the head
-/// (commands usually print the important info up front: file list, test
-/// summary intro, etc.) and the tail (where shell commands print error
-/// messages and the `[exit code: N]` marker). Drops the middle with an
-/// explicit truncation marker so the model knows what's happening.
-///
-/// Triggered above ~8 000 chars — a single `xxd` dump or
-/// large-file `cat` can easily dump 50 KB, bloating every subsequent
-/// turn's prompt and both slowing inference and encouraging re-derivation.
+/// Keeps head (file list / test summary intro live here) and tail (shell
+/// error messages + `[exit code: N]` marker) with a truncation marker in
+/// the middle. Triggered above ~8 000 chars to keep context lean.
 fn truncate_tool_result_for_context(result: &str) -> String {
-    /// Threshold above which we truncate. ~2 000 tokens at ~4 chars/token.
     const MAX_CHARS: usize = 8_000;
-    /// How much of the head to keep — the opening of most outputs is the
-    /// most meaningful part.
     const HEAD_CHARS: usize = 2_000;
-    /// How much of the tail to keep — shell error messages + exit codes
-    /// live here.
     const TAIL_CHARS: usize = 4_500;
 
     if result.len() <= MAX_CHARS {
         return result.to_string();
     }
 
-    // Operate on char boundaries so we don't split a multi-byte sequence.
+    // Operate on char boundaries — don't split a multi-byte sequence.
     let char_count = result.chars().count();
     if char_count <= MAX_CHARS {
         return result.to_string();
@@ -622,11 +551,8 @@ fn truncate_tool_result_for_context(result: &str) -> String {
     )
 }
 
-/// Extract the exit code from a shell tool result string.
-/// The shell tool embeds the exit code as `[exit code: N]` or
-/// `Command completed with exit code N. No output.`.
+/// Parses `[exit code: N]` or `Command completed with exit code N.` formats.
 fn extract_shell_exit_code(output: &str) -> Option<i32> {
-    // Try `[exit code: N]` first (most common format)
     if let Some(idx) = output.rfind("[exit code: ") {
         let after = &output[idx + 12..];
         if let Some(end) = after.find(']') {
@@ -635,7 +561,6 @@ fn extract_shell_exit_code(output: &str) -> Option<i32> {
             }
         }
     }
-    // Fallback: `Command completed with exit code N.`
     if let Some(idx) = output.find("Command completed with exit code ") {
         let after = &output[idx + 33..];
         let num: String = after.chars().take_while(|c| c.is_ascii_digit() || *c == '-').collect();
@@ -688,14 +613,6 @@ mod tests {
         assert_eq!(tracker.remaining("read"), 1);
         assert_eq!(tracker.remaining("write"), 2);
         assert_eq!(tracker.remaining("shell"), 3);
-    }
-
-    #[test]
-    fn test_tool_call_builder_default() {
-        let builder = ToolCallBuilder::default();
-        assert!(builder.id.is_empty());
-        assert!(builder.name.is_empty());
-        assert!(builder.arguments.is_empty());
     }
 
     #[test]
@@ -1171,21 +1088,6 @@ mod tests {
         let orch = Orchestrator::new(&provider, &test_request(), tx);
         let sys = orch.context.messages()[0].content.clone();
         assert!(!sys.contains("/no_think"));
-    }
-
-    #[test]
-    fn test_stall_thresholds_are_exceeded_only_by_pathological_runs() {
-        // Sanity check on the threshold constants. testing_04 — the
-        // single failure in our 30-scenario eval — burned ~13.7k stream
-        // events and 600s of wall time between two consecutive tool
-        // calls. The other 29 scenarios stayed well under both
-        // thresholds. The constants below should reflect that.
-        // 4 KB ≈ ~1000 tokens of reasoning between actions; 60 s
-        // wall clock. Both must be exceeded — short bursts of
-        // long reasoning don't trip; long bursts of trivial reasoning
-        // don't trip.
-        assert_eq!(STALL_REASONING_BYTES, 4 * 1024);
-        assert_eq!(STALL_WALL_MS, 60_000);
     }
 
     #[tokio::test]

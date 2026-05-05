@@ -15,23 +15,25 @@ import { getPlatform } from '@/services/platform'
 import { useWindowBounds } from '@/hooks/useWindowBounds'
 import { computeInsertIndex as computeInsertIndexMath } from '@/lib/panelDropMath'
 
-const TAB_INTO_HEIGHT = 32 // px from the top of each panel area that counts as "header zone"
+// px from the top of each panel area that count as "header zone".
+const TAB_INTO_HEIGHT = 32
 
 export interface DragState {
   panelId: string
-  panelIds?: string[] // set when dragging a whole group
+  /** Set when dragging a whole group. */
+  panelIds?: string[]
   isGroup: boolean
   fromPosition: PanelPosition
   overPosition: PanelPosition | null
   insertIndex: number
   neighborIndex: number
-  tabIntoGroupKey: string | null // non-null when hovering over a header to merge as tab
+  /** Non-null when hovering over a header to merge as tab. */
+  tabIntoGroupKey: string | null
 }
 
-const DRAG_MOVE_THROTTLE = 50 // ms between drag-move broadcasts
+const DRAG_MOVE_THROTTLE = 50
 
 export function usePanelDrag() {
-  // Only subscribe to the data slice we actually render; access actions via getState()
   const panels = useLayoutStore((s) => s.panels)
   const [dragState, setDragState] = useState<DragState | null>(null)
   const lastDragMoveTs = useRef(0)
@@ -68,8 +70,8 @@ export function usePanelDrag() {
       const zoneGroups = panels[position]
       const zoneSizes = useLayoutStore.getState().sizes[position]
 
-      // Drop the dragged panel from the size list; the cross-window overlay
-      // skips this step since the dragged panel isn't in its zones.
+      // Drop the dragged panel from sizes; the cross-window overlay skips
+      // this step since the dragged panel isn't in its zones.
       const containsDragged = (group: string[]) =>
         isGroup ? group[0] === dragPanelId : group.includes(dragPanelId)
       const visibleSizes = zoneGroups
@@ -210,8 +212,6 @@ export function usePanelDrag() {
         return { ...prev, overPosition, insertIndex, neighborIndex, tabIntoGroupKey: null }
       })
     },
-    // platform/windowId/windowBoundsRef are all stable (hook refs); only the
-    // memoized helpers actually need to be in the dep list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [computeInsertIndex, detectTabInto]
   )
@@ -237,7 +237,7 @@ export function usePanelDrag() {
             }
           }
         } else if (wasDragOutside.current) {
-          // Optimistic remove — target window adds them on drag-end
+          // Optimistic remove — target window adds them on drag-end.
           const ids = prev.isGroup && prev.panelIds ? prev.panelIds : [prev.panelId]
           queueMicrotask(() => {
             for (const id of ids) {

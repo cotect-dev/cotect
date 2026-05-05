@@ -16,7 +16,6 @@ export type PanelGroup = 'git' | 'tools' | 'agent' | 'dev'
 export const PANEL_DEFINITIONS: (PanelDefinition & { group: PanelGroup })[] = [
   { id: 'changes', label: 'Changes', defaultPosition: 'left', group: 'git' },
   { id: 'history', label: 'History', defaultPosition: 'left', group: 'git' },
-  { id: 'branches', label: 'Branches', defaultPosition: 'left', group: 'git' },
   { id: 'chat', label: 'Chat', defaultPosition: 'right', group: 'tools' },
   { id: 'tasks', label: 'Tasks', defaultPosition: 'right', group: 'agent' },
   { id: 'settings', label: 'Settings', defaultPosition: 'right', group: 'agent' },

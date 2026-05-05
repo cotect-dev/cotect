@@ -57,7 +57,6 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
 
       set((s) => ({ tasks: [entry, ...s.tasks] }))
 
-      // Start the backend task
       const request: agentService.TaskRequest = {
         id,
         prompt,
@@ -79,7 +78,6 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
         }))
       })
 
-      // Subscribe to task events
       const unlisten = agentService.listenToTask(id, (event: TaskEvent) => {
         handleTaskEvent(id, event)
       })
@@ -88,8 +86,8 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
     },
 
     abortTask: (id) => {
+      // Rust side responds with an 'interrupted' event.
       agentService.abortTask(id).catch(console.error)
-      // The Rust side will send an 'interrupted' event
     },
 
     clearCompleted: () => {
@@ -116,14 +114,12 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
   })),
 )
 
-/** Apply a partial update to a single task by id. */
 function updateTask(taskId: string, updater: (task: TaskEntry) => Partial<TaskEntry>) {
   useTasksStore.setState((s) => ({
     tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, ...updater(t) } : t)),
   }))
 }
 
-/** Unsubscribe a task's event listener and remove it from the listener map. */
 function detachListener(taskId: string) {
   taskListeners.get(taskId)?.()
   taskListeners.delete(taskId)
@@ -196,11 +192,8 @@ function handleTaskEvent(taskId: string, event: TaskEvent) {
       break
 
     case 'reasoning_stall':
-      // One-shot signal that the model has been streaming reasoning
-      // for a long time without acting. Surfaced for future UI work
-      // (e.g. "model is deliberating" indicator). Currently
-      // intentionally a no-op — orchestration is unchanged and the
-      // existing reasoning stream is already visible to the user.
+      // No-op for now: the existing reasoning stream is already visible.
+      // Reserved for a future "model is deliberating" indicator.
       break
   }
 }

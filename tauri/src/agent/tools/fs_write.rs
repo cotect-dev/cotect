@@ -22,18 +22,16 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
     let path_owned = resolved.to_string_lossy().to_string();
     let path = path_owned.as_str();
 
-    // Block writes to protected files (eval sandboxing)
     if state.blocked_files.iter().any(|b| resolved.ends_with(b) || &resolved == b) {
         return Err(format!("Access denied: {path} is a protected file"));
     }
 
-    // Read-before-edit enforcement: reject overwrites of files not previously read.
+    // Read-before-edit: reject overwrites of files not previously read.
     let file_exists = tokio::fs::metadata(path).await.is_ok();
     if file_exists && !state.has_read(path).await {
         return Err(read_first_err(path, "writing to"));
     }
 
-    // Create parent directories if needed.
     if let Some(parent) = Path::new(path).parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -46,10 +44,9 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
 
     state.mark_read(path).await;
 
-    // If the model accidentally wrote line-number-prefixed content
-    // (mistaking `read`'s display format for the actual file body),
-    // surface it as an error response — the file is now genuinely
-    // wrong on disk and a re-write is the right next step.
+    // Surface line-number-prefixed content as an error — the model
+    // mistook `read`'s display format for the file body, and a re-write
+    // is the right next step.
     if looks_like_line_numbered_dump(&input.content) {
         return Ok(format!(
             "WARNING: the content you wrote appears to have `N: ` line-number prefixes on \
@@ -61,20 +58,18 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
         ));
     }
 
-    // Return the post-write file body in `read`-shape so the model
-    // sees what it just put on disk — no separate read needed.
+    // Return the post-write body in `read`-shape so no separate read is needed.
     Ok(number_lines(&input.content))
 }
 
-/// Returns true if most non-empty lines in `s` look like `N: <content>` (the read tool's display
-/// format). Used to warn the model when it accidentally writes content with line-number prefixes.
+/// Triggers when ≥ 80% of non-empty lines look like `N: <content>` —
+/// catches accidental writes of `read`'s display format.
 fn looks_like_line_numbered_dump(s: &str) -> bool {
     let lines: Vec<&str> = s.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.len() < 2 {
         return false;
     }
     let prefixed = lines.iter().filter(|l| line_has_number_prefix(l)).count();
-    // Trigger if ≥ 80% of non-empty lines look prefixed.
     prefixed * 5 >= lines.len() * 4
 }
 

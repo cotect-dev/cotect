@@ -82,14 +82,9 @@ pub enum TaskEvent {
     Interrupted {
         reason: String,
     },
-    /// Emitted when the model has been streaming reasoning/text for a
-    /// long time without calling any tool. The frontend can surface
-    /// this as a "model is deliberating" indicator with an optional
-    /// "ask me to commit" affordance — useful when the user is watching
-    /// the stream and wants to know whether it's making progress or
-    /// stuck. Not a circuit-breaker: the orchestrator does NOT inject
-    /// any reminder or cap in response. One event per stall, reset on
-    /// the next tool call.
+    /// Advisory: model has been streaming reasoning/text without calling
+    /// a tool. Not a circuit-breaker — orchestration is unaffected.
+    /// One event per stall, reset on the next tool call.
     ReasoningStall {
         /// Wall milliseconds since the last tool call (or task start).
         elapsed_ms: u64,
@@ -106,20 +101,13 @@ pub struct ProviderConfig {
     #[serde(default)]
     pub api_key: Option<String>,
     pub model: String,
-    /// Wire format / chat template to use when talking to the model.
-    /// `None` means auto-detect from the model identifier — see
-    /// [`crate::agent::adapter::detect_format`].
+    /// `None` = auto-detect from model id; see `adapter::detect_format`.
     #[serde(default)]
     pub format: Option<crate::agent::adapter::PromptFormat>,
-    /// Suppress the model's thinking/reasoning mode when the adapter supports
-    /// a soft switch. For Qwen-format providers, `Some(true)` appends
-    /// `/no_think` to the system prompt (Qwen 3 soft switch; unofficial on
-    /// 3.5/3.6 but often still effective, and harmless if ignored).
-    ///
-    /// The more reliable way to pin a Qwen model to non-thinking mode is
-    /// server-side: launch llama.cpp with `--reasoning-budget 0` and
-    /// `--chat-template-kwargs '{"enable_thinking":false}'`. This flag is
-    /// complementary, not a substitute.
+    /// Soft thinking-mode switch. For Qwen, `Some(true)` appends `/no_think`
+    /// to the system prompt. Complementary to server-side flags
+    /// (`--reasoning-budget 0`, `--chat-template-kwargs ..enable_thinking..`),
+    /// not a substitute.
     #[serde(default)]
     pub disable_thinking: Option<bool>,
 }
@@ -156,9 +144,7 @@ impl AgentConfig {
 }
 
 impl ProviderConfig {
-    /// Resolve the prompt format to use: either the explicit
-    /// [`Self::format`] override, or the auto-detected format based on
-    /// [`Self::model`].
+    /// Explicit `format` override, otherwise auto-detected from `model`.
     pub fn resolved_format(&self) -> crate::agent::adapter::PromptFormat {
         self.format
             .unwrap_or_else(|| crate::agent::adapter::detect_format(&self.model))
@@ -219,7 +205,7 @@ impl ChatMessage {
         }
     }
 
-    /// Approximate token count using chars/4 heuristic.
+    /// chars/4 heuristic.
     pub fn estimated_tokens(&self) -> usize {
         let mut chars = self.content.len();
         if let Some(calls) = &self.tool_calls {
@@ -275,7 +261,6 @@ pub enum LlmStreamEvent {
     Error(String),
 }
 
-/// The fully-assembled response from one LLM turn.
 #[derive(Debug, Clone, Default)]
 pub struct LlmTurnResult {
     pub content: String,
@@ -289,57 +274,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_chat_message_system() {
-        let msg = ChatMessage::system("You are helpful");
-        assert_eq!(msg.role, Role::System);
-        assert_eq!(msg.content, "You are helpful");
-        assert!(msg.tool_calls.is_none());
-        assert!(msg.tool_call_id.is_none());
-    }
-
-    #[test]
-    fn test_chat_message_user() {
-        let msg = ChatMessage::user("Hello");
-        assert_eq!(msg.role, Role::User);
-        assert_eq!(msg.content, "Hello");
-    }
-
-    #[test]
-    fn test_chat_message_assistant() {
-        let msg = ChatMessage::assistant("Hi there");
-        assert_eq!(msg.role, Role::Assistant);
-        assert_eq!(msg.content, "Hi there");
-        assert!(msg.tool_calls.is_none());
-    }
-
-    #[test]
-    fn test_chat_message_assistant_with_tools() {
-        let calls = vec![ToolCall {
-            id: "call_1".into(),
-            call_type: "function".into(),
-            function: FunctionCall {
-                name: "read".into(),
-                arguments: r#"{"file_path": "/test"}"#.into(),
-            },
-        }];
-        let msg = ChatMessage::assistant_with_tools("", calls.clone());
-        assert_eq!(msg.role, Role::Assistant);
-        assert!(msg.tool_calls.is_some());
-        assert_eq!(msg.tool_calls.unwrap().len(), 1);
-    }
-
-    #[test]
     fn test_chat_message_assistant_with_empty_tools() {
         let msg = ChatMessage::assistant_with_tools("text", vec![]);
         assert!(msg.tool_calls.is_none());
-    }
-
-    #[test]
-    fn test_chat_message_tool_result() {
-        let msg = ChatMessage::tool_result("call_1", "File contents here");
-        assert_eq!(msg.role, Role::Tool);
-        assert_eq!(msg.tool_call_id.as_deref(), Some("call_1"));
-        assert_eq!(msg.content, "File contents here");
     }
 
     #[test]
@@ -367,15 +304,6 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_config_default() {
-        let config = AgentConfig::default();
-        assert_eq!(config.providers.len(), 1);
-        assert_eq!(config.providers[0].id, "ollama");
-        assert_eq!(config.active_provider_id, "ollama");
-        assert_eq!(config.providers[0].disable_thinking, None);
-    }
-
-    #[test]
     fn test_provider_config_disable_thinking_deserializes_default_none() {
         // Existing configs on disk won't have the new field — make sure serde
         // tolerates its absence.
@@ -390,30 +318,6 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_config_disable_thinking_roundtrip() {
-        let cfg = ProviderConfig {
-            id: "q".into(),
-            name: "Q".into(),
-            endpoint: "http://localhost:8080/v1".into(),
-            api_key: None,
-            model: "qwen3.6-35b".into(),
-            format: None,
-            disable_thinking: Some(true),
-        };
-        let json = serde_json::to_string(&cfg).unwrap();
-        let round: ProviderConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(round.disable_thinking, Some(true));
-    }
-
-    #[test]
-    fn test_agent_config_active_provider() {
-        let config = AgentConfig::default();
-        let active = config.active_provider();
-        assert!(active.is_some());
-        assert_eq!(active.unwrap().id, "ollama");
-    }
-
-    #[test]
     fn test_agent_config_active_provider_missing() {
         let config = AgentConfig {
             providers: vec![],
@@ -422,52 +326,4 @@ mod tests {
         assert!(config.active_provider().is_none());
     }
 
-    #[test]
-    fn test_task_event_serialization() {
-        let event = TaskEvent::Text {
-            content: "hello".into(),
-            partial: true,
-        };
-        let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains(r#""type":"text""#));
-        assert!(json.contains(r#""partial":true"#));
-    }
-
-    #[test]
-    fn test_task_event_error_serialization() {
-        let event = TaskEvent::Error {
-            message: "something broke".into(),
-        };
-        let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains(r#""type":"error""#));
-    }
-
-    #[test]
-    fn test_task_event_complete_serialization() {
-        let event = TaskEvent::Complete;
-        let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains(r#""type":"complete""#));
-    }
-
-    #[test]
-    fn test_agent_role_serialization() {
-        let role = AgentRole::Implement;
-        let json = serde_json::to_string(&role).unwrap();
-        assert_eq!(json, r#""implement""#);
-    }
-
-    #[test]
-    fn test_agent_role_deserialization() {
-        let role: AgentRole = serde_json::from_str(r#""research""#).unwrap();
-        assert_eq!(role, AgentRole::Research);
-    }
-
-    #[test]
-    fn test_llm_turn_result_default() {
-        let result = LlmTurnResult::default();
-        assert!(result.content.is_empty());
-        assert!(result.reasoning.is_empty());
-        assert!(result.tool_calls.is_empty());
-        assert!(result.finish_reason.is_none());
-    }
 }

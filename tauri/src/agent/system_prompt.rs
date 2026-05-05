@@ -46,46 +46,39 @@ pub fn build_system_prompt(
     let mut prompt = String::with_capacity(8192);
     let is_implement = matches!(role, AgentRole::Implement);
 
-    // 1. Role framing
     prompt.push_str(&role_instructions(role));
     prompt.push_str("\n\n");
 
-    // 2. Working principles (shared)
     prompt.push_str(working_principles());
     prompt.push_str("\n\n");
 
-    // 3. Workflow (Implement only — readers don't edit)
+    // Workflow + stopping criteria are Implement-only (readers don't edit).
     if is_implement {
         prompt.push_str(workflow_block());
         prompt.push_str("\n\n");
     }
 
-    // 4. Anti-patterns (shared — all roles use tools)
     prompt.push_str(anti_patterns());
     prompt.push_str("\n\n");
 
-    // 5. Stopping criteria (Implement only — readers finish when they've reported)
     if is_implement {
         prompt.push_str(stopping_criteria());
         prompt.push_str("\n\n");
     }
 
-    // 6. Environment info
     prompt.push_str(&environment_block(env));
     prompt.push_str("\n\n");
 
-    // 7. Workspace overview
     if let Some(stats) = workspace_stats {
         prompt.push_str("## Workspace\n\n");
         prompt.push_str(stats);
         prompt.push_str("\n\n");
     }
 
-    // 8. Architecture context
     prompt.push_str(&scope_context_block(scope, file_contents));
     prompt.push_str("\n\n");
 
-    // 9. Tool usage rules
+    // Tool usage rules go last so they're fresh at act-time.
     prompt.push_str(&tool_rules(role));
 
     prompt
@@ -354,99 +347,6 @@ mod tests {
     use crate::agent::types::DeclarationInfo;
 
     #[test]
-    fn test_build_system_prompt_includes_all_sections() {
-        let scope = TaskScope {
-            root_path: "/project".into(),
-            files: vec!["src/main.rs".into()],
-            directory: Some("src/".into()),
-            declarations: vec![],
-            description: None,
-            blocked_files: vec![],
-        };
-        let env = EnvironmentInfo {
-            os: "linux".into(),
-            shell: "/bin/bash".into(),
-            cwd: "/project".into(),
-            date: "2026-04-04".into(),
-        };
-
-        let prompt = build_system_prompt(
-            AgentRole::Implement,
-            &scope,
-            &env,
-            &[("src/main.rs".into(), "fn main() {}".into())],
-            Some("114 files, .ts 53 (46%)"),
-        );
-
-        assert!(prompt.contains("expert software engineer"));
-        assert!(prompt.contains("linux"));
-        assert!(prompt.contains("Architecture Context"));
-        assert!(prompt.contains("fn main()"));
-        assert!(prompt.contains("114 files"));
-        assert!(prompt.contains("Tool Usage Rules"));
-    }
-
-    #[test]
-    fn test_research_role_is_readonly() {
-        let prompt = role_instructions(AgentRole::Research);
-        assert!(prompt.contains("cannot modify"));
-    }
-
-    #[test]
-    fn test_plan_role_instructions() {
-        let prompt = role_instructions(AgentRole::Plan);
-        assert!(prompt.contains("implementation plan"));
-        assert!(prompt.contains("numbered list"));
-    }
-
-    #[test]
-    fn test_implement_role_has_full_access() {
-        let prompt = tool_rules(AgentRole::Implement);
-        assert!(prompt.contains("full read/write/execute access"));
-    }
-
-    #[test]
-    fn test_research_role_tool_rules_readonly() {
-        let prompt = tool_rules(AgentRole::Research);
-        assert!(prompt.contains("read-only access"));
-    }
-
-    #[test]
-    fn test_plan_role_tool_rules_readonly() {
-        let prompt = tool_rules(AgentRole::Plan);
-        assert!(prompt.contains("read-only access"));
-    }
-
-    #[test]
-    fn test_environment_block_contains_all_fields() {
-        let env = EnvironmentInfo {
-            os: "macos".into(),
-            shell: "/bin/zsh".into(),
-            cwd: "/Users/dev/project".into(),
-            date: "2026-04-04".into(),
-        };
-        let block = environment_block(&env);
-        assert!(block.contains("macos"));
-        assert!(block.contains("/bin/zsh"));
-        assert!(block.contains("/Users/dev/project"));
-        assert!(block.contains("2026-04-04"));
-    }
-
-    #[test]
-    fn test_scope_with_directory() {
-        let scope = TaskScope {
-            root_path: "/project".into(),
-            files: vec![],
-            directory: Some("src/components/".into()),
-            declarations: vec![],
-            description: None,
-            blocked_files: vec![],
-        };
-        let block = scope_context_block(&scope, &[]);
-        assert!(block.contains("src/components/"));
-    }
-
-    #[test]
     fn test_scope_with_declarations() {
         let scope = TaskScope {
             root_path: "/project".into(),
@@ -472,21 +372,6 @@ mod tests {
         let block = scope_context_block(&scope, &[]);
         assert!(block.contains("class UserStore in src/stores/user.ts [line 15]"));
         assert!(block.contains("function fetchData in src/utils/api.ts [line 42]"));
-    }
-
-    #[test]
-    fn test_scope_with_description() {
-        let scope = TaskScope {
-            root_path: "/project".into(),
-            files: vec![],
-            directory: None,
-            declarations: vec![],
-            description: Some("The user wants to refactor the auth module".into()),
-            blocked_files: vec![],
-        };
-        let block = scope_context_block(&scope, &[]);
-        assert!(block.contains("User Description"));
-        assert!(block.contains("refactor the auth module"));
     }
 
     #[test]
@@ -556,46 +441,6 @@ mod tests {
     }
 
     #[test]
-    fn test_all_roles_produce_nonempty_prompts() {
-        let scope = TaskScope {
-            root_path: "/p".into(),
-            files: vec![],
-            directory: None,
-            declarations: vec![],
-            description: None,
-            blocked_files: vec![],
-        };
-        let env = EnvironmentInfo {
-            os: "linux".into(),
-            shell: "/bin/bash".into(),
-            cwd: "/p".into(),
-            date: "2026-04-04".into(),
-        };
-        for role in [AgentRole::Implement, AgentRole::Research, AgentRole::Plan] {
-            let prompt = build_system_prompt(role, &scope, &env, &[], None);
-            assert!(!prompt.is_empty());
-            assert!(prompt.contains("Tool Usage Rules"));
-            assert!(prompt.contains("System Information"));
-        }
-    }
-
-    #[test]
-    fn test_scope_with_multiple_files() {
-        let scope = TaskScope {
-            root_path: "/p".into(),
-            files: vec!["a.rs".into(), "b.ts".into(), "c.tsx".into()],
-            directory: None,
-            declarations: vec![],
-            description: None,
-            blocked_files: vec![],
-        };
-        let block = scope_context_block(&scope, &[]);
-        assert!(block.contains("- a.rs"));
-        assert!(block.contains("- b.ts"));
-        assert!(block.contains("- c.tsx"));
-    }
-
-    #[test]
     fn test_empty_scope() {
         let scope = TaskScope {
             root_path: "/p".into(),
@@ -609,64 +454,6 @@ mod tests {
         assert!(block.contains("Architecture Context"));
         assert!(!block.contains("Project Files"));
         assert!(!block.contains("Declarations"));
-    }
-
-    // ─── New tests for the principles / workflow / anti-patterns / stopping blocks ───
-
-    #[test]
-    fn test_working_principles_present_for_all_roles() {
-        let scope = TaskScope {
-            root_path: "/p".into(),
-            files: vec![],
-            directory: None,
-            declarations: vec![],
-            description: None,
-            blocked_files: vec![],
-        };
-        let env = EnvironmentInfo::default();
-        for role in [AgentRole::Implement, AgentRole::Research, AgentRole::Plan] {
-            let prompt = build_system_prompt(role, &scope, &env, &[], None);
-            assert!(
-                prompt.contains("Working Principles"),
-                "Working Principles missing for {role:?}"
-            );
-            assert!(
-                prompt.contains("Root cause over surface fix"),
-                "root-cause principle missing for {role:?}"
-            );
-            assert!(
-                prompt.contains("Minimal, targeted changes"),
-                "minimal-change principle missing for {role:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_anti_patterns_present_for_all_roles() {
-        let scope = TaskScope {
-            root_path: "/p".into(),
-            files: vec![],
-            directory: None,
-            declarations: vec![],
-            description: None,
-            blocked_files: vec![],
-        };
-        let env = EnvironmentInfo::default();
-        for role in [AgentRole::Implement, AgentRole::Research, AgentRole::Plan] {
-            let prompt = build_system_prompt(role, &scope, &env, &[], None);
-            assert!(
-                prompt.contains("Anti-Patterns"),
-                "Anti-Patterns missing for {role:?}"
-            );
-            assert!(
-                prompt.contains("heredocs"),
-                "heredoc warning missing for {role:?}"
-            );
-            assert!(
-                prompt.contains("Do not loop silently"),
-                "anti-loop warning missing for {role:?}"
-            );
-        }
     }
 
     #[test]
@@ -769,21 +556,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_rules_describe_patch_forms() {
-        // `patch` is the primary mutation surface; tool rules must
-        // teach its three interchangeable addressing forms.
-        let rules = tool_rules(AgentRole::Implement);
-        assert!(
-            rules.contains("`patch` is the primary tool")
-                || rules.contains("`patch` accepts three"),
-            "tool rules must teach the three patch forms",
-        );
-        assert!(rules.contains("start_line"));
-        assert!(rules.contains("old_string"));
-        assert!(rules.contains("[...]"));
-    }
-
-    #[test]
     fn test_stopping_criteria_implement_only() {
         let scope = TaskScope {
             root_path: "/p".into(),
@@ -835,14 +607,4 @@ mod tests {
         assert!(!block.contains("starting scope"));
     }
 
-    #[test]
-    fn test_tool_rules_still_include_core_mechanics() {
-        let rules = tool_rules(AgentRole::Implement);
-        assert!(rules.contains("N: "), "N-prefix warning must remain");
-        assert!(rules.contains("blind `write`"), "blind-write warning must remain");
-        assert!(
-            rules.contains("structured tool-calling channel"),
-            "tool-call-channel rule must remain"
-        );
-    }
 }

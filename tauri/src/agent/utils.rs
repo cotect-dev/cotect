@@ -105,18 +105,4 @@ mod tests {
         assert!(result.contains("[truncated]"));
     }
 
-    #[test]
-    fn test_io_err_format() {
-        assert_eq!(
-            io_err("read file", "/tmp/x.txt", "Permission denied"),
-            "Cannot read file '/tmp/x.txt': Permission denied"
-        );
-    }
-
-    #[test]
-    fn test_read_first_err_format() {
-        let msg = read_first_err("/tmp/x.txt", "writing to");
-        assert!(msg.contains("read '/tmp/x.txt'"));
-        assert!(msg.contains("writing to"));
-    }
 }

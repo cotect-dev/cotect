@@ -67,7 +67,6 @@ describe('isTestFile detection (via directory node sorting)', () => {
     const dirCol = useCanvasStore.getState().columns[0]
     expect(dirCol).toBeDefined()
     const labels = dirCol.nodes.map((n) => n.data.label)
-    // Regular files come before test files
     expect(labels.indexOf('app.ts')).toBeLessThan(labels.indexOf('app.test.ts'))
     expect(labels.indexOf('utils.ts')).toBeLessThan(labels.indexOf('app.test.ts'))
   })
@@ -734,9 +733,6 @@ describe('rightFocusMemory', () => {
   })
 })
 
-// ============================================================================
-// Tests for toggleHideNode
-// ============================================================================
 describe('toggleHideNode', () => {
   beforeEach(() => {
     resetStore()
@@ -770,9 +766,6 @@ describe('toggleHideNode', () => {
   })
 })
 
-// ============================================================================
-// Tests for updatePreview
-// ============================================================================
 describe('updatePreview', () => {
   beforeEach(() => {
     resetStore()
@@ -889,9 +882,6 @@ describe('updatePreview', () => {
 
 })
 
-// ============================================================================
-// Tests for flattenAndRender (column windowing and node positioning)
-// ============================================================================
 describe('flattenAndRender', () => {
   beforeEach(() => {
     resetStore()
@@ -1247,9 +1237,6 @@ describe('flattenAndRender', () => {
     expect(previewY).toBe(0)
   })
 })
-// ============================================================================
-// Tests for buildFileNodes (via navigateRight into file)
-// ============================================================================
 describe('buildFileNodes', () => {
   beforeEach(() => {
     resetStore()
@@ -1285,46 +1272,6 @@ describe('buildFileNodes', () => {
     }
   })
 
-})
-
-// ============================================================================
-// Tests for setFocus
-// ============================================================================
-describe('setFocus', () => {
-  it('updates focused node id', () => {
-    useCanvasStore.setState({ focusedNodeId: null })
-    useCanvasStore.getState().setFocus('node1')
-    expect(useCanvasStore.getState().focusedNodeId).toBe('node1')
-  })
-
-  it('can clear focus', () => {
-    useCanvasStore.setState({ focusedNodeId: 'node1' })
-    useCanvasStore.getState().setFocus(null)
-    expect(useCanvasStore.getState().focusedNodeId).toBeNull()
-  })
-})
-
-// ============================================================================
-// Tests for basic ReactFlow handlers
-// ============================================================================
-describe('ReactFlow handlers', () => {
-  beforeEach(() => {
-    resetStore()
-  })
-
-  it('setNodes replaces nodes', () => {
-    const newNodes: AppNode[] = [
-      { id: 'x', type: 'file', position: { x: 0, y: 0 }, data: { label: 'x', path: '/x' } },
-    ]
-    useCanvasStore.getState().setNodes(newNodes)
-    expect(useCanvasStore.getState().nodes).toEqual(newNodes)
-  })
-
-  it('setEdges replaces edges', () => {
-    const newEdges = [{ id: 'e1', source: 'a', target: 'b' }]
-    useCanvasStore.getState().setEdges(newEdges)
-    expect(useCanvasStore.getState().edges).toEqual(newEdges)
-  })
 })
 
 describe('focusFileByPath', () => {

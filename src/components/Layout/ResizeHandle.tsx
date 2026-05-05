@@ -27,10 +27,7 @@ interface SiblingModeProps extends BaseProps {
 
 type ResizeHandleProps = TargetModeProps | SiblingModeProps;
 
-/**
- * Drag-state captured at `onStart`. A discriminated union keeps the two modes'
- * per-frame data (single sized element vs. flex pair) cleanly separated.
- */
+/** Discriminated drag state captured at `onStart`. */
 type DragState =
   | {
       kind: 'target';

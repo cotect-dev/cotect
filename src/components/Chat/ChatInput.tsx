@@ -6,8 +6,6 @@ import { useChatStore, sendMessage } from '@/store/chat'
 
 export default memo(function ChatInput() {
   const [text, setText] = useState('')
-  // Narrow selectors — only subscribe to the specific values we render.
-  // Actions are accessed via getState() to avoid extra subscriptions.
   const isGenerating = useChatStore((s) => s.isGenerating)
   const thinkingEnabled = useChatStore((s) => s.thinkingEnabled)
   const hasMessages = useChatStore((s) => s.messages.length > 0)

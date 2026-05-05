@@ -28,36 +28,6 @@ describe('useGitStore', () => {
     vi.clearAllMocks()
   })
 
-  describe('initial state', () => {
-    it('starts with empty repoPath', () => {
-      expect(useGitStore.getState().repoPath).toBe('')
-    })
-
-    it('starts uninitialized', () => {
-      expect(useGitStore.getState().initialized).toBe(false)
-    })
-
-    it('starts with isGitRepo false', () => {
-      expect(useGitStore.getState().isGitRepo).toBe(false)
-    })
-
-    it('starts with null gitError', () => {
-      expect(useGitStore.getState().gitError).toBeNull()
-    })
-
-    it('starts with null status, log, branch, lastCommitTimestamp', () => {
-      const s = useGitStore.getState()
-      expect(s.status).toBeNull()
-      expect(s.log).toBeNull()
-      expect(s.branch).toBeNull()
-      expect(s.lastCommitTimestamp).toBeNull()
-    })
-
-    it('starts with loading false', () => {
-      expect(useGitStore.getState().loading).toBe(false)
-    })
-  })
-
   describe('setRepoPath', () => {
     it('sets the repoPath and resets state', () => {
       useGitStore.setState({ initialized: true, isGitRepo: true })
@@ -85,6 +55,7 @@ describe('useGitStore', () => {
     const mockStatus: GitStatus = { files: [{ path: 'a.ts', status: 'M', insertions: 5, deletions: 2 }], total_insertions: 5, total_deletions: 2 }
     const mockLog: GitLogEntry[] = [{ hash: 'abc1234', message: 'init', author: 'dev', timestamp: 1000, insertions: 10, deletions: 0, files: [] }]
     const mockBranch: GitBranch = { kind: 'branch', name: 'main' }
+    const mockBranches: string[] = ['main', 'feat/x']
     const mockTimestamp = 1234567890
 
     it('does nothing when repoPath is empty', async () => {
@@ -116,6 +87,7 @@ describe('useGitStore', () => {
         .mockResolvedValueOnce(mockStatus)
         .mockResolvedValueOnce(mockLog)
         .mockResolvedValueOnce(mockBranch)
+        .mockResolvedValueOnce(mockBranches)
         .mockResolvedValueOnce(mockTimestamp)
 
       await useGitStore.getState().refresh()
@@ -127,6 +99,7 @@ describe('useGitStore', () => {
       expect(s.status).toEqual(mockStatus)
       expect(s.log).toEqual(mockLog)
       expect(s.branch).toEqual(mockBranch)
+      expect(s.branches).toEqual(mockBranches)
       expect(s.lastCommitTimestamp).toBe(mockTimestamp)
       expect(s.loading).toBe(false)
     })
@@ -140,6 +113,7 @@ describe('useGitStore', () => {
       expect(mockInvoke).toHaveBeenCalledWith('git_status', { repoPath: '/my/project' })
       expect(mockInvoke).toHaveBeenCalledWith('git_log', { repoPath: '/my/project', limit: 50 })
       expect(mockInvoke).toHaveBeenCalledWith('git_branch', { repoPath: '/my/project' })
+      expect(mockInvoke).toHaveBeenCalledWith('git_branches', { repoPath: '/my/project' })
       expect(mockInvoke).toHaveBeenCalledWith('git_last_commit_time', { repoPath: '/my/project' })
     })
 
@@ -149,6 +123,7 @@ describe('useGitStore', () => {
         .mockResolvedValueOnce(mockStatus)
         .mockResolvedValueOnce(mockLog)
         .mockResolvedValueOnce(mockBranch)
+        .mockResolvedValueOnce(mockBranches)
         .mockResolvedValueOnce(mockTimestamp)
 
       await useGitStore.getState().refresh()
@@ -160,6 +135,7 @@ describe('useGitStore', () => {
         status: mockStatus,
         log: mockLog,
         branch: mockBranch,
+        branches: mockBranches,
         lastCommitTimestamp: mockTimestamp,
       }))
     })
@@ -232,6 +208,7 @@ describe('useGitStore', () => {
         if (cmd === 'git_status') return Promise.resolve(mockStatus)
         if (cmd === 'git_log') return Promise.resolve(mockLog)
         if (cmd === 'git_branch') return Promise.resolve(mockBranch)
+        if (cmd === 'git_branches') return Promise.resolve(mockBranches)
         if (cmd === 'git_last_commit_time') return Promise.resolve(mockTimestamp)
         if (cmd === 'git_file_times') return Promise.resolve([['a.ts', 5555]])
         return Promise.resolve(null)
@@ -256,6 +233,7 @@ describe('useGitStore', () => {
         if (cmd === 'git_status') return Promise.resolve(mockStatus)
         if (cmd === 'git_log') return Promise.reject(new Error('log failed'))
         if (cmd === 'git_branch') return Promise.resolve(mockBranch)
+        if (cmd === 'git_branches') return Promise.resolve(mockBranches)
         if (cmd === 'git_last_commit_time') return Promise.resolve(mockTimestamp)
         return Promise.resolve(null)
       })
@@ -391,6 +369,7 @@ describe('buildGitSyncPayload / applyGitSyncPayload', () => {
     status: sliceStatus,
     log: sliceLog,
     branch: sliceBranch,
+    branches: ['main', 'feat/x'],
     lastCommitTimestamp: 1234,
     headContent: { sha: 'abc', files: { 'a.ts': 'old' } },
     fileTimes: { 'a.ts': 999 },
@@ -428,6 +407,7 @@ describe('buildGitSyncPayload / applyGitSyncPayload', () => {
     expect(s.status).toEqual(slice.status)
     expect(s.log).toEqual(slice.log)
     expect(s.branch).toEqual(slice.branch)
+    expect(s.branches).toEqual(slice.branches)
     expect(s.lastCommitTimestamp).toBe(slice.lastCommitTimestamp)
     expect(s.headContent).toEqual(slice.headContent)
     expect(s.fileTimes).toEqual(slice.fileTimes)

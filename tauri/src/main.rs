@@ -80,6 +80,8 @@ fn main() {
             git::git_status,
             git::git_log,
             git::git_branch,
+            git::git_branches,
+            git::git_checkout,
             git::git_last_commit_time,
             git::git_remote_url,
             git::git_init,
