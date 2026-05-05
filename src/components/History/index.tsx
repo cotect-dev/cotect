@@ -20,12 +20,19 @@ const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry 
         <span>{commit.hash}</span>
         <RelativeTime timestamp={commit.timestamp} />
       </div>
-      <div className="text-xs mt-0.5 truncate">{commit.message}</div>
+      <div className={`text-xs mt-0.5 ${expanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}>
+        {commit.message}
+      </div>
       <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-muted-foreground/50 font-mono">
         {commit.insertions > 0 && <span className="text-green-500">+{commit.insertions}</span>}
         {commit.deletions > 0 && <span className="text-red-500">-{commit.deletions}</span>}
         <span>· {commit.files.length} file{commit.files.length !== 1 ? 's' : ''}</span>
       </div>
+      {expanded && commit.body && (
+        <div className="mt-1.5 pl-2 border-l border-border/30 text-[11px] whitespace-pre-wrap break-words text-muted-foreground/80">
+          {commit.body}
+        </div>
+      )}
       {expanded && commit.files.length > 0 && (
         <div className="mt-1.5 pl-2 border-l border-border/30 text-[10px] font-mono text-muted-foreground/70">
           {commit.files.map((f) => (

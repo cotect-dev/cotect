@@ -26,6 +26,9 @@ export interface GitLogFile {
 export interface GitLogEntry {
   hash: string
   message: string
+  /** Commit body (everything after the subject line). Empty string when the
+   * commit has no body. Internal newlines are preserved. */
+  body: string
   author: string
   timestamp: number
   insertions: number
