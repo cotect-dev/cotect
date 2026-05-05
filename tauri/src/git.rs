@@ -388,10 +388,6 @@ pub async fn git_init(repo_path: String) -> Result<(), String> {
     run_git(&repo_path, &["init"]).await.map(|_| ())
 }
 
-/// List local branch names, one per line, in git's natural ordering. Used by
-/// the branch dropdown in the top bar — remote-tracking branches are intentionally
-/// excluded since switching to those requires a more involved flow (creating a
-/// local tracking branch).
 #[tauri::command]
 pub async fn git_branches(repo_path: String) -> Result<Vec<String>, String> {
     let output = run_git(
@@ -406,9 +402,6 @@ pub async fn git_branches(repo_path: String) -> Result<Vec<String>, String> {
         .collect())
 }
 
-/// Switch the working tree to `branch`. Errors propagate verbatim (e.g. when
-/// the working tree is dirty and the checkout would overwrite local changes),
-/// so the UI can surface them to the user.
 #[tauri::command]
 pub async fn git_checkout(repo_path: String, branch: String) -> Result<(), String> {
     run_git(&repo_path, &["checkout", &branch]).await.map(|_| ())

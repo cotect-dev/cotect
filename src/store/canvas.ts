@@ -12,9 +12,10 @@ import {
 import { getPlatform } from '@/services/platform'
 import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, isImageFile, getImageMimeType, IMAGE_PREVIEW_MAX_BYTES } from '@/lib/constants'
 import { clampY } from '@/lib/canvasCamera'
-import { joinPath } from '@/lib/repoPath'
+import { joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
 import { withPersistence } from '@/store/persistence'
+import { useGitStore } from '@/store/git'
 
 function isTestFile(name: string): boolean {
   const lower = name.toLowerCase()
@@ -69,6 +70,7 @@ export type CanvasState = {
   moveFocus: (direction: 'up' | 'down') => void
   navigateRight: () => Promise<void>
   navigateLeft: () => void
+  navigateToColumn: (targetIndex: number) => void
   initRoot: (rootPath: string) => Promise<void>
   toggleHideNode: () => void
   setCodeNodeWidth: (width: number) => void
@@ -128,6 +130,22 @@ async function buildFileNode(filePath: string): Promise<AppNode> {
       startLine: 1,
       endLine: lineCount,
     },
+  }
+}
+
+async function buildHeadFallbackNode(filePath: string): Promise<AppNode | null> {
+  const { repoPath, loadHeadContent } = useGitStore.getState()
+  if (!repoPath) return null
+  const repoRel = toRepoRelative(filePath, repoPath)
+  const headContent = await loadHeadContent(repoRel)
+  if (headContent === null) return null
+  const fileName = filePath.split('/').pop() || filePath
+  const lineCount = headContent.split('\n').length
+  return {
+    id: `code:${filePath}:__head__`,
+    type: 'codeNode',
+    position: { x: 0, y: 0 },
+    data: { label: fileName, filePath, code: headContent, startLine: 1, endLine: lineCount },
   }
 }
 
@@ -343,7 +361,23 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       const parentCol = newColumns[newColumns.length - 1]
       const fileName = segments[segments.length - 1]
       const fileNodeId = joinPath(currentPath, fileName)
-      const hasFile = parentCol.nodes.some((n) => n.id === fileNodeId)
+      let hasFile = parentCol.nodes.some((n) => n.id === fileNodeId)
+
+      if (!hasFile) {
+        const headFallback = await buildHeadFallbackNode(fileNodeId)
+        if (headFallback) {
+          parentCol.nodes = [
+            ...parentCol.nodes,
+            {
+              id: fileNodeId,
+              type: 'file',
+              position: { x: 0, y: 0 },
+              data: { label: fileName, path: fileNodeId },
+            },
+          ]
+          hasFile = true
+        }
+      }
 
       set({
         columns: newColumns,
@@ -457,6 +491,40 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     void get().updatePreview()
   },
 
+  navigateToColumn: (targetIndex) => {
+    const { columns, currentColumnIndex, focusedNodeId, rightFocusMemory } = get()
+    if (targetIndex === currentColumnIndex) return
+    if (targetIndex < 0 || targetIndex >= columns.length) return
+
+    if (targetIndex < currentColumnIndex) {
+      const steps = currentColumnIndex - targetIndex
+      for (let i = 0; i < steps; i++) get().navigateLeft()
+      return
+    }
+
+    // Skipping updatePreview here is load-bearing: it would trim the
+    // already-loaded ahead columns we want the user to keep clicking through.
+    const targetCol = columns[targetIndex]
+    const remembered = rightFocusMemory[targetCol.path]
+    const restored = remembered && targetCol.nodes.some((n) => n.id === remembered)
+      ? remembered
+      : targetCol.nodes[0]?.id ?? null
+
+    const leavingCol = columns[currentColumnIndex]
+    const nextMemory = leavingCol && focusedNodeId
+      ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
+      : rightFocusMemory
+
+    set({
+      currentColumnIndex: targetIndex,
+      focusedNodeId: restored,
+      cameraY: CANVAS_PAD_Y,
+      rightFocusMemory: nextMemory,
+    })
+
+    flattenAndRender(get, set)
+  },
+
   toggleHideNode: () => {
     const { focusedNodeId, hiddenNodeIds } = get()
     if (!focusedNodeId) return
@@ -507,14 +575,20 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       } else if (node.type === 'file') {
         const path = node.data.path
         const fileName = node.data.label
-        let contentNode: AppNode
-        if (isImageFile(fileName)) {
-          const imageNode = await buildImageNode(path)
-          contentNode = imageNode ?? await buildFileNode(path)
-        } else {
-          contentNode = await buildFileNode(path)
+        let contentNode: AppNode | null = null
+        try {
+          if (isImageFile(fileName)) {
+            const imageNode = await buildImageNode(path)
+            contentNode = imageNode ?? await buildFileNode(path)
+          } else {
+            contentNode = await buildFileNode(path)
+          }
+        } catch {
+          contentNode = await buildHeadFallbackNode(path)
         }
-        previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
+        if (contentNode) {
+          previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
+        }
       }
 
       // Bail out if focus changed during the async load.
