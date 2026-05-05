@@ -640,6 +640,91 @@ useCanvasStore.subscribe((state) => {
   }
 })
 
+// Keep the graph in sync with disk additions/removals as surfaced by git
+// status. Pure modifications (only `M` entries changing line counts) leave
+// the path set untouched and are skipped, so this is essentially free when
+// the user is just editing files.
+let prevStatusPaths: Set<string> = new Set()
+useGitStore.subscribe((state) => {
+  const next = new Set((state.status?.files ?? []).map((f) => f.path))
+  if (
+    next.size === prevStatusPaths.size &&
+    [...next].every((p) => prevStatusPaths.has(p))
+  ) {
+    return
+  }
+
+  const repoPath = state.repoPath
+  if (!repoPath) {
+    prevStatusPaths = next
+    return
+  }
+
+  // Symmetric difference: paths added or removed since the previous tick.
+  const changed: string[] = []
+  for (const p of next) if (!prevStatusPaths.has(p)) changed.push(p)
+  for (const p of prevStatusPaths) if (!next.has(p)) changed.push(p)
+  prevStatusPaths = next
+  if (changed.length === 0) return
+
+  // For every changed path, every ancestor directory is potentially affected
+  // — adding `a/b/c.txt` for the first time can introduce a new `b/` node
+  // into column `a`, in addition to the obvious `a/b` listing change.
+  const affected = new Set<string>([repoPath])
+  for (const rel of changed) {
+    const parts = rel.split('/').filter(Boolean)
+    for (let i = 1; i < parts.length; i++) {
+      affected.add(joinPath(repoPath, parts.slice(0, i).join('/')))
+    }
+  }
+
+  void refreshDirectoryColumns(affected)
+})
+
+/**
+ * Rebuild any open directory column whose path is in `affected`. No-ops the
+ * setState when the resulting node id set matches what's already cached, so
+ * incidental status churn (staging, commit) doesn't trigger pointless renders.
+ */
+async function refreshDirectoryColumns(affected: Set<string>): Promise<void> {
+  const { columns } = useCanvasStore.getState()
+  const updates = await Promise.all(
+    columns.map(async (col, index) => {
+      if (col.kind !== 'directory') return null
+      if (!affected.has(col.path)) return null
+      try {
+        const refreshed = await buildDirectoryNodes(col.path)
+        const prevIds = new Set(col.nodes.map((n) => n.id))
+        const sameSet =
+          refreshed.length === prevIds.size &&
+          refreshed.every((n) => prevIds.has(n.id))
+        return sameSet ? null : { index, nodes: refreshed }
+      } catch {
+        return null
+      }
+    }),
+  )
+
+  const realUpdates = updates.filter((u): u is { index: number; nodes: AppNode[] } => u !== null)
+  if (realUpdates.length === 0) return
+
+  // Re-read columns at apply time — navigation may have raced our async reads.
+  const current = useCanvasStore.getState().columns
+  const newColumns = current.map((col, i) => {
+    const u = realUpdates.find((x) => x.index === i)
+    if (!u) return col
+    // Bail if the column at this index was swapped out (path changed) while
+    // we were reading the directory; the rebuilt nodes belong to a stale path.
+    if (current[i]?.path !== columns[i]?.path) return col
+    return { ...col, nodes: u.nodes }
+  })
+  useCanvasStore.setState({ columns: newColumns })
+  flattenAndRender(
+    useCanvasStore.getState as () => CanvasState,
+    useCanvasStore.setState as (partial: Partial<CanvasState>) => void,
+  )
+}
+
 /**
  * Flatten all columns into positioned nodes/edges and update the store for
  * ReactFlow. All columns are rendered so the user can pan freely with Space

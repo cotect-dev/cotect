@@ -53,7 +53,7 @@ describe('useGitStore', () => {
 
   describe('refresh', () => {
     const mockStatus: GitStatus = { files: [{ path: 'a.ts', status: 'M', insertions: 5, deletions: 2 }], total_insertions: 5, total_deletions: 2 }
-    const mockLog: GitLogEntry[] = [{ hash: 'abc1234', message: 'init', author: 'dev', timestamp: 1000, insertions: 10, deletions: 0, files: [] }]
+    const mockLog: GitLogEntry[] = [{ hash: 'abc1234', message: 'init', body: '', author: 'dev', timestamp: 1000, insertions: 10, deletions: 0, files: [] }]
     const mockBranch: GitBranch = { kind: 'branch', name: 'main' }
     const mockBranches: string[] = ['main', 'feat/x']
     const mockTimestamp = 1234567890
@@ -360,7 +360,7 @@ describe('sortedFiles selector', () => {
 
 describe('buildGitSyncPayload / applyGitSyncPayload', () => {
   const sliceStatus: GitStatus = { files: [{ path: 'a.ts', status: 'M', insertions: 1, deletions: 0 }], total_insertions: 1, total_deletions: 0 }
-  const sliceLog: GitLogEntry[] = [{ hash: 'deadbee', message: 'msg', author: 'me', timestamp: 42, insertions: 0, deletions: 0, files: [] }]
+  const sliceLog: GitLogEntry[] = [{ hash: 'deadbee', message: 'msg', body: '', author: 'me', timestamp: 42, insertions: 0, deletions: 0, files: [] }]
   const sliceBranch: GitBranch = { kind: 'branch', name: 'main' }
   const slice = {
     initialized: true,

@@ -179,6 +179,9 @@ pub struct GitLogFile {
 pub struct GitLogEntry {
     pub hash: String,
     pub message: String,
+    /// Commit body (everything after the subject line). Empty when the
+    /// commit has no body. Internal newlines are preserved.
+    pub body: String,
     pub author: String,
     pub timestamp: i64,
     pub insertions: u32,
@@ -203,7 +206,21 @@ fn parse_log_output(output: &str) -> Vec<GitLogEntry> {
             .parse()
             .unwrap_or(0);
 
-        lines.next(); // skip "---END---"
+        // Body spans every line up to the "---END---" sentinel. `%b%n` in
+        // the format string puts an empty trailing line before the sentinel
+        // when the body is empty, which we trim below.
+        let mut body_lines: Vec<&str> = Vec::new();
+        loop {
+            match lines.next() {
+                Some("---END---") => break,
+                Some(line) => body_lines.push(line),
+                None => break,
+            }
+        }
+        while body_lines.last() == Some(&"") {
+            body_lines.pop();
+        }
+        let body = body_lines.join("\n");
 
         // Skip blank line between format output and numstat.
         if let Some(line) = lines.peek() {
@@ -240,6 +257,7 @@ fn parse_log_output(output: &str) -> Vec<GitLogEntry> {
         entries.push(GitLogEntry {
             hash: hash[..7.min(hash.len())].to_string(),
             message,
+            body,
             author,
             timestamp,
             insertions: total_ins,
@@ -260,7 +278,7 @@ pub async fn git_log(repo_path: String, limit: Option<u32>, skip: Option<u32>) -
         skip_str = format!("--skip={s}");
         args.push(&skip_str);
     }
-    args.extend_from_slice(&["--format=%H%n%s%n%an%n%ct%n---END---", "--numstat"]);
+    args.extend_from_slice(&["--format=%H%n%s%n%an%n%ct%n%b%n---END---", "--numstat"]);
     let output = run_git(&repo_path, &args).await?;
 
     Ok(parse_log_output(&output))
@@ -799,11 +817,14 @@ mod tests {
 
     #[test]
     fn parse_log_output_single_commit_no_files() {
-        let output = "abc1234567890\nInitial commit\nJohn Doe\n1700000000\n---END---\n";
+        // `%b%n---END---` produces an empty line where the body would be when
+        // the commit has no body — match that real git output.
+        let output = "abc1234567890\nInitial commit\nJohn Doe\n1700000000\n\n---END---\n";
         let entries = parse_log_output(output);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].hash, "abc1234");
         assert_eq!(entries[0].message, "Initial commit");
+        assert_eq!(entries[0].body, "");
         assert_eq!(entries[0].author, "John Doe");
         assert_eq!(entries[0].timestamp, 1700000000);
         assert!(entries[0].files.is_empty());
@@ -811,9 +832,10 @@ mod tests {
 
     #[test]
     fn parse_log_output_commit_with_files() {
-        let output = "abc1234567890\nFix bug\nJane\n1700000000\n---END---\n\n10\t5\tsrc/main.rs\n3\t1\tsrc/lib.rs\n";
+        let output = "abc1234567890\nFix bug\nJane\n1700000000\n\n---END---\n\n10\t5\tsrc/main.rs\n3\t1\tsrc/lib.rs\n";
         let entries = parse_log_output(output);
         assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].body, "");
         assert_eq!(entries[0].files.len(), 2);
         assert_eq!(entries[0].insertions, 13);
         assert_eq!(entries[0].deletions, 6);
@@ -822,28 +844,50 @@ mod tests {
     }
 
     #[test]
+    fn parse_log_output_commit_with_body() {
+        // Real git output for a commit whose body has multiple lines and
+        // a blank paragraph break:
+        // %H%n%s%n%an%n%ct%n%b%n---END---
+        let output = "abc1234567890\nFix bug\nJane\n1700000000\n\
+Detailed explanation line one.\n\
+\n\
+Second paragraph with more context.\n\
+\n---END---\n\n5\t2\tsrc/main.rs\n";
+        let entries = parse_log_output(output);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].message, "Fix bug");
+        assert_eq!(
+            entries[0].body,
+            "Detailed explanation line one.\n\nSecond paragraph with more context."
+        );
+        assert_eq!(entries[0].files.len(), 1);
+    }
+
+    #[test]
     fn parse_log_output_multiple_commits() {
         let output = "\
-abc1234567890\nFirst\nAlice\n1700000000\n---END---\n\n2\t1\ta.rs\n\n\
-def7890123456\nSecond\nBob\n1700001000\n---END---\n\n1\t0\tb.rs\n";
+abc1234567890\nFirst\nAlice\n1700000000\n\n---END---\n\n2\t1\ta.rs\n\n\
+def7890123456\nSecond\nBob\n1700001000\nbody for second\n\n---END---\n\n1\t0\tb.rs\n";
         let entries = parse_log_output(output);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].hash, "abc1234");
         assert_eq!(entries[0].message, "First");
+        assert_eq!(entries[0].body, "");
         assert_eq!(entries[1].hash, "def7890");
         assert_eq!(entries[1].message, "Second");
+        assert_eq!(entries[1].body, "body for second");
     }
 
     #[test]
     fn parse_log_hash_truncated_to_7() {
-        let output = "abcdefghijklmnop\nMsg\nAuthor\n0\n---END---\n";
+        let output = "abcdefghijklmnop\nMsg\nAuthor\n0\n\n---END---\n";
         let entries = parse_log_output(output);
         assert_eq!(entries[0].hash, "abcdefg");
     }
 
     #[test]
     fn parse_log_short_hash() {
-        let output = "abc\nMsg\nAuthor\n0\n---END---\n";
+        let output = "abc\nMsg\nAuthor\n0\n\n---END---\n";
         let entries = parse_log_output(output);
         assert_eq!(entries[0].hash, "abc");
     }
