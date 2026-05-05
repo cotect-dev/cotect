@@ -6,10 +6,7 @@ export interface ResolvedNodeFlags {
   isHidden: boolean
 }
 
-/**
- * Extract the internal display flags injected by flattenAndRender.
- * Accepts any node data type since every NodeData extends NodeDisplayFlags.
- */
+/** Extract display flags injected by flattenAndRender. */
 export function getNodeFlags(data: NodeDisplayFlags): ResolvedNodeFlags {
   return {
     isFocused: data.__isFocused ?? false,
@@ -18,9 +15,7 @@ export function getNodeFlags(data: NodeDisplayFlags): ResolvedNodeFlags {
   }
 }
 
-/**
- * Opacity class for a node. `isHidden` (30%) wins over `!isCurrent || isPreview` (50%).
- */
+/** `isHidden` (30%) wins over `!isCurrent || isPreview` (50%). */
 export function getNodeOpacity(
   flags: Pick<ResolvedNodeFlags, 'isCurrent' | 'isHidden'> & { isPreview?: boolean },
 ): string {
@@ -32,9 +27,8 @@ export function getNodeOpacity(
 const FOCUS_OUTLINE = 'outline outline-2 outline-primary/60'
 
 /**
- * Focus-ring class string. `'tinted'` adds a primary bg (BaseNode, ImageNode);
- * `'bordered'` tints the border instead — for CodeNode, where a bg tint would
- * bleed into the editor.
+ * `'tinted'` adds a primary bg (BaseNode, ImageNode); `'bordered'` tints the
+ * border — used for CodeNode, where a bg tint would bleed into the editor.
  */
 export function nodeFocusRing(focused: boolean, variant: 'tinted' | 'bordered'): string {
   if (!focused) return ''

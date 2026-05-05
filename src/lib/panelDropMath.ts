@@ -1,17 +1,11 @@
 /**
  * Pure pointer-driven drop-zone math shared between the in-window dnd-kit
- * drag (`usePanelDrag`) and the cross-window pointer-driven drag overlay
- * (`CrossWindowDropOverlay`). Both call sites previously reimplemented the
- * same bisect-on-mid algorithm and the same edge-percentage thresholds; this
- * module is the single source of truth.
+ * drag (`usePanelDrag`) and the cross-window overlay (`CrossWindowDropOverlay`).
  */
 
-/** Edge thresholds used to detect a drop into a left/right side zone. */
 export const EDGE_THRESHOLD = 0.25
-
-/** Bottom edge threshold — y above this fraction of the viewport drops into the bottom zone. */
+/** y above this fraction of viewport drops into the bottom zone. */
 export const BOTTOM_EDGE_THRESHOLD = 0.75
-
 /** Split point used in panel-mode (left/right halves only). */
 export const PANEL_SPLIT = 0.5
 
@@ -30,17 +24,14 @@ export interface DropZoneInfo {
 }
 
 /**
- * Bisect a stack of panel sizes against a pointer position to find the
- * insert / neighbor indices for a drop. Caller is responsible for filtering
- * the dragged panel out of `sizes` first when the dragged panel itself
- * lives in this zone.
+ * Bisect-on-mid against pointer position. Caller filters the dragged panel
+ * out of `sizes` first when it lives in this zone.
  *
- * - `insertIndex` is the index the new panel will occupy.
- * - `neighborIndex` is the index of the panel the pointer currently sits
- *   nearest, used by the resize math to choose which neighbor donates the
- *   space.
+ * - `insertIndex`: position the new panel will occupy.
+ * - `neighborIndex`: nearest existing panel; resize math uses it to pick
+ *   which neighbor donates the space.
  *
- * Empty `sizes` yields `{0, 0}` (matching the previous in-place behavior).
+ * Empty `sizes` yields `{0, 0}`.
  */
 export function computeInsertIndex(
   zone: DropZoneInfo,
@@ -73,10 +64,8 @@ export function computeInsertIndex(
 }
 
 /**
- * Detect which edge zone a pointer (in normalised viewport coordinates)
- * falls into. `mode: 'panel'` only ever returns 'left' or 'right' (split
- * at PANEL_SPLIT). `mode: 'main'` uses the EDGE_THRESHOLD / BOTTOM_EDGE_THRESHOLD
- * constants and may return null when the pointer is in the dead zone.
+ * `mode: 'panel'` only ever returns 'left' or 'right' (split at PANEL_SPLIT).
+ * `mode: 'main'` may return null when the pointer is in the dead zone.
  */
 export function detectDropZone(
   x: number,

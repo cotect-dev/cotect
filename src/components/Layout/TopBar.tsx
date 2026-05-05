@@ -7,16 +7,23 @@ import {
   MenubarSeparator,
   MenubarCheckboxItem,
 } from '@/components/ui/menubar'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from '@/components/ui/dropdown-menu'
 import { useLayoutStore, loadLayoutIntoStore, PANEL_DEFINITIONS, getEffectivePosition } from '@/store/layout'
 import { useBrowserStore } from '@/store'
 import { getPlatform } from '@/services/platform'
 import { saveLayout } from '@/services/windowManager'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
-import { useGitStore } from '@/store/git'
+import { useGitStore, branchLabel } from '@/store/git'
 import RelativeTime from '@/components/RelativeTime'
 import { DEV } from '@/lib/env'
 import { useState, useCallback, Fragment } from 'react'
-import { GitBranch } from 'lucide-react'
+import { GitBranch, ChevronDown } from 'lucide-react'
 
 interface TopBarProps {
   onResetZoneSizes?: () => void
@@ -51,6 +58,19 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
   const totalInsertions = useGitStore((s) => s.status?.total_insertions ?? 0)
   const totalDeletions = useGitStore((s) => s.status?.total_deletions ?? 0)
   const lastCommitTimestamp = useGitStore((s) => s.lastCommitTimestamp)
+  const branch = useGitStore((s) => s.branch)
+  const branches = useGitStore((s) => s.branches)
+  const checkoutBranch = useGitStore((s) => s.checkoutBranch)
+  const currentBranchName = branch?.kind === 'branch' ? branch.name : null
+  const handleBranchSelect = useCallback(
+    (name: string) => {
+      if (name === currentBranchName) return
+      checkoutBranch(name).catch((err) => {
+        console.error('Failed to switch branch:', err)
+      })
+    },
+    [checkoutBranch, currentBranchName],
+  )
 
   const isPanelVisible = useCallback((id: string) => {
     return panels.left.some(g => g.includes(id)) || panels.right.some(g => g.includes(id)) || panels.bottom.some(g => g.includes(id))
@@ -145,16 +165,45 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
         </MenubarContent>
       </MenubarMenu>
       <div className="flex-1" />
-      {isMainWindow && isGitRepo && (totalInsertions > 0 || totalDeletions > 0 || lastCommitTimestamp) && (
-        <div className="flex items-center gap-1.5 pr-2 text-xs font-mono select-none">
-          <GitBranch className="h-3.5 w-3.5 text-muted-foreground/60" />
-          {totalInsertions > 0 && <span className="text-green-500">+{totalInsertions}</span>}
-          {totalDeletions > 0 && <span className="text-red-500">-{totalDeletions}</span>}
-          {lastCommitTimestamp && (
-            <>
-              <span className="text-muted-foreground/40">·</span>
-              <RelativeTime timestamp={lastCommitTimestamp} className="text-muted-foreground/60" />
-            </>
+      {isMainWindow && isGitRepo && (
+        <div className="flex items-center gap-2 pr-2 text-xs font-mono select-none">
+          {branch && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={branches.length === 0}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+              >
+                <GitBranch className="h-3.5 w-3.5" />
+                <span className="max-w-[160px] truncate">{branchLabel(branch)}</span>
+                {branches.length > 0 && <ChevronDown className="h-3 w-3 opacity-60" />}
+              </DropdownMenuTrigger>
+              {branches.length > 0 && (
+                <DropdownMenuContent align="end" className="max-h-[60vh] overflow-y-auto font-mono text-xs">
+                  <DropdownMenuRadioGroup
+                    value={currentBranchName ?? ''}
+                    onValueChange={handleBranchSelect}
+                  >
+                    {branches.map((name) => (
+                      <DropdownMenuRadioItem key={name} value={name}>
+                        {name}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              )}
+            </DropdownMenu>
+          )}
+          {(totalInsertions > 0 || totalDeletions > 0 || lastCommitTimestamp) && (
+            <div className="flex items-center gap-1.5">
+              {totalInsertions > 0 && <span className="text-green-500">+{totalInsertions}</span>}
+              {totalDeletions > 0 && <span className="text-red-500">-{totalDeletions}</span>}
+              {lastCommitTimestamp && (
+                <>
+                  {(totalInsertions > 0 || totalDeletions > 0) && <span className="text-muted-foreground/40">·</span>}
+                  <RelativeTime timestamp={lastCommitTimestamp} className="text-muted-foreground/60" />
+                </>
+              )}
+            </div>
           )}
         </div>
       )}

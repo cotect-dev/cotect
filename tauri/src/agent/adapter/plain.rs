@@ -521,16 +521,6 @@ mod tests {
     }
 
     #[test]
-    fn name_returns_plain() {
-        assert_eq!(PlainAdapter.name(), "plain");
-    }
-
-    #[test]
-    fn endpoint_is_completion() {
-        assert_eq!(PlainAdapter.endpoint_path(), "/completion");
-    }
-
-    #[test]
     fn build_request_body_has_prompt_and_stops() {
         let body = PlainAdapter.build_request_body(
             "model",

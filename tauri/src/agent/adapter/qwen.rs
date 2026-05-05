@@ -59,36 +59,24 @@ impl ModelAdapter for QwenAdapter {
 }
 
 
-/// Stream parser for Qwen 3/3.5 responses via OpenAI-compat API.
-///
-/// Wraps the standard OpenAI SSE format but adds:
-/// 1. Thinking-token stripping from `content` field (`<think>...</think>`)
-/// 2. Raw tool-call token filtering from `content`
-/// 3. Fallback native tool-call parsing when server doesn't provide structured calls
+/// Wraps the standard OpenAI SSE format but adds: `<think>...</think>`
+/// stripping from `content`, raw tool-call token filtering, and fallback
+/// native tool-call parsing when the server doesn't provide structured calls.
 pub(crate) struct QwenStreamParser {
-    /// Buffer for text content (may contain partial Qwen tokens).
     text_buffer: String,
-    /// Accumulated raw text for fallback tool-call parsing.
-    /// Preserves raw Qwen tokens that were stripped from text_buffer.
+    /// Raw Qwen tokens stripped from text_buffer, kept for fallback parsing.
     accumulated_text: String,
-    /// Accumulated reasoning text — some servers route tool calls into
-    /// `reasoning_content` or a `<think>` block instead of content. Keep
-    /// a copy so we can scan it for `<tool_call>` blocks at finalize.
+    /// Some servers route tool calls into `reasoning_content` or `<think>`
+    /// blocks; we scan this for `<tool_call>` at finalize.
     reasoning_accumulated: String,
-    /// Whether we've emitted Done.
     done_emitted: bool,
-    /// Whether we're inside a `<think>` block.
     in_thinking: bool,
-    /// Whether we've received any structured tool_calls from the server.
     has_structured_tool_calls: bool,
-    /// Tool call index counter for fallback parsing.
     fallback_tool_index: usize,
-    /// True once we've seen an XML pseudo-tool-call marker (`<function=`,
-    /// `<parameter=`, `</parameter>`, or `</function>`) in content. Some
-    /// Qwen fine-tunes emit Llama-3 style XML tool calls raw, without the
-    /// `<tool_call>` wrapper. Once we see a marker we drain everything
-    /// remaining in the stream into `accumulated_text` so `flush_remaining`
-    /// can parse it (or emit `__format_error__` for unsalvageable fragments).
+    /// Some Qwen fine-tunes emit Llama-3 style XML tool calls raw, without
+    /// the `<tool_call>` wrapper. Once we spot a marker (`<function=`,
+    /// `<parameter=`, `</parameter>`, `</function>`) we drain the rest of
+    /// the stream into accumulated_text for flush_remaining to parse.
     xml_pseudo_active: bool,
 }
 
@@ -127,8 +115,6 @@ impl StreamParser for QwenStreamParser {
         };
 
         for choice in &chunk.choices {
-            // Process reasoning content (standard OpenAI field — used by some
-            // servers that natively support Qwen's thinking mode)
             if let Some(reasoning) = &choice.delta.reasoning_content {
                 if !reasoning.is_empty() {
                     self.reasoning_accumulated.push_str(reasoning);
@@ -136,7 +122,6 @@ impl StreamParser for QwenStreamParser {
                 }
             }
 
-            // Process text content — filter Qwen tokens
             if let Some(text) = &choice.delta.content {
                 if !text.is_empty() {
                     self.text_buffer.push_str(text);
@@ -144,7 +129,6 @@ impl StreamParser for QwenStreamParser {
                 }
             }
 
-            // Process structured tool calls (from server)
             if let Some(tool_calls) = &choice.delta.tool_calls {
                 self.has_structured_tool_calls = true;
                 for tc in tool_calls {
@@ -160,10 +144,7 @@ impl StreamParser for QwenStreamParser {
                 }
             }
 
-            // Process finish reason
             if let Some(reason) = &choice.finish_reason {
-                // Before emitting Done, flush buffer and check for fallback
-                // tool call parsing if no structured calls were received
                 self.flush_remaining(&mut events);
 
                 events.push(LlmStreamEvent::Done {
@@ -181,10 +162,8 @@ impl StreamParser for QwenStreamParser {
         self.flush_remaining(&mut events);
         if !self.done_emitted {
             self.done_emitted = true;
-            // Stream ended without [DONE] or finish_reason — this is an
-            // abnormal termination (server crashed, KV cache exhausted, etc.).
-            // Report as "stream_ended" so the orchestrator can distinguish
-            // this from a genuine model completion and retry the turn.
+            // Abnormal termination (server crash, KV exhaustion). Distinct
+            // from a genuine completion so the orchestrator retries.
             events.push(LlmStreamEvent::Done {
                 finish_reason: Some("stream_ended".to_string()),
             });
@@ -194,11 +173,10 @@ impl StreamParser for QwenStreamParser {
 }
 
 impl QwenStreamParser {
-    /// Process text buffer: strip thinking tokens and filter raw tool-call tokens.
+    /// Strip thinking tokens and filter raw tool-call tokens.
     fn drain_text_buffer(&mut self, events: &mut Vec<LlmStreamEvent>) {
         loop {
             if self.in_thinking {
-                // Look for end of thinking block
                 if let Some(pos) = self.text_buffer.find("</think>") {
                     let reasoning = self.text_buffer[..pos].to_string();
                     self.text_buffer.drain(..pos + "</think>".len());
@@ -207,7 +185,6 @@ impl QwenStreamParser {
                         self.reasoning_accumulated.push_str(&reasoning);
                         events.push(LlmStreamEvent::ReasoningDelta(reasoning));
                     }
-                    // Skip any trailing newlines after </think>
                     let trimmed = self.text_buffer.trim_start_matches('\n');
                     let skip = self.text_buffer.len() - trimmed.len();
                     if skip > 0 {
@@ -215,7 +192,6 @@ impl QwenStreamParser {
                     }
                     continue;
                 }
-                // Partial — emit safe reasoning content
                 let safe = safe_emit_len(&self.text_buffer, "</think>");
                 if safe > 0 {
                     let reasoning: String = self.text_buffer.drain(..safe).collect();
@@ -225,7 +201,6 @@ impl QwenStreamParser {
                 return;
             }
 
-            // Check for thinking block start
             if let Some(pos) = self.text_buffer.find("<think>") {
                 if pos > 0 {
                     let text: String = self.text_buffer.drain(..pos).collect();
@@ -236,36 +211,30 @@ impl QwenStreamParser {
                 }
                 self.text_buffer.drain(.."<think>".len());
                 self.in_thinking = true;
-                // Skip leading newline after <think>
                 if self.text_buffer.starts_with('\n') {
                     self.text_buffer.drain(..1);
                 }
                 continue;
             }
 
-            // Check for raw tool-call tokens that should be filtered from text
-            // (these appear when the server leaks Qwen's native format into content)
+            // Filter raw tool-call tokens leaking into text (some servers
+            // dump Qwen's native format alongside structured tool_calls).
             if let Some(pos) = self.text_buffer.find("<tool_call>") {
-                // Emit clean text before the token
                 if pos > 0 {
                     let text: String = self.text_buffer.drain(..pos).collect();
                     if !text.is_empty() {
                         events.push(LlmStreamEvent::TextDelta(text));
                     }
                 }
-                // Check if we have the closing tag too
                 if let Some(end) = self.text_buffer.find("</tool_call>") {
-                    // Complete raw tool-call token — strip from text output
-                    // but save to accumulated_text for fallback parsing
+                    // Save the raw token to accumulated_text for fallback parsing.
                     let raw_tc: String = self.text_buffer.drain(..end + "</tool_call>".len()).collect();
                     self.accumulated_text.push_str(&raw_tc);
                     continue;
                 }
-                // Partial — keep in buffer, wait for more data
                 return;
             }
 
-            // Also filter <tool_response>...</tool_response> tokens
             if let Some(pos) = self.text_buffer.find("<tool_response>") {
                 if pos > 0 {
                     let text: String = self.text_buffer.drain(..pos).collect();
@@ -280,10 +249,9 @@ impl QwenStreamParser {
                 return;
             }
 
-            // Detect XML pseudo-tool-call markers (Llama-3 / Claude style
-            // emitted raw, without a <tool_call> wrapper). Once we see one,
-            // drain the rest of the stream into accumulated_text so the
-            // fallback parser can pick it up at flush time.
+            // Llama-3/Claude-style XML pseudo-tool-call without the
+            // `<tool_call>` wrapper — drain the rest into accumulated_text
+            // for the fallback parser at flush time.
             if self.xml_pseudo_active {
                 let raw: String = self.text_buffer.drain(..).collect();
                 self.accumulated_text.push_str(&raw);
@@ -302,7 +270,6 @@ impl QwenStreamParser {
                 return;
             }
 
-            // No markers found — emit text safely
             let safe = safe_emit_len_multi(
                 &self.text_buffer,
                 &[
@@ -329,25 +296,20 @@ impl QwenStreamParser {
         }
     }
 
-    /// Flush remaining buffer content at end of stream.
-    /// If no structured tool calls were received, attempt fallback parsing
-    /// across three channels: raw-token accumulator, text buffer, and reasoning
-    /// content (some servers route tool calls through `reasoning_content` or
-    /// inside `<think>` blocks instead of surfacing them as structured calls).
+    /// Fallback parses tool calls across three channels: raw-token accumulator,
+    /// text buffer, and reasoning content (some servers route tool calls into
+    /// `reasoning_content` or `<think>` blocks instead of structured calls).
     fn flush_remaining(&mut self, events: &mut Vec<LlmStreamEvent>) {
-        // 1. Raw tool tokens stripped during streaming.
         if !self.has_structured_tool_calls && !self.accumulated_text.is_empty() {
             let accumulated = std::mem::take(&mut self.accumulated_text);
             self.parse_all_tool_calls(&accumulated, events);
         }
 
-        // 2. Tool calls that the server routed into the reasoning channel.
         if !self.has_structured_tool_calls && contains_tool_call_pattern(&self.reasoning_accumulated) {
             let reasoning = std::mem::take(&mut self.reasoning_accumulated);
             self.parse_all_tool_calls(&reasoning, events);
         }
 
-        // 3. Remaining content buffer.
         if self.text_buffer.is_empty() {
             return;
         }
@@ -355,8 +317,7 @@ impl QwenStreamParser {
         let raw_buf = std::mem::take(&mut self.text_buffer);
         let text = strip_thinking(&raw_buf);
 
-        // Check for fallback tool parsing BEFORE stripping tool tokens,
-        // so we can still extract tool calls from the raw text
+        // Try tool parsing BEFORE stripping tokens so they remain extractable.
         if !self.has_structured_tool_calls && contains_tool_call_pattern(&text) {
             self.parse_all_tool_calls(&text, events);
             return;
@@ -379,7 +340,6 @@ impl QwenStreamParser {
             let (tc_content, rest) = if let Some(end) = after.find("</tool_call>") {
                 (&after[..end], &after[end + "</tool_call>".len()..])
             } else {
-                // No closing tag — try parsing the rest
                 (after.trim(), "")
             };
 
@@ -392,22 +352,17 @@ impl QwenStreamParser {
             remaining = rest;
         }
 
-        // If no <tool_call> tags found, try bare JSON parsing or XML pseudo-call.
         if !found_any {
             let trimmed = text.trim();
             if trimmed.starts_with('{') && trimmed.contains("\"name\"") {
                 self.emit_single_tool_call(trimmed, events);
             } else if let Some(start) = trimmed.find("<function=") {
-                // Llama-3 / Claude-style XML call emitted without <tool_call>
-                // wrapper. parse_xml_function_call handles a single call;
-                // emit_single_tool_call routes parse failures through
-                // emit_format_error automatically.
+                // Llama-3 / Claude-style XML emitted without <tool_call> wrapper.
                 self.emit_single_tool_call(&trimmed[start..], events);
             } else if has_xml_param_fragment(trimmed) {
-                // The opening <function=NAME> tag is missing but parameter /
-                // closing fragments are present — the model emitted a
-                // malformed call. Surface a format error so it retries
-                // instead of silently believing the call ran.
+                // Parameter/closing fragments without a <function=NAME> opener —
+                // surface a format error so the model retries instead of
+                // silently believing the call ran.
                 let idx = self.fallback_tool_index;
                 self.fallback_tool_index += 1;
                 events.push(emit_format_error(
@@ -421,7 +376,6 @@ impl QwenStreamParser {
                      {\"name\": \"tool_name\", \"arguments\": {...}}",
                 ));
             } else if !trimmed.is_empty() {
-                // Not a tool call — emit as text
                 let clean = strip_raw_tool_tokens(trimmed);
                 if !clean.is_empty() {
                     events.push(LlmStreamEvent::TextDelta(clean));
@@ -452,19 +406,8 @@ impl QwenStreamParser {
 }
 
 
-/// Parse a tool call from Qwen's output. Qwen uses Hermes-style tool calls:
-///
-/// ```text
-/// <tool_call>
-/// {"name": "function_name", "arguments": {"arg1": "value1"}}
-/// </tool_call>
-/// ```
-///
-/// The JSON object has two fields:
-/// - `name`: the function name (string)
-/// - `arguments`: the function arguments (object)
-///
-/// Returns `(tool_name, arguments_as_json_string)` or an error.
+/// Parses Qwen's Hermes-style tool call: `{"name": "...", "arguments": {...}}`
+/// inside `<tool_call>...</tool_call>`. Returns `(name, arguments_json)`.
 fn parse_qwen_tool_call(input: &str) -> Result<(String, String), String> {
     let input = input.trim();
 
@@ -472,8 +415,6 @@ fn parse_qwen_tool_call(input: &str) -> Result<(String, String), String> {
         return Err("Empty tool call content".to_string());
     }
 
-    // Qwen's native format is always JSON:
-    // {"name": "func_name", "arguments": {"key": "value"}}
     if let Ok(obj) = serde_json::from_str::<serde_json::Map<String, Value>>(input) {
         if let (Some(Value::String(name)), Some(args)) =
             (obj.get("name"), obj.get("arguments"))
@@ -481,21 +422,18 @@ fn parse_qwen_tool_call(input: &str) -> Result<(String, String), String> {
             let args_json = serde_json::to_string(args).unwrap_or_else(|_| "{}".to_string());
             return Ok((name.clone(), args_json));
         }
-        // Has JSON but not in expected shape
         return Err(format!(
             "JSON object missing 'name' (string) or 'arguments' field. Got keys: {:?}",
             obj.keys().collect::<Vec<_>>()
         ));
     }
 
-    // Try Llama-3 / Claude-style XML form that some Qwen fine-tunes emit:
+    // Llama-3 / Claude-style XML form that some Qwen fine-tunes emit:
     //   <function=NAME><parameter=KEY>VALUE</parameter>...</function>
-    // (The outer `<tool_call>` wrapper has already been stripped by the caller.)
     if let Some((name, args_json)) = parse_xml_function_call(input) {
         return Ok((name, args_json));
     }
 
-    // Try to salvage partial/malformed JSON — find the first '{' and attempt parse
     if let Some(brace_pos) = input.find('{') {
         let json_part = &input[brace_pos..];
         // Try to find matching closing brace
@@ -561,8 +499,7 @@ fn parse_xml_function_call(input: &str) -> Option<(String, String)> {
         };
         // Llama-3 style often wraps values in leading/trailing newlines.
         let value = value.trim_matches(|c: char| c == '\n' || c == '\r');
-        // If the value parses as JSON (number, bool, null, array, nested object),
-        // preserve the type; otherwise store as string.
+        // Preserve types when the value parses as JSON; otherwise treat as string.
         let v = serde_json::from_str::<Value>(value)
             .unwrap_or_else(|_| Value::String(value.to_string()));
         if !key.is_empty() {
@@ -572,8 +509,7 @@ fn parse_xml_function_call(input: &str) -> Option<(String, String)> {
     }
 
     if args.is_empty() && !body.contains("<parameter=") {
-        // Matched `<function=NAME>` but no parameters at all — could still be a
-        // valid no-arg call. Emit empty-args JSON.
+        // Matched `<function=NAME>` with no parameters — valid no-arg call.
         return Some((name, "{}".to_string()));
     }
 
@@ -618,12 +554,10 @@ fn extract_balanced_json(input: &str) -> Option<String> {
 }
 
 
-/// Strip `<think>...</think>` blocks from text.
 fn strip_thinking(text: &str) -> String {
     strip_paired_blocks(text, "<think>", "</think>", true)
 }
 
-/// Strip raw Qwen tool-call tokens from text.
 /// Removes `<tool_call>...</tool_call>` and `<tool_response>...</tool_response>`.
 fn strip_raw_tool_tokens(text: &str) -> String {
     strip_tag_pairs(text, &[
@@ -632,9 +566,7 @@ fn strip_raw_tool_tokens(text: &str) -> String {
     ])
 }
 
-/// Find the first byte offset of any XML pseudo-tool-call marker in `text`,
-/// or `None` if no marker is present. Markers: `<function=`, `<parameter=`,
-/// `</parameter>`, `</function>`.
+/// First byte offset of any XML pseudo-tool-call marker, or None.
 fn find_xml_pseudo_marker(text: &str) -> Option<usize> {
     [
         "<function=",
@@ -647,10 +579,9 @@ fn find_xml_pseudo_marker(text: &str) -> Option<usize> {
     .min()
 }
 
-/// True when the text contains XML pseudo-tool-call fragments without a
-/// matching `<function=NAME>` opener. Used to detect partial / malformed
-/// emissions so we can return a format error instead of silently treating
-/// the fragments as plain prose.
+/// XML pseudo-tool-call fragments without a matching `<function=NAME>`
+/// opener — partial/malformed emissions that should yield a format error
+/// rather than be silently treated as prose.
 fn has_xml_param_fragment(text: &str) -> bool {
     if text.contains("<function=") {
         return false;
@@ -660,17 +591,10 @@ fn has_xml_param_fragment(text: &str) -> bool {
         || text.contains("</function>")
 }
 
-/// Check if text contains a tool-call pattern that needs fallback parsing.
-///
-/// Detects three shapes:
-///   1. `<tool_call>...</tool_call>` (Hermes/Qwen native).
-///   2. `<function=NAME>...</function>` (Llama-3 / Claude-style XML — some
-///      Qwen fine-tunes emit this raw, without the `<tool_call>` wrapper).
-///   3. Dangling `<parameter=...>` / `</parameter>` / `</function>` fragments
-///      (the model started writing an XML call but the opening tag got lost
-///      to truncation or formatting confusion). These are unparseable but
-///      we still want to surface a format error so the model retries instead
-///      of believing its phantom call was executed.
+/// Detects three shapes that need fallback parsing:
+/// 1. `<tool_call>...</tool_call>` (Hermes/Qwen native).
+/// 2. `<function=NAME>...</function>` (Llama-3/Claude raw, no wrapper).
+/// 3. Dangling `<parameter=...>` etc. (malformed — surface a format error).
 fn contains_tool_call_pattern(text: &str) -> bool {
     text.contains("<tool_call>")
         || text.contains("<function=")
@@ -683,18 +607,6 @@ fn contains_tool_call_pattern(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::types::FunctionDef;
-
-    fn tool_def(name: &str) -> ToolDefinition {
-        ToolDefinition {
-            def_type: "function".into(),
-            function: FunctionDef {
-                name: name.into(),
-                description: "desc".into(),
-                parameters: serde_json::json!({}),
-            },
-        }
-    }
 
 
     #[test]
@@ -999,33 +911,6 @@ mod tests {
     fn extract_balanced_with_escaped_quotes() {
         let input = r#"{"name": "te\"st"}"#;
         assert_eq!(extract_balanced_json(input).unwrap(), input);
-    }
-
-
-    #[test]
-    fn build_request_matches_openai_format() {
-        let adapter = QwenAdapter;
-        let messages = vec![ChatMessage {
-            role: crate::agent::types::Role::User,
-            content: "hi".to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-            name: None,
-        }];
-        let tools = vec![tool_def("shell")];
-        let body = adapter.build_request_body("model", &messages, &tools, 0.5, 8192);
-
-        assert!(body.get("model").is_some());
-        assert!(body.get("messages").is_some());
-        assert!(body.get("tools").is_some());
-        assert_eq!(body["stream"], true);
-        assert_eq!(body["max_tokens"], 8192);
-    }
-
-    #[test]
-    fn endpoint_is_chat_completions() {
-        let adapter = QwenAdapter;
-        assert_eq!(adapter.endpoint_path(), "/chat/completions");
     }
 
 

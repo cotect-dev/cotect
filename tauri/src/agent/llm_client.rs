@@ -36,23 +36,16 @@ struct LmStudioModelEntry {
     r#type: Option<String>,
 }
 
-/// Normalize an endpoint URL to the OpenAI-compatible base path.
-///
-/// Handles common variations:
-/// - Strips trailing `/models` (user may paste the models listing URL)
-/// - Converts LM Studio's `/api/v1` to `/v1` (LM Studio uses `/api/v1` for its
-///   native API but `/v1` for the OpenAI-compatible chat/completions endpoint)
-/// - Strips trailing slashes
+/// Normalize an endpoint URL to the OpenAI-compatible base path:
+/// strip trailing `/`, `/models`, and convert LM Studio's `/api/v1` to `/v1`.
 fn normalize_endpoint(raw: &str) -> String {
     let mut endpoint = raw.trim_end_matches('/').to_string();
 
-    // Strip trailing /models suffix (user may have pasted the models URL)
     if endpoint.ends_with("/models") {
         endpoint.truncate(endpoint.len() - "/models".len());
     }
 
-    // LM Studio serves its native API at /api/v1 but OpenAI-compatible
-    // endpoints at /v1. Rewrite so chat/completions hits the right path.
+    // LM Studio's native API is /api/v1; chat/completions wants /v1.
     if endpoint.ends_with("/api/v1") {
         let base = &endpoint[..endpoint.len() - "/api/v1".len()];
         endpoint = format!("{base}/v1");
@@ -104,7 +97,6 @@ impl LlmClient {
             self.adapter
                 .build_request_body(&self.model, &messages, tools_slice, temperature, std::env::var("COTECT_MAX_TOKENS").ok().and_then(|v| v.parse().ok()).unwrap_or(65536));
 
-        // Debug: dump request body when COTECT_DEBUG_REQUESTS is set.
         if std::env::var("COTECT_DEBUG_REQUESTS").is_ok() {
             if let Ok(json) = serde_json::to_string_pretty(&body) {
                 eprintln!(
@@ -143,16 +135,12 @@ impl LlmClient {
         Ok(rx)
     }
 
-    /// Fetch available models from the /models endpoint.
-    /// Tries the OpenAI-compatible `/v1/models` first, then falls back to
-    /// LM Studio's native `/api/v1/models` endpoint.
+    /// Tries OpenAI-compat `/v1/models` first, then LM Studio's `/api/v1/models`.
     pub async fn list_models(&self) -> Result<Vec<String>> {
-        // Build fallback URL: replace trailing /v1 with /api/v1
         let lm_studio_url = if self.endpoint.ends_with("/v1") {
             let base = &self.endpoint[..self.endpoint.len() - "/v1".len()];
             format!("{base}/api/v1/models")
         } else {
-            // No /v1 suffix — skip fallback
             String::new()
         };
 
@@ -185,7 +173,7 @@ impl LlmClient {
             let models: ModelsResponse =
                 resp.json().await.context("Failed to parse models response")?;
 
-            // Merge results from both "data" (OpenAI) and "models" (LM Studio) fields
+            // Merge "data" (OpenAI) and "models" (LM Studio) fields.
             let mut ids: Vec<String> = models.data.into_iter().map(|m| m.id).collect();
             ids.extend(
                 models
@@ -204,16 +192,10 @@ impl LlmClient {
     }
 }
 
-/// Parse SSE lines from the response body and emit [`LlmStreamEvent`]s via
-/// the supplied adapter's [`super::adapter::StreamParser`].
-///
-/// Uses a 30-second inactivity timeout — if no bytes arrive for 30s during
-/// an active stream, the connection is considered dead. Reasoning-heavy
-/// models (e.g., Gemma 4) may take 10-20s of silent thinking between
-/// generated tokens, so shorter timeouts are too aggressive.
-///
-/// Sends events via an unbounded channel so the SSE parser never blocks,
-/// regardless of how fast or slow the consumer drains events.
+/// Parse SSE lines and emit `LlmStreamEvent`s via the adapter's parser.
+/// Uses an idle timeout (default 60s, COTECT_STREAM_IDLE_TIMEOUT) — long
+/// enough that reasoning-heavy models (Gemma 4 silent thinking 10-20s)
+/// don't trip it. Unbounded channel so the parser never blocks on consumers.
 async fn stream_sse_events(
     response: reqwest::Response,
     mut parser: Box<dyn adapter::StreamParser>,
@@ -238,11 +220,10 @@ async fn stream_sse_events(
                 return Err(anyhow::anyhow!("Stream read error: {e}"));
             }
             Ok(None) => {
-                // Stream ended normally
                 break;
             }
             Err(_) => {
-                // Idle timeout — server stalled
+                // Idle timeout — server stalled.
                 tx.send(LlmStreamEvent::Done {
                     finish_reason: Some("timeout".into()),
                 })
@@ -251,7 +232,6 @@ async fn stream_sse_events(
             }
         }
 
-        // Process complete lines
         while let Some(newline_pos) = buffer.find('\n') {
             let line = buffer[..newline_pos].trim().to_string();
             buffer.drain(..=newline_pos);
@@ -267,14 +247,13 @@ async fn stream_sse_events(
                     tx.send(event).ok();
                 }
                 if is_done_marker {
-                    // Hit [DONE] marker — parser has emitted its Done event.
                     return Ok(());
                 }
             }
         }
     }
 
-    // Stream ended without [DONE] — let the parser flush any final state.
+    // No [DONE] received — let the parser flush its final state.
     for event in parser.finalize() {
         tx.send(event).ok();
     }

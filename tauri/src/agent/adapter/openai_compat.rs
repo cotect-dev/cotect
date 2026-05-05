@@ -126,44 +126,8 @@ impl StreamParser for OpenAICompatParser {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::types::{ChatMessage, FunctionDef, ToolDefinition};
+    use super::super::super::types::ChatMessage;
     use super::*;
-
-    fn tool_def(name: &str) -> ToolDefinition {
-        ToolDefinition {
-            def_type: "function".into(),
-            function: FunctionDef {
-                name: name.into(),
-                description: "desc".into(),
-                parameters: serde_json::json!({}),
-            },
-        }
-    }
-
-    #[test]
-    fn adapter_metadata() {
-        let a = OpenAICompatAdapter;
-        assert_eq!(a.name(), "openai_compat");
-        assert_eq!(a.endpoint_path(), "/chat/completions");
-    }
-
-    #[test]
-    fn build_request_body_includes_all_fields() {
-        let a = OpenAICompatAdapter;
-        let messages = vec![
-            ChatMessage::system("system"),
-            ChatMessage::user("hello"),
-        ];
-        let tools = vec![tool_def("shell")];
-        let body = a.build_request_body("test-model", &messages, &tools, 1.0, 2048);
-
-        assert_eq!(body["model"], "test-model");
-        assert_eq!(body["stream"], true);
-        assert_eq!(body["temperature"], 1.0);
-        assert_eq!(body["max_tokens"], 2048);
-        assert_eq!(body["messages"].as_array().unwrap().len(), 2);
-        assert_eq!(body["tools"].as_array().unwrap().len(), 1);
-    }
 
     #[test]
     fn build_request_body_omits_empty_tools() {

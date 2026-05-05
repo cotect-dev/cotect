@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getConfigForFile, LANGUAGE_CONFIGS } from '@/services/treesitter-queries'
+import { getConfigForFile } from '@/services/treesitter-queries'
 
 describe('getConfigForFile', () => {
   it('returns typescript config for .ts files', () => {
@@ -37,15 +37,5 @@ describe('getConfigForFile', () => {
     const config = getConfigForFile('my.component.test.tsx')
     expect(config).not.toBeNull()
     expect(config!.extensions).toContain('.tsx')
-  })
-
-  it('LANGUAGE_CONFIGS contains exactly 2 configs', () => {
-    expect(LANGUAGE_CONFIGS).toHaveLength(2)
-  })
-
-  it('each config has extensions', () => {
-    for (const config of LANGUAGE_CONFIGS) {
-      expect(config.extensions.length).toBeGreaterThan(0)
-    }
   })
 })

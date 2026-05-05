@@ -35,39 +35,23 @@ export interface DragHandleResult {
 
 /**
  * Encapsulates the mousedown → document mousemove/mouseup → cleanup
- * lifecycle shared by every drag handle in the app.
- *
- * What the hook owns:
- *  - calling `e.preventDefault()` + `e.stopPropagation()` on the initial
- *    mousedown (critical so ReactFlow / dnd-kit drag handlers don't
- *    intercept the gesture);
- *  - setting `document.body.style.cursor` and `userSelect` for the
- *    duration of the drag, and restoring them on mouseup;
- *  - setting/removing the `data-resizing` attribute on the handle ref
- *    (used by Tailwind variants like `data-[resizing]:bg-primary/40`);
- *  - attaching/detaching the global `mousemove` and `mouseup` listeners,
- *    including on unmount mid-drag.
- *
- * What the caller owns:
- *  - per-frame logic in `onMove` (DOM mutation, state updates, …);
- *  - any pre-flight DOM reads in `onStart`;
- *  - finalisation work in `onEnd` (e.g. persisting size to a store).
+ * lifecycle shared by every drag handle in the app. Calls preventDefault +
+ * stopPropagation on mousedown (critical so ReactFlow / dnd-kit don't
+ * intercept the gesture), manages body cursor/userSelect, the handle's
+ * `data-resizing` attribute, and tear-down on unmount mid-drag.
  */
 export function useDragHandle(opts: DragHandleOptions): DragHandleResult {
   const ref = useRef<HTMLElement | null>(null)
 
   // Latest options stay in a ref so the mousedown callback's identity is
-  // stable — callers can recreate `onMove`/`onEnd` closures freely without
-  // re-binding the JSX `onMouseDown` prop. Updated in a layout effect to
-  // satisfy react-hooks/refs (no ref writes during render) while still
-  // settling before any user-driven mousedown can fire.
+  // stable — callers can recreate closures freely without re-binding the
+  // JSX prop. Updated in a layout effect (no ref writes during render).
   const optsRef = useRef(opts)
   useLayoutEffect(() => {
     optsRef.current = opts
   })
 
-  // Cleanup function for an *active* drag. When non-null, a drag is in
-  // flight and the unmount effect should run it.
+  // Non-null when a drag is in flight; the unmount effect runs it.
   const cleanupRef = useRef<(() => void) | null>(null)
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -120,8 +104,7 @@ export function useDragHandle(opts: DragHandleOptions): DragHandleResult {
     cleanupRef.current = cleanup
   }, [])
 
-  // If the component unmounts mid-drag, tear down listeners so we don't
-  // leak global state (cursor, userSelect, dangling listeners).
+  // Tear down listeners on unmount mid-drag so we don't leak global state.
   useEffect(() => {
     return () => {
       cleanupRef.current?.()

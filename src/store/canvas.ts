@@ -16,19 +16,11 @@ import { joinPath } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
 import { withPersistence } from '@/store/persistence'
 
-/**
- * Returns true if a filename looks like a test/spec file.
- * Matches patterns like: *.test.ts, *.spec.js, test_foo.py, etc.
- */
 function isTestFile(name: string): boolean {
   const lower = name.toLowerCase()
-  // .test. or .spec. before the final extension
   if (/\.(test|spec)\.\w+$/.test(lower)) return true
-  // _test. before the final extension (Go, Python conventions)
   if (/[_-]test\.\w+$/.test(lower)) return true
-  // Files named exactly "test.*" or "tests.*"
   if (/^tests?\.\w+$/.test(lower)) return true
-  // Common test config/setup files
   if (/^(jest|vitest|karma|cypress|playwright)[.-]/.test(lower)) return true
   return false
 }
@@ -49,21 +41,14 @@ export type CanvasState = {
   setNodes: (nodes: AppNode[]) => void
   setEdges: (edges: Edge[]) => void
 
-  // Focus management
   focusedNodeId: string | null
 
-  // Column navigation state
-  // All columns are rendered; the "current" column is columns[currentColumnIndex]
+  // The "current" column is columns[currentColumnIndex]; all columns are rendered.
   columns: Column[]
   currentColumnIndex: number
 
-  // The full depth chain of paths we've traversed (for breadcrumbs)
   depthChain: string[]
-
-  // Hidden nodes: node IDs that have been hidden by the user (H key)
   hiddenNodeIds: Set<string>
-
-  // Persisted width for code nodes (global preference)
   codeNodeWidth: number
 
   // Memory of the last focused node per column path, recorded when navigating
@@ -73,11 +58,9 @@ export type CanvasState = {
   // leaves the user at the position they started from.
   rightFocusMemory: Record<string, string>
 
-  // The height of the canvas viewport in pixels (set by the view layer)
   viewportHeight: number
 
-  // Simulated camera Y position (viewport.y), kept in sync with the
-  // pan-to-focus clamping logic so flattenAndRender can position
+  // Kept in sync with pan-to-focus clamping so flattenAndRender can position
   // the preview column without waiting for the actual viewport animation.
   cameraY: number
 
@@ -87,20 +70,12 @@ export type CanvasState = {
   navigateRight: () => Promise<void>
   navigateLeft: () => void
   initRoot: (rootPath: string) => Promise<void>
-  /** Toggle hide/show for the currently focused node. */
   toggleHideNode: () => void
-  /** Set the width for all code nodes (persisted globally). */
   setCodeNodeWidth: (width: number) => void
-  /** Load a preview column for the currently focused node (shown to the right). */
   updatePreview: () => Promise<void>
-  /** Navigate the canvas directly to a repo-relative file path and focus it. */
   focusFileByPath: (repoRelativePath: string) => Promise<void>
 }
 
-/**
- * Build directory-level nodes for a path: folders first, then files.
- * Returns unsorted; caller positions them.
- */
 async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
   const platform = getPlatform()
   const rawEntries = await platform.fs.readDirectory(dirPath)
@@ -108,13 +83,12 @@ async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
     !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.'))
   )
 
-  // Sort: folders first, then regular files, then test files — alphabetical within each group
+  // Sort: folders first, then regular files, then test files — alphabetical within each group.
   const folders = entries.filter((e) => e.isDirectory).sort((a, b) => a.name.localeCompare(b.name))
   const regularFiles = entries.filter((e) => !e.isDirectory && !isTestFile(e.name)).sort((a, b) => a.name.localeCompare(b.name))
   const testFiles = entries.filter((e) => !e.isDirectory && isTestFile(e.name)).sort((a, b) => a.name.localeCompare(b.name))
   const sorted = [...folders, ...regularFiles, ...testFiles]
 
-  // Count children for each folder (fire and forget — counts loaded in parallel)
   const childCountMap = new Map<string, number>()
   await Promise.all(
     folders.map(async (folder) => {
@@ -137,9 +111,6 @@ async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
   )
 }
 
-/**
- * Build a single code node containing the full file content.
- */
 async function buildFileNode(filePath: string): Promise<AppNode> {
   const platform = getPlatform()
   const content = await platform.fs.readFile(filePath)
@@ -160,11 +131,7 @@ async function buildFileNode(filePath: string): Promise<AppNode> {
   }
 }
 
-/**
- * Build an image preview node for an image file.
- * Reads the binary content and converts it to a base64 data URL.
- * Returns null if the image exceeds IMAGE_PREVIEW_MAX_BYTES.
- */
+/** Returns null if the image exceeds IMAGE_PREVIEW_MAX_BYTES. */
 async function buildImageNode(filePath: string): Promise<AppNode | null> {
   const platform = getPlatform()
   const bytes = await platform.fs.readBinaryFile(filePath)
@@ -176,7 +143,6 @@ async function buildImageNode(filePath: string): Promise<AppNode | null> {
 
   const mime = getImageMimeType(fileName)
 
-  // Convert bytes to base64
   let binary = ''
   const len = bytes.length
   for (let i = 0; i < len; i++) {
@@ -199,8 +165,8 @@ async function buildImageNode(filePath: string): Promise<AppNode | null> {
 
 /**
  * Position nodes within a column. Larger gap at folder/file type boundaries.
- * Returns `{ positioned, yById }` so callers can look up an arbitrary node's
- * Y (e.g. the focused-node camera-clamp pre-pass) without re-walking the gap rule.
+ * Returns `yById` so callers can look up an arbitrary node's Y (e.g. the
+ * focused-node camera-clamp pre-pass) without re-walking the gap rule.
  */
 function positionColumnNodes(
   nodes: AppNode[],
@@ -220,9 +186,6 @@ function positionColumnNodes(
   return { positioned, yById }
 }
 
-/**
- * Find the nearest node above or below the focused node within the same column X position.
- */
 function findVerticalNeighbor(
   allNodes: AppNode[],
   focusedId: string,
@@ -234,7 +197,6 @@ function findVerticalNeighbor(
   const fx = focused.position.x
   const fy = focused.position.y
 
-  // Only consider nodes in the same column (same X position, with small tolerance)
   const sameCol = allNodes.filter((n) =>
     n.id !== focusedId && Math.abs(n.position.x - fx) < NODE_WIDTH * 0.5
   )
@@ -292,10 +254,9 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
   setFocus: (nodeId) => {
     set({ focusedNodeId: nodeId })
-    // Synchronously update node data (__isFocused flags) so the visual
-    // focus highlight appears immediately — before the async preview loads.
+    // Synchronously update node data (__isFocused flags) so the focus highlight
+    // appears immediately, before the async preview loads.
     flattenAndRender(get, set)
-    // Fire-and-forget preview update
     void get().updatePreview()
   },
 
@@ -314,7 +275,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
     let nextId = findVerticalNeighbor(nodes, focusedNodeId, direction)
 
-    // Wrap around: if no neighbor in direction, jump to the opposite end of the column
+    // Wrap around to the opposite end of the column if no neighbor in direction.
     if (!nextId) {
       const focused = nodes.find((n) => n.id === focusedNodeId)
       if (focused) {
@@ -324,10 +285,8 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         )
         if (sameCol.length > 0) {
           if (direction === 'down') {
-            // Wrap to topmost node in column
             nextId = sameCol.reduce((best, n) => (n.position.y < best.position.y ? n : best)).id
           } else {
-            // Wrap to bottommost node in column
             nextId = sameCol.reduce((best, n) => (n.position.y > best.position.y ? n : best)).id
           }
         }
@@ -341,10 +300,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     }
   },
 
-  /**
-   * Initialize the canvas with the project root.
-   * Column 0 = root directory contents.
-   */
   initRoot: async (rootPath: string) => {
     try {
       const dirNodes = await buildDirectoryNodes(rootPath)
@@ -360,9 +315,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         rightFocusMemory: {},
       })
 
-      // Flatten and position
       flattenAndRender(get, set)
-      // Load preview for the first focused node
       void get().updatePreview()
     } catch (err) {
       console.error('Failed to init root:', err)
@@ -407,11 +360,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     }
   },
 
-  /**
-   * Navigate right (D key) — drill into the focused node.
-   * If a preview column already exists for this node, promote it.
-   * Otherwise load fresh.
-   */
   navigateRight: async () => {
     const { focusedNodeId, nodes, columns, currentColumnIndex, depthChain } = get()
     if (!focusedNodeId) return
@@ -419,15 +367,11 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     const node = nodes.find((n) => n.id === focusedNodeId)
     if (!node) return
 
-    // Only folders can be navigated into — files are previewed in-place
-    // and operable from the current context (E to edit, scroll to browse)
+    // Only folders can be navigated into — files are previewed in-place.
     if (node.type !== 'folder') return
 
     const nodeTargetPath = node.data.path
 
-    // Pick the focused child for a column we're moving into: prefer the
-    // remembered node if we saw this path before, otherwise fall back to the
-    // first node.
     const pickFocus = (newColNodes: AppNode[]): string | null => {
       const remembered = get().rightFocusMemory[nodeTargetPath]
       if (remembered && newColNodes.some((n) => n.id === remembered)) {
@@ -436,10 +380,9 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       return newColNodes[0]?.id ?? null
     }
 
-    // Check if we already have a preview column loaded for this node
+    // Promote an existing preview column if it matches; otherwise load fresh.
     const previewCol = columns[currentColumnIndex + 1]
     if (previewCol && previewCol.path === nodeTargetPath) {
-      // Promote the existing preview column — no need to re-fetch
       const newChain = [...depthChain.slice(0, currentColumnIndex + 1), nodeTargetPath]
 
       set({
@@ -454,7 +397,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       return
     }
 
-    // No matching preview — load fresh
     try {
       const path = node.data.path
       const dirNodes = await buildDirectoryNodes(path)
@@ -478,24 +420,20 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     }
   },
 
-  /**
-   * Navigate left (A key) — go back to parent column.
-   */
   navigateLeft: () => {
     const { columns, currentColumnIndex, focusedNodeId, rightFocusMemory } = get()
     if (currentColumnIndex <= 0) return
 
     const newIndex = currentColumnIndex - 1
 
-    // Remember which node was focused in the column we're leaving, keyed by
-    // that column's path. navigateRight will restore it if the user drills
-    // back into the same path.
+    // Remember the focused node in the column we're leaving, keyed by that
+    // column's path, so navigateRight can restore it on a return drill-in.
     const leavingCol = columns[currentColumnIndex]
     const nextMemory = leavingCol && focusedNodeId
       ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
       : rightFocusMemory
 
-    // Try to restore focus to the item in the parent column that led to the current column
+    // Restore focus in the parent column to the item that led to current.
     const currentColPath = leavingCol?.path
     const parentCol = columns[newIndex]
     let restoreFocusId: string | null = null
@@ -516,7 +454,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     })
 
     flattenAndRender(get, set)
-    // Load preview for the restored focus
     void get().updatePreview()
   },
 
@@ -539,15 +476,13 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   },
 
   /**
-   * Load a preview column for the currently focused node and place it
-   * at columns[currentColumnIndex + 1]. This gives immediate feedback
-   * when moving focus with W/S — the right column updates to show what
-   * pressing D would navigate into.
+   * Load a preview column for the focused node into columns[currentColumnIndex + 1].
+   * Gives immediate feedback when moving focus with W/S — the right column
+   * shows what pressing D would navigate into.
    */
   updatePreview: async () => {
     const { focusedNodeId, columns, currentColumnIndex } = get()
     if (!focusedNodeId) {
-      // No focus — remove any preview column
       const trimmed = columns.slice(0, currentColumnIndex + 1)
       if (trimmed.length !== columns.length) {
         set({ columns: trimmed })
@@ -556,15 +491,11 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       return
     }
 
-    // Find the focused node in the current column
     const currentCol = columns[currentColumnIndex]
     if (!currentCol) return
 
     const node = currentCol.nodes.find((n) => n.id === focusedNodeId)
-    if (!node) {
-      // Focused node is not in the current column — don't update preview
-      return
-    }
+    if (!node) return
 
     try {
       let previewCol: Column | null = null
@@ -586,14 +517,13 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
       }
 
-      // Check that the focus hasn't changed while we were loading
+      // Bail out if focus changed during the async load.
       if (get().focusedNodeId !== focusedNodeId) return
 
       if (previewCol) {
         const newColumns = [...columns.slice(0, currentColumnIndex + 1), previewCol]
         set({ columns: newColumns })
       } else {
-        // No preview available — trim any existing preview column
         const trimmed = columns.slice(0, currentColumnIndex + 1)
         if (trimmed.length !== columns.length) {
           set({ columns: trimmed })
@@ -621,8 +551,8 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   ),
 ))
 
-// When persistence hydrates hiddenNodeIds after initRoot has already rendered,
-// re-run flattenAndRender so the nodes reflect the restored hidden state.
+// Persistence may hydrate hiddenNodeIds after initRoot has already rendered,
+// so re-run flattenAndRender to reflect the restored hidden state.
 let prevHiddenNodeIds = useCanvasStore.getState().hiddenNodeIds
 useCanvasStore.subscribe((state) => {
   if (state.hiddenNodeIds !== prevHiddenNodeIds) {
@@ -637,13 +567,10 @@ useCanvasStore.subscribe((state) => {
 })
 
 /**
- * Flatten all columns into positioned nodes and edges,
- * then update the store's nodes/edges for ReactFlow rendering.
- *
- * All columns are rendered so the user can pan freely with Space
- * to see the full navigation history. The Canvas view handles
- * viewport positioning so the current column appears right after
- * the left panel.
+ * Flatten all columns into positioned nodes/edges and update the store for
+ * ReactFlow. All columns are rendered so the user can pan freely with Space
+ * to see the full navigation history; the Canvas view handles viewport
+ * positioning so the current column appears right after the left panel.
  */
 function flattenAndRender(
   get: () => CanvasState,
@@ -660,14 +587,13 @@ function flattenAndRender(
 
   const { focusedNodeId, hiddenNodeIds, viewportHeight, cameraY } = get()
 
-  // Visible nodes first, hidden last. Used for every column.
   const orderColumn = (col: Column): AppNode[] => [
     ...col.nodes.filter((n) => !hiddenNodeIds.has(n.id)),
     ...col.nodes.filter((n) => hiddenNodeIds.has(n.id)),
   ]
 
-  // Pre-pass on the current column: feeds focusedNodeY for the camera clamp,
-  // and we reuse `.positioned` below so the column isn't walked twice.
+  // Pre-pass on the current column feeds focusedNodeY for the camera clamp;
+  // we reuse `.positioned` below so the column isn't walked twice.
   const currentColXOffset = currentColumnIndex * (NODE_WIDTH + NODE_H_GAP)
   const currentColPositioned = columns[currentColumnIndex]
     ? positionColumnNodes(orderColumn(columns[currentColumnIndex]), currentColXOffset, 0)
@@ -676,11 +602,10 @@ function flattenAndRender(
     ? currentColPositioned?.yById.get(focusedNodeId) ?? 0
     : 0
 
-  // Camera clamp shares clampY with Canvas.tsx so the two never drift.
+  // Shares clampY with Canvas.tsx so the two never drift.
   const newCameraY = clampY(cameraY, focusedNodeY, viewportHeight)
   if (newCameraY !== cameraY) set({ cameraY: newCameraY })
 
-  // Top of the visible canvas area, below the breadcrumbs overlay.
   const previewYStart = Math.max(0, -newCameraY + CANVAS_PAD_Y)
 
   for (let i = 0; i < columns.length; i++) {
@@ -694,9 +619,7 @@ function flattenAndRender(
       ? currentColPositioned.positioned
       : positionColumnNodes(orderColumn(col), xOffset, yStart).positioned
 
-    // Tag nodes: dim non-current columns, mark hidden nodes, mark focused node.
-    // The cast is necessary because spreading a discriminated union loses the
-    // discriminant in TypeScript's inference — we know the shape is preserved.
+    // Cast preserves the discriminated-union shape that spread loses in inference.
     for (const node of positioned) {
       allNodes.push({
         ...node,
@@ -710,7 +633,6 @@ function flattenAndRender(
       } as AppNode)
     }
 
-    // Add edges
     for (const edge of col.edges) {
       allEdges.push({ ...edge })
     }

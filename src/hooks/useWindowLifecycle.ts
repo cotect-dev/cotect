@@ -68,9 +68,9 @@ export function useWindowLifecycle() {
           const isWayland = await platform.isWayland()
           for (let i = 0; i < childIds.length; i++) {
             const geo = geometries[i]
+            const hasPosition = geo && (isWayland ? !!geo.monitorInfo : true)
             // Don't call restoreGeometryOnMonitor from the parent —
             // move() targets the current window, not the child.
-            const hasPosition = geo && (isWayland ? !!geo.monitorInfo : true)
             await platform.windows.create(childIds[i], geo ? {
               width: Math.round(geo.width / dpr),
               height: Math.round(geo.height / dpr),
@@ -118,8 +118,8 @@ export function useWindowLifecycle() {
           }
         })
 
-        // Initialize git for the already-restored session (subscription above
-        // only fires on *future* changes, so we need to handle the current state)
+        // Initialize git for the already-restored session — the subscription
+        // above only fires on future changes.
         const currentRoot = useBrowserStore.getState().rootPath
         if (currentRoot && currentRoot !== useGitStore.getState().repoPath) {
           useGitStore.getState().setRepoPath(currentRoot)

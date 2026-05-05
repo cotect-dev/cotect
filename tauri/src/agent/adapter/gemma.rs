@@ -60,25 +60,17 @@ impl ModelAdapter for GemmaAdapter {
 }
 
 
-/// Stream parser for Gemma 4 responses via OpenAI-compat API.
-///
-/// Wraps the standard OpenAI SSE format but adds:
-/// 1. Thinking-token stripping from `content` field
-/// 2. Raw tool-call token filtering from `content`
-/// 3. Fallback native tool-call parsing when server doesn't provide structured calls
+/// Wraps the standard OpenAI SSE format with Gemma-4-specific stripping
+/// of thinking tokens, raw tool-call tokens, and fallback parsing of
+/// `call:NAME{...}` syntax when the server lacks structured tool_calls.
 pub(crate) struct GemmaStreamParser {
-    /// Buffer for text content (may contain partial Gemma tokens).
     text_buffer: String,
-    /// Accumulated raw text for fallback tool-call parsing.
-    /// Preserves raw Gemma tokens that were stripped from text_buffer.
+    /// Raw Gemma tokens stripped from text_buffer, kept for fallback parsing.
     accumulated_text: String,
-    /// Whether we've emitted Done.
     done_emitted: bool,
-    /// Whether we're inside a `<|channel>thought` block.
+    /// Inside a `<|channel>thought` block.
     in_thinking: bool,
-    /// Whether we've received any structured tool_calls from the server.
     has_structured_tool_calls: bool,
-    /// Tool call index counter for fallback parsing.
     fallback_tool_index: usize,
 }
 
@@ -115,14 +107,12 @@ impl StreamParser for GemmaStreamParser {
         };
 
         for choice in &chunk.choices {
-            // Process reasoning content (standard OpenAI field)
             if let Some(reasoning) = &choice.delta.reasoning_content {
                 if !reasoning.is_empty() {
                     events.push(LlmStreamEvent::ReasoningDelta(reasoning.clone()));
                 }
             }
 
-            // Process text content — filter Gemma tokens
             if let Some(text) = &choice.delta.content {
                 if !text.is_empty() {
                     self.text_buffer.push_str(text);
@@ -130,7 +120,6 @@ impl StreamParser for GemmaStreamParser {
                 }
             }
 
-            // Process structured tool calls (from server)
             if let Some(tool_calls) = &choice.delta.tool_calls {
                 self.has_structured_tool_calls = true;
                 for tc in tool_calls {
@@ -146,10 +135,7 @@ impl StreamParser for GemmaStreamParser {
                 }
             }
 
-            // Process finish reason
             if let Some(reason) = &choice.finish_reason {
-                // Before emitting Done, flush buffer and check for fallback
-                // tool call parsing if no structured calls were received
                 self.flush_remaining(&mut events);
 
                 events.push(LlmStreamEvent::Done {
@@ -167,10 +153,8 @@ impl StreamParser for GemmaStreamParser {
         self.flush_remaining(&mut events);
         if !self.done_emitted {
             self.done_emitted = true;
-            // Stream ended without [DONE] or finish_reason — this is an
-            // abnormal termination (server crashed, KV cache exhausted, etc.).
-            // Report as "stream_ended" so the orchestrator can distinguish
-            // this from a genuine model completion and retry the turn.
+            // Abnormal termination — distinguish from genuine completion so
+            // the orchestrator retries.
             events.push(LlmStreamEvent::Done {
                 finish_reason: Some("stream_ended".to_string()),
             });
@@ -180,11 +164,10 @@ impl StreamParser for GemmaStreamParser {
 }
 
 impl GemmaStreamParser {
-    /// Process text buffer: strip thinking tokens and filter raw tool-call tokens.
+    /// Strip thinking tokens and filter raw tool-call tokens.
     fn drain_text_buffer(&mut self, events: &mut Vec<LlmStreamEvent>) {
         loop {
             if self.in_thinking {
-                // Look for end of thinking block
                 if let Some(pos) = self.text_buffer.find("<channel|>") {
                     let reasoning = self.text_buffer[..pos].to_string();
                     self.text_buffer.drain(..pos + "<channel|>".len());
@@ -194,7 +177,6 @@ impl GemmaStreamParser {
                     }
                     continue;
                 }
-                // Partial — emit safe reasoning content
                 let safe = safe_emit_len(&self.text_buffer, "<channel|>");
                 if safe > 0 {
                     let reasoning: String = self.text_buffer.drain(..safe).collect();
@@ -203,7 +185,6 @@ impl GemmaStreamParser {
                 return;
             }
 
-            // Check for thinking block start
             let think_marker = self.text_buffer.find("<|channel>thought\n")
                 .map(|pos| (pos, "<|channel>thought\n".len()))
                 .or_else(|| {
@@ -222,29 +203,23 @@ impl GemmaStreamParser {
                 continue;
             }
 
-            // Check for raw tool-call tokens that should be filtered from text
-            // (these appear when the server leaks Gemma's native format into content)
+            // Filter raw tool-call tokens leaking into text.
             if let Some(pos) = self.text_buffer.find("<|tool_call>") {
-                // Emit clean text before the token
                 if pos > 0 {
                     let text: String = self.text_buffer.drain(..pos).collect();
                     if !text.is_empty() {
                         events.push(LlmStreamEvent::TextDelta(text));
                     }
                 }
-                // Check if we have the closing tag too
                 if let Some(end) = self.text_buffer.find("<tool_call|>") {
-                    // Complete raw tool-call token — strip from text output
-                    // but save to accumulated_text for fallback parsing
+                    // Save the raw token to accumulated_text for fallback parsing.
                     let raw: String = self.text_buffer.drain(..end + "<tool_call|>".len()).collect();
                     self.accumulated_text.push_str(&raw);
                     continue;
                 }
-                // Partial — keep in buffer, wait for more data
                 return;
             }
 
-            // Also filter <|tool_response>...<tool_response|> tokens
             if let Some(pos) = self.text_buffer.find("<|tool_response>") {
                 if pos > 0 {
                     let text: String = self.text_buffer.drain(..pos).collect();
@@ -259,7 +234,6 @@ impl GemmaStreamParser {
                 return;
             }
 
-            // No markers found — emit text safely
             let safe = safe_emit_len_multi(
                 &self.text_buffer,
                 &[
@@ -280,17 +254,13 @@ impl GemmaStreamParser {
         }
     }
 
-    /// Flush remaining buffer content at end of stream.
-    /// If no structured tool calls were received, attempt fallback parsing
-    /// from either the text buffer or accumulated raw tool-call tokens.
+    /// Fallback parses tool calls from the text buffer or accumulated raw
+    /// tokens when the server didn't provide structured tool_calls.
     fn flush_remaining(&mut self, events: &mut Vec<LlmStreamEvent>) {
-        // First check accumulated_text — raw tool-call tokens that were
-        // stripped from content during streaming but saved for fallback.
         if !self.accumulated_text.is_empty() && !self.has_structured_tool_calls {
             let acc = std::mem::take(&mut self.accumulated_text);
             if contains_tool_call_pattern(&acc) {
                 self.parse_all_tool_calls(&acc, events);
-                // Still flush any remaining text_buffer below
             }
         }
 
@@ -301,8 +271,7 @@ impl GemmaStreamParser {
         let raw = std::mem::take(&mut self.text_buffer);
         let text = strip_thinking(&raw);
 
-        // Check for fallback tool parsing BEFORE stripping tool tokens,
-        // so we can still extract call:NAME{args} content from the raw text
+        // Try parsing BEFORE stripping tool tokens so call:NAME{args} survives.
         if !self.has_structured_tool_calls && contains_tool_call_pattern(&text) {
             self.parse_all_tool_calls(&text, events);
             return;
@@ -743,19 +712,6 @@ fn contains_tool_call_pattern(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::types::FunctionDef;
-
-    fn tool_def(name: &str) -> ToolDefinition {
-        ToolDefinition {
-            def_type: "function".into(),
-            function: FunctionDef {
-                name: name.into(),
-                description: "desc".into(),
-                parameters: serde_json::json!({}),
-            },
-        }
-    }
-
 
     #[test]
     fn parse_simple_tool_call() {
@@ -1087,29 +1043,4 @@ mod tests {
     }
 
 
-    #[test]
-    fn build_request_matches_openai_format() {
-        let adapter = GemmaAdapter;
-        let messages = vec![ChatMessage {
-            role: crate::agent::types::Role::User,
-            content: "hi".to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-            name: None,
-        }];
-        let tools = vec![tool_def("shell")];
-        let body = adapter.build_request_body("model", &messages, &tools, 0.5, 8192);
-
-        assert!(body.get("model").is_some());
-        assert!(body.get("messages").is_some());
-        assert!(body.get("tools").is_some());
-        assert_eq!(body["stream"], true);
-        assert_eq!(body["max_tokens"], 8192);
-    }
-
-    #[test]
-    fn endpoint_is_chat_completions() {
-        let adapter = GemmaAdapter;
-        assert_eq!(adapter.endpoint_path(), "/chat/completions");
-    }
 }

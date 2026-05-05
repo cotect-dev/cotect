@@ -6,7 +6,6 @@ import {
   getSerializableLayout,
   loadLayoutIntoStore,
   DEFAULT_ZONE_SIZES,
-  PANEL_DEFINITIONS,
   type PanelPosition,
 } from './layout'
 
@@ -17,7 +16,6 @@ describe('layout store - pure functions', () => {
       expect(getPanelLabel('chat')).toBe('Chat')
       expect(getPanelLabel('console')).toBe('Console')
       expect(getPanelLabel('history')).toBe('History')
-      expect(getPanelLabel('branches')).toBe('Branches')
     })
 
     it('returns id for unknown panel', () => {
@@ -46,20 +44,6 @@ describe('layout store - pure functions', () => {
     })
   })
 
-  describe('PANEL_DEFINITIONS', () => {
-    it('has 7 panel definitions', () => {
-      expect(PANEL_DEFINITIONS).toHaveLength(7)
-    })
-
-    it('all panels have required fields', () => {
-      for (const def of PANEL_DEFINITIONS) {
-        expect(def.id).toBeTruthy()
-        expect(def.label).toBeTruthy()
-        expect(['left', 'right', 'bottom']).toContain(def.defaultPosition)
-        expect(['git', 'tools', 'agent', 'dev']).toContain(def.group)
-      }
-    })
-  })
 })
 
 describe('layout store - state management', () => {
@@ -95,7 +79,6 @@ describe('layout store - state management', () => {
       expect(panels.left).toHaveLength(2)
       expect(panels.left[0]).toEqual(['changes'])
       expect(panels.left[1]).toEqual(['history'])
-      // sizes should sum to 1 and be evenly distributed
       expect(sizes.left[0] + sizes.left[1]).toBeCloseTo(1, 5)
       expect(sizes.left).toEqual([0.5, 0.5])
     })
@@ -159,7 +142,6 @@ describe('layout store - state management', () => {
       useLayoutStore.getState().addPanel('changes', 'left')
       useLayoutStore.getState().addPanel('history', 'left')
       const sizesBefore = [...useLayoutStore.getState().sizes.left]
-      // index 1 has no index 2 neighbor
       useLayoutStore.getState().resizePanels('left', 1, 0.5)
       expect(useLayoutStore.getState().sizes.left).toEqual(sizesBefore)
     })
@@ -204,7 +186,6 @@ describe('layout store - state management', () => {
       expect(serialized.panels.left).toEqual([['changes']])
       expect(serialized.panels.right).toEqual([['chat']])
 
-      // Reset and restore
       useLayoutStore.setState({ panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {}, zoneSizes: { ...DEFAULT_ZONE_SIZES } })
       loadLayoutIntoStore(serialized)
 

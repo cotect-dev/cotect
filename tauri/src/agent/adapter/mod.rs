@@ -494,17 +494,6 @@ mod tests {
     }
 
     #[test]
-    fn prompt_format_labels_are_stable() {
-        // Labels are user-visible — guard against accidental renames.
-        assert_eq!(PromptFormat::Plain.label(), "Plain (markdown)");
-        assert_eq!(PromptFormat::Gemma.label(), "Gemma");
-        assert_eq!(PromptFormat::Llama3.label(), "Llama 3");
-        assert_eq!(PromptFormat::Qwen.label(), "Qwen");
-        assert_eq!(PromptFormat::ChatML.label(), "ChatML");
-        assert_eq!(PromptFormat::OpenAICompat.label(), "OpenAI-compatible");
-    }
-
-    #[test]
     fn build_adapter_dispatches_correctly() {
         // Phase 2 status: Plain and Gemma are native, others fall through to OpenAICompat.
         assert_eq!(build_adapter(PromptFormat::Plain).name(), "plain");

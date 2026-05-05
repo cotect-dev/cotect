@@ -8,7 +8,6 @@ export const PANEL_CONTENT: Record<string, ComponentType | LazyExoticComponent<C
   console: lazy(() => import('@/components/Console')),
   changes: lazy(() => import('@/components/Changes')),
   history: lazy(() => import('@/components/History')),
-  branches: lazy(() => import('@/components/Branches')),
   tasks: lazy(() => import('@/components/Tasks')),
   settings: lazy(() => import('@/components/Settings')),
 }

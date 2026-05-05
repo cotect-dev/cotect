@@ -30,21 +30,15 @@ function getLanguageExt(filePath: string) {
 }
 
 const MIN_CODE_NODE_WIDTH = 280
-/**
- * Vertical space reserved above/below the editor for the top bar and
- * a little breathing room. The editor will grow until it reaches
- * `window.innerHeight - CODE_NODE_HEIGHT_RESERVED`, then scroll internally.
- */
+// Editor grows until window.innerHeight - this, then scrolls internally.
 const CODE_NODE_HEIGHT_RESERVED = 120
 
 /**
- * Build the set of extensions to load inside the merge-view compartment.
- * Returns an empty array when there is no HEAD content to compare against,
- * so reconfiguring with this cleanly removes the diff highlighting.
+ * Returns an empty array when there is no HEAD content, so reconfiguring
+ * with this cleanly removes the diff highlighting.
  *
  * onChunkAction fires after CodeMirror's default accept/reject transaction
- * has already mutated the editor doc — used by the caller to persist the
- * change back to disk so git picks it up.
+ * has already mutated the doc — caller persists it so git picks it up.
  */
 function buildMergeExtension(
   head: string | null,
@@ -83,8 +77,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const setCodeNodeWidth = useCanvasStore((s) => s.setCodeNodeWidth)
   const [nodeWidth, setNodeWidth] = useState<number>(storeWidth)
 
-  // Git-aware inline diff: if the current file is dirty, render the editor
-  // with a unifiedMergeView extension comparing working tree vs HEAD content.
+  // Git-aware inline diff: if the file is dirty, mount unifiedMergeView
+  // comparing working tree vs HEAD.
   const gitStatus = useGitStore((s) => s.status)
   const repoPath = useGitStore((s) => s.repoPath)
   const loadHeadContent = useGitStore((s) => s.loadHeadContent)
@@ -97,7 +91,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   }, [gitStatus, data.filePath, repoPath])
 
   const isNewFile = gitEntry?.status === 'A' || gitEntry?.status === 'U'
-  // null = no diff needed, string = HEAD content to diff against (empty for new files)
+  // null = no diff needed; string = HEAD content (empty string for new files).
   const [headContent, setHeadContent] = useState<string | null>(null)
 
   useEffect(() => {
@@ -119,13 +113,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
   }, [gitEntry, isNewFile, data.filePath, repoPath, loadHeadContent])
 
-  // Sync from store when it changes externally (e.g. cross-window sync, hydration)
+  // Sync from store on external changes (cross-window sync, hydration).
   useEffect(() => {
     setNodeWidth(storeWidth)
   }, [storeWidth])
 
-  // Right-edge resize. `nodeWidth` is snapshotted at drag start so the
-  // memoized hook closures see a stable starting point across re-renders.
+  // Snapshot width at drag start so memoized hook closures see a stable start.
   const dragStartWidthRef = useRef(0)
   const widthFromDelta = (deltaX: number) =>
     Math.max(MIN_CODE_NODE_WIDTH, dragStartWidthRef.current + deltaX)
@@ -157,13 +150,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
   const handleChunkAction = useCallback(
     (type: 'accept' | 'reject') => {
-      // CodeMirror already mutated the editor doc in `action(e)` before we get
-      // here. Persist the new content so the file watcher → git refresh picks
-      // up the change and the merge highlighting reconciles.
+      // CodeMirror already mutated the doc in `action(e)`. Persist so the
+      // watcher → git refresh picks it up and merge highlighting reconciles.
       void saveToFile()
-      // TODO: hook real git actions here
-      // accept → stage the hunk (git add -p)
-      // reject → checkout the hunk from HEAD (git checkout -p)
+      // TODO: hook real git actions (accept → git add -p, reject → git checkout -p).
       console.log(`[CodeNode] ${type} chunk for ${data.filePath}`)
     },
     [saveToFile, data.filePath],
@@ -177,9 +167,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       viewRef.current = null
     }
 
-    // Give the merge extension a fresh compartment for each new editor
-    // instance — compartments are tied to an EditorState, not reusable across
-    // destroyed views.
+    // Fresh compartment per editor instance — compartments are tied to an
+    // EditorState and not reusable across destroyed views.
     mergeCompartmentRef.current = new Compartment()
     const initialMergeExt = mergeCompartmentRef.current.of(
       buildMergeExtension(headContent, handleChunkAction),
@@ -261,10 +250,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-all',
           },
-          // Override @codemirror/merge defaults: drop the 2px-gradient
-          // faux-underline on changedText spans, and bump line-bg + gutter
-          // saturation with a luminance gap (red darker than green) so
-          // red-green colorblind users can still distinguish the two.
+          // Override @codemirror/merge defaults: drop the faux-underline on
+          // changedText, and use a luminance gap (red darker than green) so
+          // red-green colorblind users can distinguish the two.
           '&.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText, .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText': {
             background: 'none',
           },
@@ -302,8 +290,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
   }, [data.code, data.filePath, data.startLine]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Swap the merge extension in-place when git HEAD content for this file
-  // changes (file becomes dirty/clean, HEAD SHA advances, etc.) without
+  // Swap the merge extension in-place on HEAD/dirty changes without
   // destroying the editor or losing the user's unsaved edits.
   useEffect(() => {
     const view = viewRef.current
