@@ -1,8 +1,33 @@
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::Path;
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
+
+/// Read cap for untracked-line counting. Bounds `git_status` runtime when
+/// the user has large generated artifacts they haven't .gitignored yet.
+const UNTRACKED_LINE_COUNT_MAX_BYTES: u64 = 1024 * 1024; // 1 MiB
+
+/// Newline count of an untracked file. Returns `None` for binary, unreadable,
+/// or oversized files — caller leaves `insertions` at 0 in those cases.
+fn count_untracked_lines(repo_path: &str, rel_path: &str) -> Option<u32> {
+    let full = Path::new(repo_path).join(rel_path);
+    let meta = std::fs::metadata(&full).ok()?;
+    if !meta.is_file() || meta.len() > UNTRACKED_LINE_COUNT_MAX_BYTES {
+        return None;
+    }
+    let bytes = std::fs::read(&full).ok()?;
+    if bytes.contains(&0u8) {
+        return None;
+    }
+    if bytes.is_empty() {
+        return Some(0);
+    }
+    let trailing_newline = bytes.ends_with(b"\n");
+    let lines = bytes.iter().filter(|&&b| b == b'\n').count() as u32;
+    Some(if trailing_newline { lines } else { lines + 1 })
+}
 
 const GIT_NOT_FOUND: &str = "GIT_NOT_FOUND";
 const NOT_A_REPO: &str = "NOT_A_REPO";
@@ -125,7 +150,16 @@ pub async fn git_status(repo_path: String) -> Result<GitStatus, String> {
         entry.1 += del;
     }
 
-    let (files, total_insertions, total_deletions) = parse_porcelain(&porcelain, &stats);
+    let (mut files, mut total_insertions, total_deletions) = parse_porcelain(&porcelain, &stats);
+
+    // Backfill insertion counts for untracked files — git reports no diff
+    // for them, but visually they're pure additions ("+N" in the UI).
+    for f in files.iter_mut().filter(|f| f.status == "U") {
+        if let Some(n) = count_untracked_lines(&repo_path, &f.path) {
+            f.insertions = n;
+            total_insertions += n;
+        }
+    }
 
     Ok(GitStatus {
         files,

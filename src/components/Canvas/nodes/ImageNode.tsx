@@ -4,7 +4,7 @@ import { Handle, Position } from '@xyflow/react'
 import { Image } from 'lucide-react'
 import { useCanvasStore } from '@/store'
 import type { ImageNode } from '@/types/nodes'
-import { getNodeFlags, getNodeOpacity } from './nodeUtils'
+import { getNodeFlags, getNodeOpacity, nodeFocusRing } from './nodeUtils'
 
 export default memo(function ImageNode({ id, data }: NodeProps<ImageNode>) {
   const flags = getNodeFlags(data)
@@ -13,7 +13,7 @@ export default memo(function ImageNode({ id, data }: NodeProps<ImageNode>) {
 
   return (
     <div
-      className={`pointer-events-auto bg-background border border-border rounded-lg p-2 ${flags.isFocused ? 'outline outline-2 outline-primary/60 bg-primary/10' : ''} ${getNodeOpacity(flags)} cursor-pointer hover:border-primary/50 hover:bg-muted/50`}
+      className={`pointer-events-auto bg-background border border-border rounded-lg p-2 ${nodeFocusRing(flags.isFocused, 'tinted')} ${getNodeOpacity(flags)} cursor-pointer hover:border-primary/50 hover:bg-muted/50`}
       onClick={handleClick}
       style={{ maxWidth: '50vw' }}
     >

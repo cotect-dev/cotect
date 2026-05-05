@@ -6,7 +6,7 @@ import { getConfigForFile } from '@/services/treesitter-queries'
 import { isImageFile } from '@/lib/constants'
 import type { FileNode } from '@/types/nodes'
 import BaseNode from './BaseNode'
-import { getNodeFlags } from './nodeUtils'
+import { getNodeFlags, getNodeOpacity } from './nodeUtils'
 
 export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
   const flags = getNodeFlags(data)
@@ -19,7 +19,7 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
   const iconColor = isTest ? 'text-yellow-600' : isImage ? 'text-emerald-400' : parseable ? 'text-blue-400' : 'text-muted-foreground'
   const border = isTest ? 'border-yellow-700/40 border-dashed' : 'border-border'
 
-  const opacity = flags.isHidden ? 'opacity-30' : (!flags.isCurrent || isPreview) ? 'opacity-50' : ''
+  const opacity = getNodeOpacity({ ...flags, isPreview })
 
   const handleClick = useCallback(() => useCanvasStore.getState().setFocus(id), [id])
   const handleDoubleClick = useCallback(() => {

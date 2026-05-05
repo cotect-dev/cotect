@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useDragHandle } from '@/hooks/useDragHandle'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection, dropCursor, highlightSpecialChars, rectangularSelection, crosshairCursor } from '@codemirror/view'
@@ -14,10 +15,11 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { unifiedMergeView } from '@codemirror/merge'
 import { getPlatform } from '@/services/platform'
 import type { CodeNode } from '@/types/nodes'
-import { getNodeFlags } from './nodeUtils'
+import { getNodeFlags, nodeFocusRing } from './nodeUtils'
 import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'
 import { useCanvasStore } from '@/store/canvas'
 import { useGitStore } from '@/store/git'
+import { samePath, toRepoRelative } from '@/lib/repoPath'
 
 function getLanguageExt(filePath: string) {
   if (/\.(tsx?)$/.test(filePath)) return javascript({ typescript: true, jsx: true })
@@ -34,12 +36,6 @@ const MIN_CODE_NODE_WIDTH = 280
  * `window.innerHeight - CODE_NODE_HEIGHT_RESERVED`, then scroll internally.
  */
 const CODE_NODE_HEIGHT_RESERVED = 120
-
-function toRepoRelative(absPath: string, repoPath: string): string {
-  if (!repoPath) return absPath
-  if (absPath.startsWith(repoPath + '/')) return absPath.slice(repoPath.length + 1)
-  return absPath
-}
 
 /**
  * Build the set of extensions to load inside the merge-view compartment.
@@ -79,7 +75,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const mergeCompartmentRef = useRef<Compartment>(new Compartment())
-  const resizeRef = useRef<HTMLDivElement>(null)
   const flags = getNodeFlags(data)
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -97,11 +92,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const gitEntry = useMemo(() => {
     if (!gitStatus) return null
     return (
-      gitStatus.files.find(
-        (f) => data.filePath.endsWith('/' + f.path) || data.filePath === f.path,
-      ) ?? null
+      gitStatus.files.find((f) => samePath(data.filePath, f.path, repoPath)) ?? null
     )
-  }, [gitStatus, data.filePath])
+  }, [gitStatus, data.filePath, repoPath])
 
   const isNewFile = gitEntry?.status === 'A' || gitEntry?.status === 'U'
   // null = no diff needed, string = HEAD content to diff against (empty for new files)
@@ -131,40 +124,18 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     setNodeWidth(storeWidth)
   }, [storeWidth])
 
-  /**
-   * Start a right-edge resize drag. Uses native document listeners so the
-   * drag keeps working even if the pointer leaves the small handle area,
-   * and short-circuits ReactFlow's own drag handlers via stopPropagation
-   * + preventDefault on the initial mousedown.
-   */
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const startX = e.clientX
-    const startWidth = nodeWidth
-    const handle = resizeRef.current
-
-    handle?.setAttribute('data-resizing', '')
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-
-    const onMove = (ev: MouseEvent) => {
-      ev.preventDefault()
-      const next = Math.max(MIN_CODE_NODE_WIDTH, startWidth + (ev.clientX - startX))
-      setNodeWidth(next)
-    }
-    const onUp = (ev: MouseEvent) => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-      handle?.removeAttribute('data-resizing')
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      const finalWidth = Math.max(MIN_CODE_NODE_WIDTH, startWidth + (ev.clientX - startX))
-      setCodeNodeWidth(finalWidth)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }, [nodeWidth, setCodeNodeWidth])
+  // Right-edge resize. `nodeWidth` is snapshotted at drag start so the
+  // memoized hook closures see a stable starting point across re-renders.
+  const dragStartWidthRef = useRef(0)
+  const widthFromDelta = (deltaX: number) =>
+    Math.max(MIN_CODE_NODE_WIDTH, dragStartWidthRef.current + deltaX)
+  const { handleProps: resizeHandleProps } = useDragHandle({
+    cursor: 'col-resize',
+    onStart: () => { dragStartWidthRef.current = nodeWidth },
+    onMove: (_e, { deltaX }) => setNodeWidth(widthFromDelta(deltaX)),
+    onEnd: (_e, { deltaX }) => setCodeNodeWidth(widthFromDelta(deltaX)),
+  })
+  const resizeRef = resizeHandleProps.ref as React.RefObject<HTMLDivElement | null>
 
   const saveToFile = useCallback(async () => {
     const view = viewRef.current
@@ -290,6 +261,25 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-all',
           },
+          // Override @codemirror/merge defaults: drop the 2px-gradient
+          // faux-underline on changedText spans, and bump line-bg + gutter
+          // saturation with a luminance gap (red darker than green) so
+          // red-green colorblind users can still distinguish the two.
+          '&.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText, .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText': {
+            background: 'none',
+          },
+          '&.cm-merge-a .cm-changedLine, .cm-deletedChunk': {
+            backgroundColor: 'rgba(220, 60, 50, 0.22)',
+          },
+          '&.cm-merge-b .cm-changedLine, .cm-inlineChangedLine': {
+            backgroundColor: 'rgba(80, 200, 100, 0.22)',
+          },
+          '&.cm-merge-a .cm-changedLineGutter, .cm-deletedLineGutter': {
+            background: '#dc2626',
+          },
+          '&.cm-merge-b .cm-changedLineGutter': {
+            background: '#22c55e',
+          },
           '&.cm-focused': {
             outline: 'none',
           },
@@ -326,19 +316,29 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   }, [headContent, handleChunkAction])
 
   const lineCount = data.endLine - data.startLine + 1
+  const displayPath = toRepoRelative(data.filePath, repoPath)
+  const lastSlash = displayPath.lastIndexOf('/')
+  const dirPrefix = lastSlash >= 0 ? displayPath.slice(0, lastSlash + 1) : ''
+  const fileName = lastSlash >= 0 ? displayPath.slice(lastSlash + 1) : displayPath
 
   return (
     <div
-      className={`relative pointer-events-auto bg-background border border-r-0 rounded-l-lg nodrag nopan ${flags.isFocused ? 'outline outline-2 outline-primary/60 border-primary/40' : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
+      className={`relative pointer-events-auto bg-background border border-r-0 rounded-l-lg nodrag nopan ${flags.isFocused ? nodeFocusRing(true, 'bordered') : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
       style={{ width: nodeWidth }}
     >
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/30">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xs font-medium text-foreground truncate">
-            {data.label}
+          <span className="text-xs font-medium truncate" title={displayPath}>
+            {dirPrefix && <span className="text-foreground/40">{dirPrefix}</span>}
+            <span className="text-foreground">{fileName}</span>
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {isNewFile && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-900/40 text-green-400 font-mono">
+              new
+            </span>
+          )}
           {dirty && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-800/40 text-yellow-400 font-mono">
               {saving ? 'saving...' : 'modified'}
@@ -362,7 +362,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
       <div
         ref={resizeRef}
-        onMouseDown={handleResizeMouseDown}
+        onMouseDown={resizeHandleProps.onMouseDown}
         className="nodrag nopan group/handle absolute top-0 -right-3 bottom-0 w-3 cursor-col-resize
           flex items-center z-10"
         role="separator"

@@ -12,6 +12,7 @@ import {
 import { getPlatform } from '@/services/platform'
 import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, isImageFile, getImageMimeType, IMAGE_PREVIEW_MAX_BYTES } from '@/lib/constants'
 import { clampY } from '@/lib/canvasCamera'
+import { joinPath } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
 import { withPersistence } from '@/store/persistence'
 
@@ -197,27 +198,26 @@ async function buildImageNode(filePath: string): Promise<AppNode | null> {
 }
 
 /**
- * Position nodes within a column at a given X offset.
- * Uses a smaller gap between nodes of the same type group (folders, files)
- * and a larger gap at the boundary between type groups.
+ * Position nodes within a column. Larger gap at folder/file type boundaries.
+ * Returns `{ positioned, yById }` so callers can look up an arbitrary node's
+ * Y (e.g. the focused-node camera-clamp pre-pass) without re-walking the gap rule.
  */
-function positionColumnNodes(nodes: AppNode[], xOffset: number, yStart: number = 0): AppNode[] {
+function positionColumnNodes(
+  nodes: AppNode[],
+  xOffset: number,
+  yStart: number = 0,
+): { positioned: AppNode[]; yById: Map<string, number> } {
   let y = yStart
-  return nodes.map((node, i) => {
-    const positioned = { ...node, position: { x: xOffset, y } }
-    // Determine the gap after this node
+  const yById = new Map<string, number>()
+  const positioned = nodes.map((node, i) => {
+    yById.set(node.id, y)
+    const placed = { ...node, position: { x: xOffset, y } }
     const next = nodes[i + 1]
-    let gap = NODE_V_GAP_SMALL
-    if (next) {
-      const thisIsFolder = node.type === 'folder'
-      const nextIsFolder = next.type === 'folder'
-      if (thisIsFolder !== nextIsFolder) {
-        gap = NODE_V_GAP // larger gap at type boundary
-      }
-    }
-    y += NODE_HEIGHT + gap
-    return positioned
+    const sameGroup = !next || (node.type === 'folder') === (next.type === 'folder')
+    y += NODE_HEIGHT + (sameGroup ? NODE_V_GAP_SMALL : NODE_V_GAP)
+    return placed
   })
+  return { positioned, yById }
 }
 
 /**
@@ -382,14 +382,14 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     const newColumns: Column[] = [rootCol]
     try {
       for (let i = 0; i < segments.length - 1; i++) {
-        currentPath = `${currentPath}/${segments[i]}`
+        currentPath = joinPath(currentPath, segments[i])
         const dirNodes = await buildDirectoryNodes(currentPath)
         newColumns.push({ path: currentPath, kind: 'directory', nodes: dirNodes, edges: [] })
       }
 
       const parentCol = newColumns[newColumns.length - 1]
       const fileName = segments[segments.length - 1]
-      const fileNodeId = `${currentPath === rootPath ? rootPath : currentPath}/${fileName}`
+      const fileNodeId = joinPath(currentPath, fileName)
       const hasFile = parentCol.nodes.some((n) => n.id === fileNodeId)
 
       set({
@@ -660,43 +660,27 @@ function flattenAndRender(
 
   const { focusedNodeId, hiddenNodeIds, viewportHeight, cameraY } = get()
 
-  // First pass: position the current column to find the focused node's Y.
-  // This lets us compute where the camera will be after panning.
-  let focusedNodeY = 0
-  const currentCol = columns[currentColumnIndex]
-  if (currentCol && focusedNodeId) {
-    const visible = currentCol.nodes.filter((n) => !hiddenNodeIds.has(n.id))
-    const hidden = currentCol.nodes.filter((n) => hiddenNodeIds.has(n.id))
-    const ordered = [...visible, ...hidden]
-    let y = 0
-    for (let idx = 0; idx < ordered.length; idx++) {
-      const node = ordered[idx]
-      if (node.id === focusedNodeId) {
-        focusedNodeY = y
-        break
-      }
-      const nextNode = ordered[idx + 1]
-      let gap = NODE_V_GAP_SMALL
-      if (nextNode) {
-        const thisIsFolder = node.type === 'folder'
-        const nextIsFolder = nextNode.type === 'folder'
-        if (thisIsFolder !== nextIsFolder) gap = NODE_V_GAP
-      }
-      y += NODE_HEIGHT + gap
-    }
-  }
+  // Visible nodes first, hidden last. Used for every column.
+  const orderColumn = (col: Column): AppNode[] => [
+    ...col.nodes.filter((n) => !hiddenNodeIds.has(n.id)),
+    ...col.nodes.filter((n) => hiddenNodeIds.has(n.id)),
+  ]
 
-  // Simulate the camera's clamping behaviour (shares the clampY helper with
-  // Canvas.tsx so the two never drift). The camera only moves when the
-  // focused node would be outside the visible area; otherwise it stays put.
+  // Pre-pass on the current column: feeds focusedNodeY for the camera clamp,
+  // and we reuse `.positioned` below so the column isn't walked twice.
+  const currentColXOffset = currentColumnIndex * (NODE_WIDTH + NODE_H_GAP)
+  const currentColPositioned = columns[currentColumnIndex]
+    ? positionColumnNodes(orderColumn(columns[currentColumnIndex]), currentColXOffset, 0)
+    : null
+  const focusedNodeY = focusedNodeId
+    ? currentColPositioned?.yById.get(focusedNodeId) ?? 0
+    : 0
+
+  // Camera clamp shares clampY with Canvas.tsx so the two never drift.
   const newCameraY = clampY(cameraY, focusedNodeY, viewportHeight)
-  if (newCameraY !== cameraY) {
-    set({ cameraY: newCameraY })
-  }
+  if (newCameraY !== cameraY) set({ cameraY: newCameraY })
 
-  // The visible canvas-Y below the top bar (breadcrumbs).
-  // -newCameraY is the canvas-Y at the very top of the screen;
-  // adding CANVAS_PAD_Y pushes past the bar overlay.
+  // Top of the visible canvas area, below the breadcrumbs overlay.
   const previewYStart = Math.max(0, -newCameraY + CANVAS_PAD_Y)
 
   for (let i = 0; i < columns.length; i++) {
@@ -704,20 +688,11 @@ function flattenAndRender(
     const isCurrentCol = i === currentColumnIndex
     const isPreviewCol = i === currentColumnIndex + 1
     const xOffset = i * (NODE_WIDTH + NODE_H_GAP)
+    const yStart = isPreviewCol ? previewYStart : 0
 
-    // Sort nodes so hidden ones come last within the column
-    const visible = col.nodes.filter((n) => !hiddenNodeIds.has(n.id))
-    const hidden = col.nodes.filter((n) => hiddenNodeIds.has(n.id))
-    const orderedNodes = [...visible, ...hidden]
-
-    // For the preview column, start at the top of the visible area
-    let yStart = 0
-    if (isPreviewCol) {
-      yStart = Math.max(0, previewYStart)
-    }
-
-    // Position nodes in this column
-    const positioned = positionColumnNodes(orderedNodes, xOffset, yStart)
+    const positioned = isCurrentCol && currentColPositioned
+      ? currentColPositioned.positioned
+      : positionColumnNodes(orderColumn(col), xOffset, yStart).positioned
 
     // Tag nodes: dim non-current columns, mark hidden nodes, mark focused node.
     // The cast is necessary because spreading a discriminated union loses the

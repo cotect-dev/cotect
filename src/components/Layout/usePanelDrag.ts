@@ -13,6 +13,7 @@ import {
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
 import { getPlatform } from '@/services/platform'
 import { useWindowBounds } from '@/hooks/useWindowBounds'
+import { computeInsertIndex as computeInsertIndexMath } from '@/lib/panelDropMath'
 
 const TAB_INTO_HEIGHT = 32 // px from the top of each panel area that counts as "header zone"
 
@@ -67,37 +68,16 @@ export function usePanelDrag() {
       const zoneGroups = panels[position]
       const zoneSizes = useLayoutStore.getState().sizes[position]
 
-      const visibleSizes: number[] = []
-      for (let i = 0; i < zoneGroups.length; i++) {
-        const groupContainsDragged = isGroup
-          ? zoneGroups[i][0] === dragPanelId
-          : zoneGroups[i].includes(dragPanelId)
-        if (!groupContainsDragged) {
-          visibleSizes.push(zoneSizes[i] ?? 1)
-        }
-      }
+      // Drop the dragged panel from the size list; the cross-window overlay
+      // skips this step since the dragged panel isn't in its zones.
+      const containsDragged = (group: string[]) =>
+        isGroup ? group[0] === dragPanelId : group.includes(dragPanelId)
+      const visibleSizes = zoneGroups
+        .map((g, i) => ({ g, size: zoneSizes[i] ?? 1 }))
+        .filter(({ g }) => !containsDragged(g))
+        .map(({ size }) => size)
 
-      if (visibleSizes.length === 0) return { insertIndex: 0, neighborIndex: 0 }
-
-      const totalSize = visibleSizes.reduce((a, b) => a + b, 0)
-      const relativePos = isVertical
-        ? (pointerY - rect.top) / rect.height
-        : (pointerX - rect.left) / rect.width
-
-      let cumulative = 0
-      for (let i = 0; i < visibleSizes.length; i++) {
-        const panelEnd = (cumulative + visibleSizes[i]) / totalSize
-        if (relativePos < panelEnd) {
-          const panelMid = (cumulative + visibleSizes[i] / 2) / totalSize
-          if (relativePos < panelMid) {
-            return { insertIndex: i, neighborIndex: i }
-          } else {
-            return { insertIndex: i + 1, neighborIndex: i }
-          }
-        }
-        cumulative += visibleSizes[i]
-      }
-      return { insertIndex: visibleSizes.length, neighborIndex: visibleSizes.length - 1 }
+      return computeInsertIndexMath({ rect, isVertical }, visibleSizes, pointerX, pointerY)
     },
     [panels]
   )

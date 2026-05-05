@@ -7,12 +7,10 @@ export interface PersistedLayout {
   panels: Record<PanelPosition, string[][]>
   sizes: Record<PanelPosition, number[]>
   activeTab: Record<string, number>
-}
-
-export interface PersistedZoneSizes {
-  left: number
-  right: number
-  bottom: number
+  // Outer-zone ratios (left/right widths and bottom height as fractions of the
+  // window). Optional for backwards compatibility with payloads written before
+  // zoneSizes was unified into the layout store.
+  zoneSizes?: { left: number; right: number; bottom: number }
 }
 
 export interface PersistedGeometry {
@@ -53,14 +51,6 @@ export function removeLayout(windowId: string): void {
   platform.storage.removeSync(`wm-layout-${windowId}`)
   platform.storage.removeSync(`wm-zones-${windowId}`)
   platform.storage.removeSync(`wm-geometry-${windowId}`)
-}
-
-export function saveZoneSizes(windowId: string, sizes: PersistedZoneSizes): void {
-  getPlatform().storage.setSync(`wm-zones-${windowId}`, sizes)
-}
-
-export async function loadZoneSizes(windowId: string): Promise<PersistedZoneSizes | null> {
-  return getPlatform().storage.get<PersistedZoneSizes>(`wm-zones-${windowId}`)
 }
 
 export function saveGeometry(windowId: string, geometry: PersistedGeometry): void {

@@ -46,10 +46,19 @@ interface PanelLocation {
   tabIndex: number
 }
 
+export interface ZoneSizes {
+  left: number
+  right: number
+  bottom: number
+}
+
+export const DEFAULT_ZONE_SIZES: ZoneSizes = { left: 0.2, right: 0.2, bottom: 0.25 }
+
 interface LayoutSlice {
   panels: Record<PanelPosition, string[][]>
   sizes: Record<PanelPosition, number[]>
   activeTab: Record<string, number>
+  zoneSizes: ZoneSizes
 }
 
 function groupKey(group: string[]): string {
@@ -67,6 +76,7 @@ function cloneSlice(state: LayoutSlice): LayoutSlice {
     panels: { left: cloneZone(state.panels.left), right: cloneZone(state.panels.right), bottom: cloneZone(state.panels.bottom) },
     sizes: { left: [...state.sizes.left], right: [...state.sizes.right], bottom: [...state.sizes.bottom] },
     activeTab: { ...state.activeTab },
+    zoneSizes: { ...state.zoneSizes },
   }
 }
 
@@ -143,12 +153,14 @@ interface LayoutState extends LayoutSlice {
   removePanel: (panelId: string) => void
   setActiveTab: (groupKey: string, index: number) => void
   setCrossWindowDrag: (drag: CrossWindowDrag | null) => void
+  setZoneSizes: (partial: Partial<ZoneSizes>) => void
 }
 
 export const useLayoutStore = createStoreWithHMR(import.meta.hot, 'layout', () => create<LayoutState>((set) => ({
   panels: { left: [], right: [], bottom: [] },
   sizes: { left: [], right: [], bottom: [] },
   activeTab: {},
+  zoneSizes: { ...DEFAULT_ZONE_SIZES },
   crossWindowDrag: null,
 
   setCrossWindowDrag: (drag) => set({ crossWindowDrag: drag }),
@@ -231,6 +243,8 @@ export const useLayoutStore = createStoreWithHMR(import.meta.hot, 'layout', () =
       return slice
     }),
 
+  // Ratio-based pair adjustment — splits the (i, i+1) pair total by `ratio`.
+  // Live drags use the pixel-based path in `DropZone.makeResizeHandler` instead.
   resizePanels: (position, index, ratio) =>
     set((state) => {
       if (index < 0 || index + 1 >= state.sizes[position].length) return state
@@ -262,11 +276,16 @@ export const useLayoutStore = createStoreWithHMR(import.meta.hot, 'layout', () =
     set((state) => ({
       activeTab: { ...state.activeTab, [key]: index },
     })),
+
+  setZoneSizes: (partial) =>
+    set((state) => ({
+      zoneSizes: { ...state.zoneSizes, ...partial },
+    })),
 })))
 
 export function getSerializableLayout(): PersistedLayout {
-  const { panels, sizes, activeTab } = useLayoutStore.getState()
-  return { panels, sizes, activeTab }
+  const { panels, sizes, activeTab, zoneSizes } = useLayoutStore.getState()
+  return { panels, sizes, activeTab, zoneSizes }
 }
 
 export function loadLayoutIntoStore(saved: PersistedLayout): void {
@@ -274,6 +293,7 @@ export function loadLayoutIntoStore(saved: PersistedLayout): void {
     panels: saved.panels,
     sizes: saved.sizes,
     activeTab: saved.activeTab,
+    zoneSizes: saved.zoneSizes ?? { ...DEFAULT_ZONE_SIZES },
   })
 }
 

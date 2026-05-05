@@ -3,6 +3,10 @@ import type { PersistedLayout } from '@/services/windowManager'
 export const MIN_SIDE_ZONE = 120
 export const MIN_BOTTOM_ZONE = 80
 
+// Floor for either side of a sibling resize. Smaller than MIN_SIDE_ZONE
+// on purpose — collapses against a neighbor, not the window edge.
+export const MIN_SIBLING_PANEL = 40
+
 export const NODE_WIDTH = 180
 export const NODE_HEIGHT = 56
 export const NODE_H_GAP = 32
