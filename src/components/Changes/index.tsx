@@ -47,6 +47,8 @@ function buildCompactTree(files: GitFileStatus[]): TreeNode[] {
 const statusColors: Record<string, string> = {
   M: 'text-yellow-500',
   A: 'text-green-500',
+  // 'U' = untracked (porcelain `??`); rendered as an addition.
+  U: 'text-green-500',
   D: 'text-red-500',
   R: 'text-blue-500',
   '??': 'text-muted-foreground',

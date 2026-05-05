@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
-import { useGitStore, sortedFiles, branchLabel, startGitWatcher, stopGitWatcher, type GitStatus, type GitLogEntry, type GitBranch } from './git'
+import { useGitStore, sortedFiles, branchLabel, startGitWatcher, stopGitWatcher, buildGitSyncPayload, applyGitSyncPayload, type GitStatus, type GitLogEntry, type GitBranch, type GitSyncPayload } from './git'
 
 // Tauri APIs are auto-mocked via setup.ts. Cast for type-safe assertions.
 const mockInvoke = invoke as Mock
@@ -377,6 +377,61 @@ describe('sortedFiles selector', () => {
     const files = sortedFiles(useGitStore.getState())
     expect(files[0].path).toBe('src/b.ts')
     expect(files.slice(1).map((f) => f.path)).toEqual(['src/a.ts', 'README.md'])
+  })
+})
+
+describe('buildGitSyncPayload / applyGitSyncPayload', () => {
+  const sliceStatus: GitStatus = { files: [{ path: 'a.ts', status: 'M', insertions: 1, deletions: 0 }], total_insertions: 1, total_deletions: 0 }
+  const sliceLog: GitLogEntry[] = [{ hash: 'deadbee', message: 'msg', author: 'me', timestamp: 42, insertions: 0, deletions: 0, files: [] }]
+  const sliceBranch: GitBranch = { kind: 'branch', name: 'main' }
+  const slice = {
+    initialized: true,
+    isGitRepo: true,
+    gitError: null,
+    status: sliceStatus,
+    log: sliceLog,
+    branch: sliceBranch,
+    lastCommitTimestamp: 1234,
+    headContent: { sha: 'abc', files: { 'a.ts': 'old' } },
+    fileTimes: { 'a.ts': 999 },
+    sortMode: 'recent' as const,
+  }
+
+  it('buildGitSyncPayload returns every sync field and excludes source', () => {
+    const payload = buildGitSyncPayload(slice)
+    expect(payload).toEqual(slice)
+    expect(payload).not.toHaveProperty('source')
+  })
+
+  it('applyGitSyncPayload returns the GitState slice and drops source', () => {
+    const payload: GitSyncPayload = { ...slice, source: 'main' }
+    const out = applyGitSyncPayload(payload)
+    expect(out).toEqual(slice)
+    expect(out).not.toHaveProperty('source')
+  })
+
+  it('round-trips: build then apply yields the original slice', () => {
+    const built = buildGitSyncPayload(slice)
+    const onWire: GitSyncPayload = { ...built, source: 'main' }
+    const applied = applyGitSyncPayload(onWire)
+    expect(applied).toEqual(slice)
+  })
+
+  it('applying through setState reproduces the slice on the store', () => {
+    resetStore()
+    const payload: GitSyncPayload = { ...slice, source: 'other-window' }
+    useGitStore.setState(applyGitSyncPayload(payload))
+    const s = useGitStore.getState()
+    expect(s.initialized).toBe(slice.initialized)
+    expect(s.isGitRepo).toBe(slice.isGitRepo)
+    expect(s.gitError).toBe(slice.gitError)
+    expect(s.status).toEqual(slice.status)
+    expect(s.log).toEqual(slice.log)
+    expect(s.branch).toEqual(slice.branch)
+    expect(s.lastCommitTimestamp).toBe(slice.lastCommitTimestamp)
+    expect(s.headContent).toEqual(slice.headContent)
+    expect(s.fileTimes).toEqual(slice.fileTimes)
+    expect(s.sortMode).toBe(slice.sortMode)
   })
 })
 

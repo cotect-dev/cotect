@@ -1,6 +1,7 @@
 import { memo, type ReactNode } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import type { LucideIcon } from 'lucide-react'
+import { nodeFocusRing } from './nodeUtils'
 
 interface BaseNodeProps {
   icon: LucideIcon
@@ -16,7 +17,7 @@ interface BaseNodeProps {
 }
 
 export default memo(function BaseNode({ icon: Icon, iconClassName, label, borderClassName = 'border-border', className = '', onClick, onDoubleClick, badge, focused, children }: BaseNodeProps) {
-  const focusRing = focused ? 'outline outline-2 outline-primary/60 bg-primary/10' : ''
+  const focusRing = nodeFocusRing(focused ?? false, 'tinted')
   return (
     <div
       className={`pointer-events-auto bg-background border rounded-lg px-3 py-2 w-[180px] max-w-[180px] ${borderClassName} ${onClick || onDoubleClick ? 'cursor-pointer hover:border-primary/50 hover:bg-muted/50' : ''} ${focusRing} ${className}`}

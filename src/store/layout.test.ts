@@ -5,6 +5,7 @@ import {
   getEffectivePosition,
   getSerializableLayout,
   loadLayoutIntoStore,
+  DEFAULT_ZONE_SIZES,
   PANEL_DEFINITIONS,
   type PanelPosition,
 } from './layout'
@@ -67,6 +68,7 @@ describe('layout store - state management', () => {
       panels: { left: [], right: [], bottom: [] },
       sizes: { left: [], right: [], bottom: [] },
       activeTab: {},
+      zoneSizes: { ...DEFAULT_ZONE_SIZES },
       crossWindowDrag: null,
     })
   })
@@ -203,13 +205,39 @@ describe('layout store - state management', () => {
       expect(serialized.panels.right).toEqual([['chat']])
 
       // Reset and restore
-      useLayoutStore.setState({ panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {} })
+      useLayoutStore.setState({ panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {}, zoneSizes: { ...DEFAULT_ZONE_SIZES } })
       loadLayoutIntoStore(serialized)
 
       const restored = useLayoutStore.getState()
       expect(restored.panels.left).toEqual([['changes']])
       expect(restored.panels.right).toEqual([['chat']])
       expect(restored.activeTab['changes']).toBe(0)
+    })
+  })
+
+  describe('setZoneSizes', () => {
+    it('merges partial zoneSizes', () => {
+      useLayoutStore.getState().setZoneSizes({ left: 0.3 })
+      expect(useLayoutStore.getState().zoneSizes).toEqual({ ...DEFAULT_ZONE_SIZES, left: 0.3 })
+    })
+
+    it('serializes zoneSizes through the round-trip', () => {
+      useLayoutStore.getState().setZoneSizes({ left: 0.4, right: 0.15, bottom: 0.3 })
+      const serialized = getSerializableLayout()
+      expect(serialized.zoneSizes).toEqual({ left: 0.4, right: 0.15, bottom: 0.3 })
+
+      useLayoutStore.setState({ panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {}, zoneSizes: { ...DEFAULT_ZONE_SIZES } })
+      loadLayoutIntoStore(serialized)
+      expect(useLayoutStore.getState().zoneSizes).toEqual({ left: 0.4, right: 0.15, bottom: 0.3 })
+    })
+
+    it('falls back to defaults when loading legacy payload without zoneSizes', () => {
+      loadLayoutIntoStore({
+        panels: { left: [], right: [], bottom: [] },
+        sizes: { left: [], right: [], bottom: [] },
+        activeTab: {},
+      })
+      expect(useLayoutStore.getState().zoneSizes).toEqual(DEFAULT_ZONE_SIZES)
     })
   })
 })

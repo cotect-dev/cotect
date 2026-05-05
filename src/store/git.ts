@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
 import { createStoreWithHMR } from '@/lib/hmr'
+import { toAbsolute } from '@/lib/repoPath'
 
 export interface GitFileStatus {
   path: string
@@ -148,12 +149,12 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
       ])
 
       const broadcastFailed = (state: ReturnType<typeof failedGitState>) => {
-        broadcastGitState({
+        broadcastGitState(buildGitSyncPayload({
           ...state,
           headContent: { sha: '', files: {} },
           fileTimes: {},
           sortMode: get().sortMode,
-        })
+        }))
       }
 
       if (status.status === 'rejected') {
@@ -207,12 +208,12 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
       set({ ...newState, headContent: nextHeadContent, loading: false })
 
       const broadcastWithTimes = (fileTimes: Record<string, number>) => {
-        broadcastGitState({
+        broadcastGitState(buildGitSyncPayload({
           ...newState,
           headContent: nextHeadContent,
           fileTimes,
           sortMode: get().sortMode,
-        })
+        }))
       }
 
       if (newState.status && newState.status.files.length > 0) {
@@ -232,7 +233,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
             statusFiles.map(async (f) => {
               let fsTime: number | null = null
               try {
-                const s = await stat(`${repoPath}/${f.path}`)
+                const s = await stat(toAbsolute(f.path, repoPath))
                 const mtime = s.mtime ? s.mtime.getTime() : 0
                 if (!Number.isNaN(mtime) && mtime > 0) fsTime = Math.floor(mtime / 1000)
               } catch {
@@ -309,7 +310,7 @@ export function sortedFiles(state: Pick<GitState, 'status' | 'fileTimes' | 'sort
 
 let windowId = ''
 
-interface GitSyncPayload {
+export interface GitSyncPayload {
   source: string
   initialized: boolean
   isGitRepo: boolean
@@ -321,6 +322,35 @@ interface GitSyncPayload {
   headContent: { sha: string; files: Record<string, string> }
   fileTimes: Record<string, number>
   sortMode: 'path' | 'recent' | 'oldest'
+}
+
+/**
+ * Pinned via `Pick<GitState, ...>`: adding a field to GitState without adding
+ * it here fails typecheck, which is the drift this helper pair exists to catch.
+ */
+type GitSyncStateSlice = Pick<
+  GitState,
+  | 'initialized'
+  | 'isGitRepo'
+  | 'gitError'
+  | 'status'
+  | 'log'
+  | 'branch'
+  | 'lastCommitTimestamp'
+  | 'headContent'
+  | 'fileTimes'
+  | 'sortMode'
+>
+
+/** State slice → wire payload (sans `source`). */
+export function buildGitSyncPayload(state: GitSyncStateSlice): Omit<GitSyncPayload, 'source'> {
+  return { ...state }
+}
+
+/** Wire payload → setState slice (drops `source`). */
+export function applyGitSyncPayload(payload: GitSyncPayload): Partial<GitState> {
+  const { source: _source, ...rest } = payload
+  return rest
 }
 
 function broadcastGitState(state: Omit<GitSyncPayload, 'source'>): void {
@@ -342,18 +372,7 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
   const syncListenPromise = listen('git-sync', (event) => {
     const payload = event.payload as GitSyncPayload
     if (payload.source !== currentWindowId) {
-      useGitStore.setState({
-        initialized: payload.initialized,
-        isGitRepo: payload.isGitRepo,
-        gitError: payload.gitError,
-        status: payload.status,
-        log: payload.log,
-        branch: payload.branch,
-        lastCommitTimestamp: payload.lastCommitTimestamp,
-        headContent: payload.headContent,
-        fileTimes: payload.fileTimes,
-        sortMode: payload.sortMode,
-      })
+      useGitStore.setState(applyGitSyncPayload(payload))
     }
   })
   cleanups.push(() => {

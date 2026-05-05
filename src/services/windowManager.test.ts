@@ -46,12 +46,11 @@ vi.mock('@/store/browser', () => ({
 
 import {
   saveLayout, loadLayout, removeLayout,
-  saveZoneSizes, loadZoneSizes,
   saveGeometry, loadGeometry,
   saveSession, loadSession,
   getChildWindowIds,
   restoreGeometryOnMonitor,
-  type PersistedLayout, type PersistedZoneSizes, type PersistedGeometry, type PersistedSession,
+  type PersistedLayout, type PersistedGeometry, type PersistedSession,
 } from './windowManager'
 
 describe('windowManager', () => {
@@ -88,7 +87,10 @@ describe('windowManager', () => {
 
     it('removes layout and associated data', () => {
       saveLayout('win-1', layout)
-      saveZoneSizes('win-1', { left: 200, right: 300, bottom: 150 })
+      // Legacy `wm-zones-${id}` key is still cleaned up by removeLayout to
+      // garbage-collect entries written before zoneSizes was unified into
+      // PersistedLayout. Seed it directly to verify the cleanup path.
+      mockPlatform.storage.setSync('wm-zones-win-1', { left: 200, right: 300, bottom: 150 })
       saveGeometry('win-1', { x: 0, y: 0, width: 800, height: 600, isMaximized: false })
 
       removeLayout('win-1')
@@ -96,20 +98,6 @@ describe('windowManager', () => {
       expect(storage.has('wm-layout-win-1')).toBe(false)
       expect(storage.has('wm-zones-win-1')).toBe(false)
       expect(storage.has('wm-geometry-win-1')).toBe(false)
-    })
-  })
-
-  describe('zone sizes persistence', () => {
-    const zones: PersistedZoneSizes = { left: 250, right: 300, bottom: 200 }
-
-    it('saves and loads zone sizes', async () => {
-      saveZoneSizes('main', zones)
-      const loaded = await loadZoneSizes('main')
-      expect(loaded).toEqual(zones)
-    })
-
-    it('returns null for missing zone sizes', async () => {
-      expect(await loadZoneSizes('unknown')).toBeNull()
     })
   })
 

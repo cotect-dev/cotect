@@ -3,6 +3,10 @@ import { getPlatform } from '@/services/platform'
 import { useLayoutStore, type PanelPosition } from '@/store/layout'
 import { useWindowBounds } from '@/hooks/useWindowBounds'
 import { reloadStoreFromBackend } from '@/store/persistence'
+import {
+  computeInsertIndex as computeInsertIndexMath,
+  detectDropZone,
+} from '@/lib/panelDropMath'
 
 type HoverZone = PanelPosition | null
 
@@ -25,17 +29,7 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
   }, [platform])
 
   const detectZone = useCallback((clientX: number, clientY: number): HoverZone => {
-    const x = clientX / window.innerWidth
-    const y = clientY / window.innerHeight
-
-    if (mode === 'panel') {
-      return x < 0.5 ? 'left' : 'right'
-    } else {
-      if (y > 0.75) return 'bottom'
-      else if (x < 0.25) return 'left'
-      else if (x > 0.75) return 'right'
-      return null
-    }
+    return detectDropZone(clientX, clientY, window.innerWidth, window.innerHeight, mode)
   }, [mode])
 
   const detectZoneFromScreen = useCallback((screenX: number, screenY: number): HoverZone => {
@@ -45,17 +39,7 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
     }
     const contentWidth = bounds.right - bounds.left
     const contentHeight = bounds.bottom - bounds.top
-    const x = (screenX - bounds.left) / contentWidth
-    const y = (screenY - bounds.top) / contentHeight
-
-    if (mode === 'panel') {
-      return x < 0.5 ? 'left' : 'right'
-    } else {
-      if (y > 0.75) return 'bottom'
-      else if (x < 0.25) return 'left'
-      else if (x > 0.75) return 'right'
-      return null
-    }
+    return detectDropZone(screenX - bounds.left, screenY - bounds.top, contentWidth, contentHeight, mode)
   }, [mode, windowBoundsRef])
 
   const computeInsertFromClient = useCallback((zone: PanelPosition, clientX: number, clientY: number): { insertIndex: number; neighborIndex: number } => {
@@ -64,29 +48,9 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
 
     const rect = el.getBoundingClientRect()
     const isVertical = zone === 'left' || zone === 'right'
-
     const sizes = useLayoutStore.getState().sizes[zone]
-    if (sizes.length === 0) return { insertIndex: 0, neighborIndex: 0 }
 
-    const totalSize = sizes.reduce((a: number, b: number) => a + b, 0)
-    const relativePos = isVertical
-      ? (clientY - rect.top) / rect.height
-      : (clientX - rect.left) / rect.width
-
-    let cumulative = 0
-    for (let i = 0; i < sizes.length; i++) {
-      const panelEnd = (cumulative + sizes[i]) / totalSize
-      if (relativePos < panelEnd) {
-        const panelMid = (cumulative + sizes[i] / 2) / totalSize
-        if (relativePos < panelMid) {
-          return { insertIndex: i, neighborIndex: i }
-        } else {
-          return { insertIndex: i + 1, neighborIndex: i }
-        }
-      }
-      cumulative += sizes[i]
-    }
-    return { insertIndex: sizes.length, neighborIndex: sizes.length - 1 }
+    return computeInsertIndexMath({ rect, isVertical }, sizes, clientX, clientY)
   }, [zoneRefs])
 
   useEffect(() => {

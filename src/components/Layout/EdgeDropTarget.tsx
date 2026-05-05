@@ -6,6 +6,8 @@ interface EdgeDropTargetProps {
   panelMode?: boolean
 }
 
+// Percentages mirror the thresholds in `src/lib/panelDropMath.ts`.
+// Tailwind can't read JS constants at build time — keep these in sync.
 const positionStyles: Record<PanelPosition, string> = {
   left: 'left-0 top-0 w-[20%] h-full',
   right: 'right-0 top-0 w-[20%] h-full',

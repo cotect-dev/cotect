@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { GripHorizontal } from 'lucide-react'
 import TopBar from './TopBar'
@@ -6,9 +6,7 @@ import DropZone from './DropZone'
 import EdgeDropTarget from './EdgeDropTarget'
 import ResizeHandle from './ResizeHandle'
 import { usePanelDrag } from './usePanelDrag'
-import { getPanelLabel, useLayoutStore } from '@/store/layout'
-import { getPlatform } from '@/services/platform'
-import { saveZoneSizes, loadZoneSizes } from '@/services/windowManager'
+import { DEFAULT_ZONE_SIZES, getPanelLabel, useLayoutStore } from '@/store/layout'
 import CrossWindowDropOverlay from './CrossWindowDropOverlay'
 import { PanelHostProvider } from './PanelHost'
 import { MIN_SIDE_ZONE, MIN_BOTTOM_ZONE } from '@/lib/constants'
@@ -34,23 +32,8 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
     isZoneEmpty,
   } = usePanelDrag()
 
-  const windowId = getPlatform().windows.getWindowId()
-  const [zoneSizes, setZoneSizes] = useState({ left: 0.2, right: 0.2, bottom: 0.25 })
-
-  useEffect(() => {
-    loadZoneSizes(windowId).then((saved) => {
-      if (saved) setZoneSizes(saved)
-    }).catch((err) => {
-      console.warn('[layout] loadZoneSizes failed:', err)
-    })
-  }, [windowId])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      saveZoneSizes(windowId, zoneSizes)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [windowId, zoneSizes])
+  const zoneSizes = useLayoutStore((s) => s.zoneSizes)
+  const setZoneSizes = useLayoutStore((s) => s.setZoneSizes)
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const topRowRef = useRef<HTMLDivElement | null>(null)
@@ -58,15 +41,8 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
   const rightZoneRef = useRef<HTMLDivElement | null>(null)
   const bottomZoneRef = useRef<HTMLDivElement | null>(null)
 
-  const commitLeftSize = useCallback((ratio: number) => {
-    setZoneSizes((prev) => ({ ...prev, left: ratio }))
-  }, [])
-  const commitRightSize = useCallback((ratio: number) => {
-    setZoneSizes((prev) => ({ ...prev, right: ratio }))
-  }, [])
-  const commitBottomSize = useCallback((ratio: number) => {
-    setZoneSizes((prev) => ({ ...prev, bottom: ratio }))
-  }, [])
+  const commitSize = (key: 'left' | 'right' | 'bottom') => (ratio: number) =>
+    setZoneSizes({ [key]: ratio })
 
   const crossWindowDrag = useLayoutStore((s) => s.crossWindowDrag)
 
@@ -102,9 +78,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
       : getPanelLabel(activeDrag.panelId)
     : ''
 
-  const resetZoneSizes = useCallback(() => {
-    setZoneSizes({ left: 0.2, right: 0.2, bottom: 0.25 })
-  }, [])
+  const resetZoneSizes = () => setZoneSizes({ ...DEFAULT_ZONE_SIZES })
 
   return (
     <PanelHostProvider>
@@ -160,20 +134,20 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
                 <ResizeHandle mode="sibling" orientation="vertical" onResizeEnd={(pixelLeft, pixelRight) => {
                   const total = pixelLeft + pixelRight
                   if (total > 0) {
-                    setZoneSizes((prev) => ({ ...prev, left: pixelLeft / total, right: pixelRight / total }))
+                    setZoneSizes({ left: pixelLeft / total, right: pixelRight / total })
                   }
                 }} />
               )
             ) : (
               <>
                 {leftVisible && !anyDragging && (
-                  <ResizeHandle mode="target" orientation="vertical" targetRef={leftZoneRef} containerRef={topRowRef} min={MIN_SIDE_ZONE} max={0.4} onResizeEnd={commitLeftSize} />
+                  <ResizeHandle mode="target" orientation="vertical" targetRef={leftZoneRef} containerRef={topRowRef} min={MIN_SIDE_ZONE} max={0.4} onResizeEnd={commitSize('left')} />
                 )}
 
                 <div className="flex-1 min-w-[20%]" />
 
                 {rightVisible && !anyDragging && (
-                  <ResizeHandle mode="target" orientation="vertical" targetRef={rightZoneRef} containerRef={topRowRef} direction={-1} min={MIN_SIDE_ZONE} max={0.4} onResizeEnd={commitRightSize} />
+                  <ResizeHandle mode="target" orientation="vertical" targetRef={rightZoneRef} containerRef={topRowRef} direction={-1} min={MIN_SIDE_ZONE} max={0.4} onResizeEnd={commitSize('right')} />
                 )}
               </>
             )}
@@ -208,7 +182,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
           </div>
 
           {!isPanel && bottomVisible && !anyDragging && (
-            <ResizeHandle mode="target" orientation="horizontal" targetRef={bottomZoneRef} containerRef={containerRef} direction={-1} min={MIN_BOTTOM_ZONE} max={0.5} onResizeEnd={commitBottomSize} />
+            <ResizeHandle mode="target" orientation="horizontal" targetRef={bottomZoneRef} containerRef={containerRef} direction={-1} min={MIN_BOTTOM_ZONE} max={0.5} onResizeEnd={commitSize('bottom')} />
           )}
 
           {!isPanel && (

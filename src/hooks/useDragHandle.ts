@@ -1,0 +1,134 @@
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+
+export interface DragContext {
+  startX: number
+  startY: number
+  deltaX: number
+  deltaY: number
+}
+
+export interface DragHandleOptions {
+  /** CSS cursor applied to `document.body` for the duration of the drag. */
+  cursor?: 'col-resize' | 'row-resize' | 'grabbing'
+  /** Called on every `mousemove` while dragging. */
+  onMove: (e: MouseEvent, ctx: DragContext) => void
+  /** Called once on `mouseup`, with the final delta. */
+  onEnd?: (e: MouseEvent, ctx: DragContext) => void
+  /**
+   * Called synchronously inside the initial mousedown handler, *before*
+   * any global listeners are wired up. Use this to read DOM state or
+   * snapshot values that `onMove` needs in its closure.
+   *
+   * Returning `false` aborts the drag (no listeners attached, no cursor
+   * change, no `data-resizing` attribute).
+   */
+  onStart?: (e: React.MouseEvent) => boolean | void
+}
+
+export interface DragHandleResult {
+  /** Spread onto the handle element. */
+  handleProps: {
+    onMouseDown: (e: React.MouseEvent) => void
+    ref: React.RefObject<HTMLElement | null>
+  }
+}
+
+/**
+ * Encapsulates the mousedown → document mousemove/mouseup → cleanup
+ * lifecycle shared by every drag handle in the app.
+ *
+ * What the hook owns:
+ *  - calling `e.preventDefault()` + `e.stopPropagation()` on the initial
+ *    mousedown (critical so ReactFlow / dnd-kit drag handlers don't
+ *    intercept the gesture);
+ *  - setting `document.body.style.cursor` and `userSelect` for the
+ *    duration of the drag, and restoring them on mouseup;
+ *  - setting/removing the `data-resizing` attribute on the handle ref
+ *    (used by Tailwind variants like `data-[resizing]:bg-primary/40`);
+ *  - attaching/detaching the global `mousemove` and `mouseup` listeners,
+ *    including on unmount mid-drag.
+ *
+ * What the caller owns:
+ *  - per-frame logic in `onMove` (DOM mutation, state updates, …);
+ *  - any pre-flight DOM reads in `onStart`;
+ *  - finalisation work in `onEnd` (e.g. persisting size to a store).
+ */
+export function useDragHandle(opts: DragHandleOptions): DragHandleResult {
+  const ref = useRef<HTMLElement | null>(null)
+
+  // Latest options stay in a ref so the mousedown callback's identity is
+  // stable — callers can recreate `onMove`/`onEnd` closures freely without
+  // re-binding the JSX `onMouseDown` prop. Updated in a layout effect to
+  // satisfy react-hooks/refs (no ref writes during render) while still
+  // settling before any user-driven mousedown can fire.
+  const optsRef = useRef(opts)
+  useLayoutEffect(() => {
+    optsRef.current = opts
+  })
+
+  // Cleanup function for an *active* drag. When non-null, a drag is in
+  // flight and the unmount effect should run it.
+  const cleanupRef = useRef<(() => void) | null>(null)
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const current = optsRef.current
+    if (current.onStart && current.onStart(e) === false) return
+
+    const startX = e.clientX
+    const startY = e.clientY
+    const cursor = current.cursor ?? 'col-resize'
+    const handle = ref.current
+
+    handle?.setAttribute('data-resizing', '')
+    const prevCursor = document.body.style.cursor
+    const prevUserSelect = document.body.style.userSelect
+    document.body.style.cursor = cursor
+    document.body.style.userSelect = 'none'
+
+    const ctxOf = (ev: MouseEvent): DragContext => ({
+      startX,
+      startY,
+      deltaX: ev.clientX - startX,
+      deltaY: ev.clientY - startY,
+    })
+
+    const onMove = (ev: MouseEvent) => {
+      ev.preventDefault()
+      optsRef.current.onMove(ev, ctxOf(ev))
+    }
+
+    const cleanup = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = prevCursor
+      document.body.style.userSelect = prevUserSelect
+      handle?.removeAttribute('data-resizing')
+      cleanupRef.current = null
+    }
+
+    const onUp = (ev: MouseEvent) => {
+      const ctx = ctxOf(ev)
+      cleanup()
+      optsRef.current.onEnd?.(ev, ctx)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    cleanupRef.current = cleanup
+  }, [])
+
+  // If the component unmounts mid-drag, tear down listeners so we don't
+  // leak global state (cursor, userSelect, dangling listeners).
+  useEffect(() => {
+    return () => {
+      cleanupRef.current?.()
+    }
+  }, [])
+
+  return {
+    handleProps: { onMouseDown, ref },
+  }
+}
