@@ -83,7 +83,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
   return (
     <PanelHostProvider>
     <div className="w-screen h-screen flex flex-col">
-      <div className="pointer-events-none">
+      <div className="pointer-events-none" data-zone="top">
         <TopBar onResetZoneSizes={resetZoneSizes} />
       </div>
       <DndContext
