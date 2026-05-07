@@ -1,169 +1,338 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
   Background,
   BackgroundVariant,
+  Handle,
+  Position,
   type Node,
   type Edge,
   type NodeMouseHandler,
+  type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import {
-  forceSimulation,
-  forceLink,
-  forceManyBody,
-  forceCenter,
-  forceCollide,
-  type SimulationNodeDatum,
-  type SimulationLinkDatum,
-} from 'd3-force'
-import { useGraphStore, useBrowserStore, useViewStore, useCanvasStore } from '@/store'
-import { computeVisibleNodeIds, DEFAULT_HUB_COUNT, type GraphFileNode, type GraphFileEdge } from '@/store/graph'
+import { useGraphStore, useBrowserStore } from '@/store'
+import type { GraphFileNode, GraphFileEdge } from '@/store/graph'
 
 const proOptions = { hideAttribution: true }
 
 // ---------------------------------------------------------------------------
-// Language → color mapping
+// Constants
 // ---------------------------------------------------------------------------
 
-const LANGUAGE_COLORS: Record<string, string> = {
-  typescript: '#3b82f6', // blue
+const NODE_WIDTH = 180
+const NODE_HEIGHT = 56
+const MAX_DEPTH = 3
+const MAX_NODES = 60
+const MAX_SIBLINGS = 12
+
+const LANGUAGE_BORDER: Record<string, string> = {
+  typescript: '#3b82f6',
   javascript: '#3b82f6',
-  python: '#22c55e',     // green
-  go: '#f97316',         // orange
-  rust: '#ef4444',       // red
+  python: '#22c55e',
+  go: '#f97316',
+  rust: '#ef4444',
 }
 
-const LANGUAGE_SHORT: Record<string, string> = {
-  typescript: 'TS',
-  javascript: 'JS',
-  python: 'Py',
-  go: 'Go',
-  rust: 'Rs',
-}
+// Edge colors relative to the selected node
+// "selected imports this" = dependency = blue
+// "this imports selected" = dependent = amber
+const EDGE_COLOR_DEPENDENCY = '#60a5fa'
+const EDGE_COLOR_DEPENDENT = '#fbbf24'
+const EDGE_COLOR_NEUTRAL = 'rgba(148, 163, 184, 0.3)'
 
 // ---------------------------------------------------------------------------
-// Force layout
+// Custom node: folder path (dimmed) above, filename below
 // ---------------------------------------------------------------------------
 
-interface SimNode extends SimulationNodeDatum {
-  id: string
+interface GraphNodeData {
+  folder: string
+  filename: string
+  borderColor: string
+  isSelected: boolean
+  [key: string]: unknown
 }
 
-interface SimLink extends SimulationLinkDatum<SimNode> {
-  source: string | SimNode
-  target: string | SimNode
-}
+const handleStyle = { opacity: 0, width: 6, height: 6 } as const
 
-function computeLayout(
-  nodes: GraphFileNode[],
-  edges: GraphFileEdge[],
-): Map<string, { x: number; y: number }> {
-  if (nodes.length === 0) return new Map()
+const GraphNodeComponent = memo(({ data }: NodeProps<Node<GraphNodeData>>) => {
+  const d = data as GraphNodeData
+  return (
+    <div
+      style={{
+        padding: '6px 12px',
+        borderRadius: 8,
+        border: `2px solid ${d.isSelected ? '#fff' : d.borderColor}`,
+        background: d.isSelected ? 'rgba(59,130,246,0.15)' : 'var(--color-card)',
+        width: NODE_WIDTH,
+        boxSizing: 'border-box',
+        cursor: 'pointer',
+      }}
+    >
+      <Handle type="source" position={Position.Top} id="s-top" style={handleStyle} />
+      <Handle type="source" position={Position.Right} id="s-right" style={handleStyle} />
+      <Handle type="source" position={Position.Bottom} id="s-bottom" style={handleStyle} />
+      <Handle type="source" position={Position.Left} id="s-left" style={handleStyle} />
+      <Handle type="target" position={Position.Top} id="t-top" style={handleStyle} />
+      <Handle type="target" position={Position.Right} id="t-right" style={handleStyle} />
+      <Handle type="target" position={Position.Bottom} id="t-bottom" style={handleStyle} />
+      <Handle type="target" position={Position.Left} id="t-left" style={handleStyle} />
 
-  const simNodes: SimNode[] = nodes.map((n) => ({ id: n.id }))
-  const nodeById = new Map(simNodes.map((n) => [n.id, n]))
+      {d.folder && (
+        <div
+          style={{
+            fontSize: 10,
+            opacity: 0.4,
+            color: 'var(--color-muted-foreground)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            lineHeight: '14px',
+          }}
+        >
+          {d.folder}
+        </div>
+      )}
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: d.isSelected ? 600 : 500,
+          color: 'var(--color-foreground)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          lineHeight: '18px',
+        }}
+      >
+        {d.filename}
+      </div>
+    </div>
+  )
+})
+GraphNodeComponent.displayName = 'GraphNode'
 
-  const simLinks: SimLink[] = edges
-    .filter((e) => nodeById.has(e.source) && nodeById.has(e.target))
-    .map((e) => ({ source: e.source, target: e.target }))
-
-  const sim = forceSimulation<SimNode>(simNodes)
-    .force('link', forceLink<SimNode, SimLink>(simLinks).id((d) => d.id).distance(120))
-    .force('charge', forceManyBody<SimNode>().strength(-200))
-    .force('center', forceCenter(0, 0))
-    .force('collide', forceCollide<SimNode>(60))
-    .stop()
-
-  // Run ticks synchronously
-  const ticks = Math.min(300, Math.max(100, nodes.length * 2))
-  for (let i = 0; i < ticks; i++) sim.tick()
-
-  const positions = new Map<string, { x: number; y: number }>()
-  for (const n of simNodes) {
-    positions.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 })
-  }
-  return positions
-}
+const nodeTypes = { graphNode: GraphNodeComponent }
 
 // ---------------------------------------------------------------------------
-// Convert graph data → ReactFlow nodes/edges
+// Directional BFS — dependencies go UP (negative depth), dependents go DOWN
 // ---------------------------------------------------------------------------
 
-function toReactFlowData(
+interface EgoNode {
+  node: GraphFileNode
+  /** Signed depth: negative = dependency (above), 0 = selected, positive = dependent (below) */
+  depth: number
+}
+
+function directionalBfs(
+  startId: string,
   allNodes: GraphFileNode[],
   allEdges: GraphFileEdge[],
-  visibleIds: Set<string>,
-  hoveredNodeId: string | null,
-): { nodes: Node[]; edges: Edge[] } {
-  const visibleNodes = allNodes.filter((n) => visibleIds.has(n.id))
-  const visibleEdges = allEdges.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
+): { nodes: EgoNode[]; edges: GraphFileEdge[] } {
+  const nodeMap = new Map(allNodes.map((n) => [n.id, n]))
+  if (!nodeMap.has(startId)) return { nodes: [], edges: [] }
 
-  const positions = computeLayout(visibleNodes, visibleEdges)
+  // Directed adjacency
+  // outgoing: source → [targets]  (files this source imports)
+  // incoming: target → [sources]  (files that import this target)
+  const outgoing = new Map<string, string[]>()
+  const incoming = new Map<string, string[]>()
+  for (const e of allEdges) {
+    if (!outgoing.has(e.source)) outgoing.set(e.source, [])
+    outgoing.get(e.source)!.push(e.target)
+    if (!incoming.has(e.target)) incoming.set(e.target, [])
+    incoming.get(e.target)!.push(e.source)
+  }
 
-  // Determine top 10% threshold for hub sizing
-  const scores = visibleNodes.map((n) => n.score).sort((a, b) => b - a)
-  const hubThreshold = scores[Math.max(0, Math.floor(scores.length * 0.1) - 1)] ?? 0
+  const visited = new Map<string, number>()
+  visited.set(startId, 0)
 
-  // Edges connected to hovered node
-  const hoveredEdgeIds = new Set<string>()
-  const hoveredNeighborIds = new Set<string>()
-  if (hoveredNodeId) {
-    hoveredNeighborIds.add(hoveredNodeId)
-    for (const e of visibleEdges) {
-      if (e.source === hoveredNodeId || e.target === hoveredNodeId) {
-        hoveredEdgeIds.add(`${e.source}->${e.target}`)
-        hoveredNeighborIds.add(e.source)
-        hoveredNeighborIds.add(e.target)
+  // Upward BFS: follow outgoing edges (what selected imports, then what
+  // those import, etc.)  Each level gets a more negative depth.
+  const upQueue: [string, number][] = [[startId, 0]]
+  while (upQueue.length > 0 && visited.size < MAX_NODES) {
+    const [current, depth] = upQueue.shift()!
+    if (-depth >= MAX_DEPTH) continue
+    for (const t of outgoing.get(current) ?? []) {
+      if (!visited.has(t) && nodeMap.has(t)) {
+        visited.set(t, depth - 1)
+        upQueue.push([t, depth - 1])
+        if (visited.size >= MAX_NODES) break
       }
     }
   }
 
-  const isHovering = hoveredNodeId !== null
+  // Downward BFS: follow incoming edges (what imports selected, then what
+  // imports those, etc.)  Each level gets a more positive depth.
+  const downQueue: [string, number][] = [[startId, 0]]
+  while (downQueue.length > 0 && visited.size < MAX_NODES) {
+    const [current, depth] = downQueue.shift()!
+    if (depth >= MAX_DEPTH) continue
+    for (const s of incoming.get(current) ?? []) {
+      if (!visited.has(s) && nodeMap.has(s)) {
+        visited.set(s, depth + 1)
+        downQueue.push([s, depth + 1])
+        if (visited.size >= MAX_NODES) break
+      }
+    }
+  }
 
-  const rfNodes: Node[] = visibleNodes.map((n) => {
-    const pos = positions.get(n.id) ?? { x: 0, y: 0 }
-    const color = LANGUAGE_COLORS[n.language] ?? '#888'
-    const isHub = n.score >= hubThreshold && hubThreshold > 0
-    const dimmed = isHovering && !hoveredNeighborIds.has(n.id)
+  // Add same-folder siblings at depth 0 (shown left/right of selected)
+  const selectedFolder = nodeMap.get(startId)!.folder
+  let siblingCount = 0
+  for (const n of allNodes) {
+    if (siblingCount >= MAX_SIBLINGS) break
+    if (visited.has(n.id)) continue
+    if (n.folder === selectedFolder) {
+      visited.set(n.id, 0)
+      siblingCount++
+    }
+  }
 
+  const result: EgoNode[] = []
+  for (const [id, depth] of visited) {
+    result.push({ node: nodeMap.get(id)!, depth })
+  }
+
+  const visibleSet = new Set(visited.keys())
+  const edges = allEdges.filter((e) => visibleSet.has(e.source) && visibleSet.has(e.target))
+
+  return { nodes: result, edges }
+}
+
+// ---------------------------------------------------------------------------
+// Layered top-to-bottom layout — guarantees zero overlap
+// ---------------------------------------------------------------------------
+
+const ROW_SPACING = 120
+const COL_SPACING = NODE_WIDTH + 30
+
+function layeredLayout(
+  egoNodes: EgoNode[],
+  centerId: string,
+): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>()
+  if (egoNodes.length === 0) return positions
+
+  // Group by depth
+  const byDepth = new Map<number, EgoNode[]>()
+  for (const en of egoNodes) {
+    if (!byDepth.has(en.depth)) byDepth.set(en.depth, [])
+    byDepth.get(en.depth)!.push(en)
+  }
+
+  for (const [depth, row] of byDepth) {
+    if (depth === 0) {
+      // Selected node at center, same-folder siblings on left and right
+      const siblings = row.filter((en) => en.node.id !== centerId)
+      siblings.sort((a, b) => a.node.id.localeCompare(b.node.id))
+
+      positions.set(centerId, { x: 0, y: 0 })
+
+      const half = Math.ceil(siblings.length / 2)
+      const left = siblings.slice(0, half)
+      const right = siblings.slice(half)
+
+      left.forEach((en, i) => {
+        positions.set(en.node.id, { x: -(i + 1) * COL_SPACING, y: 0 })
+      })
+      right.forEach((en, i) => {
+        positions.set(en.node.id, { x: (i + 1) * COL_SPACING, y: 0 })
+      })
+    } else {
+      // Other rows: centered horizontally
+      row.sort((a, b) => a.node.id.localeCompare(b.node.id))
+      const totalWidth = row.length * COL_SPACING
+      const startX = -totalWidth / 2 + COL_SPACING / 2
+
+      row.forEach((en, i) => {
+        positions.set(en.node.id, {
+          x: startX + i * COL_SPACING,
+          y: depth * ROW_SPACING,
+        })
+      })
+    }
+  }
+
+  return positions
+}
+
+// ---------------------------------------------------------------------------
+// Pick optimal handle pair for step edges
+// ---------------------------------------------------------------------------
+
+function pickHandles(
+  srcPos: { x: number; y: number },
+  tgtPos: { x: number; y: number },
+): { sourceHandle: string; targetHandle: string } {
+  const dx = tgtPos.x - srcPos.x
+  const dy = tgtPos.y - srcPos.y
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx > 0
+      ? { sourceHandle: 's-right', targetHandle: 't-left' }
+      : { sourceHandle: 's-left', targetHandle: 't-right' }
+  }
+  return dy > 0
+    ? { sourceHandle: 's-bottom', targetHandle: 't-top' }
+    : { sourceHandle: 's-top', targetHandle: 't-bottom' }
+}
+
+// ---------------------------------------------------------------------------
+// Build ReactFlow nodes + edges
+// ---------------------------------------------------------------------------
+
+function buildGraphData(
+  egoNodes: EgoNode[],
+  egoEdges: GraphFileEdge[],
+  positions: Map<string, { x: number; y: number }>,
+  selectedId: string,
+): { nodes: Node[]; edges: Edge[] } {
+  const rfNodes: Node[] = egoNodes.map((en) => {
+    const pos = positions.get(en.node.id) ?? { x: 0, y: 0 }
+    const borderColor = LANGUAGE_BORDER[en.node.language] ?? '#888'
     return {
-      id: n.id,
-      position: pos,
+      id: en.node.id,
+      type: 'graphNode',
+      // Offset by half-size so the node center sits at the computed position
+      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
       data: {
-        label: n.folder ? `${n.label}\n${n.folder}` : n.label,
-      },
-      style: {
-        fontSize: isHub ? 12 : 11,
-        padding: '6px 10px',
-        border: `2px solid ${color}`,
-        borderRadius: 8,
-        background: 'var(--color-card)',
-        color: 'var(--color-foreground)',
-        width: isHub ? 160 : 140,
-        opacity: dimmed ? 0.1 : 1,
-        transition: 'opacity 150ms ease',
-        cursor: 'pointer',
-      },
+        folder: en.node.folder,
+        filename: en.node.label,
+        borderColor,
+        isSelected: en.node.id === selectedId,
+      } satisfies GraphNodeData,
     }
   })
 
-  const rfEdges: Edge[] = visibleEdges.map((e) => {
-    const edgeKey = `${e.source}->${e.target}`
-    const highlighted = hoveredEdgeIds.has(edgeKey)
-    const dimmed = isHovering && !highlighted
+  const rfEdges: Edge[] = egoEdges.map((e) => {
+    const srcPos = positions.get(e.source) ?? { x: 0, y: 0 }
+    const tgtPos = positions.get(e.target) ?? { x: 0, y: 0 }
+    const handles = pickHandles(srcPos, tgtPos)
+
+    // Edge direction: source is the file with the import statement,
+    // target is the file being imported.
+    const isDirect = e.source === selectedId || e.target === selectedId
+    let stroke = EDGE_COLOR_NEUTRAL
+    if (e.source === selectedId) {
+      // Selected file imports this → dependency (blue)
+      stroke = EDGE_COLOR_DEPENDENCY
+    } else if (e.target === selectedId) {
+      // This file imports selected → dependent (amber)
+      stroke = EDGE_COLOR_DEPENDENT
+    }
 
     return {
-      id: edgeKey,
+      id: `${e.source}->${e.target}`,
       source: e.source,
       target: e.target,
-      type: 'default',
+      type: 'step',
+      sourceHandle: handles.sourceHandle,
+      targetHandle: handles.targetHandle,
       style: {
-        stroke: 'var(--color-muted-foreground)',
-        strokeOpacity: dimmed ? 0.05 : highlighted ? 0.8 : 0.3,
-        strokeWidth: highlighted ? 2 : 1,
-        transition: 'stroke-opacity 150ms ease, stroke-width 150ms ease',
+        stroke,
+        strokeWidth: isDirect ? 2 : 1,
+        strokeOpacity: isDirect ? 0.9 : 0.4,
       },
     }
   })
@@ -182,14 +351,10 @@ function GraphFlow() {
   const errorMessage = useGraphStore((s) => s.errorMessage)
   const allNodes = useGraphStore((s) => s.allNodes)
   const allEdges = useGraphStore((s) => s.allEdges)
-  const showAll = useGraphStore((s) => s.showAll)
-  const setShowAll = useGraphStore((s) => s.setShowAll)
-  const truncated = useGraphStore((s) => s.truncated)
+  const selectedNodeId = useGraphStore((s) => s.selectedNodeId)
+  const setSelectedNodeId = useGraphStore((s) => s.setSelectedNodeId)
   const scan = useGraphStore((s) => s.scan)
 
-  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
-
-  // Track last scanned rootPath so we don't re-scan on view switches
   const lastScannedRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -198,42 +363,29 @@ function GraphFlow() {
     void scan(rootPath)
   }, [rootPath, scan])
 
-  const visibleIds = useMemo(
-    () => computeVisibleNodeIds(allNodes, showAll),
-    [allNodes, showAll],
+  // Directional BFS subgraph from selected node
+  const { egoNodes, egoEdges } = useMemo(() => {
+    if (!selectedNodeId || allNodes.length === 0) return { egoNodes: [] as EgoNode[], egoEdges: [] as GraphFileEdge[] }
+    const result = directionalBfs(selectedNodeId, allNodes, allEdges)
+    return { egoNodes: result.nodes, egoEdges: result.edges }
+  }, [selectedNodeId, allNodes, allEdges])
+
+  // Layered top-to-bottom positions
+  const positions = useMemo(
+    () => layeredLayout(egoNodes, selectedNodeId ?? ''),
+    [egoNodes, selectedNodeId],
   )
 
+  // ReactFlow data
   const { nodes, edges } = useMemo(
-    () => toReactFlowData(allNodes, allEdges, visibleIds, hoveredNodeId),
-    [allNodes, allEdges, visibleIds, hoveredNodeId],
+    () => buildGraphData(egoNodes, egoEdges, positions, selectedNodeId ?? ''),
+    [egoNodes, egoEdges, positions, selectedNodeId],
   )
 
-  const onNodeMouseEnter: NodeMouseHandler = useCallback((_event, node) => {
-    setHoveredNodeId(node.id)
-  }, [])
-
-  const onNodeMouseLeave: NodeMouseHandler = useCallback(() => {
-    setHoveredNodeId(null)
-  }, [])
-
+  // Click a node → re-center graph on it
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
-    // Navigate to this file in the files view
-    useViewStore.getState().setViewMode('files')
-    void useCanvasStore.getState().focusFileByPath(node.id)
-  }, [])
-
-  // Language breakdown for stats
-  const langStats = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const n of allNodes) {
-      const short = LANGUAGE_SHORT[n.language] ?? n.language
-      counts.set(short, (counts.get(short) ?? 0) + 1)
-    }
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([lang, count]) => `${count} ${lang}`)
-      .join(' · ')
-  }, [allNodes])
+    setSelectedNodeId(node.id)
+  }, [setSelectedNodeId])
 
   if (scanState === 'idle' || !rootPath) {
     return (
@@ -252,28 +404,24 @@ function GraphFlow() {
   }
 
   const showOverlay = scanState === 'scanning' || (scanState === 'ready' && allNodes.length === 0)
-  const visibleCount = visibleIds.size
-  const totalCount = allNodes.length
-  const edgeCount = allEdges.length
-  const showToggle = totalCount > DEFAULT_HUB_COUNT
 
   return (
     <div className="absolute inset-0">
-      {scanState === 'ready' && allNodes.length > 0 && (
+      {scanState === 'ready' && egoNodes.length > 0 && (
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          nodeTypes={nodeTypes}
           colorMode="dark"
           proOptions={proOptions}
           nodesDraggable={true}
           nodesConnectable={false}
           elementsSelectable={false}
-          onNodeMouseEnter={onNodeMouseEnter}
-          onNodeMouseLeave={onNodeMouseLeave}
           onNodeClick={onNodeClick}
-          minZoom={0.1}
+          minZoom={0.05}
           maxZoom={2}
           fitView
+          fitViewOptions={{ padding: 0.15 }}
         >
           <Background
             variant={BackgroundVariant.Dots}
@@ -293,23 +441,20 @@ function GraphFlow() {
         </div>
       )}
 
-      {/* Stats badge */}
-      {scanState === 'ready' && allNodes.length > 0 && (
+      {/* Stats + legend */}
+      {scanState === 'ready' && egoNodes.length > 0 && (
         <div className="absolute bottom-3 left-3 flex items-center gap-2 pointer-events-auto">
-          <div className="px-2.5 py-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border text-[11px] text-muted-foreground font-mono">
-            {visibleCount} of {totalCount} files · {edgeCount} imports
-            {langStats && <span> · {langStats}</span>}
-            {truncated && <span className="text-yellow-500"> · truncated at 500</span>}
+          <div className="px-2.5 py-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border text-[11px] text-muted-foreground font-mono flex items-center gap-3">
+            <span>{egoNodes.length} of {allNodes.length} files</span>
+            <span className="flex items-center gap-1">
+              <span style={{ display: 'inline-block', width: 12, height: 2, background: EDGE_COLOR_DEPENDENCY, borderRadius: 1 }} />
+              imports
+            </span>
+            <span className="flex items-center gap-1">
+              <span style={{ display: 'inline-block', width: 12, height: 2, background: EDGE_COLOR_DEPENDENT, borderRadius: 1 }} />
+              imported by
+            </span>
           </div>
-
-          {showToggle && (
-            <button
-              onClick={() => setShowAll(!showAll)}
-              className="px-2.5 py-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border text-[11px] text-muted-foreground font-mono hover:text-foreground hover:border-foreground/30 transition-colors"
-            >
-              {showAll ? 'Show hubs only' : 'Show all'}
-            </button>
-          )}
         </div>
       )}
     </div>

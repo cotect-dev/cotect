@@ -33,10 +33,10 @@ interface GraphState {
   errorMessage: string | null
   allNodes: GraphFileNode[]
   allEdges: GraphFileEdge[]
-  showAll: boolean
+  selectedNodeId: string | null
   truncated: boolean
 
-  setShowAll: (show: boolean) => void
+  setSelectedNodeId: (id: string | null) => void
   scan: (rootPath: string) => Promise<void>
 }
 
@@ -121,10 +121,10 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () => 
   errorMessage: null,
   allNodes: [],
   allEdges: [],
-  showAll: false,
+  selectedNodeId: null,
   truncated: false,
 
-  setShowAll: (show) => set({ showAll: show }),
+  setSelectedNodeId: (id) => set({ selectedNodeId: id }),
 
   scan: async (rootPath: string) => {
     set({ scanState: 'scanning', scannedCount: 0, errorMessage: null })
@@ -185,10 +185,17 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () => 
 
       const scoredNodes = scoreNodes(rawNodes, edges)
 
+      // Auto-select the most connected file as the initial focus
+      let topNodeId: string | null = null
+      if (scoredNodes.length > 0) {
+        topNodeId = scoredNodes.reduce((best, n) => n.score > best.score ? n : best, scoredNodes[0]).id
+      }
+
       set({
         scanState: 'ready',
         allNodes: scoredNodes,
         allEdges: edges,
+        selectedNodeId: topNodeId,
         truncated,
       })
     } catch (err) {
