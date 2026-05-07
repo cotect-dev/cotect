@@ -33,6 +33,22 @@ describe('resolveImport', () => {
       expect(resolveImport('../main', 'src/lib/helpers.ts', knownFiles, 'typescript')).toBe('src/main.ts')
     })
 
+    it('resolves @/ alias imports to src/', () => {
+      expect(resolveImport('@/utils', 'src/main.ts', knownFiles, 'typescript')).toBe('src/utils.ts')
+    })
+
+    it('resolves @/ alias import to index file', () => {
+      expect(resolveImport('@/lib', 'src/main.ts', knownFiles, 'typescript')).toBe('src/lib/index.ts')
+    })
+
+    it('resolves @/ alias import with nested path', () => {
+      expect(resolveImport('@/lib/helpers', 'src/main.ts', knownFiles, 'typescript')).toBe('src/lib/helpers.ts')
+    })
+
+    it('resolves @/ alias import to .tsx file', () => {
+      expect(resolveImport('@/components/App', 'src/main.ts', knownFiles, 'typescript')).toBe('src/components/App.tsx')
+    })
+
     it('returns null for bare specifiers', () => {
       expect(resolveImport('react', 'src/main.ts', knownFiles, 'typescript')).toBeNull()
     })

@@ -24,17 +24,8 @@ function normalizePath(segments: string[]): string {
 
 const JS_RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
 
-function resolveJsTs(
-  specifier: string,
-  fromRel: string,
-  knownFiles: Set<string>,
-): string | null {
-  if (!specifier.startsWith('.')) return null
-
-  const baseDir = dirname(fromRel)
-  const segments = (baseDir ? baseDir.split('/') : []).concat(specifier.split('/'))
-  const resolved = normalizePath(segments)
-
+/** Try a resolved path against knownFiles with extension probing and /index fallback. */
+function probeJsTsPath(resolved: string, fromRel: string, knownFiles: Set<string>): string | null {
   for (const ext of JS_RESOLVE_EXTENSIONS) {
     const candidate = resolved + ext
     if (knownFiles.has(candidate) && candidate !== fromRel) return candidate
@@ -45,6 +36,26 @@ function resolveJsTs(
     if (knownFiles.has(candidate) && candidate !== fromRel) return candidate
   }
   return null
+}
+
+function resolveJsTs(
+  specifier: string,
+  fromRel: string,
+  knownFiles: Set<string>,
+): string | null {
+  // Handle @/ path alias (common Vite/TS convention: @/* → src/*)
+  if (specifier.startsWith('@/')) {
+    const aliasResolved = 'src/' + specifier.slice(2)
+    return probeJsTsPath(aliasResolved, fromRel, knownFiles)
+  }
+
+  if (!specifier.startsWith('.')) return null
+
+  const baseDir = dirname(fromRel)
+  const segments = (baseDir ? baseDir.split('/') : []).concat(specifier.split('/'))
+  const resolved = normalizePath(segments)
+
+  return probeJsTsPath(resolved, fromRel, knownFiles)
 }
 
 // ---------------------------------------------------------------------------
