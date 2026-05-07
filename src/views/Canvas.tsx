@@ -295,7 +295,6 @@ function CanvasFlow() {
           />
         </ReactFlow>
       </div>
-      <Breadcrumbs />
     </>
   )
 }
@@ -395,6 +394,14 @@ function ViewSwitcher() {
       <div className="absolute inset-0 pointer-events-none z-10">
         <Layout />
       </div>
+
+      {/* Breadcrumbs sit above the Layout overlay (z-20 > z-10) so they're
+        * never hidden behind the TopBar. Rendered outside view wrappers
+        * because opacity on those creates a stacking context that would
+        * trap any child z-index. Visible for files and graph views. */}
+      {(viewMode === 'files' || viewMode === 'graph') && (
+        <Breadcrumbs />
+      )}
     </>
   )
 }
