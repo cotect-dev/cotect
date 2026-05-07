@@ -57,10 +57,16 @@ function CanvasFlow() {
     return () => observer.disconnect()
   }, [])
 
+  // initRoot resets columns / currentColumnIndex / focusedNodeId, so we
+  // must NOT re-run it on every CanvasFlow mount — switching views (1↔2↔3)
+  // would otherwise drop the user's selection and bounce them back to the
+  // root column on return. Skip if the store is already initialized for
+  // this rootPath; only re-init when the project actually changes.
   useEffect(() => {
-    if (rootPath) {
-      void useCanvasStore.getState().initRoot(rootPath)
-    }
+    if (!rootPath) return
+    const state = useCanvasStore.getState()
+    if (state.columns[0]?.path === rootPath) return
+    void state.initRoot(rootPath)
   }, [rootPath])
 
   const prevPanelWidth = useRef(leftPanelWidth)
@@ -278,16 +284,23 @@ function ViewSwitcher() {
     return () => document.removeEventListener('keydown', handler)
   }, [setViewMode])
 
-  // Inset style positions Graph / Settings inside the rectangle left by the
-  // TopBar + side panels, so neither hides under the navbar (where Settings'
-  // header buttons used to disappear) nor under a drawer panel. Files view
-  // intentionally stays full-bleed — its camera math accounts for the left
-  // panel and nodes are meant to scroll under panels visually.
-  const insetStyle = {
+  // All three views share the same workspace context (root path, git status,
+  // selected file via canvas store, LLM config, etc.) — they're presented as
+  // alternative lenses on the same project. TopBar + side panels render
+  // unconditionally (panels stay where the user put them across view
+  // switches); only the canvas-area content swaps.
+  //
+  // Positioning: Graph / Settings span the full window minus the TopBar.
+  // They sit *under* the panel overlay (same way the files-view canvas
+  // does), so panels visually cover the edges but the content is centered
+  // on the window itself. Using `insets.left/right` here re-centered within
+  // the gap between panels and drifted right whenever the two side panels
+  // had different widths (or only one was open).
+  const contentStyle = {
     top: insets.top,
-    left: insets.left,
-    right: insets.right,
-    bottom: insets.bottom,
+    left: 0,
+    right: 0,
+    bottom: 0,
   } as const
 
   return (
@@ -298,21 +311,25 @@ function ViewSwitcher() {
         </ReactFlowProvider>
       )}
       {viewMode === 'graph' && (
-        <div className="absolute" style={insetStyle}>
+        <div className="absolute" style={contentStyle}>
           <Graph />
         </div>
       )}
       {viewMode === 'settings' && (
-        <div className="absolute overflow-y-auto" style={insetStyle}>
-          <div className="mx-auto max-w-2xl p-4">
+        <div className="absolute" style={contentStyle}>
+          {/* h-full so Settings' inner `flex flex-col h-full` actually fills
+            * the available height (loading/empty states center within the
+            * full panel rather than collapsing to content height). */}
+          <div className="mx-auto h-full max-w-2xl overflow-y-auto p-4">
             <Settings />
           </div>
         </div>
       )}
-      {/* Panels and TopBar always render, regardless of view — only the
-        * canvas-area content above swaps. pointer-events-none on the wrapper
-        * lets the underlying view receive interactions everywhere panels
-        * don't cover. */}
+      {/* Panels and TopBar always render, regardless of view — the
+        * workspace shell stays consistent so Changes / History / Chat /
+        * Tasks remain available alongside any view. pointer-events-none on
+        * the wrapper lets the underlying view receive interactions
+        * everywhere panels and TopBar don't cover. */}
       <div className="absolute inset-0 pointer-events-none z-10">
         <Layout />
       </div>
