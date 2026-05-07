@@ -1,248 +1,315 @@
-import { useEffect, useState } from 'react'
-import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, type Node, type Edge } from '@xyflow/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  Background,
+  BackgroundVariant,
+  type Node,
+  type Edge,
+  type NodeMouseHandler,
+} from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useBrowserStore } from '@/store'
-import { getPlatform } from '@/services/platform'
-import { HIDDEN_DIRECTORIES } from '@/lib/constants'
-import { toRepoRelative } from '@/lib/repoPath'
-import { parseImports } from '@/services/treesitter'
+import {
+  forceSimulation,
+  forceLink,
+  forceManyBody,
+  forceCenter,
+  forceCollide,
+  type SimulationNodeDatum,
+  type SimulationLinkDatum,
+} from 'd3-force'
+import { useGraphStore, useBrowserStore, useViewStore, useCanvasStore } from '@/store'
+import { computeVisibleNodeIds, DEFAULT_HUB_COUNT, type GraphFileNode, type GraphFileEdge } from '@/store/graph'
 
 const proOptions = { hideAttribution: true }
 
-const PARSEABLE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'])
-const RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
-// Cap so a giant monorepo doesn't freeze the UI on first activation. Beyond
-// this many parseable files we stop scanning and surface a banner.
-const MAX_FILES = 500
+// ---------------------------------------------------------------------------
+// Language → color mapping
+// ---------------------------------------------------------------------------
 
-type ScanState =
-  | { kind: 'idle' }
-  | { kind: 'scanning'; scanned: number }
-  | { kind: 'ready'; nodes: Node[]; edges: Edge[]; truncated: boolean; fileCount: number; edgeCount: number }
-  | { kind: 'error'; message: string }
-
-function getExtension(path: string): string {
-  const slash = path.lastIndexOf('/')
-  const name = slash >= 0 ? path.slice(slash + 1) : path
-  const dot = name.lastIndexOf('.')
-  return dot >= 0 ? name.slice(dot).toLowerCase() : ''
+const LANGUAGE_COLORS: Record<string, string> = {
+  typescript: '#3b82f6', // blue
+  javascript: '#3b82f6',
+  python: '#22c55e',     // green
+  go: '#f97316',         // orange
+  rust: '#ef4444',       // red
 }
 
-function dirname(path: string): string {
-  const slash = path.lastIndexOf('/')
-  return slash >= 0 ? path.slice(0, slash) : ''
+const LANGUAGE_SHORT: Record<string, string> = {
+  typescript: 'TS',
+  javascript: 'JS',
+  python: 'Py',
+  go: 'Go',
+  rust: 'Rs',
 }
 
-/**
- * Resolve `./foo`-style relative imports to a concrete repo-relative path
- * within `knownFiles`. Bare specifiers (`react`, `@/x`) are returned as null
- * so callers can drop them — the graph only edges between in-repo files.
- */
-function resolveImport(
-  specifier: string,
-  fromRel: string,
-  knownFiles: Set<string>,
-): string | null {
-  if (!specifier.startsWith('.')) return null
+// ---------------------------------------------------------------------------
+// Force layout
+// ---------------------------------------------------------------------------
 
-  const baseDir = dirname(fromRel)
-  // Normalize `./` and `../` against baseDir.
-  const segments = (baseDir ? baseDir.split('/') : []).concat(specifier.split('/'))
-  const stack: string[] = []
-  for (const seg of segments) {
-    if (seg === '' || seg === '.') continue
-    if (seg === '..') {
-      if (stack.length > 0) stack.pop()
-      continue
-    }
-    stack.push(seg)
-  }
-  const resolved = stack.join('/')
-
-  for (const ext of RESOLVE_EXTENSIONS) {
-    const candidate = resolved + ext
-    if (knownFiles.has(candidate)) return candidate
-  }
-  for (const ext of RESOLVE_EXTENSIONS) {
-    if (ext === '') continue
-    const candidate = `${resolved}/index${ext}`
-    if (knownFiles.has(candidate)) return candidate
-  }
-  return null
+interface SimNode extends SimulationNodeDatum {
+  id: string
 }
 
-async function collectParseableFiles(
-  rootPath: string,
-  budget: { remaining: number },
-  onProgress: (count: number) => void,
-): Promise<string[]> {
-  const platform = getPlatform()
-  const found: string[] = []
-  const queue: string[] = [rootPath]
+interface SimLink extends SimulationLinkDatum<SimNode> {
+  source: string | SimNode
+  target: string | SimNode
+}
 
-  while (queue.length > 0 && budget.remaining > 0) {
-    const dir = queue.shift()!
-    let entries
-    try {
-      entries = await platform.fs.readDirectory(dir)
-    } catch {
-      continue
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory) {
-        if (HIDDEN_DIRECTORIES.has(entry.name) || entry.name.startsWith('.')) continue
-        queue.push(entry.path)
-      } else {
-        const ext = getExtension(entry.name)
-        if (!PARSEABLE_EXTENSIONS.has(ext)) continue
-        if (budget.remaining <= 0) break
-        budget.remaining--
-        found.push(entry.path)
-        if (found.length % 25 === 0) onProgress(found.length)
+function computeLayout(
+  nodes: GraphFileNode[],
+  edges: GraphFileEdge[],
+): Map<string, { x: number; y: number }> {
+  if (nodes.length === 0) return new Map()
+
+  const simNodes: SimNode[] = nodes.map((n) => ({ id: n.id }))
+  const nodeById = new Map(simNodes.map((n) => [n.id, n]))
+
+  const simLinks: SimLink[] = edges
+    .filter((e) => nodeById.has(e.source) && nodeById.has(e.target))
+    .map((e) => ({ source: e.source, target: e.target }))
+
+  const sim = forceSimulation<SimNode>(simNodes)
+    .force('link', forceLink<SimNode, SimLink>(simLinks).id((d) => d.id).distance(120))
+    .force('charge', forceManyBody<SimNode>().strength(-200))
+    .force('center', forceCenter(0, 0))
+    .force('collide', forceCollide<SimNode>(60))
+    .stop()
+
+  // Run ticks synchronously
+  const ticks = Math.min(300, Math.max(100, nodes.length * 2))
+  for (let i = 0; i < ticks; i++) sim.tick()
+
+  const positions = new Map<string, { x: number; y: number }>()
+  for (const n of simNodes) {
+    positions.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 })
+  }
+  return positions
+}
+
+// ---------------------------------------------------------------------------
+// Convert graph data → ReactFlow nodes/edges
+// ---------------------------------------------------------------------------
+
+function toReactFlowData(
+  allNodes: GraphFileNode[],
+  allEdges: GraphFileEdge[],
+  visibleIds: Set<string>,
+  hoveredNodeId: string | null,
+): { nodes: Node[]; edges: Edge[] } {
+  const visibleNodes = allNodes.filter((n) => visibleIds.has(n.id))
+  const visibleEdges = allEdges.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
+
+  const positions = computeLayout(visibleNodes, visibleEdges)
+
+  // Determine top 10% threshold for hub sizing
+  const scores = visibleNodes.map((n) => n.score).sort((a, b) => b - a)
+  const hubThreshold = scores[Math.max(0, Math.floor(scores.length * 0.1) - 1)] ?? 0
+
+  // Edges connected to hovered node
+  const hoveredEdgeIds = new Set<string>()
+  const hoveredNeighborIds = new Set<string>()
+  if (hoveredNodeId) {
+    hoveredNeighborIds.add(hoveredNodeId)
+    for (const e of visibleEdges) {
+      if (e.source === hoveredNodeId || e.target === hoveredNodeId) {
+        hoveredEdgeIds.add(`${e.source}->${e.target}`)
+        hoveredNeighborIds.add(e.source)
+        hoveredNeighborIds.add(e.target)
       }
     }
   }
-  return found
-}
 
-async function buildGraphData(
-  rootPath: string,
-  onProgress: (count: number) => void,
-): Promise<{ nodes: Node[]; edges: Edge[]; truncated: boolean }> {
-  const budget = { remaining: MAX_FILES }
-  const absFiles = await collectParseableFiles(rootPath, budget, onProgress)
-  const truncated = absFiles.length >= MAX_FILES
-  const relFiles = absFiles.map((p) => toRepoRelative(p, rootPath))
-  const knownFiles = new Set(relFiles)
+  const isHovering = hoveredNodeId !== null
 
-  const platform = getPlatform()
-  const importsByFile = new Map<string, string[]>()
-  await Promise.all(
-    absFiles.map(async (abs, i) => {
-      const rel = relFiles[i]
-      try {
-        const source = await platform.fs.readFile(abs)
-        const specifiers = await parseImports(rel, source)
-        importsByFile.set(rel, specifiers)
-      } catch {
-        importsByFile.set(rel, [])
-      }
-    }),
-  )
+  const rfNodes: Node[] = visibleNodes.map((n) => {
+    const pos = positions.get(n.id) ?? { x: 0, y: 0 }
+    const color = LANGUAGE_COLORS[n.language] ?? '#888'
+    const isHub = n.score >= hubThreshold && hubThreshold > 0
+    const dimmed = isHovering && !hoveredNeighborIds.has(n.id)
 
-  // Grid layout — simple, predictable, no extra deps. Sort alphabetically so
-  // closely-related paths cluster visually.
-  const sortedRel = [...relFiles].sort()
-  const nodeByRel = new Map<string, Node>()
-  const cols = Math.max(1, Math.ceil(Math.sqrt(sortedRel.length)))
-  const cellW = 220
-  const cellH = 60
-  sortedRel.forEach((rel, i) => {
-    const x = (i % cols) * cellW
-    const y = Math.floor(i / cols) * cellH
-    nodeByRel.set(rel, {
-      id: rel,
-      position: { x, y },
-      data: { label: rel },
+    return {
+      id: n.id,
+      position: pos,
+      data: {
+        label: n.folder ? `${n.label}\n${n.folder}` : n.label,
+      },
       style: {
-        fontSize: 11,
+        fontSize: isHub ? 12 : 11,
         padding: '6px 10px',
-        border: '1px solid var(--color-border)',
-        borderRadius: 6,
+        border: `2px solid ${color}`,
+        borderRadius: 8,
         background: 'var(--color-card)',
         color: 'var(--color-foreground)',
-        width: cellW - 20,
+        width: isHub ? 160 : 140,
+        opacity: dimmed ? 0.1 : 1,
+        transition: 'opacity 150ms ease',
+        cursor: 'pointer',
       },
-    })
+    }
   })
 
-  const edges: Edge[] = []
-  for (const [from, specifiers] of importsByFile) {
-    for (const spec of specifiers) {
-      const target = resolveImport(spec, from, knownFiles)
-      if (!target || target === from) continue
-      edges.push({
-        id: `${from}->${target}:${spec}`,
-        source: from,
-        target,
-        style: { stroke: 'var(--color-muted-foreground)', strokeOpacity: 0.4, strokeWidth: 1 },
-      })
-    }
-  }
+  const rfEdges: Edge[] = visibleEdges.map((e) => {
+    const edgeKey = `${e.source}->${e.target}`
+    const highlighted = hoveredEdgeIds.has(edgeKey)
+    const dimmed = isHovering && !highlighted
 
-  return { nodes: [...nodeByRel.values()], edges, truncated }
+    return {
+      id: edgeKey,
+      source: e.source,
+      target: e.target,
+      type: 'default',
+      style: {
+        stroke: 'var(--color-muted-foreground)',
+        strokeOpacity: dimmed ? 0.05 : highlighted ? 0.8 : 0.3,
+        strokeWidth: highlighted ? 2 : 1,
+        transition: 'stroke-opacity 150ms ease, stroke-width 150ms ease',
+      },
+    }
+  })
+
+  return { nodes: rfNodes, edges: rfEdges }
 }
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 function GraphFlow() {
   const rootPath = useBrowserStore((s) => s.rootPath)
-  const [state, setState] = useState<ScanState>({ kind: 'idle' })
+  const scanState = useGraphStore((s) => s.scanState)
+  const scannedCount = useGraphStore((s) => s.scannedCount)
+  const errorMessage = useGraphStore((s) => s.errorMessage)
+  const allNodes = useGraphStore((s) => s.allNodes)
+  const allEdges = useGraphStore((s) => s.allEdges)
+  const showAll = useGraphStore((s) => s.showAll)
+  const setShowAll = useGraphStore((s) => s.setShowAll)
+  const truncated = useGraphStore((s) => s.truncated)
+  const scan = useGraphStore((s) => s.scan)
+
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+
+  // Track last scanned rootPath so we don't re-scan on view switches
+  const lastScannedRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!rootPath) return
-    // Captured-in-scope cancel flag — flipped by cleanup. Avoids reading
-    // `tokenRef.current` in the cleanup (which lints as racy) while still
-    // making any in-flight commits no-op on rapid rootPath churn.
-    let cancelled = false
+    if (!rootPath || rootPath === lastScannedRef.current) return
+    lastScannedRef.current = rootPath
+    void scan(rootPath)
+  }, [rootPath, scan])
 
-    void (async () => {
-      try {
-        if (cancelled) return
-        setState({ kind: 'scanning', scanned: 0 })
-        const { nodes, edges, truncated } = await buildGraphData(rootPath, (count) => {
-          if (cancelled) return
-          setState({ kind: 'scanning', scanned: count })
-        })
-        if (cancelled) return
-        setState({ kind: 'ready', nodes, edges, truncated, fileCount: nodes.length, edgeCount: edges.length })
-      } catch (err) {
-        if (cancelled) return
-        setState({ kind: 'error', message: (err as Error).message ?? 'unknown error' })
-      }
-    })()
+  const visibleIds = useMemo(
+    () => computeVisibleNodeIds(allNodes, showAll),
+    [allNodes, showAll],
+  )
 
-    return () => {
-      cancelled = true
+  const { nodes, edges } = useMemo(
+    () => toReactFlowData(allNodes, allEdges, visibleIds, hoveredNodeId),
+    [allNodes, allEdges, visibleIds, hoveredNodeId],
+  )
+
+  const onNodeMouseEnter: NodeMouseHandler = useCallback((_event, node) => {
+    setHoveredNodeId(node.id)
+  }, [])
+
+  const onNodeMouseLeave: NodeMouseHandler = useCallback(() => {
+    setHoveredNodeId(null)
+  }, [])
+
+  const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
+    // Navigate to this file in the files view
+    useViewStore.getState().setViewMode('files')
+    void useCanvasStore.getState().focusFileByPath(node.id)
+  }, [])
+
+  // Language breakdown for stats
+  const langStats = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const n of allNodes) {
+      const short = LANGUAGE_SHORT[n.language] ?? n.language
+      counts.set(short, (counts.get(short) ?? 0) + 1)
     }
-  }, [rootPath])
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([lang, count]) => `${count} ${lang}`)
+      .join(' · ')
+  }, [allNodes])
 
-  if (state.kind === 'idle' || !rootPath) {
-    return <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No project open</div>
-  }
-  if (state.kind === 'error') {
-    return <div className="flex items-center justify-center h-full text-sm text-red-400">Graph build failed: {state.message}</div>
+  if (scanState === 'idle' || !rootPath) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+        No project open
+      </div>
+    )
   }
 
-  const showOverlay = state.kind === 'scanning' || (state.kind === 'ready' && state.fileCount === 0)
+  if (scanState === 'error') {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-red-400">
+        Graph build failed: {errorMessage}
+      </div>
+    )
+  }
+
+  const showOverlay = scanState === 'scanning' || (scanState === 'ready' && allNodes.length === 0)
+  const visibleCount = visibleIds.size
+  const totalCount = allNodes.length
+  const edgeCount = allEdges.length
+  const showToggle = totalCount > DEFAULT_HUB_COUNT
 
   return (
     <div className="absolute inset-0">
-      {state.kind === 'ready' && (
+      {scanState === 'ready' && allNodes.length > 0 && (
         <ReactFlow
-          nodes={state.nodes}
-          edges={state.edges}
+          nodes={nodes}
+          edges={edges}
           colorMode="dark"
           proOptions={proOptions}
           nodesDraggable={true}
           nodesConnectable={false}
           elementsSelectable={false}
+          onNodeMouseEnter={onNodeMouseEnter}
+          onNodeMouseLeave={onNodeMouseLeave}
+          onNodeClick={onNodeClick}
           minZoom={0.1}
           maxZoom={2}
           fitView
         >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={2} color="var(--color-foreground)" style={{ opacity: 0.1 }} />
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={24}
+            size={2}
+            color="var(--color-foreground)"
+            style={{ opacity: 0.1 }}
+          />
         </ReactFlow>
       )}
+
       {showOverlay && (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground bg-background/80">
-          {state.kind === 'scanning'
-            ? `Scanning project... ${state.scanned} files`
+          {scanState === 'scanning'
+            ? `Scanning project... ${scannedCount} files`
             : 'No parseable source files found.'}
         </div>
       )}
-      {state.kind === 'ready' && state.fileCount > 0 && (
-        <div className="absolute top-2 left-2 px-2 py-1 rounded bg-background/70 border border-border text-[11px] text-muted-foreground font-mono pointer-events-none">
-          {state.fileCount} files · {state.edgeCount} imports
-          {state.truncated && <span className="text-yellow-500"> · truncated at {MAX_FILES}</span>}
+
+      {/* Stats badge */}
+      {scanState === 'ready' && allNodes.length > 0 && (
+        <div className="absolute bottom-3 left-3 flex items-center gap-2 pointer-events-auto">
+          <div className="px-2.5 py-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border text-[11px] text-muted-foreground font-mono">
+            {visibleCount} of {totalCount} files · {edgeCount} imports
+            {langStats && <span> · {langStats}</span>}
+            {truncated && <span className="text-yellow-500"> · truncated at 500</span>}
+          </div>
+
+          {showToggle && (
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="px-2.5 py-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border text-[11px] text-muted-foreground font-mono hover:text-foreground hover:border-foreground/30 transition-colors"
+            >
+              {showAll ? 'Show hubs only' : 'Show all'}
+            </button>
+          )}
         </div>
       )}
     </div>
