@@ -7,6 +7,7 @@ pub type Conn = r2d2::PooledConnection<SqliteConnectionManager>;
 
 pub mod kv;
 pub mod providers;
+pub mod usage;
 
 pub struct Db {
     pool: Pool<SqliteConnectionManager>,
