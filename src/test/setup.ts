@@ -29,18 +29,6 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
   })),
 }))
 
-vi.mock('@tauri-apps/plugin-store', () => ({
-  Store: {
-    load: vi.fn(() => Promise.resolve({
-      get: vi.fn(),
-      set: vi.fn(),
-      delete: vi.fn(),
-      has: vi.fn(),
-      keys: vi.fn(() => Promise.resolve([])),
-    })),
-  },
-}))
-
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(),
 }))

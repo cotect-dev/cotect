@@ -1,18 +1,8 @@
 import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
-import { Store } from '@tauri-apps/plugin-store'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { Platform, FSEntry, CursorWindowInfo, WindowMonitorInfo, MonitorInfo } from './types'
-
-let store: Store | null = null
-
-async function getStore(): Promise<Store> {
-  if (!store) {
-    store = await Store.load('app-state.json', { defaults: {}, autoSave: true })
-  }
-  return store
-}
 
 function getWindowId(): string {
   const params = new URLSearchParams(window.location.search)
@@ -194,45 +184,45 @@ export const tauriPlatform: Platform = {
   storage: {
     async get<T>(key: string): Promise<T | null> {
       try {
-        const s = await getStore()
-        const value = await s.get<T>(key)
-        return value ?? null
+        const value = await invoke<unknown>('kv_get', { key })
+        return (value ?? null) as T | null
       } catch {
         return null
       }
     },
 
     async set<T>(key: string, value: T) {
-      const s = await getStore()
-      await s.set(key, value)
+      await invoke('kv_set', { key, value })
     },
 
     setSync<T>(key: string, value: T) {
-      getStore().then((s) => s.set(key, value)).catch((err) => {
+      invoke('kv_set', { key, value }).catch((err) => {
         console.warn(`[storage] setSync("${key}") failed:`, err)
       })
     },
 
     async remove(key: string) {
-      const s = await getStore()
-      await s.delete(key)
+      await invoke('kv_delete', { key })
     },
 
     removeSync(key: string) {
-      getStore().then((s) => s.delete(key)).catch((err) => {
+      invoke('kv_delete', { key }).catch((err) => {
         console.warn(`[storage] removeSync("${key}") failed:`, err)
       })
     },
 
     async exists(key: string) {
-      const s = await getStore()
-      return s.has(key)
+      try {
+        const value = await invoke<unknown>('kv_get', { key })
+        return value !== null && value !== undefined
+      } catch {
+        return false
+      }
     },
 
     async listKeys(prefix: string) {
-      const s = await getStore()
-      const allKeys = await s.keys()
-      return allKeys.filter((k) => k.startsWith(prefix))
+      const result = await invoke<Record<string, unknown>>('kv_get_prefix', { prefix })
+      return Object.keys(result)
     },
   },
 
