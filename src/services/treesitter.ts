@@ -20,7 +20,10 @@ const parserPool: Parser[] = []
 async function ensureInit(): Promise<void> {
   if (!initPromise) {
     initPromise = Parser.init({
-      locateFile: (name: string) => `${WASM_BASE}${name}`,
+      // web-tree-sitter asks for "web-tree-sitter.wasm" but the file in
+      // public/ is "tree-sitter.wasm". Ignore the requested name and
+      // return the known path — same approach as the original loader.
+      locateFile: () => `${WASM_BASE}tree-sitter.wasm`,
     })
   }
   await initPromise
