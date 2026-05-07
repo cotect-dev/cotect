@@ -2,6 +2,7 @@
 
 mod agent;
 mod commands;
+mod db;
 mod git;
 mod synced_state;
 mod watcher;
@@ -97,6 +98,12 @@ fn main() {
             agent::commands::agent_test_connection,
         ])
         .setup(|app| {
+            let app_dir = app.path().app_data_dir().expect("app data dir");
+            std::fs::create_dir_all(&app_dir).expect("create app data dir");
+            let db = std::sync::Arc::new(
+                db::Db::open(&app_dir.join("cotect.db")).expect("open db"),
+            );
+            app.manage(db);
             synced_state::load_all(app.handle());
             synced_state::start_batch_broadcaster(app.handle().clone());
             Ok(())
