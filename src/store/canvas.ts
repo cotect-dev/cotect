@@ -74,7 +74,7 @@ export type CanvasState = {
   moveFocus: (direction: 'up' | 'down') => void
   navigateRight: () => Promise<void>
   navigateLeft: () => void
-  navigateToColumn: (targetIndex: number) => void
+  navigateToColumn: (targetIndex: number) => Promise<void>
   initRoot: (rootPath: string) => Promise<void>
   toggleHideNode: () => void
   setCodeNodeWidth: (width: number) => void
@@ -496,31 +496,46 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     void get().updatePreview()
   },
 
-  navigateToColumn: (targetIndex) => {
-    const { columns, currentColumnIndex, focusedNodeId, rightFocusMemory } = get()
+  navigateToColumn: async (targetIndex) => {
+    const { columns, currentColumnIndex, depthChain, focusedNodeId, rightFocusMemory } = get()
     if (targetIndex === currentColumnIndex) return
-    if (targetIndex < 0 || targetIndex >= columns.length) return
+    if (targetIndex < 0 || targetIndex >= depthChain.length) return
 
-    if (targetIndex < currentColumnIndex) {
-      const steps = currentColumnIndex - targetIndex
-      for (let i = 0; i < steps; i++) get().navigateLeft()
-      return
-    }
-
-    // Skipping updatePreview here is load-bearing: it would trim the
-    // already-loaded ahead columns we want the user to keep clicking through.
-    const targetCol = columns[targetIndex]
-    const remembered = rightFocusMemory[targetCol.path]
-    const restored = remembered && targetCol.nodes.some((n) => n.id === remembered)
-      ? remembered
-      : targetCol.nodes[0]?.id ?? null
-
+    // Remember the focused node in the column we're leaving.
     const leavingCol = columns[currentColumnIndex]
     const nextMemory = leavingCol && focusedNodeId
       ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
       : rightFocusMemory
 
+    // If columns exist up to the target we can jump directly; otherwise
+    // we rebuild them from depthChain paths (columns may have been trimmed
+    // by updatePreview after a previous navigateLeft).
+    let targetColumns = columns
+    if (targetIndex >= columns.length) {
+      const rebuilt = [...columns]
+      for (let i = columns.length; i <= targetIndex; i++) {
+        const path = depthChain[i]
+        if (!path) break
+        try {
+          const dirNodes = await buildDirectoryNodes(path)
+          rebuilt.push({ path, kind: 'directory' as const, nodes: dirNodes, edges: [] })
+        } catch {
+          break
+        }
+      }
+      targetColumns = rebuilt
+      // Bail if we couldn't rebuild far enough.
+      if (targetIndex >= targetColumns.length) return
+    }
+
+    const targetCol = targetColumns[targetIndex]
+    const remembered = nextMemory[targetCol.path]
+    const restored = remembered && targetCol.nodes.some((n) => n.id === remembered)
+      ? remembered
+      : targetCol.nodes[0]?.id ?? null
+
     set({
+      columns: targetColumns,
       currentColumnIndex: targetIndex,
       focusedNodeId: restored,
       cameraY: CANVAS_PAD_Y,
@@ -528,6 +543,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     })
 
     flattenAndRender(get, set)
+    void get().updatePreview()
   },
 
   toggleHideNode: () => {

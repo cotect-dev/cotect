@@ -16,7 +16,7 @@ export default memo(function Breadcrumbs() {
     [depthChain, currentColumnIndex],
   )
 
-  const navigateTo = (i: number) => useCanvasStore.getState().navigateToColumn(i)
+  const navigateTo = (i: number) => void useCanvasStore.getState().navigateToColumn(i)
 
   return (
     <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
