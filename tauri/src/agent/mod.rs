@@ -11,6 +11,7 @@ pub mod system_prompt;
 pub mod commands;
 pub mod probe;
 pub mod health;
+pub mod usage_estimator;
 #[path = "eval/eval.rs"]
 mod eval;
 
