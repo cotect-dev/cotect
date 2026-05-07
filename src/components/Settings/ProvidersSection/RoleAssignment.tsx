@@ -44,28 +44,30 @@ export default function RoleAssignment({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 text-[11px]">
-      <div className="text-muted-foreground text-[10px] uppercase tracking-wider">Role assignment</div>
-      {ROLES.map((role) => {
-        const slot = readSlot(a, role)
-        const isThisProvider = slot.providerId === provider.id
-        const showFallback = role !== 'default' && !isThisProvider && a.default_provider_id != null
-        return (
-          <div key={role} className="flex items-center gap-1.5">
-            <span className="text-[10px] text-muted-foreground capitalize">{role}</span>
-            <select
-              className="h-6 px-1.5 text-[11px] rounded border border-border bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-              value={isThisProvider ? slot.model ?? '__unset' : '__unset'}
-              onChange={(e) => void onPick(role, e.target.value)}
-            >
-              <option value="__unset">{showFallback ? '↳ default' : '—'}</option>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.id}</option>
-              ))}
-            </select>
-          </div>
-        )
-      })}
+    <div className="flex flex-col gap-1.5 text-[11px]">
+      <div className="text-muted-foreground text-[10px] uppercase tracking-wider font-medium">Role assignment</div>
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 items-center">
+        {ROLES.map((role) => {
+          const slot = readSlot(a, role)
+          const isThisProvider = slot.providerId === provider.id
+          const showFallback = role !== 'default' && !isThisProvider && a.default_provider_id != null
+          return (
+            <div key={role} className="contents">
+              <span className="text-[10px] text-muted-foreground capitalize">{role}</span>
+              <select
+                className="h-6 px-1.5 text-[11px] rounded border border-border bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary min-w-0 max-w-[260px]"
+                value={isThisProvider ? slot.model ?? '__unset' : '__unset'}
+                onChange={(e) => void onPick(role, e.target.value)}
+              >
+                <option value="__unset">{showFallback ? '↳ default' : '—'}</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.id}</option>
+                ))}
+              </select>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

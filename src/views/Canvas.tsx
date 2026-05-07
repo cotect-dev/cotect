@@ -118,22 +118,42 @@ function CanvasFlow() {
     ? { x: focusedNode.position.x, y: focusedNode.position.y }
     : null
 
+  // Save viewport to the store on unmount so view switches preserve position.
+  useEffect(() => {
+    return () => {
+      const vp = reactFlow.getViewport()
+      useCanvasStore.setState({ savedViewport: { x: vp.x, y: vp.y } })
+    }
+  }, [reactFlow])
+
   // Anchor on column change: place the new current column at panelW + MARGIN,
   // then clamp to keep the focused node in view. Animated for a smooth slide
-  // — but the first run snaps (duration 0) so a fresh mount doesn't slide in
-  // from the const `defaultViewport` (which has no panel-width offset).
+  // — but the first run restores a saved viewport (from a view switch) when
+  // available, or snaps to the computed anchor if this is a fresh session.
   const isFirstAnchorRef = useRef(true)
   useLayoutEffect(() => {
     const panelW = readPanelW()
     leftPanelWidthRef.current = panelW
     prevPanelWidth.current = panelW
+
+    const isFirst = isFirstAnchorRef.current
+    isFirstAnchorRef.current = false
+
+    // On remount after a view switch, restore the exact viewport the user had.
+    if (isFirst) {
+      const saved = useCanvasStore.getState().savedViewport
+      if (saved) {
+        useCanvasStore.setState({ savedViewport: null })
+        void reactFlow.setViewport({ ...saved, zoom: 1 }, { duration: 0 })
+        return
+      }
+    }
+
     let target: Viewport = anchorViewport(currentColumnIndex, panelW)
     if (focusedPosition) {
       target = clampToFocus(target, focusedPosition, panelW, readContainerSize())
     }
-    const duration = isFirstAnchorRef.current ? 0 : 100
-    isFirstAnchorRef.current = false
-    void reactFlow.setViewport({ ...target, zoom: 1 }, { duration })
+    void reactFlow.setViewport({ ...target, zoom: 1 }, { duration: isFirst ? 0 : 100 })
   }, [currentColumnIndex, depthChainLength]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Shift viewport on panel resize, then re-clamp so a panel grow that
@@ -326,33 +346,42 @@ function ViewSwitcher() {
     bottom: 0,
   } as const
 
+  // Inactive views are kept mounted but hidden so they preserve scroll
+  // position, viewport state, and internal component state across switches.
+  // `visibility: hidden` (not `display: none`) keeps layout measurements
+  // valid — ReactFlow in particular needs a sized container.
+  const insetStyle = (view: typeof viewMode) => ({
+    ...contentStyle,
+    // Files view fills the entire window (behind the z-10 panel overlay);
+    // other views start below the TopBar so their content isn't hidden under it.
+    top: view === 'files' ? 0 : insets.top,
+    paddingLeft: view === 'files' ? 0 : insets.left,
+    paddingRight: view === 'files' ? 0 : insets.right,
+    visibility: (viewMode === view ? 'visible' : 'hidden') as 'visible' | 'hidden',
+    pointerEvents: (viewMode === view ? 'auto' : 'none') as 'auto' | 'none',
+  })
+
   return (
     <>
-      {viewMode === 'files' && (
+      {/* Files view — always mounted inside its own ReactFlowProvider */}
+      <div className="absolute inset-0" style={insetStyle('files')}>
         <ReactFlowProvider>
           <CanvasFlow />
         </ReactFlowProvider>
-      )}
-      {viewMode === 'graph' && (
-        <div className="absolute" style={contentStyle}>
-          <Graph />
-        </div>
-      )}
-      {viewMode === 'settings' && (
-        <div className="absolute" style={contentStyle}>
-          {/* h-full so Settings' inner `flex flex-col h-full` actually fills
-            * the available height (loading/empty states center within the
-            * full panel rather than collapsing to content height). */}
-          <div className="mx-auto h-full max-w-2xl overflow-y-auto p-4">
-            <Settings />
-          </div>
-        </div>
-      )}
-      {viewMode === 'analytics' && (
-        <div className="absolute" style={contentStyle}>
-          <Analytics />
-        </div>
-      )}
+      </div>
+
+      <div className="absolute" style={insetStyle('graph')}>
+        <Graph />
+      </div>
+
+      <div className="absolute" style={insetStyle('settings')}>
+        <Settings />
+      </div>
+
+      <div className="absolute" style={insetStyle('analytics')}>
+        <Analytics />
+      </div>
+
       {/* Panels and TopBar always render, regardless of view — the
         * workspace shell stays consistent so Changes / History / Chat /
         * Tasks remain available alongside any view. pointer-events-none on

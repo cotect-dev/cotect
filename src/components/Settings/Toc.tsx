@@ -26,7 +26,7 @@ export default function Toc() {
   }, [])
 
   return (
-    <nav className="w-[200px] flex-shrink-0 sticky top-0 self-start py-4 pr-2 flex flex-col gap-1">
+    <nav className="w-[120px] flex-shrink-0 sticky top-0 self-start py-4 pr-2 flex flex-col gap-1">
       <div className="text-[10px] text-muted-foreground/60 font-medium uppercase tracking-wider px-2 mb-1">Settings</div>
       {TOC.map((t) => (
         <button

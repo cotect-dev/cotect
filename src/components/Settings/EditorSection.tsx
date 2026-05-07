@@ -31,7 +31,7 @@ function Sub({ title, children }: { title: string; children: React.ReactNode }) 
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[180px_1fr] gap-x-4 items-center text-[11px]">
+    <div className="grid grid-cols-[140px_1fr] gap-x-4 items-center text-[11px]">
       <span className="text-foreground">{label}</span>
       <div>{children}</div>
     </div>

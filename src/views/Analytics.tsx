@@ -13,7 +13,7 @@ export default function Analytics() {
 
   return (
     <div className="w-full h-full overflow-y-auto">
-      <div className="max-w-6xl mx-auto px-6 py-6">
+      <div className="px-6 py-6">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-base font-semibold">Analytics</h1>
           <DateRangePicker />

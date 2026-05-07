@@ -65,6 +65,10 @@ export type CanvasState = {
   // the preview column without waiting for the actual viewport animation.
   cameraY: number
 
+  // Viewport position saved by CanvasFlow before it unmounts (view switch).
+  // Restored on remount so the user's scroll position doesn't jump.
+  savedViewport: { x: number; y: number } | null
+
   setViewportHeight: (h: number) => void
   setFocus: (nodeId: string | null) => void
   moveFocus: (direction: 'up' | 'down') => void
@@ -252,6 +256,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   rightFocusMemory: {},
   viewportHeight: 0,
   cameraY: CANVAS_PAD_Y,
+  savedViewport: null,
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) })
