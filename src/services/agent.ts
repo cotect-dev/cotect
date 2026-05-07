@@ -26,21 +26,6 @@ export interface TaskRequest {
   conversation_id?: string
 }
 
-export interface ProviderConfig {
-  id: string
-  name: string
-  endpoint: string
-  api_key?: string
-  model: string
-  format?: string
-  disable_thinking?: boolean
-}
-
-export interface AgentConfig {
-  providers: ProviderConfig[]
-  active_provider_id: string
-}
-
 // Mirrors `serde(tag = "type")` on the Rust side.
 export type TaskEvent =
   | { type: 'text'; content: string; partial: boolean }
@@ -63,18 +48,6 @@ export async function abortTask(taskId: string): Promise<void> {
   await invoke('agent_abort', { taskId })
 }
 
-export async function getConfig(): Promise<AgentConfig> {
-  return invoke<AgentConfig>('agent_get_config')
-}
-
-export async function setConfig(config: AgentConfig): Promise<void> {
-  await invoke('agent_set_config', { config })
-}
-
-export async function testConnection(config: ProviderConfig): Promise<string[]> {
-  return invoke<string[]>('agent_test_connection', { config })
-}
-
 /** Listens on the `agent-task-event:{taskId}` Tauri event. */
 export function listenToTask(
   taskId: string,
@@ -91,4 +64,9 @@ export function listenToTask(
       console.warn(`[agent] failed to detach listener for task "${taskId}":`, err)
     })
   }
+}
+
+import type { ProbeInput, Probed } from './probe-types'
+export async function probeProvider(input: ProbeInput): Promise<Probed> {
+  return invoke<Probed>('probe_provider', { input })
 }
