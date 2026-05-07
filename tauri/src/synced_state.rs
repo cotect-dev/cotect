@@ -1,8 +1,10 @@
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+
+use crate::db::{kv, Db};
 
 #[derive(Serialize, Clone)]
 struct SyncedStatePayload {
@@ -114,69 +116,95 @@ pub fn start_batch_broadcaster(app: AppHandle) {
     });
 }
 
-pub fn load_all(app: &AppHandle) {
-    let Ok(app_dir) = app.path().app_data_dir() else {
-        return;
-    };
-    let store_path = app_dir.join("app-state.json");
-    let content = match std::fs::read_to_string(&store_path) {
-        Ok(c) => c,
-        Err(_) => return,
-    };
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return;
-    };
-    let Some(obj) = json.as_object() else {
-        return;
-    };
+pub fn load_from_db(store: &SyncedStateStore, db: &Db) -> anyhow::Result<()> {
+    let c = db.conn()?;
+    let entries_kv = kv::get_prefix(&c, "persist:")?;
+    let mut entries = store.entries.lock().unwrap();
+    for (key, value) in entries_kv {
+        entries.insert(
+            key,
+            StoreEntry {
+                state: value,
+                source: "main".into(),
+            },
+        );
+    }
+    Ok(())
+}
 
-    let state = app.state::<SyncedStateStore>();
-    let mut entries = match state.entries.lock() {
-        Ok(e) => e,
-        Err(_) => return,
+pub fn persist_to_db(store: &SyncedStateStore, db: &Db) -> anyhow::Result<()> {
+    let c = db.conn()?;
+    let dirty: Vec<String> = {
+        let mut d = store.dirty.lock().unwrap();
+        let v = d.iter().cloned().collect();
+        d.clear();
+        v
     };
-
-    let prefix = "panel-";
-    for (key, value) in obj {
-        if let Some(name) = key.strip_prefix(prefix) {
-            entries.insert(
-                name.to_string(),
-                StoreEntry {
-                    state: value.clone(),
-                    source: String::new(),
-                },
-            );
+    let entries = store.entries.lock().unwrap();
+    for key in dirty {
+        if let Some(e) = entries.get(&key) {
+            kv::set(&c, &key, &e.state)?;
         }
+    }
+    Ok(())
+}
+
+pub fn load_all(app: &AppHandle) {
+    let db = app.state::<Arc<Db>>();
+    let store = app.state::<SyncedStateStore>();
+    if let Err(e) = load_from_db(&store, &db) {
+        eprintln!("[synced_state] load failed: {}", e);
     }
 }
 
 pub fn persist_all(app: &AppHandle) {
-    let state = app.state::<SyncedStateStore>();
-    let entries = match state.entries.lock() {
-        Ok(e) => e,
-        Err(_) => return,
-    };
+    let db = app.state::<Arc<Db>>();
+    let store = app.state::<SyncedStateStore>();
+    if let Err(e) = persist_to_db(&store, &db) {
+        eprintln!("[synced_state] persist failed: {}", e);
+    }
+}
 
-    if entries.is_empty() {
-        return;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{kv, Db};
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    #[test]
+    fn persist_writes_to_kv_table() {
+        let dir = tempdir().unwrap();
+        let db = std::sync::Arc::new(Db::open(&dir.path().join("t.db")).unwrap());
+        let store = SyncedStateStore::new();
+        store.entries.lock().unwrap().insert(
+            "persist:global".into(),
+            StoreEntry {
+                state: json!({"x": 1}),
+                source: "main".into(),
+            },
+        );
+        store.dirty.lock().unwrap().insert("persist:global".into());
+        persist_to_db(&store, &db).unwrap();
+
+        let c = db.conn().unwrap();
+        let v = kv::get(&c, "persist:global").unwrap();
+        assert_eq!(v, Some(json!({"x": 1})));
     }
 
-    let Ok(app_dir) = app.path().app_data_dir() else {
-        return;
-    };
-    let store_path = app_dir.join("app-state.json");
-    let content = std::fs::read_to_string(&store_path).unwrap_or_else(|_| "{}".into());
-    let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return;
-    };
-
-    if let Some(obj) = json.as_object_mut() {
-        for (name, entry) in entries.iter() {
-            obj.insert(format!("panel-{}", name), entry.state.clone());
+    #[test]
+    fn load_reads_from_kv_table() {
+        let dir = tempdir().unwrap();
+        let db = std::sync::Arc::new(Db::open(&dir.path().join("t.db")).unwrap());
+        {
+            let c = db.conn().unwrap();
+            kv::set(&c, "persist:global", &json!({"y": 2})).unwrap();
         }
-        if let Ok(new_content) = serde_json::to_string(obj) {
-            let _ = std::fs::write(&store_path, new_content);
-        }
+        let store = SyncedStateStore::new();
+        load_from_db(&store, &db).unwrap();
+        let entries = store.entries.lock().unwrap();
+        let entry = entries.get("persist:global").unwrap();
+        assert_eq!(entry.state, json!({"y": 2}));
     }
 }
 
