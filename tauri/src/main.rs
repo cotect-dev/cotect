@@ -8,7 +8,6 @@ mod git;
 mod synced_state;
 mod watcher;
 
-use std::fs;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -22,37 +21,20 @@ fn save_child_window_list(window: &tauri::Window) {
         .filter(|k| k.as_str() != "main")
         .cloned()
         .collect();
-
-    let Ok(app_dir) = window.app_handle().path().app_data_dir() else {
-        return;
-    };
-    let store_path = app_dir.join("app-state.json");
-    let content = fs::read_to_string(&store_path).unwrap_or_else(|_| "{}".into());
-    let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return;
-    };
-    if let Some(obj) = json.as_object_mut() {
-        obj.insert("wm-children".into(), serde_json::json!(children));
-        let stale_keys: Vec<String> = obj
-            .keys()
-            .filter(|k| {
-                for prefix in ["wm-layout-", "wm-geometry-", "wm-zones-"] {
-                    if let Some(id) = k.strip_prefix(prefix) {
-                        if id != "main" && !children.contains(&id.to_string()) {
-                            return true;
-                        }
+    let app = window.app_handle();
+    let Some(db) = app.try_state::<std::sync::Arc<crate::db::Db>>() else { return };
+    let Ok(c) = db.conn() else { return };
+    let _ = crate::db::kv::set(&c, "wm-children", &serde_json::json!(children));
+    // Also clean up wm-{layout,geometry,zones}-{id} for windows that no longer exist
+    if let Ok(prefix_results) = crate::db::kv::get_prefix(&c, "wm-") {
+        for (key, _) in prefix_results {
+            for prefix in ["wm-layout-", "wm-geometry-", "wm-zones-"] {
+                if let Some(id) = key.strip_prefix(prefix) {
+                    if id != "main" && !children.contains(&id.to_string()) {
+                        let _ = crate::db::kv::delete(&c, &key);
                     }
                 }
-                false
-            })
-            .cloned()
-            .collect();
-        for key in stale_keys {
-            obj.remove(&key);
-        }
-
-        if let Ok(new_content) = serde_json::to_string(obj) {
-            let _ = fs::write(&store_path, new_content);
+            }
         }
     }
 }
