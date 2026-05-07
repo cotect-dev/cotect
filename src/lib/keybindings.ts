@@ -11,12 +11,16 @@ export interface KeyBinding {
 
 export const KEYBINDINGS: KeyBinding[] = []
 
-/** Register a binding once at module load. Returns the same binding for chaining. */
+/** Register a binding once at module load. Returns the same binding for chaining.
+ *  Idempotent: re-registering the same id (e.g. during Vite HMR) replaces the
+ *  previous entry instead of throwing. */
 export function defineBinding(b: KeyBinding): KeyBinding {
-  if (KEYBINDINGS.find((x) => x.id === b.id)) {
-    throw new Error(`duplicate keybinding id: ${b.id}`)
+  const idx = KEYBINDINGS.findIndex((x) => x.id === b.id)
+  if (idx !== -1) {
+    KEYBINDINGS[idx] = b
+  } else {
+    KEYBINDINGS.push(b)
   }
-  KEYBINDINGS.push(b)
   return b
 }
 
