@@ -13,6 +13,23 @@ import { useCanvasInsets } from '@/hooks/useCanvasInsets'
 import { CANVAS_MARGIN } from '@/lib/constants'
 import { anchorViewport, clampToFocus, type Viewport } from '@/lib/canvasCamera'
 import { notifyCanvasScrolled } from '@/components/Canvas/nodes/codeNodeRegistry'
+import { defineBinding } from '@/lib/keybindings'
+
+// View-mode chords match the original `e.key === '1'/'2'/'3'` checks, which
+// fire regardless of modifier state. A custom matcher preserves that exactly
+// (the stricter `matchChord` helper would require no modifiers held).
+const VIEW_FILES = defineBinding({
+  id: 'canvas.view.files', label: 'View: Files', scope: 'global', group: 'Canvas',
+  chord: '1', matches: (e) => e.key === '1',
+})
+const VIEW_GRAPH = defineBinding({
+  id: 'canvas.view.graph', label: 'View: Graph', scope: 'global', group: 'Canvas',
+  chord: '2', matches: (e) => e.key === '2',
+})
+const VIEW_SETTINGS = defineBinding({
+  id: 'canvas.view.settings', label: 'View: Settings', scope: 'global', group: 'Canvas',
+  chord: '3', matches: (e) => e.key === '3',
+})
 
 const proOptions = { hideAttribution: true }
 
@@ -276,9 +293,9 @@ function ViewSwitcher() {
         active.closest('.cm-editor')
       )) return
 
-      if (e.key === '1') { e.preventDefault(); setViewMode('files') }
-      else if (e.key === '2') { e.preventDefault(); setViewMode('graph') }
-      else if (e.key === '3') { e.preventDefault(); setViewMode('settings') }
+      if (VIEW_FILES.matches(e)) { e.preventDefault(); setViewMode('files') }
+      else if (VIEW_GRAPH.matches(e)) { e.preventDefault(); setViewMode('graph') }
+      else if (VIEW_SETTINGS.matches(e)) { e.preventDefault(); setViewMode('settings') }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)

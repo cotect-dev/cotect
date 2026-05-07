@@ -2,6 +2,19 @@ import { useEffect } from 'react'
 import { useLayoutStore, getEffectivePosition } from '@/store/layout'
 import { getPlatform } from '@/services/platform'
 import { DEV } from '@/lib/env'
+import { defineBinding } from '@/lib/keybindings'
+
+// F12 toggles regardless of modifier state (the original `e.key !== 'F12'`
+// check matched any modifier combo); use a custom matcher rather than the
+// stricter `matchChord` helper so behavior is preserved exactly.
+const TOGGLE_CONSOLE = defineBinding({
+  id: 'dev.console.toggle',
+  label: 'Toggle Console',
+  scope: 'global',
+  group: 'Dev',
+  chord: 'F12',
+  matches: (e) => e.key === 'F12',
+})
 
 // F12 toggles the Console panel in the current window. The panel docks into
 // the bottom zone (or 'right' as fallback in child windows that don't render
@@ -11,7 +24,7 @@ export function useConsoleHotkey() {
   useEffect(() => {
     if (!DEV) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'F12') return
+      if (!TOGGLE_CONSOLE.matches(e)) return
       e.preventDefault()
       const { panels, addPanel, removePanel } = useLayoutStore.getState()
       const visible =
