@@ -6,6 +6,7 @@ use std::path::Path;
 pub type Conn = r2d2::PooledConnection<SqliteConnectionManager>;
 
 pub mod kv;
+pub mod providers;
 
 pub struct Db {
     pool: Pool<SqliteConnectionManager>,
