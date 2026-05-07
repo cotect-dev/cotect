@@ -473,6 +473,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-store",
  "tempfile",
+ "thiserror 1.0.69",
  "tiktoken-rs",
  "tokio",
  "tokio-stream",

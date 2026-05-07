@@ -9,6 +9,7 @@ pub mod doom_loop;
 pub mod retry;
 pub mod system_prompt;
 pub mod commands;
+pub mod probe;
 #[path = "eval/eval.rs"]
 mod eval;
 
