@@ -96,6 +96,21 @@ fn main() {
             agent::commands::agent_get_config,
             agent::commands::agent_set_config,
             agent::commands::agent_test_connection,
+            db::commands::kv_get,
+            db::commands::kv_set,
+            db::commands::kv_delete,
+            db::commands::kv_get_prefix,
+            db::commands::providers_list,
+            db::commands::providers_upsert,
+            db::commands::providers_remove,
+            db::commands::assignment_get,
+            db::commands::assignment_set,
+            db::commands::db_repo_upsert,
+            db::commands::db_repo_get,
+            db::commands::usage_record,
+            db::commands::usage_query,
+            db::commands::usage_aggregate,
+            db::commands::usage_purge,
         ])
         .setup(|app| {
             let app_dir = app.path().app_data_dir()?;
