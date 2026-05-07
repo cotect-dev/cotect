@@ -10,6 +10,7 @@ pub mod retry;
 pub mod system_prompt;
 pub mod commands;
 pub mod probe;
+pub mod health;
 #[path = "eval/eval.rs"]
 mod eval;
 
