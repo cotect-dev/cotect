@@ -351,6 +351,7 @@ function ViewSwitcher() {
   // `opacity: 0` (not `display: none`) keeps layout measurements valid —
   // ReactFlow needs a sized container. Unlike `visibility: hidden`, children
   // cannot override a parent's opacity, so the view is reliably invisible.
+  const active = (view: typeof viewMode) => viewMode === view
   const insetStyle = (view: typeof viewMode) => ({
     ...contentStyle,
     // Files view fills the entire window (behind the z-10 panel overlay);
@@ -358,10 +359,11 @@ function ViewSwitcher() {
     top: view === 'files' ? 0 : insets.top,
     paddingLeft: view === 'files' ? 0 : insets.left,
     paddingRight: view === 'files' ? 0 : insets.right,
-    // opacity (not visibility) — children can override `visibility: hidden`
-    // but cannot escape a parent's opacity, so this reliably hides the view.
-    opacity: viewMode === view ? 1 : 0,
-    pointerEvents: (viewMode === view ? 'auto' : 'none') as 'auto' | 'none',
+    // Inactive views: opacity 0 hides them (children can't override), and
+    // zIndex -1 pushes them behind everything so no events leak through
+    // (children CAN override pointer-events, but can't escape z-order).
+    opacity: active(view) ? 1 : 0,
+    zIndex: active(view) ? 0 : -1,
   })
 
   return (
