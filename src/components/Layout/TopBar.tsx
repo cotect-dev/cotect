@@ -20,10 +20,18 @@ import { getPlatform } from '@/services/platform'
 import { saveLayout } from '@/services/windowManager'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
 import { useGitStore, branchLabel } from '@/store/git'
+import { useViewStore, type ViewMode } from '@/store/view'
 import RelativeTime from '@/components/RelativeTime'
 import { DEV } from '@/lib/env'
 import { useState, useCallback, Fragment } from 'react'
-import { GitBranch, ChevronDown } from 'lucide-react'
+import { GitBranch, ChevronDown, FolderTree, Network, Settings as SettingsIcon, BarChart3 } from 'lucide-react'
+
+const VIEW_BUTTONS: { mode: ViewMode; key: string; label: string; Icon: typeof FolderTree }[] = [
+  { mode: 'files',     key: '1', label: 'Files',     Icon: FolderTree },
+  { mode: 'graph',     key: '2', label: 'Graph',     Icon: Network },
+  { mode: 'settings',  key: '3', label: 'Settings',  Icon: SettingsIcon },
+  { mode: 'analytics', key: '4', label: 'Analytics', Icon: BarChart3 },
+]
 
 interface TopBarProps {
   onResetZoneSizes?: () => void
@@ -54,6 +62,8 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
   }, [platform])
 
   const isMainWindow = platform.windows.getWindowId() === 'main'
+  const viewMode = useViewStore((s) => s.viewMode)
+  const setViewMode = useViewStore((s) => s.setViewMode)
   const isGitRepo = useGitStore((s) => s.isGitRepo)
   const totalInsertions = useGitStore((s) => s.status?.total_insertions ?? 0)
   const totalDeletions = useGitStore((s) => s.status?.total_deletions ?? 0)
@@ -165,6 +175,27 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
         </MenubarContent>
       </MenubarMenu>
       <div className="flex-1" />
+      {isMainWindow && (
+        <div className="flex items-center gap-0.5 pr-2">
+          {VIEW_BUTTONS.map(({ mode, key, label, Icon }) => {
+            const active = viewMode === mode
+            return (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                title={`${label} (${key})`}
+                className={
+                  active
+                    ? 'rounded p-1 bg-accent text-accent-foreground'
+                    : 'rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            )
+          })}
+        </div>
+      )}
       {isMainWindow && isGitRepo && (
         <div className="flex items-center gap-2 pr-2 text-xs font-mono select-none">
           {branch && (

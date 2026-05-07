@@ -39,7 +39,7 @@ export default function UsageSparkline({ providerId }: { providerId: string }) {
       </svg>
       <div>{totalTokens.toLocaleString()} tokens · {totalTasks} tasks</div>
       <span className="flex-1" />
-      <button onClick={() => setViewMode('analytics' as never)} className="text-primary hover:underline">
+      <button onClick={() => setViewMode('analytics')} className="text-primary hover:underline">
         Open in Analytics →
       </button>
     </div>

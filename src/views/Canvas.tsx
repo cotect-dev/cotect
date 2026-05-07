@@ -8,6 +8,7 @@ import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
 import WindowShell from '@/components/WindowShell'
 import Graph from '@/components/Graph'
 import Settings from '@/components/Settings'
+import Analytics from '@/views/Analytics'
 import { useCanvasKeyboard } from '@/hooks/useCanvasKeyboard'
 import { useCanvasInsets } from '@/hooks/useCanvasInsets'
 import { CANVAS_MARGIN } from '@/lib/constants'
@@ -29,6 +30,10 @@ const VIEW_GRAPH = defineBinding({
 const VIEW_SETTINGS = defineBinding({
   id: 'canvas.view.settings', label: 'View: Settings', scope: 'global', group: 'Canvas',
   chord: '3', matches: (e) => e.key === '3',
+})
+const VIEW_ANALYTICS = defineBinding({
+  id: 'canvas.view.analytics', label: 'View: Analytics', scope: 'global', group: 'Canvas',
+  chord: '4', matches: (e) => e.key === '4',
 })
 
 const proOptions = { hideAttribution: true }
@@ -296,6 +301,7 @@ function ViewSwitcher() {
       if (VIEW_FILES.matches(e)) { e.preventDefault(); setViewMode('files') }
       else if (VIEW_GRAPH.matches(e)) { e.preventDefault(); setViewMode('graph') }
       else if (VIEW_SETTINGS.matches(e)) { e.preventDefault(); setViewMode('settings') }
+      else if (VIEW_ANALYTICS.matches(e)) { e.preventDefault(); setViewMode('analytics') }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -340,6 +346,11 @@ function ViewSwitcher() {
           <div className="mx-auto h-full max-w-2xl overflow-y-auto p-4">
             <Settings />
           </div>
+        </div>
+      )}
+      {viewMode === 'analytics' && (
+        <div className="absolute" style={contentStyle}>
+          <Analytics />
         </div>
       )}
       {/* Panels and TopBar always render, regardless of view — the
