@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
 
+use tauri::Emitter;
 use tokio::sync::mpsc;
 
 use super::context::ConversationContext;
@@ -11,7 +12,9 @@ use super::retry::retry_with_backoff;
 use super::system_prompt::{self, EnvironmentInfo};
 use super::tools::{self, ToolState};
 use super::types::*;
+use super::usage_estimator::count_tokens;
 use super::utils::truncate_chars;
+use crate::db::usage::{self, UsageRecord};
 
 /// Tracks per-tool error counts to enforce error budgets.
 #[derive(Debug, Default)]
@@ -72,6 +75,19 @@ pub struct Orchestrator {
     last_action_at: Instant,
     reasoning_bytes_since_action: usize,
     stall_emitted: bool,
+    /// Provider id captured at construction — surfaced in `agent_usage` rows.
+    provider_id: String,
+    /// Resolved model id — surfaced in `agent_usage` rows.
+    model: String,
+    /// Persistence handle for `agent_usage` writes. `None` in unit tests
+    /// where no SQLite is available.
+    db: Option<Arc<crate::db::Db>>,
+    /// Agent role — implement / research / plan. Persisted to `agent_usage`.
+    role: AgentRole,
+    /// Task identifier (echoed across all per-task usage rows).
+    task_id: String,
+    /// App handle for emitting `usage:appended` events. `None` in unit tests.
+    app: Option<tauri::AppHandle>,
 }
 
 /// Both thresholds must be exceeded to trigger `ReasoningStall` — short
@@ -87,6 +103,8 @@ impl Orchestrator {
         provider: &ProviderConfig,
         request: &TaskRequest,
         sender: mpsc::UnboundedSender<TaskEvent>,
+        db: Option<Arc<crate::db::Db>>,
+        app: Option<tauri::AppHandle>,
     ) -> Self {
         let llm = LlmClient::new(provider);
         let tool_defs = tools::definitions_for_role(request.role);
@@ -137,6 +155,59 @@ impl Orchestrator {
             last_action_at: Instant::now(),
             reasoning_bytes_since_action: 0,
             stall_emitted: false,
+            provider_id: provider.id.clone(),
+            model: provider.model.clone(),
+            db,
+            role: request.role,
+            task_id: request.id.clone(),
+            app,
+        }
+    }
+
+    /// Persist a single model-call as an `agent_usage` row and emit
+    /// `usage:appended` so the Analytics view can refresh in real time.
+    /// Tolerates a missing db / app (unit tests).
+    fn record_call(
+        &self,
+        prompt_text: &str,
+        completion_text: &str,
+        reported_prompt: Option<i64>,
+        reported_completion: Option<i64>,
+        first_token_ms: Option<i64>,
+        total_ms: Option<i64>,
+        ok: bool,
+    ) {
+        let (pt, ct, est) = count_tokens(
+            &self.model,
+            prompt_text,
+            completion_text,
+            reported_prompt,
+            reported_completion,
+        );
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let record = UsageRecord {
+            ts: now,
+            provider_id: self.provider_id.clone(),
+            model: self.model.clone(),
+            role: format!("{:?}", self.role).to_lowercase(),
+            task_id: Some(self.task_id.clone()),
+            prompt_tokens: pt,
+            completion_tokens: ct,
+            first_token_ms,
+            total_ms,
+            ok,
+            tokens_estimated: est,
+        };
+        if let Some(db) = &self.db {
+            if let Ok(c) = db.conn() {
+                let _ = usage::record(&c, &record);
+            }
+        }
+        if let Some(app) = &self.app {
+            let _ = app.emit("usage:appended", &record);
         }
     }
 
@@ -191,14 +262,72 @@ impl Orchestrator {
             let messages = self.context.messages().to_vec();
             let tool_defs = self.context.tool_definitions().to_vec();
 
-            let rx = retry_with_backoff(
+            // Capture prompt text for the usage estimator before we move
+            // `messages` into the request. Concatenating role+content gives
+            // the estimator a stable view of what the model actually saw.
+            let prompt_text: String = messages
+                .iter()
+                .map(|m| format!("{:?}: {}", m.role, m.content))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let call_started = Instant::now();
+            let stream_result = retry_with_backoff(
                 || self.llm.chat_stream(messages.clone(), Some(tool_defs.clone()), 1.0),
                 3,
                 500,
             )
-            .await?;
+            .await;
 
-            let mut turn = self.consume_stream(rx).await?;
+            let rx = match stream_result {
+                Ok(rx) => rx,
+                Err(e) => {
+                    // Connection failed before any byte streamed back.
+                    // Still record this as a usage row so the Analytics view
+                    // surfaces failed-call counts.
+                    let total_ms = call_started.elapsed().as_millis() as i64;
+                    self.record_call(
+                        &prompt_text,
+                        "",
+                        None,
+                        None,
+                        None,
+                        Some(total_ms),
+                        false,
+                    );
+                    return Err(e);
+                }
+            };
+
+            let consume = self.consume_stream(rx, Some(call_started)).await;
+            let total_ms = call_started.elapsed().as_millis() as i64;
+
+            let mut turn = match consume {
+                Ok(t) => {
+                    self.record_call(
+                        &prompt_text,
+                        &format!("{}{}", t.reasoning, t.content),
+                        None, // server-reported usage block not surfaced by streaming client
+                        None,
+                        t.first_token_ms,
+                        Some(total_ms),
+                        true,
+                    );
+                    t
+                }
+                Err(e) => {
+                    self.record_call(
+                        &prompt_text,
+                        "",
+                        None,
+                        None,
+                        None,
+                        Some(total_ms),
+                        false,
+                    );
+                    return Err(e);
+                }
+            };
 
             // Stall tracker accumulates across turns until a tool call resets it.
             self.reasoning_bytes_since_action +=
@@ -423,13 +552,25 @@ impl Orchestrator {
     async fn consume_stream(
         &self,
         mut rx: mpsc::UnboundedReceiver<LlmStreamEvent>,
+        call_started: Option<Instant>,
     ) -> anyhow::Result<LlmTurnResult> {
         let mut result = LlmTurnResult::default();
         let mut tool_call_builders: BTreeMap<usize, ToolCallBuilder> = BTreeMap::new();
+        let mut first_token_seen = false;
+
+        let mut mark_first_token = |result: &mut LlmTurnResult| {
+            if !first_token_seen {
+                first_token_seen = true;
+                if let Some(started) = call_started {
+                    result.first_token_ms = Some(started.elapsed().as_millis() as i64);
+                }
+            }
+        };
 
         while let Some(event) = rx.recv().await {
             match event {
                 LlmStreamEvent::TextDelta(text) => {
+                    mark_first_token(&mut result);
                     result.content.push_str(&text);
                     self.sender
                         .send(TaskEvent::Text {
@@ -439,6 +580,7 @@ impl Orchestrator {
                         .ok();
                 }
                 LlmStreamEvent::ReasoningDelta(text) => {
+                    mark_first_token(&mut result);
                     result.reasoning.push_str(&text);
                     self.sender
                         .send(TaskEvent::Reasoning { content: text })
@@ -450,6 +592,7 @@ impl Orchestrator {
                     name,
                     arguments_chunk,
                 } => {
+                    mark_first_token(&mut result);
                     let builder = tool_call_builders.entry(index).or_default();
                     if let Some(id) = id {
                         builder.id = id;
@@ -769,7 +912,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await.unwrap();
+        let result = orch.consume_stream(rx, None).await.unwrap();
 
         assert_eq!(result.content, "Hello world!");
         assert!(result.tool_calls.is_empty());
@@ -807,7 +950,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await.unwrap();
+        let result = orch.consume_stream(rx, None).await.unwrap();
 
         assert_eq!(result.tool_calls.len(), 1);
         assert_eq!(result.tool_calls[0].id, "call_1");
@@ -837,7 +980,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await.unwrap();
+        let result = orch.consume_stream(rx, None).await.unwrap();
 
         assert_eq!(result.tool_calls.len(), 2);
         assert_eq!(result.tool_calls[0].function.name, "read");
@@ -858,7 +1001,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await.unwrap();
+        let result = orch.consume_stream(rx, None).await.unwrap();
 
         assert_eq!(result.reasoning, "I think this is important.");
         assert_eq!(result.content, "The answer is 42.");
@@ -882,7 +1025,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await;
+        let result = orch.consume_stream(rx, None).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("connection lost"));
@@ -898,7 +1041,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await.unwrap();
+        let result = orch.consume_stream(rx, None).await.unwrap();
 
         assert!(result.content.is_empty());
         assert!(result.tool_calls.is_empty());
@@ -926,7 +1069,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await.unwrap();
+        let result = orch.consume_stream(rx, None).await.unwrap();
 
         // Content is discarded when tool calls are present
         assert_eq!(result.content, "");
@@ -953,7 +1096,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await.unwrap();
+        let result = orch.consume_stream(rx, None).await.unwrap();
 
         // Should be deduped to 1
         assert_eq!(result.tool_calls.len(), 1);
@@ -982,7 +1125,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await.unwrap();
+        let result = orch.consume_stream(rx, None).await.unwrap();
 
         // Different arguments — both kept
         assert_eq!(result.tool_calls.len(), 2);
@@ -1007,7 +1150,7 @@ mod tests {
         });
 
         let orch = make_test_orchestrator(task_tx);
-        let result = orch.consume_stream(rx).await.unwrap();
+        let result = orch.consume_stream(rx, None).await.unwrap();
 
         // Capped at 5
         assert_eq!(result.tool_calls.len(), 5);
@@ -1037,7 +1180,7 @@ mod tests {
             role: AgentRole::Implement,
             conversation_id: None,
         };
-        Orchestrator::new(&provider, &request, sender)
+        Orchestrator::new(&provider, &request, sender, None, None)
     }
 
     fn provider_with(format_hint: &str, disable_thinking: Option<bool>) -> ProviderConfig {
@@ -1073,7 +1216,7 @@ mod tests {
     fn test_no_think_suffix_applied_for_qwen_when_opted_in() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let provider = provider_with("qwen3.6-35b-a3b", Some(true));
-        let orch = Orchestrator::new(&provider, &test_request(), tx);
+        let orch = Orchestrator::new(&provider, &test_request(), tx, None, None);
         let sys = orch.context.messages()[0].content.clone();
         assert!(
             sys.contains("/no_think"),
@@ -1085,7 +1228,7 @@ mod tests {
     fn test_no_think_suffix_absent_when_opt_out_is_default() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let provider = provider_with("qwen3.6-35b-a3b", None);
-        let orch = Orchestrator::new(&provider, &test_request(), tx);
+        let orch = Orchestrator::new(&provider, &test_request(), tx, None, None);
         let sys = orch.context.messages()[0].content.clone();
         assert!(!sys.contains("/no_think"));
     }
@@ -1171,7 +1314,7 @@ mod tests {
         // Gemma has its own thinking mechanism — the Qwen soft switch shouldn't
         // leak into its prompt even if the user toggles disable_thinking.
         let provider = provider_with("unsloth/gemma-4-26B-A4B-it", Some(true));
-        let orch = Orchestrator::new(&provider, &test_request(), tx);
+        let orch = Orchestrator::new(&provider, &test_request(), tx, None, None);
         let sys = orch.context.messages()[0].content.clone();
         assert!(!sys.contains("/no_think"));
     }

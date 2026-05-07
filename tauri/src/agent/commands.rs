@@ -79,8 +79,16 @@ pub async fn agent_start_task(
     let task_id = request.id.clone();
 
     let event_tx_orch = event_tx.clone();
+    let db_for_orch: Arc<Db> = (*db).clone();
+    let app_for_orch = app.clone();
     tokio::spawn(async move {
-        let mut orch = Orchestrator::new(&provider, &request, event_tx_orch.clone());
+        let mut orch = Orchestrator::new(
+            &provider,
+            &request,
+            event_tx_orch.clone(),
+            Some(db_for_orch),
+            Some(app_for_orch),
+        );
         tokio::select! {
             result = orch.run() => {
                 if let Err(e) = result {

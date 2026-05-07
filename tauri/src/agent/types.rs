@@ -236,6 +236,10 @@ pub struct LlmTurnResult {
     pub reasoning: String,
     pub tool_calls: Vec<ToolCall>,
     pub finish_reason: Option<String>,
+    /// Milliseconds from request kick-off to the first streamed delta
+    /// (text, reasoning, or tool-call). Populated by `consume_stream`
+    /// when a per-call timer is provided. None when no bytes streamed.
+    pub first_token_ms: Option<i64>,
 }
 
 #[cfg(test)]

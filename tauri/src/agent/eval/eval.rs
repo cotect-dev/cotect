@@ -1376,7 +1376,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     });
 
     let orch_result = tokio::time::timeout(cfg.timeout, async {
-        let mut orch = Orchestrator::new(&cfg.provider(), &request, tx);
+        let mut orch = Orchestrator::new(&cfg.provider(), &request, tx, None, None);
         orch.set_max_turns(cfg.max_turns);
         orch.run().await
     }).await;
