@@ -9,17 +9,20 @@ export default function UsageSparkline({ providerId }: { providerId: string }) {
   const setViewMode = useViewStore((s) => s.setViewMode)
 
   useEffect(() => {
+    let cancelled = false
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
     void usageAggregate(
       { from_ts: sevenDaysAgo, to_ts: null, provider_id: providerId, model: null, role: null, limit: null },
       'Day',
     ).then((rows) => {
+      if (cancelled) return
       setBuckets(rows.map((r) => ({
         day: r.bucket.replace('day:', ''),
         tokens: r.prompt_tokens + r.completion_tokens,
         tasks: r.tasks,
       })))
-    })
+    }).catch(() => { /* ignore fetch errors for sparkline */ })
+    return () => { cancelled = true }
   }, [providerId])
 
   if (buckets.length === 0) return null

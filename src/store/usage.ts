@@ -33,7 +33,9 @@ interface UsageState {
   start: () => () => void
 }
 
-const SEVEN: DateRange = { preset: '7d', from: Date.now() - 7 * 86_400_000, to: null }
+function defaultRange(): DateRange {
+  return { preset: '7d', from: Date.now() - 7 * 86_400_000, to: null }
+}
 
 function presetToRange(preset: RangePreset): DateRange {
   switch (preset) {
@@ -74,7 +76,7 @@ async function refreshAll(get: () => UsageState, set: (p: Partial<UsageState>) =
 
 export const useUsageStore = createStoreWithHMR(import.meta.hot, 'usage', () =>
   create<UsageState>((set, get) => ({
-    range: SEVEN,
+    range: defaultRange(),
     setRange: (r) => { set({ range: r }); void refreshAll(get, set) },
 
     headline: null, spendByProvider: null, spendByRole: null, latencyByModel: null, breakdown: null, tasks: null,

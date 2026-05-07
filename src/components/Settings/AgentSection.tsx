@@ -7,7 +7,7 @@ const TOOLS = ['read', 'edit', 'run', 'search', 'list_directory', 'follow_up'] a
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[180px_1fr] gap-x-4 items-center py-1.5">
+    <div className="grid grid-cols-[140px_1fr] gap-x-4 items-center py-1.5">
       <div className="flex flex-col">
         <span className="text-[11px] font-medium text-foreground">{label}</span>
         {hint && <span className="text-[10px] text-muted-foreground/70">{hint}</span>}

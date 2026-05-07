@@ -50,10 +50,10 @@ export default function AddProviderRow() {
 
   return (
     <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-card">
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-medium text-foreground min-w-[96px]">Add provider</span>
+      <span className="text-[11px] font-medium text-foreground">Add provider</span>
+      <div className="flex flex-wrap items-center gap-2">
         <input
-          className={`flex-1 ${MONO}`}
+          className={`flex-1 min-w-[180px] ${MONO}`}
           placeholder="host:port  e.g. localhost:11434"
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}

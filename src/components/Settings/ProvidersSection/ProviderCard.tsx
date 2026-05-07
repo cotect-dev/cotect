@@ -68,28 +68,30 @@ export default function ProviderCard({ provider, assignment }: { provider: Provi
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
-      <div className="flex items-center gap-2.5">
-        <span className={`inline-block w-2.5 h-2.5 rounded-full shadow-md ${dotColor}`} />
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-block w-2.5 h-2.5 rounded-full shadow-md flex-shrink-0 ${dotColor}`} />
         <input
-          className="text-sm font-semibold bg-transparent border-none outline-none focus:ring-1 focus:ring-primary rounded px-1 max-w-[260px]"
+          className="text-sm font-semibold bg-transparent border-none outline-none focus:ring-1 focus:ring-primary rounded px-1 min-w-0 flex-1"
           value={provider.label}
           onChange={(e) => onLabelChange(e.target.value)}
         />
         {isDefault && (
-          <span className="px-1.5 py-0.5 rounded text-[9px] bg-primary/20 text-primary font-medium">DEFAULT</span>
+          <span className="px-1.5 py-0.5 rounded text-[9px] bg-primary/20 text-primary font-medium flex-shrink-0">DEFAULT</span>
         )}
-        <span className="px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground">
+        <span className="px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground flex-shrink-0">
           {health.state === 'Healthy' && `last ok ${relTime(health.last_ok_at_ms)}`}
           {health.state !== 'Healthy' && `${health.state.toLowerCase()}${health.last_error ? ` · ${health.last_error.slice(0, 40)}` : ''}`}
           {health.p50_first_token_ms != null && ` · p50 ${health.p50_first_token_ms}ms`}
         </span>
         <span className="flex-1" />
-        <Button size="sm" variant="secondary" onClick={onReprobe} disabled={reprobing} className="h-6 px-2 text-[10px]">
-          {reprobing ? 'Probing…' : 'Reprobe'}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => void remove(provider.id)} className="h-6 px-2 text-[10px] text-red-400 hover:text-red-300">
-          Remove
-        </Button>
+        <div className="flex gap-1 flex-shrink-0">
+          <Button size="sm" variant="secondary" onClick={onReprobe} disabled={reprobing} className="h-6 px-2 text-[10px]">
+            {reprobing ? 'Probing…' : 'Reprobe'}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => void remove(provider.id)} className="h-6 px-2 text-[10px] text-red-400 hover:text-red-300">
+            Remove
+          </Button>
+        </div>
       </div>
 
       {health.state === 'Unhealthy' && health.last_error && (
@@ -98,12 +100,12 @@ export default function ProviderCard({ provider, assignment }: { provider: Provi
         </div>
       )}
 
-      <div className="grid grid-cols-[96px_1fr] gap-y-1.5 gap-x-3 text-[11px]">
+      <div className="grid grid-cols-[80px_1fr] gap-y-1.5 gap-x-3 text-[11px]">
         <div className="text-muted-foreground">Endpoint</div>
-        <input className={`${INPUT} font-mono`} value={provider.endpoint} onChange={(e) => onEndpointChange(e.target.value)} />
+        <input className={`${INPUT} font-mono min-w-0`} value={provider.endpoint} onChange={(e) => onEndpointChange(e.target.value)} />
 
         <div className="text-muted-foreground">API key</div>
-        <input className={`${INPUT} font-mono`} type="password" placeholder="(none)" value={provider.api_key ?? ''} onChange={(e) => onApiKeyChange(e.target.value)} />
+        <input className={`${INPUT} font-mono min-w-0`} type="password" placeholder="(none)" value={provider.api_key ?? ''} onChange={(e) => onApiKeyChange(e.target.value)} />
 
         {detected && (
           <>

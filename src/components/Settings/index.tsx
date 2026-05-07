@@ -12,8 +12,8 @@ export default function Settings() {
   return (
     <div className="flex w-full h-full overflow-hidden">
       <Toc />
-      <div className="flex-1 min-w-0 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-12">
+      <div className="flex-1 min-w-0 overflow-y-auto px-6 py-6">
+        <div className="max-w-2xl flex flex-col gap-12">
           <section id="providers" className="scroll-mt-4">
             <ProvidersSection />
           </section>

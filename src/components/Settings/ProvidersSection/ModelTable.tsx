@@ -33,32 +33,34 @@ export default function ModelTable({
         />
         <span className="text-[10px] text-muted-foreground">{filtered.length} of {detected.models.length}</span>
       </div>
-      <div className="border border-border rounded-md overflow-hidden">
-        <div className="grid grid-cols-[1fr_80px_80px_90px_80px] gap-0 bg-muted/40 px-2.5 py-1 text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-          <div>Model</div><div>Family</div><div>Format</div><div>Ctx</div><div>Roles</div>
-        </div>
-        {filtered.slice(0, 50).map((m) => {
-          const roles = rolesAssignedToModel(assignment, provider.id, m.id)
-          const fmt = detected.format_per_model[m.id]
-          return (
-            <div key={m.id} className="grid grid-cols-[1fr_80px_80px_90px_80px] gap-0 px-2.5 py-1.5 border-t border-border text-[11px] font-mono items-center">
-              <div>{m.id}</div>
-              <div className="text-muted-foreground">{m.family ?? '—'}</div>
-              <div className="text-muted-foreground">{fmt ?? '—'}</div>
-              <div className="text-muted-foreground">{m.context ? `${Math.round(m.context/1024)}k` : '—'}</div>
-              <div className="flex gap-1">
-                {roles.map((r) => (
-                  <span key={r} className="text-[9px] bg-primary/20 text-primary px-1 py-0 rounded">{r.slice(0,4)}</span>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-        {filtered.length > 50 && (
-          <div className="px-2.5 py-1 border-t border-border text-[10px] text-muted-foreground text-center">
-            …and {filtered.length - 50} more — search to filter
+      <div className="border border-border rounded-md overflow-x-auto">
+        <div className="min-w-[420px]">
+          <div className="grid grid-cols-[1fr_64px_64px_64px_72px] gap-0 bg-muted/40 px-2.5 py-1 text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+            <div>Model</div><div>Family</div><div>Format</div><div>Ctx</div><div>Roles</div>
           </div>
-        )}
+          {filtered.slice(0, 50).map((m) => {
+            const roles = rolesAssignedToModel(assignment, provider.id, m.id)
+            const fmt = detected.format_per_model[m.id]
+            return (
+              <div key={m.id} className="grid grid-cols-[1fr_64px_64px_64px_72px] gap-0 px-2.5 py-1.5 border-t border-border text-[11px] font-mono items-center">
+                <div className="truncate">{m.id}</div>
+                <div className="text-muted-foreground truncate">{m.family ?? '—'}</div>
+                <div className="text-muted-foreground truncate">{fmt ?? '—'}</div>
+                <div className="text-muted-foreground">{m.context ? `${Math.round(m.context/1024)}k` : '—'}</div>
+                <div className="flex gap-1">
+                  {roles.map((r) => (
+                    <span key={r} className="text-[9px] bg-primary/20 text-primary px-1 py-0 rounded">{r.slice(0,4)}</span>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+          {filtered.length > 50 && (
+            <div className="px-2.5 py-1 border-t border-border text-[10px] text-muted-foreground text-center">
+              …and {filtered.length - 50} more — search to filter
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

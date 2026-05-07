@@ -155,6 +155,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
             <div
               ref={(el) => { zoneRefs.current.right = el; rightZoneRef.current = el }}
               className="h-full pointer-events-auto"
+              data-zone="right"
               style={isPanel ? {
                 flexGrow: 1,
                 flexShrink: 1,
@@ -189,6 +190,7 @@ export default function Layout({ mode = 'main' }: LayoutProps) {
             <div
               ref={(el) => { zoneRefs.current.bottom = el; bottomZoneRef.current = el }}
               className="w-full pointer-events-auto relative z-[1]"
+              data-zone="bottom"
               style={{
                 flexGrow: 0,
                 flexShrink: 0,
