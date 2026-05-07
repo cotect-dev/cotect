@@ -96,6 +96,21 @@ impl PromptFormat {
             Self::OpenAICompat => "OpenAI-compatible",
         }
     }
+
+    /// Parse a stored format string (as written by the probe / serde
+    /// `snake_case` rendering) back into a [`PromptFormat`]. Returns
+    /// `None` for unknown values so callers can fall back to auto-detect.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "plain" => Some(Self::Plain),
+            "gemma" => Some(Self::Gemma),
+            "llama3" => Some(Self::Llama3),
+            "qwen" => Some(Self::Qwen),
+            "chatml" => Some(Self::ChatML),
+            "openai_compat" => Some(Self::OpenAICompat),
+            _ => None,
+        }
+    }
 }
 
 
