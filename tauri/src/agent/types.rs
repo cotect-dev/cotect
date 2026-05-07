@@ -112,37 +112,6 @@ pub struct ProviderConfig {
     pub disable_thinking: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentConfig {
-    pub providers: Vec<ProviderConfig>,
-    pub active_provider_id: String,
-}
-
-impl Default for AgentConfig {
-    fn default() -> Self {
-        Self {
-            providers: vec![ProviderConfig {
-                id: "ollama".into(),
-                name: "Local Ollama".into(),
-                endpoint: "http://localhost:11434/v1".into(),
-                api_key: None,
-                model: String::new(),
-                format: None,
-                disable_thinking: None,
-            }],
-            active_provider_id: "ollama".into(),
-        }
-    }
-}
-
-impl AgentConfig {
-    pub fn active_provider(&self) -> Option<&ProviderConfig> {
-        self.providers
-            .iter()
-            .find(|p| p.id == self.active_provider_id)
-    }
-}
-
 impl ProviderConfig {
     /// Explicit `format` override, otherwise auto-detected from `model`.
     pub fn resolved_format(&self) -> crate::agent::adapter::PromptFormat {
@@ -315,15 +284,6 @@ mod tests {
         }"#;
         let cfg: ProviderConfig = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.disable_thinking, None);
-    }
-
-    #[test]
-    fn test_agent_config_active_provider_missing() {
-        let config = AgentConfig {
-            providers: vec![],
-            active_provider_id: "nonexistent".into(),
-        };
-        assert!(config.active_provider().is_none());
     }
 
 }
