@@ -348,8 +348,9 @@ function ViewSwitcher() {
 
   // Inactive views are kept mounted but hidden so they preserve scroll
   // position, viewport state, and internal component state across switches.
-  // `visibility: hidden` (not `display: none`) keeps layout measurements
-  // valid — ReactFlow in particular needs a sized container.
+  // `opacity: 0` (not `display: none`) keeps layout measurements valid —
+  // ReactFlow needs a sized container. Unlike `visibility: hidden`, children
+  // cannot override a parent's opacity, so the view is reliably invisible.
   const insetStyle = (view: typeof viewMode) => ({
     ...contentStyle,
     // Files view fills the entire window (behind the z-10 panel overlay);
@@ -357,7 +358,9 @@ function ViewSwitcher() {
     top: view === 'files' ? 0 : insets.top,
     paddingLeft: view === 'files' ? 0 : insets.left,
     paddingRight: view === 'files' ? 0 : insets.right,
-    visibility: (viewMode === view ? 'visible' : 'hidden') as 'visible' | 'hidden',
+    // opacity (not visibility) — children can override `visibility: hidden`
+    // but cannot escape a parent's opacity, so this reliably hides the view.
+    opacity: viewMode === view ? 1 : 0,
     pointerEvents: (viewMode === view ? 'auto' : 'none') as 'auto' | 'none',
   })
 
