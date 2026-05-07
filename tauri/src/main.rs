@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agent;
+mod cleanup;
 mod commands;
 mod db;
 mod git;
@@ -115,6 +116,7 @@ fn main() {
         .setup(|app| {
             let app_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_dir)?;
+            cleanup::drop_legacy_app_state_json(&app_dir);
             let db = Arc::new(db::Db::open(&app_dir.join("cotect.db"))?);
             app.manage(db);
             synced_state::load_all(app.handle());
