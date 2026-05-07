@@ -115,7 +115,7 @@ async function collectParseableFiles(
   return found
 }
 
-export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () => create<GraphState>((set, get) => ({
+export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () => create<GraphState>((set) => ({
   scanState: 'idle',
   scannedCount: 0,
   errorMessage: null,
