@@ -5,6 +5,7 @@ use std::path::Path;
 
 pub type Conn = r2d2::PooledConnection<SqliteConnectionManager>;
 
+pub mod commands;
 pub mod kv;
 pub mod providers;
 pub mod repos;
