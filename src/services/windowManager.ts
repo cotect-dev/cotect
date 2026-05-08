@@ -1,17 +1,9 @@
 import { getPlatform } from '@/services/platform'
-import type { PanelPosition } from '@/store/layout'
 import { useBrowserStore } from '@/store/browser'
 import type { WindowMonitorInfo, MonitorInfo } from '@/services/platform/types'
+import type { PersistedLayout } from '@/types/layout'
 
-export interface PersistedLayout {
-  panels: Record<PanelPosition, string[][]>
-  sizes: Record<PanelPosition, number[]>
-  activeTab: Record<string, number>
-  // Outer-zone ratios (left/right widths and bottom height as fractions of the
-  // window). Optional for backwards compatibility with payloads written before
-  // zoneSizes was unified into the layout store.
-  zoneSizes?: { left: number; right: number; bottom: number }
-}
+export type { PersistedLayout } from '@/types/layout'
 
 export interface PersistedGeometry {
   x: number

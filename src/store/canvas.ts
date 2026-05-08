@@ -16,6 +16,10 @@ import { joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
 import { withPersistence } from '@/store/persistence'
 import { useGitStore } from '@/store/git'
+import { parseImportsWithLines } from '@/services/treesitter'
+import { resolveImport } from '@/services/importResolver'
+import { getConfigForFile } from '@/services/treesitter-queries'
+import { useGraphStore } from '@/store/graph'
 
 function isTestFile(name: string): boolean {
   const lower = name.toLowerCase()
@@ -26,11 +30,30 @@ function isTestFile(name: string): boolean {
   return false
 }
 
+export type ImportRefKind = 'import' | 'imported-by'
+
+export interface ImportRef {
+  /** Repo-relative path of the resolved import target. */
+  resolvedPath: string
+  /** Display filename. */
+  label: string
+  /** 1-based source line number of the import/export statement. */
+  line: number
+  /**
+   * 1-based visual line accounting for merge-view deleted chunks.
+   * Same as `line` when no diff is active.
+   */
+  visualLine: number
+  kind: ImportRefKind
+}
+
 export interface Column {
   path: string
   kind: 'directory' | 'file'
   nodes: AppNode[]
   edges: Edge[]
+  /** Resolved import references for file preview columns. */
+  importRefs?: ImportRef[]
 }
 
 export type CanvasState = {
@@ -183,6 +206,158 @@ async function buildImageNode(filePath: string): Promise<AppNode | null> {
       dataUrl,
     },
   }
+}
+
+/**
+ * Compute a visual-line map for a modified file: for each 0-based working-tree
+ * line index, returns the 0-based visual line index accounting for deleted
+ * HEAD-only lines that `unifiedMergeView` interleaves above it.
+ */
+function computeVisualLineMap(headContent: string, workingContent: string): number[] {
+  const a = headContent.split('\n')
+  const b = workingContent.split('\n')
+  const n = a.length
+  const m = b.length
+
+  // For very large files, skip the DP and return identity (no offset).
+  if (n > 2000 || m > 2000) return b.map((_, i) => i)
+
+  // LCS via standard DP.
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1])
+    }
+  }
+
+  // Backtrack to identify which lines are matched (in the LCS).
+  const headMatched = new Array(n).fill(false)
+  const workMatched = new Array(m).fill(false)
+  let i = n, j = m
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) {
+      headMatched[i - 1] = true
+      workMatched[j - 1] = true
+      i--; j--
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      i--
+    } else {
+      j--
+    }
+  }
+
+  // Walk both sequences in order: for each working line, count how many
+  // unmatched HEAD lines (deleted chunks) the merge view inserts above it.
+  const visualMap: number[] = new Array(m)
+  let hi = 0
+  let deletedAbove = 0
+  for (let wi = 0; wi < m; wi++) {
+    if (workMatched[wi]) {
+      // Advance HEAD past unmatched (deleted) lines up to the matching line.
+      while (hi < n && !headMatched[hi]) { deletedAbove++; hi++ }
+      hi++ // consume the matched HEAD line
+    }
+    visualMap[wi] = wi + deletedAbove
+  }
+  return visualMap
+}
+
+/**
+ * Resolve import references for a code node, returning positioned refs
+ * with their source line numbers. Uses the graph store's scanned file set
+ * for resolution; returns empty if the graph hasn't been scanned yet.
+ *
+ * Also finds "imported-by" refs — files that depend on this file — using
+ * the graph store's edge data, and computes visual-line offsets when the
+ * file has an active inline diff.
+ */
+async function resolveFileImportRefs(
+  filePath: string,
+  codeNode: AppNode,
+): Promise<ImportRef[]> {
+  if (codeNode.type !== 'codeNode') return []
+
+  const gitState = useGitStore.getState()
+  const { repoPath } = gitState
+  if (!repoPath) return []
+
+  const repoRel = toRepoRelative(filePath, repoPath)
+  const config = getConfigForFile(repoRel)
+  if (!config) return []
+
+  const { allNodes, allEdges, scanState } = useGraphStore.getState()
+  if (scanState !== 'ready' || allNodes.length === 0) return []
+
+  const knownFiles = new Set(allNodes.map((n) => n.id))
+  const source = codeNode.data.code
+
+  // --- visual-line map for diff-aware positioning ---
+  let vmap: number[] | null = null
+  const gitEntry = gitState.status?.files.find((f) => f.path === repoRel)
+  if (gitEntry && gitEntry.status !== 'A' && gitEntry.status !== 'U') {
+    const headContent = await gitState.loadHeadContent(repoRel)
+    if (headContent !== null) {
+      vmap = computeVisualLineMap(headContent, source)
+    }
+  }
+
+  const toVisual = (srcLine: number) => {
+    if (!vmap) return srcLine
+    const idx = srcLine - 1
+    return idx >= 0 && idx < vmap.length ? vmap[idx] + 1 : srcLine
+  }
+
+  // --- outgoing imports (files this file imports) ---
+  const importLines = await parseImportsWithLines(repoRel, source)
+  const refs: ImportRef[] = []
+  const seen = new Set<string>()
+  for (const imp of importLines) {
+    const resolved = resolveImport(imp.specifier, repoRel, knownFiles, config.id)
+    if (!resolved || resolved === repoRel) continue
+    if (seen.has(resolved)) continue
+    seen.add(resolved)
+    const label = resolved.split('/').pop() || resolved
+    refs.push({
+      resolvedPath: resolved, label,
+      line: imp.line, visualLine: toVisual(imp.line),
+      kind: 'import',
+    })
+  }
+
+  // --- imported-by (files that import this file) ---
+  const importers = allEdges
+    .filter((e) => e.target === repoRel && e.source !== repoRel)
+    .map((e) => e.source)
+
+  if (importers.length > 0) {
+    // Find where the first export statement is in this file to anchor
+    // the imported-by group. Fall back to line after last import.
+    const sourceLines = source.split('\n')
+    let anchorLine = refs.length > 0 ? refs[refs.length - 1].line + 2 : 1
+    for (let li = 0; li < sourceLines.length; li++) {
+      const trimmed = sourceLines[li].trimStart()
+      if (trimmed.startsWith('export ') && !trimmed.includes(' from ')) {
+        anchorLine = li + 1
+        break
+      }
+    }
+
+    for (const imp of importers) {
+      if (seen.has(imp)) continue
+      seen.add(imp)
+      const label = imp.split('/').pop() || imp
+      refs.push({
+        resolvedPath: imp, label,
+        line: anchorLine, visualLine: toVisual(anchorLine),
+        kind: 'imported-by',
+      })
+      anchorLine++
+    }
+  }
+
+  return refs
 }
 
 /**
@@ -340,6 +515,13 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
       flattenAndRender(get, set)
       void get().updatePreview()
+
+      // Trigger graph scan in background so import refs are available
+      // when the user focuses a code file.
+      const graphState = useGraphStore.getState()
+      if (graphState.scanState === 'idle') {
+        void graphState.scan(rootPath)
+      }
     } catch (err) {
       console.error('Failed to init root:', err)
     }
@@ -597,18 +779,21 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         const path = node.data.path
         const fileName = node.data.label
         let contentNode: AppNode | null = null
+        let importRefs: ImportRef[] | undefined
         try {
           if (isImageFile(fileName)) {
             const imageNode = await buildImageNode(path)
             contentNode = imageNode ?? await buildFileNode(path)
           } else {
             contentNode = await buildFileNode(path)
+            // Resolve import references with line positions
+            importRefs = await resolveFileImportRefs(path, contentNode)
           }
         } catch {
           contentNode = await buildHeadFallbackNode(path)
         }
         if (contentNode) {
-          previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
+          previewCol = { path, kind: 'file', nodes: [contentNode], edges: [], importRefs }
         }
       }
 
@@ -700,6 +885,18 @@ useGitStore.subscribe((state) => {
   }
 
   void refreshDirectoryColumns(affected)
+})
+
+// Re-run updatePreview when the graph scan completes so import ref nodes
+// appear once resolution data is available.
+let prevGraphScanState = useGraphStore.getState().scanState
+useGraphStore.subscribe((state) => {
+  if (state.scanState === 'ready' && prevGraphScanState !== 'ready') {
+    prevGraphScanState = state.scanState
+    void useCanvasStore.getState().updatePreview()
+  } else {
+    prevGraphScanState = state.scanState
+  }
 })
 
 /**
@@ -815,6 +1012,58 @@ function flattenAndRender(
 
     for (const edge of col.edges) {
       allEdges.push({ ...edge })
+    }
+
+    // Position import ref nodes to the right of the code editor, aligned
+    // to the source line where each import statement appears.
+    if (isPreviewCol && col.kind === 'file' && col.importRefs && col.importRefs.length > 0) {
+      const codeNode = positioned[0]
+      if (codeNode) {
+        const { codeNodeWidth } = get()
+        const codeX = codeNode.position.x
+        const codeY = codeNode.position.y
+
+        // Must match CodeNode.tsx theme: explicit lineHeight '18px' on .cm-content.
+        const HEADER_HEIGHT = 33   // px-3 py-1.5 + text + border-b
+        const LINE_HEIGHT = 18     // pinned in CodeNode.tsx .cm-content lineHeight
+        const CM_PAD_TOP = 4       // .cm-content padding: '4px 0'
+        const REF_GAP = 16         // gap between code node right edge and ref column
+        const REF_COL_WIDTH = 160  // horizontal space per stacking column
+
+        // Stack refs horizontally when they'd overlap on the same visual line.
+        const refX0 = codeX + codeNodeWidth + REF_GAP
+
+        // Track occupied visual-line per horizontal stacking column.
+        const colBottoms: number[] = []
+
+        for (const ref of col.importRefs) {
+          const vl = ref.visualLine
+          const refY = codeY + HEADER_HEIGHT + CM_PAD_TOP + (vl - 1) * LINE_HEIGHT
+
+          // Find the first horizontal column where this ref doesn't overlap.
+          let col_idx = 0
+          while (col_idx < colBottoms.length && colBottoms[col_idx] >= vl) {
+            col_idx++
+          }
+          colBottoms[col_idx] = vl
+
+          const refX = refX0 + col_idx * REF_COL_WIDTH
+
+          allNodes.push({
+            id: `importRef:${ref.kind}:${ref.resolvedPath}:${ref.line}`,
+            type: 'importRef',
+            position: { x: refX, y: refY },
+            data: {
+              label: ref.label,
+              resolvedPath: ref.resolvedPath,
+              line: ref.line,
+              kind: ref.kind,
+              __columnIndex: i,
+              __isCurrent: true,
+            },
+          } as AppNode)
+        }
+      }
     }
   }
 

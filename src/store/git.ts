@@ -283,7 +283,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
 
   setRepoPath: (path: string) => {
     if (path === get().repoPath) return
-    set({ repoPath: path, initialized: false, isGitRepo: false, gitError: null, status: null, log: null, branch: null, branches: [], lastCommitTimestamp: null })
+    set({ repoPath: path, initialized: false, isGitRepo: false, gitError: null, status: null, log: null, branch: null, branches: [], lastCommitTimestamp: null, loading: false, headContent: { sha: '', files: {} }, fileTimes: {} })
   },
 })))
 

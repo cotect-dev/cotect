@@ -1,4 +1,4 @@
-import type { PersistedLayout } from '@/services/windowManager'
+import type { PersistedLayout } from '@/types/layout'
 
 export const MIN_SIDE_ZONE = 120
 export const MIN_BOTTOM_ZONE = 80

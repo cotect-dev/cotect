@@ -6,6 +6,7 @@ import { useGitStore, startGitWatcher, stopGitWatcher } from '@/store/git'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
 import { initPersistence, stopPersistence, flushPendingWrites, switchProject } from '@/store/persistence'
+import { useTasksStore } from '@/store/tasks'
 import { computeProjectId } from '@/lib/projectId'
 
 export function useWindowLifecycle() {
@@ -103,6 +104,7 @@ export function useWindowLifecycle() {
           const gitState = useGitStore.getState()
           if (state.rootPath && state.rootPath !== gitState.repoPath) {
             gitState.setRepoPath(state.rootPath)
+            useTasksStore.getState().clearAll()
             stopGitWatcher()
             startGitWatcher(state.rootPath, windowId)
             computeProjectId(state.rootPath).then((newProjectId) => {

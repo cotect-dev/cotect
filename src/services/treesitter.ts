@@ -62,6 +62,12 @@ function releaseParser(parser: Parser): void {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+export interface ImportWithLine {
+  specifier: string
+  /** 1-based line number where the import/export statement begins. */
+  line: number
+}
+
 function readStringLiteral(node: TSNode | null): string | null {
   if (!node) return null
   if (node.type !== 'string' && node.type !== 'interpreted_string_literal' && node.type !== 'string_literal') return null
@@ -76,8 +82,8 @@ function readStringLiteral(node: TSNode | null): string | null {
 // JS/TS extractor
 // ---------------------------------------------------------------------------
 
-function collectJsTsImports(rootNode: TSNode): string[] {
-  const specifiers: string[] = []
+function collectJsTsImportsWithLines(rootNode: TSNode): ImportWithLine[] {
+  const results: ImportWithLine[] = []
   const stack: TSNode[] = [rootNode]
   while (stack.length > 0) {
     const node = stack.pop()!
@@ -86,14 +92,14 @@ function collectJsTsImports(rootNode: TSNode): string[] {
     if (type === 'import_statement' || type === 'export_statement') {
       const src = node.childForFieldName('source')
       const literal = readStringLiteral(src)
-      if (literal !== null) specifiers.push(literal)
+      if (literal !== null) results.push({ specifier: literal, line: node.startPosition.row + 1 })
     } else if (type === 'call_expression') {
       const fn = node.childForFieldName('function')
       const args = node.childForFieldName('arguments')
       if (fn && args && (fn.type === 'import' || fn.text === 'require')) {
         const first = args.namedChildren[0]
         const literal = readStringLiteral(first ?? null)
-        if (literal !== null) specifiers.push(literal)
+        if (literal !== null) results.push({ specifier: literal, line: node.startPosition.row + 1 })
       }
     }
 
@@ -102,39 +108,33 @@ function collectJsTsImports(rootNode: TSNode): string[] {
       if (child) stack.push(child)
     }
   }
-  return specifiers
+  return results
 }
 
 // ---------------------------------------------------------------------------
 // Python extractor
 // ---------------------------------------------------------------------------
 
-function collectPythonImports(rootNode: TSNode): string[] {
-  const specifiers: string[] = []
+function collectPythonImportsWithLines(rootNode: TSNode): ImportWithLine[] {
+  const results: ImportWithLine[] = []
   const stack: TSNode[] = [rootNode]
   while (stack.length > 0) {
     const node = stack.pop()!
     const type = node.type
 
-    // `import foo.bar` → module_name is "foo.bar"
     if (type === 'import_statement') {
       const name = node.childForFieldName('name')
-      if (name) specifiers.push(name.text)
+      if (name) results.push({ specifier: name.text, line: node.startPosition.row + 1 })
     }
-    // `from foo.bar import baz` → module_name is "foo.bar"
-    // `from . import baz` → module_name is "."
-    // `from ..utils import x` → module_name is "..utils"
     if (type === 'import_from_statement') {
       const moduleName = node.childForFieldName('module_name')
       if (moduleName) {
-        specifiers.push(moduleName.text)
+        results.push({ specifier: moduleName.text, line: node.startPosition.row + 1 })
       } else {
-        // `from . import x` — tree-sitter may put the relative prefix differently
-        // Walk children to find relative_import or dotted_name
         for (let i = 0; i < node.namedChildCount; i++) {
           const child = node.namedChild(i)
           if (child && (child.type === 'relative_import' || child.type === 'dotted_name')) {
-            specifiers.push(child.text)
+            results.push({ specifier: child.text, line: node.startPosition.row + 1 })
             break
           }
         }
@@ -146,15 +146,15 @@ function collectPythonImports(rootNode: TSNode): string[] {
       if (child) stack.push(child)
     }
   }
-  return specifiers
+  return results
 }
 
 // ---------------------------------------------------------------------------
 // Go extractor
 // ---------------------------------------------------------------------------
 
-function collectGoImports(rootNode: TSNode): string[] {
-  const specifiers: string[] = []
+function collectGoImportsWithLines(rootNode: TSNode): ImportWithLine[] {
+  const results: ImportWithLine[] = []
   const stack: TSNode[] = [rootNode]
   while (stack.length > 0) {
     const node = stack.pop()!
@@ -162,7 +162,7 @@ function collectGoImports(rootNode: TSNode): string[] {
     if (node.type === 'import_spec') {
       const path = node.childForFieldName('path')
       const literal = readStringLiteral(path)
-      if (literal !== null) specifiers.push(literal)
+      if (literal !== null) results.push({ specifier: literal, line: node.startPosition.row + 1 })
     }
 
     for (let i = node.namedChildCount - 1; i >= 0; i--) {
@@ -170,35 +170,32 @@ function collectGoImports(rootNode: TSNode): string[] {
       if (child) stack.push(child)
     }
   }
-  return specifiers
+  return results
 }
 
 // ---------------------------------------------------------------------------
 // Rust extractor
 // ---------------------------------------------------------------------------
 
-function collectRustImports(rootNode: TSNode): string[] {
-  const specifiers: string[] = []
+function collectRustImportsWithLines(rootNode: TSNode): ImportWithLine[] {
+  const results: ImportWithLine[] = []
   const stack: TSNode[] = [rootNode]
   while (stack.length > 0) {
     const node = stack.pop()!
 
-    // `use crate::foo::bar;` or `use super::baz;`
     if (node.type === 'use_declaration') {
-      // The argument child holds the path: `crate::foo::bar` or `super::baz`
       const arg = node.namedChildren.find((c) =>
         c.type === 'scoped_identifier' ||
         c.type === 'use_as_clause' ||
         c.type === 'scoped_use_list' ||
         c.type === 'identifier'
       )
-      if (arg) specifiers.push(arg.text)
+      if (arg) results.push({ specifier: arg.text, line: node.startPosition.row + 1 })
     }
 
-    // `mod foo;` — declares a submodule (file dependency)
     if (node.type === 'mod_item') {
       const name = node.childForFieldName('name')
-      if (name) specifiers.push(`mod::${name.text}`)
+      if (name) results.push({ specifier: `mod::${name.text}`, line: node.startPosition.row + 1 })
     }
 
     for (let i = node.namedChildCount - 1; i >= 0; i--) {
@@ -206,19 +203,19 @@ function collectRustImports(rootNode: TSNode): string[] {
       if (child) stack.push(child)
     }
   }
-  return specifiers
+  return results
 }
 
 // ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
 
-const EXTRACTORS: Record<LanguageId, (root: TSNode) => string[]> = {
-  typescript: collectJsTsImports,
-  javascript: collectJsTsImports,
-  python: collectPythonImports,
-  go: collectGoImports,
-  rust: collectRustImports,
+const EXTRACTORS: Record<LanguageId, (root: TSNode) => ImportWithLine[]> = {
+  typescript: collectJsTsImportsWithLines,
+  javascript: collectJsTsImportsWithLines,
+  python: collectPythonImportsWithLines,
+  go: collectGoImportsWithLines,
+  rust: collectRustImportsWithLines,
 }
 
 /**
@@ -227,6 +224,16 @@ const EXTRACTORS: Record<LanguageId, (root: TSNode) => string[]> = {
  * languages or parse failures.
  */
 export async function parseImports(filename: string, source: string): Promise<string[]> {
+  const results = await parseImportsWithLines(filename, source)
+  return results.map((r) => r.specifier)
+}
+
+/**
+ * Like `parseImports` but also returns the 1-based line number of each
+ * import/export statement. Used by the canvas to position reference nodes
+ * at the source-code line where the dependency appears.
+ */
+export async function parseImportsWithLines(filename: string, source: string): Promise<ImportWithLine[]> {
   const loaded = await loadLanguageForFile(filename)
   if (!loaded) return []
 

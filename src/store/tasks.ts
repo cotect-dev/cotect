@@ -34,6 +34,7 @@ interface TasksState {
   createTask: (id: string, prompt: string, role: AgentRole, scope: agentService.TaskScope) => void
   abortTask: (id: string) => void
   clearCompleted: () => void
+  clearAll: () => void
   removeTask: (id: string) => void
 }
 
@@ -102,6 +103,18 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
       set({
         tasks: tasks.filter((t) => isActive(t)),
       })
+    },
+
+    clearAll: () => {
+      const { tasks } = get()
+      for (const t of tasks) {
+        if (t.status === 'running' || t.status === 'pending') {
+          agentService.abortTask(t.id).catch(console.error)
+        }
+        taskListeners.get(t.id)?.()
+        taskListeners.delete(t.id)
+      }
+      set({ tasks: [] })
     },
 
     removeTask: (id) => {

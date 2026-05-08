@@ -249,6 +249,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             padding: '4px 0',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-all',
+            lineHeight: '18px',
           },
           // Override @codemirror/merge defaults: drop the faux-underline on
           // changedText, and use a luminance gap (red darker than green) so

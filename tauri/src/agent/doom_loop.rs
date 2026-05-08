@@ -221,7 +221,7 @@ impl Default for DoomLoopDetector {
         Self {
             history: Vec::new(),
             thinking_shell_streak: 0,
-            threshold: 3,
+            threshold: 20,
         }
     }
 }
@@ -365,15 +365,15 @@ mod tests {
     #[test]
     fn test_detect_consecutive_identical() {
         let mut d = DoomLoopDetector::default();
-        d.record("read", r#"{"path":"a.txt"}"#);
-        d.record("read", r#"{"path":"a.txt"}"#);
-        d.record("read", r#"{"path":"a.txt"}"#);
-        assert_eq!(d.check(), Some(3));
+        for _ in 0..20 {
+            d.record("read", r#"{"path":"a.txt"}"#);
+        }
+        assert_eq!(d.check(), Some(20));
     }
 
     #[test]
     fn test_detect_pattern_abc_abc_abc() {
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         for _ in 0..3 {
             d.record("read", r#"{"path":"a.txt"}"#);
             d.record("write", r#"{"path":"b.txt"}"#);
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn test_detect_recent_pattern_only() {
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         // Old pattern that doesn't repeat
         d.record("read", r#"{"path":"x.txt"}"#);
         d.record("write", r#"{"path":"y.txt"}"#);
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn test_long_pattern_abcde_repeated() {
-        let mut d = DoomLoopDetector::default(); // threshold=3
+        let mut d = DoomLoopDetector::new(3); // threshold=3
         for _ in 0..3 {
             d.record("read", r#"{"p":"a"}"#);
             d.record("write", r#"{"p":"b"}"#);
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn test_interleaved_non_repeating_no_detection() {
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record("read", r#"{"p":"a"}"#);
         d.record("write", r#"{"p":"b"}"#);
         d.record("read", r#"{"p":"c"}"#);
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_alternating_two_tools_detected() {
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         for _ in 0..3 {
             d.record("read", r#"{"p":"same"}"#);
             d.record("write", r#"{"p":"same"}"#);
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_pattern_broken_by_different_call() {
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record("read", r#"{"p":"a"}"#);
         d.record("read", r#"{"p":"a"}"#);
         d.record("write", r#"{"p":"b"}"#); // Break the pattern
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn test_same_tool_different_args_no_loop() {
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record("read", r#"{"p":"file1.txt"}"#);
         d.record("read", r#"{"p":"file2.txt"}"#);
         d.record("read", r#"{"p":"file3.txt"}"#);
@@ -513,7 +513,7 @@ mod tests {
     #[test]
     fn test_multiple_pattern_lengths_checked() {
         // Pattern of length 2 repeating 3 times, with noise before
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record("fetch", r#"{"u":"random"}"#);
         d.record("shell", r#"{"c":"other"}"#);
         for _ in 0..3 {
@@ -526,7 +526,7 @@ mod tests {
     #[test]
     fn test_same_tool_and_args_detected_via_hash() {
         // Same tool+args combo should be detected as stuck
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         let big_content = "x".repeat(10_000); // large arg to verify hashing works
         for _ in 0..3 {
             d.record("write", &big_content);
@@ -560,7 +560,7 @@ mod tests {
         // the first 80 non-whitespace chars, so all three hash identically
         // — the detector should flag this as a near-duplicate loop even
         // though the exact hashes differ.
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record(
             "shell",
             r##"{"command":"python3 -c import sys, os, pathlib; sys.path.insert(0, \"/tmp/abc\"); print(1)"}"##,
@@ -583,7 +583,7 @@ mod tests {
     fn test_coarse_signature_does_not_flag_legit_variations() {
         // Legitimately different shell commands — different target files —
         // must NOT trigger the coarse detector.
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record("shell", r##"{"command":"ls src/"}"##);
         d.record("shell", r##"{"command":"ls tests/"}"##);
         d.record("shell", r##"{"command":"cat Cargo.toml"}"##);
@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn test_thinking_in_shell_detected() {
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         // Three consecutive comment-only python3 -c commands.
         d.record(
             "shell",
@@ -613,7 +613,7 @@ mod tests {
 
     #[test]
     fn test_real_shell_action_resets_thinking_streak() {
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record("shell", r##"{"command":"python3 -c \"# thinking comment\""}"##);
         d.record("shell", r##"{"command":"python3 -c \"# more thinking\""}"##);
         // A real action resets the thinking-in-shell streak.
@@ -652,7 +652,7 @@ mod tests {
         // Three reruns of the same failing test that differ only in
         // bash cosmetics must hash to the same coarse signature so the
         // doom detector flags the stall on the third call.
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record(
             "shell",
             r##"{"command":"python3 test_x.py"}"##,
@@ -676,7 +676,7 @@ mod tests {
         // `; echo "EXIT: $?"` and `; echo "---EXIT: $?"` are model tics
         // for "see the exit code without re-reading the docs"; they
         // must not protect duplicate calls from the coarse detector.
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record(
             "shell",
             r##"{"command":"cargo build"}"##,
@@ -695,7 +695,7 @@ mod tests {
     #[test]
     fn test_shell_normalisation_does_not_collapse_distinct_commands() {
         // Different actual commands must still have different signatures.
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         d.record("shell", r##"{"command":"cargo build 2>&1"}"##);
         d.record("shell", r##"{"command":"cargo test 2>&1"}"##);
         d.record("shell", r##"{"command":"cargo check 2>&1"}"##);
@@ -745,7 +745,7 @@ mod tests {
 
     #[test]
     fn test_detection_still_works_after_history_cap() {
-        let mut d = DoomLoopDetector::default();
+        let mut d = DoomLoopDetector::new(3);
         // Fill history past the cap with unique calls
         for i in 0..28 {
             d.record(&format!("tool_{}", i), &format!("args_{}", i));

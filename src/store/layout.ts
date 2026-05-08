@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { createStoreWithHMR } from '@/lib/hmr'
-import { saveLayout, type PersistedLayout } from '@/services/windowManager'
+import { saveLayout } from '@/services/windowManager'
+import type { PanelPosition, PersistedLayout } from '@/types/layout'
 
-export type PanelPosition = 'left' | 'right' | 'bottom'
+export type { PanelPosition, PersistedLayout } from '@/types/layout'
 
 export interface PanelDefinition {
   id: string
