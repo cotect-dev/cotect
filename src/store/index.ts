@@ -1,6 +1,6 @@
 export { useBrowserStore } from './browser'
 export { useCanvasStore } from './canvas'
-export type { Column } from './canvas'
+export type { Column, ImportRef } from './canvas'
 export { useChatStore, sendMessage } from './chat'
 export type { Message, ModelId } from './chat'
 export { useConsoleStore } from './console'

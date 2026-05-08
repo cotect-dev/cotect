@@ -40,9 +40,19 @@ export interface CodeNodeData extends NodeDisplayFlags, Record<string, unknown> 
   endLine: number
 }
 
+export interface ImportRefNodeData extends NodeDisplayFlags, Record<string, unknown> {
+  label: string
+  /** Repo-relative path to the resolved import target. */
+  resolvedPath: string
+  /** 1-based line number of the import statement in the source file. */
+  line: number
+  kind: 'import' | 'imported-by'
+}
+
 export type FolderNode = Node<FolderNodeData, 'folder'>
 export type FileNode = Node<FileNodeData, 'file'>
 export type CodeNode = Node<CodeNodeData, 'codeNode'>
 export type ImageNode = Node<ImageNodeData, 'imageNode'>
+export type ImportRefNode = Node<ImportRefNodeData, 'importRef'>
 
-export type AppNode = FolderNode | FileNode | CodeNode | ImageNode
+export type AppNode = FolderNode | FileNode | CodeNode | ImageNode | ImportRefNode

@@ -18,6 +18,7 @@ export interface GraphFileNode {
   inDegree: number
   outDegree: number
   score: number
+  isTestFile: boolean
 }
 
 export interface GraphFileEdge {
@@ -79,6 +80,15 @@ function getFilename(path: string): string {
 function getDirname(path: string): string {
   const slash = path.lastIndexOf('/')
   return slash >= 0 ? path.slice(0, slash) : ''
+}
+
+function isTestFile(name: string): boolean {
+  const lower = name.toLowerCase()
+  if (/\.(test|spec)\.\w+$/.test(lower)) return true
+  if (/[_-]test\.\w+$/.test(lower)) return true
+  if (/^tests?\.\w+$/.test(lower)) return true
+  if (/^(jest|vitest|karma|cypress|playwright)[.-]/.test(lower)) return true
+  return false
 }
 
 async function collectParseableFiles(
@@ -156,14 +166,16 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () => 
       // Build nodes
       const rawNodes: GraphFileNode[] = relFiles.map((rel) => {
         const config = getConfigForFile(rel)
+        const filename = getFilename(rel)
         return {
           id: rel,
-          label: getFilename(rel),
+          label: filename,
           folder: getDirname(rel),
           language: config?.id ?? 'typescript',
           inDegree: 0,
           outDegree: 0,
           score: 0,
+          isTestFile: isTestFile(filename),
         }
       })
 

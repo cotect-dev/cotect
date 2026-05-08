@@ -11,7 +11,7 @@ vi.mock('@/services/platform', () => ({
 }))
 
 import { useCanvasKeyboard } from './useCanvasKeyboard'
-import { useCanvasStore } from '@/store'
+import { useCanvasStore, useViewStore } from '@/store'
 
 describe('useCanvasKeyboard', () => {
   let container: HTMLDivElement
@@ -273,5 +273,139 @@ describe('useCanvasKeyboard', () => {
     cmContent.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(false)
+  })
+
+  describe('global focus reclaim', () => {
+    let outsideButton: HTMLButtonElement
+
+    beforeEach(() => {
+      outsideButton = document.createElement('button')
+      outsideButton.setAttribute('tabindex', '0')
+      document.body.appendChild(outsideButton)
+      useViewStore.setState({ viewMode: 'files' })
+    })
+
+    afterEach(() => {
+      document.body.removeChild(outsideButton)
+    })
+
+    it('reclaims focus and navigates when W is pressed outside the canvas', () => {
+      const ref = { current: container }
+      renderHook(() => useCanvasKeyboard(ref))
+
+      // Move focus outside the canvas container.
+      outsideButton.focus()
+      expect(document.activeElement).toBe(outsideButton)
+
+      const moveFocusSpy = vi.spyOn(useCanvasStore.getState(), 'moveFocus')
+      const event = new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+
+      expect(document.activeElement).toBe(container)
+      expect(moveFocusSpy).toHaveBeenCalledWith('up')
+      expect(event.defaultPrevented).toBe(true)
+    })
+
+    it('reclaims focus and navigates when ArrowDown is pressed outside the canvas', () => {
+      const ref = { current: container }
+      renderHook(() => useCanvasKeyboard(ref))
+
+      outsideButton.focus()
+
+      const moveFocusSpy = vi.spyOn(useCanvasStore.getState(), 'moveFocus')
+      const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+
+      expect(document.activeElement).toBe(container)
+      expect(moveFocusSpy).toHaveBeenCalledWith('down')
+    })
+
+    it('reclaims focus for A/ArrowLeft (navigateLeft)', () => {
+      const ref = { current: container }
+      renderHook(() => useCanvasKeyboard(ref))
+
+      outsideButton.focus()
+
+      const navigateLeftSpy = vi.spyOn(useCanvasStore.getState(), 'navigateLeft')
+      const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+
+      expect(document.activeElement).toBe(container)
+      expect(navigateLeftSpy).toHaveBeenCalled()
+    })
+
+    it('reclaims focus for D/ArrowRight (navigateRight)', () => {
+      const ref = { current: container }
+      renderHook(() => useCanvasKeyboard(ref))
+
+      outsideButton.focus()
+
+      const navigateRightSpy = vi.spyOn(useCanvasStore.getState(), 'navigateRight')
+      const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+
+      expect(document.activeElement).toBe(container)
+      expect(navigateRightSpy).toHaveBeenCalled()
+    })
+
+    it('does NOT reclaim focus when an INPUT outside canvas is focused', () => {
+      const ref = { current: container }
+      renderHook(() => useCanvasKeyboard(ref))
+
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      input.focus()
+
+      const moveFocusSpy = vi.spyOn(useCanvasStore.getState(), 'moveFocus')
+      const event = new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+
+      expect(document.activeElement).toBe(input)
+      expect(moveFocusSpy).not.toHaveBeenCalled()
+
+      document.body.removeChild(input)
+    })
+
+    it('does NOT reclaim focus when viewMode is not files', () => {
+      const ref = { current: container }
+      renderHook(() => useCanvasKeyboard(ref))
+
+      useViewStore.setState({ viewMode: 'graph' })
+      outsideButton.focus()
+
+      const moveFocusSpy = vi.spyOn(useCanvasStore.getState(), 'moveFocus')
+      const event = new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+
+      expect(document.activeElement).toBe(outsideButton)
+      expect(moveFocusSpy).not.toHaveBeenCalled()
+    })
+
+    it('does NOT reclaim focus for non-navigation keys', () => {
+      const ref = { current: container }
+      renderHook(() => useCanvasKeyboard(ref))
+
+      outsideButton.focus()
+
+      const event = new KeyboardEvent('keydown', { key: 'x', bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+
+      expect(document.activeElement).toBe(outsideButton)
+    })
+
+    it('cleans up the global listener on unmount', () => {
+      const ref = { current: container }
+      const { unmount } = renderHook(() => useCanvasKeyboard(ref))
+
+      unmount()
+
+      outsideButton.focus()
+      const moveFocusSpy = vi.spyOn(useCanvasStore.getState(), 'moveFocus')
+      const event = new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+
+      expect(document.activeElement).toBe(outsideButton)
+      expect(moveFocusSpy).not.toHaveBeenCalled()
+    })
   })
 })

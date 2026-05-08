@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from 'react'
-import { useCanvasStore } from '@/store'
+import { useCanvasStore, useViewStore } from '@/store'
 import { getPlatform } from '@/services/platform'
 import { defineBinding } from '@/lib/keybindings'
 
@@ -166,8 +166,59 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
       container.setAttribute('tabindex', '0')
     }
 
+    // Global listener: when WASD/arrows are pressed and no input is focused,
+    // reclaim focus for the canvas and execute the navigation action. This
+    // makes the canvas "sticky" — the user doesn't have to manually click it
+    // to resume keyboard navigation after interacting with other UI elements.
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      // Only reclaim when the files view is active.
+      if (useViewStore.getState().viewMode !== 'files') return
+
+      const active = document.activeElement as HTMLElement | null
+      // If focus is already inside the canvas container, the local listener
+      // will handle it — no need to duplicate.
+      if (active && container.contains(active)) return
+
+      // Don't steal from inputs, textareas, selects, contenteditable, or editors.
+      if (active && (
+        FOCUS_GUARD_TAGS.has(active.tagName) ||
+        active.isContentEditable ||
+        active.closest('.cm-editor')
+      )) {
+        return
+      }
+
+      // Check if this is a canvas navigation key.
+      const isNavKey =
+        FOCUS_UP_W.matches(e) || FOCUS_UP_ARROW.matches(e) ||
+        FOCUS_DOWN_S.matches(e) || FOCUS_DOWN_ARROW.matches(e) ||
+        NAV_LEFT_A.matches(e) || NAV_LEFT_ARROW.matches(e) ||
+        NAV_RIGHT_D.matches(e) || NAV_RIGHT_ARROW.matches(e)
+
+      if (!isNavKey) return
+
+      // Reclaim focus for the canvas.
+      e.preventDefault()
+      container.focus()
+
+      // Execute the action directly (focus event won't re-trigger keydown).
+      const store = useCanvasStore.getState()
+      if (FOCUS_UP_W.matches(e) || FOCUS_UP_ARROW.matches(e)) {
+        store.moveFocus('up')
+      } else if (FOCUS_DOWN_S.matches(e) || FOCUS_DOWN_ARROW.matches(e)) {
+        store.moveFocus('down')
+      } else if (NAV_LEFT_A.matches(e) || NAV_LEFT_ARROW.matches(e)) {
+        store.navigateLeft()
+      } else if (NAV_RIGHT_D.matches(e) || NAV_RIGHT_ARROW.matches(e)) {
+        void store.navigateRight()
+      }
+    }
+
+    document.addEventListener('keydown', handleGlobalKeyDown)
+
     return () => {
       container.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('keydown', handleGlobalKeyDown)
     }
   }, [containerRef])
 }
