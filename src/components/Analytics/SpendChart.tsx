@@ -1,12 +1,4 @@
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  ResponsiveContainer,
-} from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
 import { useUsageStore } from '@/store/usage'
 
 interface TipPayload {
@@ -66,11 +58,7 @@ export default function SpendChart() {
       <div className="flex-1 min-h-0" style={{ width: '100%', minHeight: 180 }}>
         <ResponsiveContainer>
           <BarChart data={data} barCategoryGap="25%">
-            <CartesianGrid
-              vertical={false}
-              stroke="var(--color-border)"
-              strokeDasharray="3 3"
-            />
+            <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="3 3" />
             <XAxis
               dataKey="date"
               tick={{ fill: 'var(--color-muted-foreground)', fontSize: 10 }}

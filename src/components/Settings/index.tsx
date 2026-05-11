@@ -8,7 +8,9 @@ export type SettingsCategory = 'providers' | 'editor'
 
 export default function Settings() {
   const init = useProvidersStore((s) => s.init)
-  useEffect(() => { void init() }, [init])
+  useEffect(() => {
+    void init()
+  }, [init])
 
   const [category, setCategory] = useState<SettingsCategory>('providers')
 

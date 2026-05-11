@@ -16,7 +16,18 @@ interface BaseNodeProps {
   children?: ReactNode
 }
 
-export default memo(function BaseNode({ icon: Icon, iconClassName, label, borderClassName = 'border-border', className = '', onClick, onDoubleClick, badge, focused, children }: BaseNodeProps) {
+export default memo(function BaseNode({
+  icon: Icon,
+  iconClassName,
+  label,
+  borderClassName = 'border-border',
+  className = '',
+  onClick,
+  onDoubleClick,
+  badge,
+  focused,
+  children,
+}: BaseNodeProps) {
   const focusRing = nodeFocusRing(focused ?? false, 'tinted')
   return (
     <div
@@ -24,7 +35,9 @@ export default memo(function BaseNode({ icon: Icon, iconClassName, label, border
       onClick={onClick}
       onDoubleClick={onDoubleClick}
     >
-      <div className={`flex items-center gap-2 min-w-0 overflow-hidden ${badge ? 'justify-between' : ''}`}>
+      <div
+        className={`flex items-center gap-2 min-w-0 overflow-hidden ${badge ? 'justify-between' : ''}`}
+      >
         <div className="flex items-center gap-2 min-w-0 overflow-hidden">
           <Icon className={`h-4 w-4 shrink-0 ${iconClassName ?? 'text-muted-foreground'}`} />
           <span className="text-sm font-medium text-foreground truncate min-w-0">{label}</span>

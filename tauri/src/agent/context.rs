@@ -63,9 +63,7 @@ impl ConversationContext {
                 if let Some(calls) = &msg.tool_calls {
                     if calls.iter().any(|c| c.function.name == "__format_error__") {
                         indices_to_remove.push(i);
-                        if i + 1 < self.messages.len()
-                            && self.messages[i + 1].role == Role::Tool
-                        {
+                        if i + 1 < self.messages.len() && self.messages[i + 1].role == Role::Tool {
                             indices_to_remove.push(i + 1);
                         }
                     }
@@ -124,8 +122,10 @@ impl ConversationContext {
                     if let Some(calls) = &msg.tool_calls {
                         let tool_names: Vec<&str> =
                             calls.iter().map(|c| c.function.name.as_str()).collect();
-                        summary_parts
-                            .push(format!("Assistant: {preview} [tools: {}]", tool_names.join(", ")));
+                        summary_parts.push(format!(
+                            "Assistant: {preview} [tools: {}]",
+                            tool_names.join(", ")
+                        ));
                     } else {
                         summary_parts.push(format!("Assistant: {preview}"));
                     }

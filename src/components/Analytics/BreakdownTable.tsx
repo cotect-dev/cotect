@@ -8,10 +8,17 @@ export default function BreakdownTable() {
       <div className="border border-border rounded overflow-x-auto">
         <div className="min-w-[500px]">
           <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] bg-muted/40 px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-            <div>Bucket</div><div>Tasks</div><div>Prompt tok</div><div>Completion tok</div><div>p50 total</div>
+            <div>Bucket</div>
+            <div>Tasks</div>
+            <div>Prompt tok</div>
+            <div>Completion tok</div>
+            <div>p50 total</div>
           </div>
           {rows.map((r) => (
-            <div key={r.bucket} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] px-3 py-1.5 border-t border-border text-[11px] font-mono">
+            <div
+              key={r.bucket}
+              className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] px-3 py-1.5 border-t border-border text-[11px] font-mono"
+            >
               <div className="truncate">{r.bucket}</div>
               <div>{r.tasks}</div>
               <div>{r.prompt_tokens.toLocaleString()}</div>
@@ -20,7 +27,9 @@ export default function BreakdownTable() {
             </div>
           ))}
           {rows.length === 0 && (
-            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">No data in this range.</div>
+            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">
+              No data in this range.
+            </div>
           )}
         </div>
       </div>

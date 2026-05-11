@@ -10,7 +10,18 @@ import {
   addEdge,
 } from '@xyflow/react'
 import { getPlatform } from '@/services/platform'
-import { HIDDEN_DIRECTORIES, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, isImageFile, getImageMimeType, IMAGE_PREVIEW_MAX_BYTES } from '@/lib/constants'
+import {
+  HIDDEN_DIRECTORIES,
+  NODE_WIDTH,
+  NODE_HEIGHT,
+  NODE_H_GAP,
+  NODE_V_GAP,
+  NODE_V_GAP_SMALL,
+  CANVAS_PAD_Y,
+  isImageFile,
+  getImageMimeType,
+  IMAGE_PREVIEW_MAX_BYTES,
+} from '@/lib/constants'
 import { clampY } from '@/lib/canvasCamera'
 import { joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
@@ -119,14 +130,18 @@ export type CanvasState = {
 async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
   const platform = getPlatform()
   const rawEntries = await platform.fs.readDirectory(dirPath)
-  const entries = rawEntries.filter((e) =>
-    !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.'))
+  const entries = rawEntries.filter(
+    (e) => !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.')),
   )
 
   // Sort: folders first, then regular files, then test files — alphabetical within each group.
   const folders = entries.filter((e) => e.isDirectory).sort((a, b) => a.name.localeCompare(b.name))
-  const regularFiles = entries.filter((e) => !e.isDirectory && !isTestFile(e.name)).sort((a, b) => a.name.localeCompare(b.name))
-  const testFiles = entries.filter((e) => !e.isDirectory && isTestFile(e.name)).sort((a, b) => a.name.localeCompare(b.name))
+  const regularFiles = entries
+    .filter((e) => !e.isDirectory && !isTestFile(e.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const testFiles = entries
+    .filter((e) => !e.isDirectory && isTestFile(e.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
   const sorted = [...folders, ...regularFiles, ...testFiles]
 
   const childCountMap = new Map<string, number>()
@@ -134,20 +149,36 @@ async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
     folders.map(async (folder) => {
       try {
         const children = await platform.fs.readDirectory(folder.path)
-        const visible = children.filter((e) =>
-          !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.'))
+        const visible = children.filter(
+          (e) => !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.')),
         )
         childCountMap.set(folder.path, visible.length)
       } catch {
         // Ignore unreadable directories
       }
-    })
+    }),
   )
 
-  return sorted.map((entry): AppNode =>
-    entry.isDirectory
-      ? { id: entry.path, type: 'folder', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isDirectory: true as const, childCount: childCountMap.get(entry.path) } }
-      : { id: entry.path, type: 'file', position: { x: 0, y: 0 }, data: { label: entry.name, path: entry.path, isTestFile: isTestFile(entry.name) } }
+  return sorted.map(
+    (entry): AppNode =>
+      entry.isDirectory
+        ? {
+            id: entry.path,
+            type: 'folder',
+            position: { x: 0, y: 0 },
+            data: {
+              label: entry.name,
+              path: entry.path,
+              isDirectory: true as const,
+              childCount: childCountMap.get(entry.path),
+            },
+          }
+        : {
+            id: entry.path,
+            type: 'file',
+            position: { x: 0, y: 0 },
+            data: { label: entry.name, path: entry.path, isTestFile: isTestFile(entry.name) },
+          },
   )
 }
 
@@ -237,21 +268,21 @@ function computeVisualLineMap(headContent: string, workingContent: string): numb
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1][j - 1] + 1
-        : Math.max(dp[i - 1][j], dp[i][j - 1])
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1])
     }
   }
 
   // Backtrack to identify which lines are matched (in the LCS).
   const headMatched = new Array(n).fill(false)
   const workMatched = new Array(m).fill(false)
-  let i = n, j = m
+  let i = n,
+    j = m
   while (i > 0 && j > 0) {
     if (a[i - 1] === b[j - 1]) {
       headMatched[i - 1] = true
       workMatched[j - 1] = true
-      i--; j--
+      i--
+      j--
     } else if (dp[i - 1][j] >= dp[i][j - 1]) {
       i--
     } else {
@@ -267,7 +298,10 @@ function computeVisualLineMap(headContent: string, workingContent: string): numb
   for (let wi = 0; wi < m; wi++) {
     if (workMatched[wi]) {
       // Advance HEAD past unmatched (deleted) lines up to the matching line.
-      while (hi < n && !headMatched[hi]) { deletedAbove++; hi++ }
+      while (hi < n && !headMatched[hi]) {
+        deletedAbove++
+        hi++
+      }
       hi++ // consume the matched HEAD line
     }
     visualMap[wi] = wi + deletedAbove
@@ -284,10 +318,7 @@ function computeVisualLineMap(headContent: string, workingContent: string): numb
  * the graph store's edge data, and computes visual-line offsets when the
  * file has an active inline diff.
  */
-async function resolveFileImportRefs(
-  filePath: string,
-  codeNode: AppNode,
-): Promise<ImportRef[]> {
+async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promise<ImportRef[]> {
   if (codeNode.type !== 'codeNode') return []
 
   const gitState = useGitStore.getState()
@@ -332,8 +363,10 @@ async function resolveFileImportRefs(
     if (isTestFile(label)) continue
     seen.add(resolved)
     refs.push({
-      resolvedPath: resolved, label,
-      line: imp.line, visualLine: toVisual(imp.line),
+      resolvedPath: resolved,
+      label,
+      line: imp.line,
+      visualLine: toVisual(imp.line),
       kind: 'import',
     })
   }
@@ -408,9 +441,7 @@ async function resolveFileImportRefs(
       const consumers = allEdges
         .filter(
           (e) =>
-            e.target === middleFile &&
-            e.source !== repoRel &&
-            !directImporterSet.has(e.source),
+            e.target === middleFile && e.source !== repoRel && !directImporterSet.has(e.source),
         )
         .filter((e) => !isTestFile(e.source.split('/').pop() || e.source))
         .map((e) => e.source)
@@ -465,16 +496,20 @@ async function resolveFileImportRefs(
       if (byLine.size > 0) {
         for (const [anchorLine, lineNames] of byLine) {
           refs.push({
-            resolvedPath: imp, label,
-            line: anchorLine, visualLine: toVisual(anchorLine),
+            resolvedPath: imp,
+            label,
+            line: anchorLine,
+            visualLine: toVisual(anchorLine),
             kind: 'imported-by',
             importedNames: lineNames,
           })
         }
       } else {
         refs.push({
-          resolvedPath: imp, label,
-          line: fallbackAnchor, visualLine: toVisual(fallbackAnchor),
+          resolvedPath: imp,
+          label,
+          line: fallbackAnchor,
+          visualLine: toVisual(fallbackAnchor),
           kind: 'imported-by',
           importedNames: names.length > 0 ? names : undefined,
         })
@@ -519,8 +554,8 @@ function findVerticalNeighbor(
   const fx = focused.position.x
   const fy = focused.position.y
 
-  const sameCol = allNodes.filter((n) =>
-    n.id !== focusedId && Math.abs(n.position.x - fx) < NODE_WIDTH * 0.5
+  const sameCol = allNodes.filter(
+    (n) => n.id !== focusedId && Math.abs(n.position.x - fx) < NODE_WIDTH * 0.5,
   )
 
   let bestId: string | null = null
@@ -538,454 +573,470 @@ function findVerticalNeighbor(
   return bestId
 }
 
-export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () => create<CanvasState>()(
-  withPersistence(
-    (set, get) => ({
-  nodes: [],
-  edges: [],
+export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =>
+  create<CanvasState>()(
+    withPersistence(
+      (set, get) => ({
+        nodes: [],
+        edges: [],
 
-  focusedNodeId: null,
-  columns: [],
-  currentColumnIndex: 0,
-  depthChain: [],
-  hiddenNodeIds: new Set(),
-  codeNodeWidth: 650,
-  rightFocusMemory: {},
-  lastOpenedFile: null,
-  fileHistory: [],
-  viewportHeight: 0,
-  cameraY: CANVAS_PAD_Y,
-  savedViewport: null,
-
-  onNodesChange: (changes) => {
-    set({ nodes: applyNodeChanges(changes, get().nodes) })
-  },
-
-  onEdgesChange: (changes) => {
-    set({ edges: applyEdgeChanges(changes, get().edges) })
-  },
-
-  onConnect: (connection) => {
-    set({ edges: addEdge(connection, get().edges) })
-  },
-
-  setNodes: (nodes) => set({ nodes }),
-  setEdges: (edges) => set({ edges }),
-
-  setViewportHeight: (h) => set({ viewportHeight: h }),
-
-  setFocus: (nodeId) => {
-    set({ focusedNodeId: nodeId })
-    // Synchronously update node data (__isFocused flags) so the focus highlight
-    // appears immediately, before the async preview loads.
-    flattenAndRender(get, set)
-    void get().updatePreview()
-  },
-
-  moveFocus: (direction) => {
-    const { nodes, focusedNodeId } = get()
-    if (nodes.length === 0) return
-
-    if (!focusedNodeId) {
-      set({ focusedNodeId: nodes[0].id })
-      flattenAndRender(get, set)
-      void get().updatePreview()
-      return
-    }
-
-    let nextId = findVerticalNeighbor(nodes, focusedNodeId, direction)
-
-    // Wrap around to the opposite end of the column if no neighbor in direction.
-    if (!nextId) {
-      const focused = nodes.find((n) => n.id === focusedNodeId)
-      if (focused) {
-        const fx = focused.position.x
-        const sameCol = nodes.filter(
-          (n) => n.id !== focusedNodeId && Math.abs(n.position.x - fx) < NODE_WIDTH * 0.5,
-        )
-        if (sameCol.length > 0) {
-          if (direction === 'down') {
-            nextId = sameCol.reduce((best, n) => (n.position.y < best.position.y ? n : best)).id
-          } else {
-            nextId = sameCol.reduce((best, n) => (n.position.y > best.position.y ? n : best)).id
-          }
-        }
-      }
-    }
-
-    if (nextId) {
-      set({ focusedNodeId: nextId })
-      flattenAndRender(get, set)
-      void get().updatePreview()
-    }
-  },
-
-  initRoot: async (rootPath: string) => {
-    try {
-      const dirNodes = await buildDirectoryNodes(rootPath)
-
-      const rootColumn: Column = { path: rootPath, kind: 'directory', nodes: dirNodes, edges: [] }
-
-      const { lastOpenedFile } = get()
-
-      set({
-        columns: [rootColumn],
+        focusedNodeId: null,
+        columns: [],
         currentColumnIndex: 0,
-        depthChain: [rootPath],
-        focusedNodeId: (dirNodes.find((n) => !get().hiddenNodeIds.has(n.id)) ?? dirNodes[0])?.id ?? null,
-        cameraY: CANVAS_PAD_Y,
+        depthChain: [],
+        hiddenNodeIds: new Set(),
+        codeNodeWidth: 650,
         rightFocusMemory: {},
+        lastOpenedFile: null,
         fileHistory: [],
-      })
-
-      flattenAndRender(get, set)
-
-      // Restore the last opened file if persisted, otherwise show default preview.
-      if (lastOpenedFile) {
-        void get().focusFileByPath(lastOpenedFile)
-      } else {
-        void get().updatePreview()
-      }
-
-      // Trigger graph scan in background so import refs are available
-      // when the user focuses a code file.
-      const graphState = useGraphStore.getState()
-      if (graphState.scanState === 'idle') {
-        void graphState.scan(rootPath)
-      }
-    } catch (err) {
-      console.error('Failed to init root:', err)
-    }
-  },
-
-  focusFileByPath: async (repoRelativePath: string) => {
-    const { columns, lastOpenedFile, fileHistory } = get()
-    const rootCol = columns[0]
-    if (!rootCol) return
-    const rootPath = rootCol.path
-
-    const segments = repoRelativePath.split('/').filter(Boolean)
-    if (segments.length === 0) return
-
-    // Push the current file onto the history stack before jumping.
-    const nextHistory = lastOpenedFile && lastOpenedFile !== repoRelativePath
-      ? [...fileHistory, lastOpenedFile]
-      : fileHistory
-
-    let currentPath = rootPath
-    const newColumns: Column[] = [rootCol]
-    try {
-      for (let i = 0; i < segments.length - 1; i++) {
-        currentPath = joinPath(currentPath, segments[i])
-        const dirNodes = await buildDirectoryNodes(currentPath)
-        newColumns.push({ path: currentPath, kind: 'directory', nodes: dirNodes, edges: [] })
-      }
-
-      const parentCol = newColumns[newColumns.length - 1]
-      const fileName = segments[segments.length - 1]
-      const fileNodeId = joinPath(currentPath, fileName)
-      let hasFile = parentCol.nodes.some((n) => n.id === fileNodeId)
-
-      if (!hasFile) {
-        const headFallback = await buildHeadFallbackNode(fileNodeId)
-        if (headFallback) {
-          parentCol.nodes = [
-            ...parentCol.nodes,
-            {
-              id: fileNodeId,
-              type: 'file',
-              position: { x: 0, y: 0 },
-              data: { label: fileName, path: fileNodeId },
-            },
-          ]
-          hasFile = true
-        }
-      }
-
-      set({
-        columns: newColumns,
-        currentColumnIndex: newColumns.length - 1,
-        depthChain: newColumns.map((c) => c.path),
-        focusedNodeId: hasFile ? fileNodeId : null,
+        viewportHeight: 0,
         cameraY: CANVAS_PAD_Y,
-        fileHistory: nextHistory,
-      })
+        savedViewport: null,
 
-      flattenAndRender(get, set)
-      void get().updatePreview()
-    } catch (err) {
-      console.warn('[canvas] focusFileByPath failed:', err)
-    }
-  },
-
-  navigateBack: async () => {
-    const { fileHistory } = get()
-    if (fileHistory.length === 0) return
-    const prev = fileHistory[fileHistory.length - 1]
-    // Pop the entry before navigating — focusFileByPath would otherwise
-    // push the current file back onto the stack, creating a ping-pong.
-    set({ fileHistory: fileHistory.slice(0, -1) })
-    // Temporarily clear lastOpenedFile so focusFileByPath doesn't push it.
-    const saved = get().lastOpenedFile
-    set({ lastOpenedFile: null })
-    await get().focusFileByPath(prev)
-    // If focusFileByPath didn't set lastOpenedFile (e.g. file gone), restore.
-    if (get().lastOpenedFile === null) set({ lastOpenedFile: saved })
-  },
-
-  navigateRight: async () => {
-    const { focusedNodeId, nodes, columns, currentColumnIndex, depthChain } = get()
-    if (!focusedNodeId) return
-
-    const node = nodes.find((n) => n.id === focusedNodeId)
-    if (!node) return
-
-    // Only folders can be navigated into — files are previewed in-place.
-    if (node.type !== 'folder') return
-
-    const nodeTargetPath = node.data.path
-
-    const pickFocus = (newColNodes: AppNode[]): string | null => {
-      const remembered = get().rightFocusMemory[nodeTargetPath]
-      if (remembered && newColNodes.some((n) => n.id === remembered)) {
-        return remembered
-      }
-      return newColNodes[0]?.id ?? null
-    }
-
-    // Promote an existing preview column if it matches; otherwise load fresh.
-    const previewCol = columns[currentColumnIndex + 1]
-    if (previewCol && previewCol.path === nodeTargetPath) {
-      const newChain = [...depthChain.slice(0, currentColumnIndex + 1), nodeTargetPath]
-
-      set({
-        currentColumnIndex: currentColumnIndex + 1,
-        depthChain: newChain,
-        focusedNodeId: pickFocus(previewCol.nodes),
-        cameraY: CANVAS_PAD_Y,
-      })
-
-      flattenAndRender(get, set)
-      void get().updatePreview()
-      return
-    }
-
-    try {
-      const path = node.data.path
-      const dirNodes = await buildDirectoryNodes(path)
-      const newColumn: Column = { path, kind: 'directory', nodes: dirNodes, edges: [] }
-
-      const newColumns = [...columns.slice(0, currentColumnIndex + 1), newColumn]
-      const newChain = [...depthChain.slice(0, currentColumnIndex + 1), path]
-
-      set({
-        columns: newColumns,
-        currentColumnIndex: currentColumnIndex + 1,
-        depthChain: newChain,
-        focusedNodeId: pickFocus(dirNodes),
-        cameraY: CANVAS_PAD_Y,
-      })
-
-      flattenAndRender(get, set)
-      void get().updatePreview()
-    } catch (err) {
-      console.error('Failed to navigate right:', err)
-    }
-  },
-
-  navigateLeft: () => {
-    const { columns, currentColumnIndex, focusedNodeId, rightFocusMemory } = get()
-    if (currentColumnIndex <= 0) return
-
-    const newIndex = currentColumnIndex - 1
-
-    // Remember the focused node in the column we're leaving, keyed by that
-    // column's path, so navigateRight can restore it on a return drill-in.
-    const leavingCol = columns[currentColumnIndex]
-    const nextMemory = leavingCol && focusedNodeId
-      ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
-      : rightFocusMemory
-
-    // Restore focus in the parent column to the item that led to current.
-    const currentColPath = leavingCol?.path
-    const parentCol = columns[newIndex]
-    let restoreFocusId: string | null = null
-
-    if (parentCol && currentColPath) {
-      const match = parentCol.nodes.find((n) => {
-        if (n.type === 'folder' || n.type === 'file') return n.data.path === currentColPath
-        return n.data.filePath === currentColPath
-      })
-      if (match) restoreFocusId = match.id
-    }
-
-    set({
-      currentColumnIndex: newIndex,
-      focusedNodeId: restoreFocusId || (parentCol?.nodes[0]?.id ?? null),
-      cameraY: CANVAS_PAD_Y,
-      rightFocusMemory: nextMemory,
-    })
-
-    flattenAndRender(get, set)
-    void get().updatePreview()
-  },
-
-  navigateToColumn: async (targetIndex) => {
-    const { columns, currentColumnIndex, depthChain, focusedNodeId, rightFocusMemory } = get()
-    if (targetIndex === currentColumnIndex) return
-    if (targetIndex < 0 || targetIndex >= depthChain.length) return
-
-    // Remember the focused node in the column we're leaving.
-    const leavingCol = columns[currentColumnIndex]
-    const nextMemory = leavingCol && focusedNodeId
-      ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
-      : rightFocusMemory
-
-    // If columns exist up to the target we can jump directly; otherwise
-    // we rebuild them from depthChain paths (columns may have been trimmed
-    // by updatePreview after a previous navigateLeft).
-    let targetColumns = columns
-    if (targetIndex >= columns.length) {
-      const rebuilt = [...columns]
-      for (let i = columns.length; i <= targetIndex; i++) {
-        const path = depthChain[i]
-        if (!path) break
-        try {
-          const dirNodes = await buildDirectoryNodes(path)
-          rebuilt.push({ path, kind: 'directory' as const, nodes: dirNodes, edges: [] })
-        } catch {
-          break
-        }
-      }
-      targetColumns = rebuilt
-      // Bail if we couldn't rebuild far enough.
-      if (targetIndex >= targetColumns.length) return
-    }
-
-    const targetCol = targetColumns[targetIndex]
-    const remembered = nextMemory[targetCol.path]
-    const restored = remembered && targetCol.nodes.some((n) => n.id === remembered)
-      ? remembered
-      : targetCol.nodes[0]?.id ?? null
-
-    set({
-      columns: targetColumns,
-      currentColumnIndex: targetIndex,
-      focusedNodeId: restored,
-      cameraY: CANVAS_PAD_Y,
-      rightFocusMemory: nextMemory,
-    })
-
-    flattenAndRender(get, set)
-    void get().updatePreview()
-  },
-
-  toggleHideNode: () => {
-    const { focusedNodeId, hiddenNodeIds } = get()
-    if (!focusedNodeId) return
-
-    const next = new Set(hiddenNodeIds)
-    if (next.has(focusedNodeId)) {
-      next.delete(focusedNodeId)
-    } else {
-      next.add(focusedNodeId)
-    }
-    set({ hiddenNodeIds: next })
-    flattenAndRender(get, set)
-  },
-
-  setCodeNodeWidth: (width: number) => {
-    set({ codeNodeWidth: width })
-    flattenAndRender(get, set)
-  },
-
-  /**
-   * Load a preview column for the focused node into columns[currentColumnIndex + 1].
-   * Gives immediate feedback when moving focus with W/S — the right column
-   * shows what pressing D would navigate into.
-   */
-  updatePreview: async () => {
-    const { focusedNodeId, columns, currentColumnIndex } = get()
-    if (!focusedNodeId) {
-      const trimmed = columns.slice(0, currentColumnIndex + 1)
-      if (trimmed.length !== columns.length) {
-        set({ columns: trimmed })
-        flattenAndRender(get, set)
-      }
-      return
-    }
-
-    const currentCol = columns[currentColumnIndex]
-    if (!currentCol) return
-
-    const node = currentCol.nodes.find((n) => n.id === focusedNodeId)
-    if (!node) return
-
-    try {
-      let previewCol: Column | null = null
-
-      if (node.type === 'folder') {
-        const path = node.data.path
-        const dirNodes = await buildDirectoryNodes(path)
-        previewCol = { path, kind: 'directory', nodes: dirNodes, edges: [] }
-      } else if (node.type === 'file') {
-        const path = node.data.path
-        const fileName = node.data.label
-        let contentNode: AppNode | null = null
-        let importRefs: ImportRef[] | undefined
-        try {
-          if (isImageFile(fileName)) {
-            const imageNode = await buildImageNode(path)
-            contentNode = imageNode ?? await buildFileNode(path)
-          } else {
-            contentNode = await buildFileNode(path)
-            // Resolve import references with line positions
-            importRefs = await resolveFileImportRefs(path, contentNode)
-          }
-        } catch {
-          contentNode = await buildHeadFallbackNode(path)
-        }
-        if (contentNode) {
-          previewCol = { path, kind: 'file', nodes: [contentNode], edges: [], importRefs }
-          const { repoPath } = useGitStore.getState()
-          if (repoPath) set({ lastOpenedFile: toRepoRelative(path, repoPath) })
-        }
-      }
-
-      // Bail out if focus changed during the async load.
-      if (get().focusedNodeId !== focusedNodeId) return
-
-      if (previewCol) {
-        const newColumns = [...columns.slice(0, currentColumnIndex + 1), previewCol]
-        set({ columns: newColumns })
-      } else {
-        const trimmed = columns.slice(0, currentColumnIndex + 1)
-        if (trimmed.length !== columns.length) {
-          set({ columns: trimmed })
-        }
-      }
-
-      flattenAndRender(get, set)
-    } catch {
-      // Silently ignore preview errors
-    }
-  },
-    }),
-    {
-      name: 'canvas',
-      fields: {
-        codeNodeWidth: { scope: 'global' },
-        lastOpenedFile: { scope: 'project' },
-        hiddenNodeIds: {
-          scope: 'project',
-          serialize: (s: Set<string>) => [...s],
-          deserialize: (raw: unknown) => new Set(raw as string[]),
+        onNodesChange: (changes) => {
+          set({ nodes: applyNodeChanges(changes, get().nodes) })
         },
+
+        onEdgesChange: (changes) => {
+          set({ edges: applyEdgeChanges(changes, get().edges) })
+        },
+
+        onConnect: (connection) => {
+          set({ edges: addEdge(connection, get().edges) })
+        },
+
+        setNodes: (nodes) => set({ nodes }),
+        setEdges: (edges) => set({ edges }),
+
+        setViewportHeight: (h) => set({ viewportHeight: h }),
+
+        setFocus: (nodeId) => {
+          set({ focusedNodeId: nodeId })
+          // Synchronously update node data (__isFocused flags) so the focus highlight
+          // appears immediately, before the async preview loads.
+          flattenAndRender(get, set)
+          void get().updatePreview()
+        },
+
+        moveFocus: (direction) => {
+          const { nodes, focusedNodeId } = get()
+          if (nodes.length === 0) return
+
+          if (!focusedNodeId) {
+            set({ focusedNodeId: nodes[0].id })
+            flattenAndRender(get, set)
+            void get().updatePreview()
+            return
+          }
+
+          let nextId = findVerticalNeighbor(nodes, focusedNodeId, direction)
+
+          // Wrap around to the opposite end of the column if no neighbor in direction.
+          if (!nextId) {
+            const focused = nodes.find((n) => n.id === focusedNodeId)
+            if (focused) {
+              const fx = focused.position.x
+              const sameCol = nodes.filter(
+                (n) => n.id !== focusedNodeId && Math.abs(n.position.x - fx) < NODE_WIDTH * 0.5,
+              )
+              if (sameCol.length > 0) {
+                if (direction === 'down') {
+                  nextId = sameCol.reduce((best, n) =>
+                    n.position.y < best.position.y ? n : best,
+                  ).id
+                } else {
+                  nextId = sameCol.reduce((best, n) =>
+                    n.position.y > best.position.y ? n : best,
+                  ).id
+                }
+              }
+            }
+          }
+
+          if (nextId) {
+            set({ focusedNodeId: nextId })
+            flattenAndRender(get, set)
+            void get().updatePreview()
+          }
+        },
+
+        initRoot: async (rootPath: string) => {
+          try {
+            const dirNodes = await buildDirectoryNodes(rootPath)
+
+            const rootColumn: Column = {
+              path: rootPath,
+              kind: 'directory',
+              nodes: dirNodes,
+              edges: [],
+            }
+
+            const { lastOpenedFile } = get()
+
+            set({
+              columns: [rootColumn],
+              currentColumnIndex: 0,
+              depthChain: [rootPath],
+              focusedNodeId:
+                (dirNodes.find((n) => !get().hiddenNodeIds.has(n.id)) ?? dirNodes[0])?.id ?? null,
+              cameraY: CANVAS_PAD_Y,
+              rightFocusMemory: {},
+              fileHistory: [],
+            })
+
+            flattenAndRender(get, set)
+
+            // Restore the last opened file if persisted, otherwise show default preview.
+            if (lastOpenedFile) {
+              void get().focusFileByPath(lastOpenedFile)
+            } else {
+              void get().updatePreview()
+            }
+
+            // Trigger graph scan in background so import refs are available
+            // when the user focuses a code file.
+            const graphState = useGraphStore.getState()
+            if (graphState.scanState === 'idle') {
+              void graphState.scan(rootPath)
+            }
+          } catch (err) {
+            console.error('Failed to init root:', err)
+          }
+        },
+
+        focusFileByPath: async (repoRelativePath: string) => {
+          const { columns, lastOpenedFile, fileHistory } = get()
+          const rootCol = columns[0]
+          if (!rootCol) return
+          const rootPath = rootCol.path
+
+          const segments = repoRelativePath.split('/').filter(Boolean)
+          if (segments.length === 0) return
+
+          // Push the current file onto the history stack before jumping.
+          const nextHistory =
+            lastOpenedFile && lastOpenedFile !== repoRelativePath
+              ? [...fileHistory, lastOpenedFile]
+              : fileHistory
+
+          let currentPath = rootPath
+          const newColumns: Column[] = [rootCol]
+          try {
+            for (let i = 0; i < segments.length - 1; i++) {
+              currentPath = joinPath(currentPath, segments[i])
+              const dirNodes = await buildDirectoryNodes(currentPath)
+              newColumns.push({ path: currentPath, kind: 'directory', nodes: dirNodes, edges: [] })
+            }
+
+            const parentCol = newColumns[newColumns.length - 1]
+            const fileName = segments[segments.length - 1]
+            const fileNodeId = joinPath(currentPath, fileName)
+            let hasFile = parentCol.nodes.some((n) => n.id === fileNodeId)
+
+            if (!hasFile) {
+              const headFallback = await buildHeadFallbackNode(fileNodeId)
+              if (headFallback) {
+                parentCol.nodes = [
+                  ...parentCol.nodes,
+                  {
+                    id: fileNodeId,
+                    type: 'file',
+                    position: { x: 0, y: 0 },
+                    data: { label: fileName, path: fileNodeId },
+                  },
+                ]
+                hasFile = true
+              }
+            }
+
+            set({
+              columns: newColumns,
+              currentColumnIndex: newColumns.length - 1,
+              depthChain: newColumns.map((c) => c.path),
+              focusedNodeId: hasFile ? fileNodeId : null,
+              cameraY: CANVAS_PAD_Y,
+              fileHistory: nextHistory,
+            })
+
+            flattenAndRender(get, set)
+            void get().updatePreview()
+          } catch (err) {
+            console.warn('[canvas] focusFileByPath failed:', err)
+          }
+        },
+
+        navigateBack: async () => {
+          const { fileHistory } = get()
+          if (fileHistory.length === 0) return
+          const prev = fileHistory[fileHistory.length - 1]
+          // Pop the entry before navigating — focusFileByPath would otherwise
+          // push the current file back onto the stack, creating a ping-pong.
+          set({ fileHistory: fileHistory.slice(0, -1) })
+          // Temporarily clear lastOpenedFile so focusFileByPath doesn't push it.
+          const saved = get().lastOpenedFile
+          set({ lastOpenedFile: null })
+          await get().focusFileByPath(prev)
+          // If focusFileByPath didn't set lastOpenedFile (e.g. file gone), restore.
+          if (get().lastOpenedFile === null) set({ lastOpenedFile: saved })
+        },
+
+        navigateRight: async () => {
+          const { focusedNodeId, nodes, columns, currentColumnIndex, depthChain } = get()
+          if (!focusedNodeId) return
+
+          const node = nodes.find((n) => n.id === focusedNodeId)
+          if (!node) return
+
+          // Only folders can be navigated into — files are previewed in-place.
+          if (node.type !== 'folder') return
+
+          const nodeTargetPath = node.data.path
+
+          const pickFocus = (newColNodes: AppNode[]): string | null => {
+            const remembered = get().rightFocusMemory[nodeTargetPath]
+            if (remembered && newColNodes.some((n) => n.id === remembered)) {
+              return remembered
+            }
+            return newColNodes[0]?.id ?? null
+          }
+
+          // Promote an existing preview column if it matches; otherwise load fresh.
+          const previewCol = columns[currentColumnIndex + 1]
+          if (previewCol && previewCol.path === nodeTargetPath) {
+            const newChain = [...depthChain.slice(0, currentColumnIndex + 1), nodeTargetPath]
+
+            set({
+              currentColumnIndex: currentColumnIndex + 1,
+              depthChain: newChain,
+              focusedNodeId: pickFocus(previewCol.nodes),
+              cameraY: CANVAS_PAD_Y,
+            })
+
+            flattenAndRender(get, set)
+            void get().updatePreview()
+            return
+          }
+
+          try {
+            const path = node.data.path
+            const dirNodes = await buildDirectoryNodes(path)
+            const newColumn: Column = { path, kind: 'directory', nodes: dirNodes, edges: [] }
+
+            const newColumns = [...columns.slice(0, currentColumnIndex + 1), newColumn]
+            const newChain = [...depthChain.slice(0, currentColumnIndex + 1), path]
+
+            set({
+              columns: newColumns,
+              currentColumnIndex: currentColumnIndex + 1,
+              depthChain: newChain,
+              focusedNodeId: pickFocus(dirNodes),
+              cameraY: CANVAS_PAD_Y,
+            })
+
+            flattenAndRender(get, set)
+            void get().updatePreview()
+          } catch (err) {
+            console.error('Failed to navigate right:', err)
+          }
+        },
+
+        navigateLeft: () => {
+          const { columns, currentColumnIndex, focusedNodeId, rightFocusMemory } = get()
+          if (currentColumnIndex <= 0) return
+
+          const newIndex = currentColumnIndex - 1
+
+          // Remember the focused node in the column we're leaving, keyed by that
+          // column's path, so navigateRight can restore it on a return drill-in.
+          const leavingCol = columns[currentColumnIndex]
+          const nextMemory =
+            leavingCol && focusedNodeId
+              ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
+              : rightFocusMemory
+
+          // Restore focus in the parent column to the item that led to current.
+          const currentColPath = leavingCol?.path
+          const parentCol = columns[newIndex]
+          let restoreFocusId: string | null = null
+
+          if (parentCol && currentColPath) {
+            const match = parentCol.nodes.find((n) => {
+              if (n.type === 'folder' || n.type === 'file') return n.data.path === currentColPath
+              return n.data.filePath === currentColPath
+            })
+            if (match) restoreFocusId = match.id
+          }
+
+          set({
+            currentColumnIndex: newIndex,
+            focusedNodeId: restoreFocusId || (parentCol?.nodes[0]?.id ?? null),
+            cameraY: CANVAS_PAD_Y,
+            rightFocusMemory: nextMemory,
+          })
+
+          flattenAndRender(get, set)
+          void get().updatePreview()
+        },
+
+        navigateToColumn: async (targetIndex) => {
+          const { columns, currentColumnIndex, depthChain, focusedNodeId, rightFocusMemory } = get()
+          if (targetIndex === currentColumnIndex) return
+          if (targetIndex < 0 || targetIndex >= depthChain.length) return
+
+          // Remember the focused node in the column we're leaving.
+          const leavingCol = columns[currentColumnIndex]
+          const nextMemory =
+            leavingCol && focusedNodeId
+              ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
+              : rightFocusMemory
+
+          // If columns exist up to the target we can jump directly; otherwise
+          // we rebuild them from depthChain paths (columns may have been trimmed
+          // by updatePreview after a previous navigateLeft).
+          let targetColumns = columns
+          if (targetIndex >= columns.length) {
+            const rebuilt = [...columns]
+            for (let i = columns.length; i <= targetIndex; i++) {
+              const path = depthChain[i]
+              if (!path) break
+              try {
+                const dirNodes = await buildDirectoryNodes(path)
+                rebuilt.push({ path, kind: 'directory' as const, nodes: dirNodes, edges: [] })
+              } catch {
+                break
+              }
+            }
+            targetColumns = rebuilt
+            // Bail if we couldn't rebuild far enough.
+            if (targetIndex >= targetColumns.length) return
+          }
+
+          const targetCol = targetColumns[targetIndex]
+          const remembered = nextMemory[targetCol.path]
+          const restored =
+            remembered && targetCol.nodes.some((n) => n.id === remembered)
+              ? remembered
+              : (targetCol.nodes[0]?.id ?? null)
+
+          set({
+            columns: targetColumns,
+            currentColumnIndex: targetIndex,
+            focusedNodeId: restored,
+            cameraY: CANVAS_PAD_Y,
+            rightFocusMemory: nextMemory,
+          })
+
+          flattenAndRender(get, set)
+          void get().updatePreview()
+        },
+
+        toggleHideNode: () => {
+          const { focusedNodeId, hiddenNodeIds } = get()
+          if (!focusedNodeId) return
+
+          const next = new Set(hiddenNodeIds)
+          if (next.has(focusedNodeId)) {
+            next.delete(focusedNodeId)
+          } else {
+            next.add(focusedNodeId)
+          }
+          set({ hiddenNodeIds: next })
+          flattenAndRender(get, set)
+        },
+
+        setCodeNodeWidth: (width: number) => {
+          set({ codeNodeWidth: width })
+          flattenAndRender(get, set)
+        },
+
+        /**
+         * Load a preview column for the focused node into columns[currentColumnIndex + 1].
+         * Gives immediate feedback when moving focus with W/S — the right column
+         * shows what pressing D would navigate into.
+         */
+        updatePreview: async () => {
+          const { focusedNodeId, columns, currentColumnIndex } = get()
+          if (!focusedNodeId) {
+            const trimmed = columns.slice(0, currentColumnIndex + 1)
+            if (trimmed.length !== columns.length) {
+              set({ columns: trimmed })
+              flattenAndRender(get, set)
+            }
+            return
+          }
+
+          const currentCol = columns[currentColumnIndex]
+          if (!currentCol) return
+
+          const node = currentCol.nodes.find((n) => n.id === focusedNodeId)
+          if (!node) return
+
+          try {
+            let previewCol: Column | null = null
+
+            if (node.type === 'folder') {
+              const path = node.data.path
+              const dirNodes = await buildDirectoryNodes(path)
+              previewCol = { path, kind: 'directory', nodes: dirNodes, edges: [] }
+            } else if (node.type === 'file') {
+              const path = node.data.path
+              const fileName = node.data.label
+              let contentNode: AppNode | null = null
+              let importRefs: ImportRef[] | undefined
+              try {
+                if (isImageFile(fileName)) {
+                  const imageNode = await buildImageNode(path)
+                  contentNode = imageNode ?? (await buildFileNode(path))
+                } else {
+                  contentNode = await buildFileNode(path)
+                  // Resolve import references with line positions
+                  importRefs = await resolveFileImportRefs(path, contentNode)
+                }
+              } catch {
+                contentNode = await buildHeadFallbackNode(path)
+              }
+              if (contentNode) {
+                previewCol = { path, kind: 'file', nodes: [contentNode], edges: [], importRefs }
+                const { repoPath } = useGitStore.getState()
+                if (repoPath) set({ lastOpenedFile: toRepoRelative(path, repoPath) })
+              }
+            }
+
+            // Bail out if focus changed during the async load.
+            if (get().focusedNodeId !== focusedNodeId) return
+
+            if (previewCol) {
+              const newColumns = [...columns.slice(0, currentColumnIndex + 1), previewCol]
+              set({ columns: newColumns })
+            } else {
+              const trimmed = columns.slice(0, currentColumnIndex + 1)
+              if (trimmed.length !== columns.length) {
+                set({ columns: trimmed })
+              }
+            }
+
+            flattenAndRender(get, set)
+          } catch {
+            // Silently ignore preview errors
+          }
+        },
+      }),
+      {
+        name: 'canvas',
+        fields: {
+          codeNodeWidth: { scope: 'global' },
+          lastOpenedFile: { scope: 'project' },
+          hiddenNodeIds: {
+            scope: 'project',
+            serialize: (s: Set<string>) => [...s],
+            deserialize: (raw: unknown) => new Set(raw as string[]),
+          },
+        },
+        debounce: 500,
       },
-      debounce: 500,
-    },
+    ),
   ),
-))
+)
 
 // Persistence may hydrate hiddenNodeIds after initRoot has already rendered,
 // so re-run flattenAndRender to reflect the restored hidden state.
@@ -1009,10 +1060,7 @@ useCanvasStore.subscribe((state) => {
 let prevStatusPaths: Set<string> = new Set()
 useGitStore.subscribe((state) => {
   const next = new Set((state.status?.files ?? []).map((f) => f.path))
-  if (
-    next.size === prevStatusPaths.size &&
-    [...next].every((p) => prevStatusPaths.has(p))
-  ) {
+  if (next.size === prevStatusPaths.size && [...next].every((p) => prevStatusPaths.has(p))) {
     return
   }
 
@@ -1070,8 +1118,7 @@ async function refreshDirectoryColumns(affected: Set<string>): Promise<void> {
         const refreshed = await buildDirectoryNodes(col.path)
         const prevIds = new Set(col.nodes.map((n) => n.id))
         const sameSet =
-          refreshed.length === prevIds.size &&
-          refreshed.every((n) => prevIds.has(n.id))
+          refreshed.length === prevIds.size && refreshed.every((n) => prevIds.has(n.id))
         return sameSet ? null : { index, nodes: refreshed }
       } catch {
         return null
@@ -1105,10 +1152,7 @@ async function refreshDirectoryColumns(affected: Set<string>): Promise<void> {
  * to see the full navigation history; the Canvas view handles viewport
  * positioning so the current column appears right after the left panel.
  */
-function flattenAndRender(
-  get: () => CanvasState,
-  set: (partial: Partial<CanvasState>) => void,
-) {
+function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasState>) => void) {
   const { columns, currentColumnIndex } = get()
   if (columns.length === 0) {
     set({ nodes: [], edges: [] })
@@ -1131,9 +1175,7 @@ function flattenAndRender(
   const currentColPositioned = columns[currentColumnIndex]
     ? positionColumnNodes(orderColumn(columns[currentColumnIndex]), currentColXOffset, 0)
     : null
-  const focusedNodeY = focusedNodeId
-    ? currentColPositioned?.yById.get(focusedNodeId) ?? 0
-    : 0
+  const focusedNodeY = focusedNodeId ? (currentColPositioned?.yById.get(focusedNodeId) ?? 0) : 0
 
   // Shares clampY with Canvas.tsx so the two never drift.
   const newCameraY = clampY(cameraY, focusedNodeY, viewportHeight)
@@ -1148,9 +1190,10 @@ function flattenAndRender(
     const xOffset = i * (NODE_WIDTH + NODE_H_GAP)
     const yStart = isPreviewCol ? previewYStart : 0
 
-    const positioned = isCurrentCol && currentColPositioned
-      ? currentColPositioned.positioned
-      : positionColumnNodes(orderColumn(col), xOffset, yStart).positioned
+    const positioned =
+      isCurrentCol && currentColPositioned
+        ? currentColPositioned.positioned
+        : positionColumnNodes(orderColumn(col), xOffset, yStart).positioned
 
     // Cast preserves the discriminated-union shape that spread loses in inference.
     for (const node of positioned) {

@@ -24,13 +24,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let config_file = ap(dir, "config.py");
-        std::fs::write(&config_file, r#""""Entity configuration schemas."""
+        std::fs::write(
+            &config_file,
+            r#""""Entity configuration schemas."""
 
 PROFILE_SCHEMA = {
     "entity": "profile",
@@ -82,10 +84,14 @@ def get_field_names(entity_name: str) -> list[str]:
     if schema is None:
         return []
     return [f["name"] for f in schema["fields"]]
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let processor_file = ap(dir, "processor.py");
-        std::fs::write(&processor_file, r#""""Data processor — transforms raw data based on entity schemas."""
+        std::fs::write(
+            &processor_file,
+            r#""""Data processor — transforms raw data based on entity schemas."""
 
 from config import get_schema, get_field_names
 
@@ -145,10 +151,14 @@ def _copy_field(data: dict, field_name: str) -> str | None:
     as a common field across entities.
     """
     return data.get(field_name)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let validator_file = ap(dir, "validator.py");
-        std::fs::write(&validator_file, r#""""Validation rules for entity data."""
+        std::fs::write(
+            &validator_file,
+            r#""""Validation rules for entity data."""
 
 from config import get_schema
 
@@ -209,7 +219,9 @@ def validate_audit_log(data: dict) -> list[str]:
             errors.append(f"Missing required field: {fname}")
 
     return errors
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_entities.py");
         std::fs::write(&test_file, r#"from config import get_schema, get_field_names, PROFILE_SCHEMA, SESSION_SCHEMA, AUDIT_LOG_SCHEMA
@@ -345,5 +357,11 @@ if __name__ == "__main__":
             vec![config_file, processor_file, validator_file]),
             vec![test_file])
     }
-    v.push(scen!("xhard_patch_04_selective_field_rename", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_patch_04_selective_field_rename",
+        Category::Patch,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

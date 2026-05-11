@@ -16,10 +16,7 @@
 //! prompt without OpenAI protocol overhead.
 
 use super::super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
-use super::{
-    ModelAdapter, StreamChunk, StreamParser,
-    build_openai_request_body,
-};
+use super::{build_openai_request_body, ModelAdapter, StreamChunk, StreamParser};
 
 /// OpenAI-compatible wire format adapter (the legacy default).
 pub struct OpenAICompatAdapter;
@@ -49,7 +46,6 @@ impl ModelAdapter for OpenAICompatAdapter {
     }
 }
 
-
 #[derive(Default)]
 struct OpenAICompatParser {
     done_emitted: bool,
@@ -61,7 +57,9 @@ impl StreamParser for OpenAICompatParser {
 
         if data == "[DONE]" {
             if !self.done_emitted {
-                events.push(LlmStreamEvent::Done { finish_reason: None });
+                events.push(LlmStreamEvent::Done {
+                    finish_reason: None,
+                });
                 self.done_emitted = true;
             }
             return events;
@@ -93,9 +91,7 @@ impl StreamParser for OpenAICompatParser {
                         index: tc.index,
                         id: tc.id.clone(),
                         name: func.and_then(|f| f.name.clone()),
-                        arguments_chunk: func
-                            .and_then(|f| f.arguments.clone())
-                            .unwrap_or_default(),
+                        arguments_chunk: func.and_then(|f| f.arguments.clone()).unwrap_or_default(),
                     });
                 }
             }
@@ -122,7 +118,6 @@ impl StreamParser for OpenAICompatParser {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -194,9 +189,7 @@ mod tests {
     fn parser_finish_reason_emits_done() {
         let a = OpenAICompatAdapter;
         let mut p = a.new_stream_parser();
-        let events = p.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let events = p.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         assert_eq!(events.len(), 1);
         match &events[0] {
             LlmStreamEvent::Done { finish_reason } => {
@@ -222,9 +215,7 @@ mod tests {
     fn parser_done_marker_not_duplicated() {
         let a = OpenAICompatAdapter;
         let mut p = a.new_stream_parser();
-        let _ = p.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let _ = p.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         // Subsequent [DONE] after a finish_reason shouldn't emit another Done.
         let events = p.process_sse_data("[DONE]");
         assert!(events.is_empty());
@@ -242,9 +233,8 @@ mod tests {
     fn parser_empty_content_ignored() {
         let a = OpenAICompatAdapter;
         let mut p = a.new_stream_parser();
-        let events = p.process_sse_data(
-            r#"{"choices":[{"delta":{"content":""},"finish_reason":null}]}"#,
-        );
+        let events =
+            p.process_sse_data(r#"{"choices":[{"delta":{"content":""},"finish_reason":null}]}"#);
         assert!(events.is_empty());
     }
 
@@ -252,9 +242,8 @@ mod tests {
     fn parser_finalize_emits_done_if_missing() {
         let a = OpenAICompatAdapter;
         let mut p = a.new_stream_parser();
-        let _ = p.process_sse_data(
-            r#"{"choices":[{"delta":{"content":"x"},"finish_reason":null}]}"#,
-        );
+        let _ =
+            p.process_sse_data(r#"{"choices":[{"delta":{"content":"x"},"finish_reason":null}]}"#);
         let events = p.finalize();
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], LlmStreamEvent::Done { .. }));

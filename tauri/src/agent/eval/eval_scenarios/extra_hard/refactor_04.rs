@@ -31,13 +31,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let email_file = ap(dir, "email_validator.py");
-        std::fs::write(&email_file, r#"import re
+        std::fs::write(
+            &email_file,
+            r#"import re
 
 class EmailValidator:
     """Validates email addresses."""
@@ -78,10 +80,14 @@ class EmailValidator:
             errors.append(format_err)
 
         return {"valid": len(errors) == 0, "errors": errors}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let username_file = ap(dir, "username_validator.py");
-        std::fs::write(&username_file, r#"import re
+        std::fs::write(
+            &username_file,
+            r#"import re
 
 class UsernameValidator:
     """Validates usernames."""
@@ -124,10 +130,14 @@ class UsernameValidator:
             errors.append(format_err)
 
         return {"valid": len(errors) == 0, "errors": errors}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let password_file = ap(dir, "password_validator.py");
-        std::fs::write(&password_file, r#"import re
+        std::fs::write(
+            &password_file,
+            r#"import re
 
 COMMON_PASSWORDS = [
     "password", "123456", "password1", "qwerty", "abc123",
@@ -194,10 +204,14 @@ class PasswordValidator:
                 result["valid"] = False
                 result["errors"].append(common_err)
         return result
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_validators.py");
-        std::fs::write(&test_file, r#"from email_validator import EmailValidator
+        std::fs::write(
+            &test_file,
+            r#"from email_validator import EmailValidator
 from username_validator import UsernameValidator
 from password_validator import PasswordValidator
 
@@ -310,10 +324,15 @@ if __name__ == "__main__":
     test_password_full_validate_good()
     test_validate_consolidated()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The three validator modules (email_validator.py, username_validator.py, \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The three validator modules (email_validator.py, username_validator.py, \
              password_validator.py) each re-implement the same validate() skeleton: \
              reject empty input, preprocess, run length/format checks, and return a \
              {valid, errors} dict. A bug fix in that skeleton today means editing \
@@ -324,20 +343,29 @@ if __name__ == "__main__":
              Step 2: Apply your refactoring.\n\
              Step 3: Run the existing `python3 test_validators.py` to verify. If tests fail, \
              reconsider — some seemingly identical methods may differ in critical ways."
-            .to_string()
-        ),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: tests must pass — they verify email case-insensitivity,
-                // username case-preservation, password not modified, common
-                // password rejection, and all validation rules. The suite also
-                // enforces consolidation (counting how many classes define
-                // their own validate() method).
-                run_has("python3 test_validators.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![email_file, username_file, password_file]),
-            vec![test_file])
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: tests must pass — they verify email case-insensitivity,
+                        // username case-preservation, password not modified, common
+                        // password rejection, and all validation rules. The suite also
+                        // enforces consolidation (counting how many classes define
+                        // their own validate() method).
+                        run_has("python3 test_validators.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![email_file, username_file, password_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_refactor_04_dangerous_consolidation", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_refactor_04_dangerous_consolidation",
+        Category::Refactor,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

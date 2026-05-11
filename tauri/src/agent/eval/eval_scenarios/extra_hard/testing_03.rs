@@ -5,13 +5,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let product_file = ap(dir, "product.py");
-        std::fs::write(&product_file, r#"class Product:
+        std::fs::write(
+            &product_file,
+            r#"class Product:
     """Represents a product with name and price.
 
     Two products are equal if they have the same name (case-insensitive).
@@ -40,10 +42,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
 
     def __repr__(self):
         return f"Product({self.name!r}, {self.price})"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let discount_file = ap(dir, "discount.py");
-        std::fs::write(&discount_file, r#"class PercentDiscount:
+        std::fs::write(
+            &discount_file,
+            r#"class PercentDiscount:
     """A percentage-based discount.
 
     The `apply(price)` method returns the discounted price.
@@ -67,10 +73,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
         if self._cached_price is None:
             self._cached_price = price
         return self._cached_price * (1 - self.percent / 100)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let cart_file = ap(dir, "cart.py");
-        std::fs::write(&cart_file, r#"from product import Product
+        std::fs::write(
+            &cart_file,
+            r#"from product import Product
 
 
 class ShoppingCart:
@@ -137,11 +147,15 @@ class ShoppingCart:
     def clear(self):
         """Remove all items from the cart."""
         self._items.clear()
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Fixed versions
         let discount_fixed = ap(dir, "discount_fixed.py");
-        std::fs::write(&discount_fixed, r#"class PercentDiscount:
+        std::fs::write(
+            &discount_fixed,
+            r#"class PercentDiscount:
     """A percentage-based discount.
 
     The `apply(price)` method returns the discounted price.
@@ -162,10 +176,14 @@ class ShoppingCart:
 
     def apply(self, price: float) -> float:
         return price * (1 - self.percent / 100)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let cart_fixed = ap(dir, "cart_fixed.py");
-        std::fs::write(&cart_fixed, r#"from product import Product
+        std::fs::write(
+            &cart_fixed,
+            r#"from product import Product
 
 
 class ShoppingCart:
@@ -231,10 +249,14 @@ class ShoppingCart:
     def clear(self):
         """Remove all items from the cart."""
         self._items.clear()
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let runner = ap(dir, "run_tests.py");
-        std::fs::write(&runner, r#"import subprocess, sys, os, shutil
+        std::fs::write(
+            &runner,
+            r#"import subprocess, sys, os, shutil
 
 test_file = None
 for f in sorted(os.listdir(".")):
@@ -294,18 +316,31 @@ else:
     print(f"FAIL: tests fail on corrected code too")
     print(f"stdout: {fixed_result.stdout[-500:]}")
     print(f"stderr: {fixed_result.stderr[-500:]}")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // product.py has no bugs — used as-is for both buggy and fixed
         let product_buggy = ap(dir, "product_buggy.py");
-        std::fs::write(&product_buggy, std::fs::read_to_string(&product_file).unwrap()).unwrap();
+        std::fs::write(
+            &product_buggy,
+            std::fs::read_to_string(&product_file).unwrap(),
+        )
+        .unwrap();
         let discount_buggy = ap(dir, "discount_buggy.py");
-        std::fs::write(&discount_buggy, std::fs::read_to_string(&discount_file).unwrap()).unwrap();
+        std::fs::write(
+            &discount_buggy,
+            std::fs::read_to_string(&discount_file).unwrap(),
+        )
+        .unwrap();
         let cart_buggy = ap(dir, "cart_buggy.py");
         std::fs::write(&cart_buggy, std::fs::read_to_string(&cart_file).unwrap()).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The shopping cart system spread across {}, {}, and {} is \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The shopping cart system spread across {}, {}, and {} is \
              suspected to contain defects where the implementations diverge \
              from their documented contracts. Write a test suite that \
              catches any such divergence — a faithful implementation must \
@@ -323,14 +358,35 @@ else:
              faithful implementation. Stop as soon as you see that \
              sentinel — don't keep iterating. The structure, framework, \
              and choice of assertions is yours.",
-            product_file, discount_file, cart_file)),
+                        product_file, discount_file, cart_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![
+                    product_file.clone(),
+                    discount_file.clone(),
+                    cart_file.clone(),
+                ],
+            ),
             vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![product_file.clone(), discount_file.clone(), cart_file.clone()]),
-            vec![discount_fixed, cart_fixed, runner, product_buggy, discount_buggy, cart_buggy])
+                discount_fixed,
+                cart_fixed,
+                runner,
+                product_buggy,
+                discount_buggy,
+                cart_buggy,
+            ],
+        )
     }
-    v.push(scen!("xhard_testing_03_shopping_cart", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_testing_03_shopping_cart",
+        Category::Testing,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

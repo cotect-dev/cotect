@@ -43,7 +43,6 @@ describe('layout store - pure functions', () => {
       expect(getEffectivePosition('nonexistent', false)).toBe('left')
     })
   })
-
 })
 
 describe('layout store - state management', () => {
@@ -164,13 +163,25 @@ describe('layout store - state management', () => {
 
   describe('setCrossWindowDrag', () => {
     it('sets cross window drag data', () => {
-      const drag = { panelId: 'tasks', panelIds: ['tasks'], position: 'right' as PanelPosition, insertIndex: 0, neighborIndex: 0 }
+      const drag = {
+        panelId: 'tasks',
+        panelIds: ['tasks'],
+        position: 'right' as PanelPosition,
+        insertIndex: 0,
+        neighborIndex: 0,
+      }
       useLayoutStore.getState().setCrossWindowDrag(drag)
       expect(useLayoutStore.getState().crossWindowDrag).toEqual(drag)
     })
 
     it('clears cross window drag', () => {
-      useLayoutStore.getState().setCrossWindowDrag({ panelId: 'tasks', panelIds: ['tasks'], position: 'right' as PanelPosition, insertIndex: 0, neighborIndex: 0 })
+      useLayoutStore.getState().setCrossWindowDrag({
+        panelId: 'tasks',
+        panelIds: ['tasks'],
+        position: 'right' as PanelPosition,
+        insertIndex: 0,
+        neighborIndex: 0,
+      })
       useLayoutStore.getState().setCrossWindowDrag(null)
       expect(useLayoutStore.getState().crossWindowDrag).toBeNull()
     })
@@ -186,7 +197,12 @@ describe('layout store - state management', () => {
       expect(serialized.panels.left).toEqual([['changes']])
       expect(serialized.panels.right).toEqual([['tasks']])
 
-      useLayoutStore.setState({ panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {}, zoneSizes: { ...DEFAULT_ZONE_SIZES } })
+      useLayoutStore.setState({
+        panels: { left: [], right: [], bottom: [] },
+        sizes: { left: [], right: [], bottom: [] },
+        activeTab: {},
+        zoneSizes: { ...DEFAULT_ZONE_SIZES },
+      })
       loadLayoutIntoStore(serialized)
 
       const restored = useLayoutStore.getState()
@@ -207,7 +223,12 @@ describe('layout store - state management', () => {
       const serialized = getSerializableLayout()
       expect(serialized.zoneSizes).toEqual({ left: 0.4, right: 0.15, bottom: 0.3 })
 
-      useLayoutStore.setState({ panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {}, zoneSizes: { ...DEFAULT_ZONE_SIZES } })
+      useLayoutStore.setState({
+        panels: { left: [], right: [], bottom: [] },
+        sizes: { left: [], right: [], bottom: [] },
+        activeTab: {},
+        zoneSizes: { ...DEFAULT_ZONE_SIZES },
+      })
       loadLayoutIntoStore(serialized)
       expect(useLayoutStore.getState().zoneSizes).toEqual({ left: 0.4, right: 0.15, bottom: 0.3 })
     })

@@ -6,7 +6,9 @@ interface BrowserState {
   openRoot: (path: string) => void
 }
 
-export const useBrowserStore = createStoreWithHMR(import.meta.hot, 'browser', () => create<BrowserState>((set) => ({
-  rootPath: '',
-  openRoot: (path) => set({ rootPath: path }),
-})))
+export const useBrowserStore = createStoreWithHMR(import.meta.hot, 'browser', () =>
+  create<BrowserState>((set) => ({
+    rootPath: '',
+    openRoot: (path) => set({ rootPath: path }),
+  })),
+)

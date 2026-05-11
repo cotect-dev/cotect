@@ -101,14 +101,14 @@ describe('samePath', () => {
     // Status entry is `lib/utils.ts`. Abs path is `/Users/me/proj/src/lib/utils.ts`
     // — same filename and parent dir name but different file. Old endsWith
     // would have returned true; samePath must say false.
-    expect(
-      samePath('/Users/me/proj/src/lib/utils.ts', 'lib/utils.ts', '/Users/me/proj'),
-    ).toBe(false)
+    expect(samePath('/Users/me/proj/src/lib/utils.ts', 'lib/utils.ts', '/Users/me/proj')).toBe(
+      false,
+    )
   })
 
   it('returns true when the repo-rel form matches exactly', () => {
-    expect(
-      samePath('/Users/me/proj/src/lib/utils.ts', 'src/lib/utils.ts', '/Users/me/proj'),
-    ).toBe(true)
+    expect(samePath('/Users/me/proj/src/lib/utils.ts', 'src/lib/utils.ts', '/Users/me/proj')).toBe(
+      true,
+    )
   })
 })

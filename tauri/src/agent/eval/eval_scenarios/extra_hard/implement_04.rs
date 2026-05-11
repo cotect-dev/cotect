@@ -26,13 +26,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let store_file = ap(dir, "store.py");
-        std::fs::write(&store_file, r#"class StateStore:
+        std::fs::write(
+            &store_file,
+            r#"class StateStore:
     """Key-value state store with change history."""
 
     def __init__(self, initial: dict | None = None):
@@ -103,10 +105,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     # Remove the subscription with the given id. Returns True if a
     # subscription with that id existed, False otherwise. After removal,
     # the callback must not be invoked by subsequent state changes.
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let computed_file = ap(dir, "computed.py");
-        std::fs::write(&computed_file, r#"from store import StateStore
+        std::fs::write(
+            &computed_file,
+            r#"from store import StateStore
 
 
 class ComputedValue:
@@ -130,10 +136,14 @@ class ComputedValue:
     # - dispose() detaches this ComputedValue from the store so later store
     #   changes no longer affect `value`.
     pass
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_observer.py");
-        std::fs::write(&test_file, r#"from store import StateStore
+        std::fs::write(
+            &test_file,
+            r#"from store import StateStore
 from computed import ComputedValue
 
 
@@ -321,24 +331,39 @@ if __name__ == "__main__":
     test_computed_value_dispose()
     test_computed_single_key()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "Implement the subscription API on `StateStore` in {} and the \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "Implement the subscription API on `StateStore` in {} and the \
              `ComputedValue` class in {} according to the contracts in the \
              TODO comments. The store must notify subscribers whenever a \
              key changes through any public mutation (set, delete, reset), \
              and ComputedValue must expose a `value` that always reflects \
              the latest relevant store state until `dispose()` is called.\n\n\
              Verify with `python3 test_observer.py`.",
-            store_file, computed_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 test_observer.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![store_file, computed_file]),
-            vec![test_file])
+                        store_file, computed_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 test_observer.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![store_file, computed_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_implement_04_observer_pattern", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_implement_04_observer_pattern",
+        Category::Implement,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

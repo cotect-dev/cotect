@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use tokio::sync::mpsc;
 
@@ -70,9 +70,16 @@ impl LlmClient {
         let url = format!("{}{}", base, self.adapter.endpoint_path());
 
         let tools_slice = tools.as_deref().unwrap_or(&[]);
-        let body =
-            self.adapter
-                .build_request_body(&self.model, &messages, tools_slice, temperature, std::env::var("COTECT_MAX_TOKENS").ok().and_then(|v| v.parse().ok()).unwrap_or(65536));
+        let body = self.adapter.build_request_body(
+            &self.model,
+            &messages,
+            tools_slice,
+            temperature,
+            std::env::var("COTECT_MAX_TOKENS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(65536),
+        );
 
         if std::env::var("COTECT_DEBUG_REQUESTS").is_ok() {
             if let Ok(json) = serde_json::to_string_pretty(&body) {
@@ -111,7 +118,6 @@ impl LlmClient {
 
         Ok(rx)
     }
-
 }
 
 /// Parse SSE lines and emit `LlmStreamEvent`s via the adapter's parser.
@@ -128,7 +134,10 @@ async fn stream_sse_events(
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
     let idle_timeout = std::time::Duration::from_secs(
-        std::env::var("COTECT_STREAM_IDLE_TIMEOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(60)
+        std::env::var("COTECT_STREAM_IDLE_TIMEOUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60),
     );
 
     loop {

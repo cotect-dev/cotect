@@ -20,13 +20,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let perms_file = ap(dir, "permissions.py");
-        std::fs::write(&perms_file, r#""""Permission checking module.
+        std::fs::write(
+            &perms_file,
+            r#""""Permission checking module.
 
 Role hierarchy (highest to lowest privilege):
     admin > moderator > editor > viewer > guest
@@ -85,10 +87,14 @@ def get_all_roles() -> list[str]:
     # This sort is based on _role_level
     roles.sort(key=_role_level)
     return roles
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let routes_file = ap(dir, "routes.py");
-        std::fs::write(&routes_file, r#""""API routes with permission checks.
+        std::fs::write(
+            &routes_file,
+            r#""""API routes with permission checks.
 
 Uses the legacy naming convention: first arg to check_access is the user's
 actual role, second arg is the required role for the endpoint.
@@ -130,10 +136,14 @@ def handle_public_page(user: dict) -> dict:
     if not result["allowed"]:
         return {"status": 403, "error": result["reason"]}
     return {"status": 200, "data": "Public page"}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_permissions.py");
-        std::fs::write(&test_file, r#"from routes import (
+        std::fs::write(
+            &test_file,
+            r#"from routes import (
     handle_view_dashboard, handle_edit_post,
     handle_moderate_comments, handle_admin_panel,
     handle_public_page,
@@ -194,10 +204,15 @@ if __name__ == "__main__":
     test_guest_only_public()
     test_role_hierarchy_order()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The permission system is behaving incorrectly. Users with the \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The permission system is behaving incorrectly. Users with the \
              'editor' role are getting 403 responses from the edit-post route, \
              while users with the 'viewer' role are unexpectedly receiving 200 \
              responses from that same route. Other routes also return the wrong \
@@ -207,19 +222,29 @@ if __name__ == "__main__":
              Step 2: Run the existing `python3 test_permissions.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              fix, and re-run until all tests pass.",
-            perms_file, routes_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: the test suite must pass — it comprehensively covers
-                // admin/editor/viewer/guest access levels, role hierarchy ordering,
-                // and correct permission grants/denials across all route handlers.
-                // Multiple valid fixes are possible (correct _role_level mapping,
-                // or swap parameter usage throughout); tests only assert behavior.
-                run_has("python3 test_permissions.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![perms_file, routes_file]),
-            vec![test_file])
+                        perms_file, routes_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: the test suite must pass — it comprehensively covers
+                        // admin/editor/viewer/guest access levels, role hierarchy ordering,
+                        // and correct permission grants/denials across all route handlers.
+                        // Multiple valid fixes are possible (correct _role_level mapping,
+                        // or swap parameter usage throughout); tests only assert behavior.
+                        run_has("python3 test_permissions.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![perms_file, routes_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_bugfix_04_adversarial_perms", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_bugfix_04_adversarial_perms",
+        Category::Bugfix,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

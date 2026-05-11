@@ -21,22 +21,24 @@ interface ConsoleState {
 const MAX_ENTRIES = 1000
 let nextId = 0
 
-export const useConsoleStore = createStoreWithHMR(import.meta.hot, 'console', () => create<ConsoleState>((set) => ({
-  entries: [],
-  filter: null,
-  log: (level, message) =>
-    set((state) => {
-      const entry = { id: String(nextId++), level, message, timestamp: Date.now() }
-      if (state.entries.length < MAX_ENTRIES) {
-        return { entries: [...state.entries, entry] }
-      }
-      const trimmed = state.entries.slice(-(MAX_ENTRIES - 1))
-      trimmed.push(entry)
-      return { entries: trimmed }
-    }),
-  clear: () => set({ entries: [] }),
-  setFilter: (filter) => set({ filter }),
-})))
+export const useConsoleStore = createStoreWithHMR(import.meta.hot, 'console', () =>
+  create<ConsoleState>((set) => ({
+    entries: [],
+    filter: null,
+    log: (level, message) =>
+      set((state) => {
+        const entry = { id: String(nextId++), level, message, timestamp: Date.now() }
+        if (state.entries.length < MAX_ENTRIES) {
+          return { entries: [...state.entries, entry] }
+        }
+        const trimmed = state.entries.slice(-(MAX_ENTRIES - 1))
+        trimmed.push(entry)
+        return { entries: trimmed }
+      }),
+    clear: () => set({ entries: [] }),
+    setFilter: (filter) => set({ filter }),
+  })),
+)
 
 const originalConsole = {
   log: console.log.bind(console),

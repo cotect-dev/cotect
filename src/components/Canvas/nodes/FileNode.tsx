@@ -16,7 +16,13 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
   const isImage = isImageFile(data.label)
 
   const icon = isTest ? FlaskConical : isImage ? Image : parseable ? FileCode : FileText
-  const iconColor = isTest ? 'text-yellow-600' : isImage ? 'text-emerald-400' : parseable ? 'text-blue-400' : 'text-muted-foreground'
+  const iconColor = isTest
+    ? 'text-yellow-600'
+    : isImage
+      ? 'text-emerald-400'
+      : parseable
+        ? 'text-blue-400'
+        : 'text-muted-foreground'
   const border = isTest ? 'border-yellow-700/40 border-dashed' : 'border-border'
 
   const opacity = getNodeOpacity({ ...flags, isPreview })

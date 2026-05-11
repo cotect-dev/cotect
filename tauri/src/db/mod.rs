@@ -18,9 +18,7 @@ pub struct Db {
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let manager = SqliteConnectionManager::file(path)
-            .with_init(|c| {
-                c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
-            });
+            .with_init(|c| c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;"));
         let pool = Pool::builder()
             .max_size(8)
             .build(manager)
@@ -57,13 +55,25 @@ mod tests {
         let dir = tempdir().unwrap();
         let db = Db::open(&dir.path().join("test.db")).unwrap();
         let c = db.conn().unwrap();
-        let v: i32 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        let v: i32 = c
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(v, 1);
-        for t in &["providers", "active_assignment", "kv", "repos", "structure_notes", "agent_usage"] {
-            let n: i32 = c.query_row(
-                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
-                [t], |r| r.get(0),
-            ).unwrap();
+        for t in &[
+            "providers",
+            "active_assignment",
+            "kv",
+            "repos",
+            "structure_notes",
+            "agent_usage",
+        ] {
+            let n: i32 = c
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [t],
+                    |r| r.get(0),
+                )
+                .unwrap();
             assert_eq!(n, 1, "table {} missing", t);
         }
     }
@@ -75,7 +85,9 @@ mod tests {
         let _db1 = Db::open(&path).unwrap();
         let db2 = Db::open(&path).unwrap();
         let c = db2.conn().unwrap();
-        let v: i32 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        let v: i32 = c
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(v, 1);
     }
 }

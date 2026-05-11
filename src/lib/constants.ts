@@ -23,13 +23,35 @@ export const CANVAS_PAD_Y = CANVAS_MARGIN
 export const IMAGE_PREVIEW_MAX_BYTES = 5 * 1024 * 1024 // 5 MB
 
 export const HIDDEN_DIRECTORIES = new Set([
-  'node_modules', '__pycache__', 'dist', 'build', 'target', 'coverage',
-  '.git', '.svn', '.hg', '.tmp', '.cache', '.next', '.nuxt',
-  '.idea', '.vscode', '.DS_Store', '__MACOSX',
+  'node_modules',
+  '__pycache__',
+  'dist',
+  'build',
+  'target',
+  'coverage',
+  '.git',
+  '.svn',
+  '.hg',
+  '.tmp',
+  '.cache',
+  '.next',
+  '.nuxt',
+  '.idea',
+  '.vscode',
+  '.DS_Store',
+  '__MACOSX',
 ])
 
 const IMAGE_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico', '.avif',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.bmp',
+  '.webp',
+  '.svg',
+  '.ico',
+  '.avif',
 ])
 
 export function isImageFile(name: string): boolean {
@@ -40,15 +62,25 @@ export function isImageFile(name: string): boolean {
 export function getImageMimeType(name: string): string {
   const ext = name.slice(name.lastIndexOf('.')).toLowerCase()
   switch (ext) {
-    case '.png': return 'image/png'
-    case '.jpg': case '.jpeg': return 'image/jpeg'
-    case '.gif': return 'image/gif'
-    case '.bmp': return 'image/bmp'
-    case '.webp': return 'image/webp'
-    case '.svg': return 'image/svg+xml'
-    case '.ico': return 'image/x-icon'
-    case '.avif': return 'image/avif'
-    default: return 'application/octet-stream'
+    case '.png':
+      return 'image/png'
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg'
+    case '.gif':
+      return 'image/gif'
+    case '.bmp':
+      return 'image/bmp'
+    case '.webp':
+      return 'image/webp'
+    case '.svg':
+      return 'image/svg+xml'
+    case '.ico':
+      return 'image/x-icon'
+    case '.avif':
+      return 'image/avif'
+    default:
+      return 'application/octet-stream'
   }
 }
 

@@ -36,14 +36,12 @@ const GIT_TIMEOUT: Duration = Duration::from_secs(15);
 
 async fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("git");
-    cmd.args(["-C", repo_path, "--no-optional-locks"]).args(args);
+    cmd.args(["-C", repo_path, "--no-optional-locks"])
+        .args(args);
     cmd.kill_on_drop(true);
 
     let fut = async move {
-        let output = cmd
-            .output()
-            .await
-            .map_err(|_| GIT_NOT_FOUND.to_string())?;
+        let output = cmd.output().await.map_err(|_| GIT_NOT_FOUND.to_string())?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -93,7 +91,10 @@ fn parse_numstat(numstat: &str) -> HashMap<String, (u32, u32)> {
     stats
 }
 
-fn parse_porcelain(porcelain: &str, stats: &HashMap<String, (u32, u32)>) -> (Vec<GitFileStatus>, u32, u32) {
+fn parse_porcelain(
+    porcelain: &str,
+    stats: &HashMap<String, (u32, u32)>,
+) -> (Vec<GitFileStatus>, u32, u32) {
     let mut files = Vec::new();
     let mut total_insertions = 0u32;
     let mut total_deletions = 0u32;
@@ -140,8 +141,12 @@ fn parse_porcelain(porcelain: &str, stats: &HashMap<String, (u32, u32)>) -> (Vec
 #[tauri::command]
 pub async fn git_status(repo_path: String) -> Result<GitStatus, String> {
     let porcelain = run_git(&repo_path, &["status", "--porcelain"]).await?;
-    let numstat = run_git(&repo_path, &["diff", "--numstat"]).await.unwrap_or_default();
-    let cached_numstat = run_git(&repo_path, &["diff", "--cached", "--numstat"]).await.unwrap_or_default();
+    let numstat = run_git(&repo_path, &["diff", "--numstat"])
+        .await
+        .unwrap_or_default();
+    let cached_numstat = run_git(&repo_path, &["diff", "--cached", "--numstat"])
+        .await
+        .unwrap_or_default();
 
     let mut stats = parse_numstat(&numstat);
     for (path, (ins, del)) in parse_numstat(&cached_numstat) {
@@ -200,11 +205,7 @@ fn parse_log_output(output: &str) -> Vec<GitLogEntry> {
         };
         let message = lines.next().unwrap_or("").to_string();
         let author = lines.next().unwrap_or("").to_string();
-        let timestamp: i64 = lines
-            .next()
-            .unwrap_or("0")
-            .parse()
-            .unwrap_or(0);
+        let timestamp: i64 = lines.next().unwrap_or("0").parse().unwrap_or(0);
 
         // Body spans every line up to the "---END---" sentinel. `%b%n` in
         // the format string puts an empty trailing line before the sentinel
@@ -270,7 +271,11 @@ fn parse_log_output(output: &str) -> Vec<GitLogEntry> {
 }
 
 #[tauri::command]
-pub async fn git_log(repo_path: String, limit: Option<u32>, skip: Option<u32>) -> Result<Vec<GitLogEntry>, String> {
+pub async fn git_log(
+    repo_path: String,
+    limit: Option<u32>,
+    skip: Option<u32>,
+) -> Result<Vec<GitLogEntry>, String> {
     let limit_str = format!("-{}", limit.unwrap_or(50));
     let mut args = vec!["log", &limit_str];
     let skip_str;
@@ -309,7 +314,9 @@ pub async fn git_branch(repo_path: String) -> Result<GitBranch, String> {
         Ok(short_sha_out) => {
             let short_sha = short_sha_out.trim().to_string();
             match run_git(&repo_path, &["symbolic-ref", "--short", "HEAD"]).await {
-                Ok(out) => Ok(GitBranch::Branch { name: out.trim().to_string() }),
+                Ok(out) => Ok(GitBranch::Branch {
+                    name: out.trim().to_string(),
+                }),
                 Err(e) if is_connection_error(&e) => Err(e),
                 Err(_) => Ok(GitBranch::Detached { short_sha }),
             }
@@ -322,10 +329,7 @@ pub async fn git_branch(repo_path: String) -> Result<GitBranch, String> {
 #[tauri::command]
 pub async fn git_last_commit_time(repo_path: String) -> Result<i64, String> {
     let output = run_git(&repo_path, &["log", "-1", "--format=%ct"]).await?;
-    output
-        .trim()
-        .parse::<i64>()
-        .map_err(|e| e.to_string())
+    output.trim().parse::<i64>().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -422,7 +426,9 @@ pub async fn git_branches(repo_path: String) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub async fn git_checkout(repo_path: String, branch: String) -> Result<(), String> {
-    run_git(&repo_path, &["checkout", &branch]).await.map(|_| ())
+    run_git(&repo_path, &["checkout", &branch])
+        .await
+        .map(|_| ())
 }
 
 #[tauri::command]
@@ -467,8 +473,18 @@ mod tests {
             std::fs::create_dir_all(parent).ok();
         }
         std::fs::write(&full, content).unwrap();
-        StdCommand::new("git").arg("-C").arg(repo).args(["add", rel_path]).status().unwrap();
-        StdCommand::new("git").arg("-C").arg(repo).args(["commit", "-q", "-m", msg]).status().unwrap();
+        StdCommand::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["add", rel_path])
+            .status()
+            .unwrap();
+        StdCommand::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["commit", "-q", "-m", msg])
+            .status()
+            .unwrap();
     }
 
     #[tokio::test]
@@ -478,7 +494,9 @@ mod tests {
         // Modify in working tree — git_show_file should still return HEAD content
         std::fs::write(format!("{repo}/a.txt"), "changed\n").unwrap();
 
-        let head = git_show_file(repo.clone(), "a.txt".to_string()).await.unwrap();
+        let head = git_show_file(repo.clone(), "a.txt".to_string())
+            .await
+            .unwrap();
         assert_eq!(head, "hello\n");
     }
 
@@ -488,7 +506,11 @@ mod tests {
         write_and_commit(&repo, "a.txt", "x\n", "init");
         // b.txt has never existed
         let result = git_show_file(repo, "b.txt".to_string()).await;
-        assert!(result.is_err(), "expected Err for missing path, got {:?}", result);
+        assert!(
+            result.is_err(),
+            "expected Err for missing path, got {:?}",
+            result
+        );
     }
 
     #[tokio::test]
@@ -496,8 +518,18 @@ mod tests {
         let (_dir, repo) = make_repo();
         let full = format!("{repo}/bin.dat");
         std::fs::write(&full, [0xFF, 0xFE, 0x00, 0x01, 0xFF]).unwrap();
-        StdCommand::new("git").arg("-C").arg(&repo).args(["add", "bin.dat"]).status().unwrap();
-        StdCommand::new("git").arg("-C").arg(&repo).args(["commit", "-q", "-m", "add binary"]).status().unwrap();
+        StdCommand::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["add", "bin.dat"])
+            .status()
+            .unwrap();
+        StdCommand::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["commit", "-q", "-m", "add binary"])
+            .status()
+            .unwrap();
 
         let result = git_show_file(repo, "bin.dat".to_string()).await;
         // We just care that it doesn't panic and returns something — either Ok(lossy) or Err.
@@ -564,14 +596,20 @@ mod tests {
 
         // Check out the first commit's SHA directly to get a detached HEAD.
         let first_sha = StdCommand::new("git")
-            .arg("-C").arg(&repo)
+            .arg("-C")
+            .arg(&repo)
             .args(["rev-parse", "HEAD~1"])
-            .output().unwrap();
-        let sha = String::from_utf8_lossy(&first_sha.stdout).trim().to_string();
+            .output()
+            .unwrap();
+        let sha = String::from_utf8_lossy(&first_sha.stdout)
+            .trim()
+            .to_string();
         StdCommand::new("git")
-            .arg("-C").arg(&repo)
+            .arg("-C")
+            .arg(&repo)
             .args(["checkout", "--quiet", &sha])
-            .status().unwrap();
+            .status()
+            .unwrap();
 
         let branch = git_branch(repo).await.unwrap();
         match branch {
@@ -621,7 +659,13 @@ mod tests {
         }
 
         let paths: Vec<String> = (0..10)
-            .flat_map(|i| [format!("a{i}.txt"), format!("b{i}.txt"), format!("c{i}.txt")])
+            .flat_map(|i| {
+                [
+                    format!("a{i}.txt"),
+                    format!("b{i}.txt"),
+                    format!("c{i}.txt"),
+                ]
+            })
             .collect();
 
         let result = git_file_times(repo, paths.clone()).await.unwrap();

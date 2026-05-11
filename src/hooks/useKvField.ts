@@ -25,17 +25,22 @@ export function useKvField<T>(
         setValue(raw as T)
       }
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [key])
 
-  const set = useCallback((next: T) => {
-    setValue(next)
-    pending.current = next
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
-      void kvSet(key, pending.current)
-    }, debounceMs)
-  }, [key, debounceMs])
+  const set = useCallback(
+    (next: T) => {
+      setValue(next)
+      pending.current = next
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(() => {
+        void kvSet(key, pending.current)
+      }, debounceMs)
+    },
+    [key, debounceMs],
+  )
 
   useEffect(() => {
     return () => {

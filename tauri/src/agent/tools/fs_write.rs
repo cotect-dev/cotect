@@ -4,9 +4,9 @@ use std::sync::Arc;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::ToolState;
 use super::fs_patch::number_lines;
 use super::fs_read::resolve_path;
+use super::ToolState;
 use crate::agent::utils::{io_err, line_has_number_prefix, read_first_err};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -22,7 +22,11 @@ pub async fn execute(input: &FSWriteInput, state: &Arc<ToolState>) -> Result<Str
     let path_owned = resolved.to_string_lossy().to_string();
     let path = path_owned.as_str();
 
-    if state.blocked_files.iter().any(|b| resolved.ends_with(b) || &resolved == b) {
+    if state
+        .blocked_files
+        .iter()
+        .any(|b| resolved.ends_with(b) || &resolved == b)
+    {
         return Err(format!("Access denied: {path} is a protected file"));
     }
 
@@ -76,9 +80,9 @@ fn looks_like_line_numbered_dump(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::agent::tools::fs_read;
     use crate::agent::tools::test_helpers::{make_state, make_temp_file};
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn write_new_file_returns_post_write_body() {

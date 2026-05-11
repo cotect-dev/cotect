@@ -71,10 +71,11 @@ describe('persistence', () => {
       })
 
       const store = create(
-        withPersistence<{ width: number }>(
-          () => ({ width: 300 }),
-          { name: 'mystore', fields: { width: { scope: 'global' } }, debounce: 100 },
-        ),
+        withPersistence<{ width: number }>(() => ({ width: 300 }), {
+          name: 'mystore',
+          fields: { width: { scope: 'global' } },
+          debounce: 100,
+        }),
       )
 
       await initPersistence('test-project-abc12345')
@@ -91,10 +92,11 @@ describe('persistence', () => {
       })
 
       const store = create(
-        withPersistence<{ items: string[] }>(
-          () => ({ items: [] }),
-          { name: 'mystore', fields: { items: { scope: 'project' } }, debounce: 100 },
-        ),
+        withPersistence<{ items: string[] }>(() => ({ items: [] }), {
+          name: 'mystore',
+          fields: { items: { scope: 'project' } },
+          debounce: 100,
+        }),
       )
 
       await initPersistence('test-project-abc12345')
@@ -111,20 +113,17 @@ describe('persistence', () => {
       })
 
       const store = create(
-        withPersistence<{ ids: Set<string> }>(
-          () => ({ ids: new Set() }),
-          {
-            name: 'mystore',
-            fields: {
-              ids: {
-                scope: 'project',
-                serialize: (s: Set<string>) => [...s],
-                deserialize: (arr: unknown) => new Set(arr as string[]),
-              },
+        withPersistence<{ ids: Set<string> }>(() => ({ ids: new Set() }), {
+          name: 'mystore',
+          fields: {
+            ids: {
+              scope: 'project',
+              serialize: (s: Set<string>) => [...s],
+              deserialize: (arr: unknown) => new Set(arr as string[]),
             },
-            debounce: 100,
           },
-        ),
+          debounce: 100,
+        }),
       )
 
       await initPersistence('test-project-abc12345')
@@ -138,10 +137,11 @@ describe('persistence', () => {
   describe('debounced writes', () => {
     it('writes global field changes after debounce', async () => {
       const store = create(
-        withPersistence<{ width: number }>(
-          () => ({ width: 300 }),
-          { name: 'mystore', fields: { width: { scope: 'global' } }, debounce: 100 },
-        ),
+        withPersistence<{ width: number }>(() => ({ width: 300 }), {
+          name: 'mystore',
+          fields: { width: { scope: 'global' } },
+          debounce: 100,
+        }),
       )
 
       await initPersistence('test-project-abc12345')
@@ -164,10 +164,11 @@ describe('persistence', () => {
 
     it('writes project field changes to the project namespace', async () => {
       const store = create(
-        withPersistence<{ hidden: string[] }>(
-          () => ({ hidden: [] }),
-          { name: 'mystore', fields: { hidden: { scope: 'project' } }, debounce: 100 },
-        ),
+        withPersistence<{ hidden: string[] }>(() => ({ hidden: [] }), {
+          name: 'mystore',
+          fields: { hidden: { scope: 'project' } },
+          debounce: 100,
+        }),
       )
 
       await initPersistence('test-project-abc12345')
@@ -185,14 +186,11 @@ describe('persistence', () => {
 
     it('auto-converts Set to Array without custom serialize', async () => {
       const store = create(
-        withPersistence<{ ids: Set<string> }>(
-          () => ({ ids: new Set() }),
-          {
-            name: 'mystore',
-            fields: { ids: { scope: 'global' } },
-            debounce: 100,
-          },
-        ),
+        withPersistence<{ ids: Set<string> }>(() => ({ ids: new Set() }), {
+          name: 'mystore',
+          fields: { ids: { scope: 'global' } },
+          debounce: 100,
+        }),
       )
 
       await initPersistence('test-project-abc12345')
@@ -210,20 +208,17 @@ describe('persistence', () => {
 
     it('uses serialize function when provided', async () => {
       const store = create(
-        withPersistence<{ ids: Set<string> }>(
-          () => ({ ids: new Set() }),
-          {
-            name: 'mystore',
-            fields: {
-              ids: {
-                scope: 'global',
-                serialize: (s: Set<string>) => [...s],
-                deserialize: (arr: unknown) => new Set(arr as string[]),
-              },
+        withPersistence<{ ids: Set<string> }>(() => ({ ids: new Set() }), {
+          name: 'mystore',
+          fields: {
+            ids: {
+              scope: 'global',
+              serialize: (s: Set<string>) => [...s],
+              deserialize: (arr: unknown) => new Set(arr as string[]),
             },
-            debounce: 100,
           },
-        ),
+          debounce: 100,
+        }),
       )
 
       await initPersistence('test-project-abc12345')
@@ -243,10 +238,11 @@ describe('persistence', () => {
   describe('flushPendingWrites', () => {
     it('writes immediately without waiting for debounce', async () => {
       const store = create(
-        withPersistence<{ val: number }>(
-          () => ({ val: 0 }),
-          { name: 'mystore', fields: { val: { scope: 'global' } }, debounce: 5000 },
-        ),
+        withPersistence<{ val: number }>(() => ({ val: 0 }), {
+          name: 'mystore',
+          fields: { val: { scope: 'global' } },
+          debounce: 5000,
+        }),
       )
 
       await initPersistence('test-project-abc12345')
@@ -266,10 +262,11 @@ describe('persistence', () => {
   describe('switchProject', () => {
     it('flushes writes and loads new project state', async () => {
       const store = create(
-        withPersistence<{ items: string[] }>(
-          () => ({ items: [] }),
-          { name: 'mystore', fields: { items: { scope: 'project' } }, debounce: 100 },
-        ),
+        withPersistence<{ items: string[] }>(() => ({ items: [] }), {
+          name: 'mystore',
+          fields: { items: { scope: 'project' } },
+          debounce: 100,
+        }),
       )
 
       await initPersistence('project-a')
@@ -288,10 +285,11 @@ describe('persistence', () => {
 
     it('resets project fields to defaults when no saved state exists', async () => {
       const store = create(
-        withPersistence<{ items: string[] }>(
-          () => ({ items: ['default'] }),
-          { name: 'mystore', fields: { items: { scope: 'project' } }, debounce: 100 },
-        ),
+        withPersistence<{ items: string[] }>(() => ({ items: ['default'] }), {
+          name: 'mystore',
+          fields: { items: { scope: 'project' } },
+          debounce: 100,
+        }),
       )
 
       await initPersistence('project-a')

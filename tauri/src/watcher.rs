@@ -65,12 +65,7 @@ where
 }
 
 #[tauri::command]
-pub fn watch_path(
-    app: AppHandle,
-    path: String,
-    id: String,
-    recursive: bool,
-) -> Result<(), String> {
+pub fn watch_path(app: AppHandle, path: String, id: String, recursive: bool) -> Result<(), String> {
     let state = app.state::<WatcherState>();
     let mut watchers = state.watchers.lock().map_err(|e| e.to_string())?;
 
@@ -118,7 +113,12 @@ pub fn watch_path(
         .watch(PathBuf::from(&path), mode)
         .map_err(|e| format!("Failed to watch path: {e}"))?;
 
-    watchers.insert(id, WatcherEntry { _debouncer: debouncer });
+    watchers.insert(
+        id,
+        WatcherEntry {
+            _debouncer: debouncer,
+        },
+    );
 
     Ok(())
 }
@@ -172,10 +172,8 @@ mod tests {
         let p1 = paths(&["/tmp/a", "/tmp/b"]);
         let p2 = paths(&["/tmp/a"]);
 
-        let (out_paths, kinds) = aggregate_events([
-            (&modify_a, p1.as_slice()),
-            (&modify_b, p2.as_slice()),
-        ]);
+        let (out_paths, kinds) =
+            aggregate_events([(&modify_a, p1.as_slice()), (&modify_b, p2.as_slice())]);
 
         assert_eq!(out_paths, vec!["/tmp/a".to_string(), "/tmp/b".to_string()]);
         assert_eq!(kinds, vec!["modify".to_string()]);
@@ -187,12 +185,13 @@ mod tests {
         let other = EventKind::Other;
         let p = paths(&["/tmp/x"]);
 
-        let (out_paths, kinds) = aggregate_events([
-            (&access, p.as_slice()),
-            (&other, p.as_slice()),
-        ]);
+        let (out_paths, kinds) =
+            aggregate_events([(&access, p.as_slice()), (&other, p.as_slice())]);
 
-        assert!(out_paths.is_empty(), "paths from skipped events should not leak");
+        assert!(
+            out_paths.is_empty(),
+            "paths from skipped events should not leak"
+        );
         assert!(kinds.is_empty());
     }
 
@@ -204,10 +203,7 @@ mod tests {
         let create = EventKind::Create(CreateKind::File);
         let p = paths(&["/tmp/file.txt"]);
 
-        let (_, kinds) = aggregate_events([
-            (&remove, p.as_slice()),
-            (&create, p.as_slice()),
-        ]);
+        let (_, kinds) = aggregate_events([(&remove, p.as_slice()), (&create, p.as_slice())]);
 
         assert!(kinds.contains(&"create".to_string()));
         assert!(kinds.contains(&"delete".to_string()));

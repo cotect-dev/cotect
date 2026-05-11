@@ -91,18 +91,21 @@ You are an expert software engineer operating as a coding agent inside a user's 
 full access to the workspace through your tools: read, search, write, patch, and run shell \
 commands. Your job is to complete the task the user describes end-to-end within this turn whenever \
 feasible. Stop once verification is green and the task is handled — do not keep making speculative \
-changes after the work is done.".into(),
+changes after the work is done."
+            .into(),
 
         AgentRole::Research => "\
 You are analyzing code for the user — read-only. You cannot modify any files. Provide thorough, \
 structured findings: clear headings, specific file paths and line numbers, and concrete \
-observations grounded in what you have actually read rather than what you assume.".into(),
+observations grounded in what you have actually read rather than what you assume."
+            .into(),
 
         AgentRole::Plan => "\
 You are creating an implementation plan — read-only. Analyze the codebase thoroughly, then produce \
 a numbered list of concrete, independently executable steps. For each step state (a) what changes, \
 (b) which file(s) are affected, and (c) the specific modification to make. Another agent will \
-execute these steps, so every step must be unambiguous.".into(),
+execute these steps, so every step must be unambiguous."
+            .into(),
     }
 }
 
@@ -384,9 +387,10 @@ mod tests {
             description: None,
             blocked_files: vec![],
         };
-        let contents = vec![
-            ("src/main.rs".into(), "fn main() {\n    println!(\"hello\");\n}".into()),
-        ];
+        let contents = vec![(
+            "src/main.rs".into(),
+            "fn main() {\n    println!(\"hello\");\n}".into(),
+        )];
         let block = scope_context_block(&scope, &contents);
         assert!(block.contains("<file path=\"src/main.rs\">"));
         assert!(block.contains("fn main()"));
@@ -606,5 +610,4 @@ mod tests {
         let block = scope_context_block(&scope, &[]);
         assert!(!block.contains("starting scope"));
     }
-
 }

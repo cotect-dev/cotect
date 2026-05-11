@@ -32,10 +32,16 @@ describe('useKvField', () => {
     vi.mocked(kvGet).mockResolvedValue(null)
     vi.mocked(kvSet).mockResolvedValue(undefined)
     const { result } = renderHook(() => useKvField<number>('k', 0, 500))
-    act(() => { result.current[1](1) })
-    act(() => { result.current[1](2) })
+    act(() => {
+      result.current[1](1)
+    })
+    act(() => {
+      result.current[1](2)
+    })
     expect(kvSet).not.toHaveBeenCalled()
-    act(() => { vi.advanceTimersByTime(500) })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
     vi.useRealTimers()
     await waitFor(() => expect(kvSet).toHaveBeenCalledTimes(1))
     expect(kvSet).toHaveBeenCalledWith('k', 2)

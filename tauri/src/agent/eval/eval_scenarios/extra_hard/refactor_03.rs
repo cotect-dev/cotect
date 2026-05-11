@@ -25,13 +25,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let collector_file = ap(dir, "collector.py");
-        std::fs::write(&collector_file, r#"class MetricsCollector:
+        std::fs::write(
+            &collector_file,
+            r#"class MetricsCollector:
     """Collects numeric metrics by name."""
 
     def __init__(self):
@@ -73,10 +75,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
 
     def clear(self) -> None:
         self._data.clear()
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let middleware_file = ap(dir, "middleware.py");
-        std::fs::write(&middleware_file, r#"from collector import MetricsCollector
+        std::fs::write(
+            &middleware_file,
+            r#"from collector import MetricsCollector
 
 class MetricsMiddleware:
     """Middleware layer on top of MetricsCollector."""
@@ -108,10 +114,14 @@ class MetricsMiddleware:
     @property
     def collector(self) -> MetricsCollector:
         return self._collector
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let formatter_file = ap(dir, "formatter.py");
-        std::fs::write(&formatter_file, r#"from collector import MetricsCollector
+        std::fs::write(
+            &formatter_file,
+            r#"from collector import MetricsCollector
 
 class MetricsFormatter:
     """Formats metric statistics for display."""
@@ -161,10 +171,14 @@ class MetricsFormatter:
         for name in sorted(names):
             parts.append(self.format_summary(name))
         return "\n".join(parts)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_metrics.py");
-        std::fs::write(&test_file, r#"from collector import MetricsCollector
+        std::fs::write(
+            &test_file,
+            r#"from collector import MetricsCollector
 from middleware import MetricsMiddleware
 from formatter import MetricsFormatter
 
@@ -269,10 +283,15 @@ if __name__ == "__main__":
     test_format_all()
     test_formatter_deduplication()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The metrics system (collector.py, middleware.py, formatter.py) has \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The metrics system (collector.py, middleware.py, formatter.py) has \
              code smells that make it harder to maintain:\n\
              - MetricsMiddleware looks like thin indirection over MetricsCollector.\n\
              - MetricsFormatter repeats the same stat-formatting numbers and \
@@ -285,19 +304,28 @@ if __name__ == "__main__":
              Step 2: Apply changes WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_metrics.py` to verify. If tests fail, \
              reconsider what you removed — some 'unnecessary' code may be important."
-            .to_string()
-        ),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: tests must pass — they cover basic recording,
-                // case-insensitive names, middleware expiry windows,
-                // formatter output, and enforce formatter deduplication
-                // (by checking '.2f' does not appear in both methods).
-                run_has("python3 test_metrics.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![collector_file, middleware_file, formatter_file]),
-            vec![test_file])
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: tests must pass — they cover basic recording,
+                        // case-insensitive names, middleware expiry windows,
+                        // formatter output, and enforce formatter deduplication
+                        // (by checking '.2f' does not appear in both methods).
+                        run_has("python3 test_metrics.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![collector_file, middleware_file, formatter_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_refactor_03_trap_side_effects", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_refactor_03_trap_side_effects",
+        Category::Refactor,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

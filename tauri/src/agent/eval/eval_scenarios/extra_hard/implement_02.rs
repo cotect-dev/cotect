@@ -26,13 +26,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let task_file = ap(dir, "task.py");
-        std::fs::write(&task_file, r#"from datetime import datetime
+        std::fs::write(
+            &task_file,
+            r#"from datetime import datetime
 
 
 class Task:
@@ -83,10 +85,14 @@ class Task:
 
     def __repr__(self):
         return f"Task({self.id}: {self.title!r} [{self.status}])"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let board_file = ap(dir, "board.py");
-        std::fs::write(&board_file, r#"from datetime import datetime
+        std::fs::write(
+            &board_file,
+            r#"from datetime import datetime
 from task import Task
 
 
@@ -158,10 +164,14 @@ class TaskBoard:
     # (title, created_at, list_tasks/get_task, history, stats) and must
     # continue task id assignment from where the original left off.
     # Raises FileNotFoundError if the path does not exist.
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_board.py");
-        std::fs::write(&test_file, r#"import os
+        std::fs::write(
+            &test_file,
+            r#"import os
 import json
 import tempfile
 from datetime import datetime
@@ -360,10 +370,15 @@ if __name__ == "__main__":
     test_stats_after_load()
     test_task_from_dict_standalone()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "Add persistence to the task manager in {} and {}.\n\n\
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "Add persistence to the task manager in {} and {}.\n\n\
              Contract:\n\
              - Task.from_dict(d) is the exact inverse of Task.to_dict(): \
                for any Task t, Task.from_dict(t.to_dict()) reproduces every \
@@ -378,14 +393,24 @@ if __name__ == "__main__":
                continues the id sequence from where the original left off. \
                Raises FileNotFoundError if path does not exist.\n\n\
              Verify with `python3 test_board.py`.",
-            task_file, board_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 test_board.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![task_file, board_file]),
-            vec![test_file])
+                        task_file, board_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 test_board.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![task_file, board_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_implement_02_task_serialization", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_implement_02_task_serialization",
+        Category::Implement,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

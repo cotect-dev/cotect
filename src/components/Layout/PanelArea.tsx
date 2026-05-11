@@ -1,23 +1,33 @@
-import { useDraggable } from '@dnd-kit/core';
-import { X } from 'lucide-react';
-import { getPanelLabel, useLayoutStore, type PanelPosition } from '@/store/layout';
-import { PanelSlot } from './PanelHost';
-import { PANEL_CONTENT } from './panelContent';
+import { useDraggable } from '@dnd-kit/core'
+import { X } from 'lucide-react'
+import { getPanelLabel, useLayoutStore, type PanelPosition } from '@/store/layout'
+import { PanelSlot } from './PanelHost'
+import { PANEL_CONTENT } from './panelContent'
 
 interface PanelAreaProps {
-  group: string[];
-  position: PanelPosition;
-  groupIndex: number;
-  ghostTabLabel?: string | null;
+  group: string[]
+  position: PanelPosition
+  groupIndex: number
+  ghostTabLabel?: string | null
 }
 
-function TabButton({ id, isActive, position, onClick }: { id: string; isActive: boolean; position: PanelPosition; onClick: () => void }) {
-  const label = getPanelLabel(id);
-  const removePanel = useLayoutStore((s) => s.removePanel);
+function TabButton({
+  id,
+  isActive,
+  position,
+  onClick,
+}: {
+  id: string
+  isActive: boolean
+  position: PanelPosition
+  onClick: () => void
+}) {
+  const label = getPanelLabel(id)
+  const removePanel = useLayoutStore((s) => s.removePanel)
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `tab-${id}`,
     data: { panelId: id, position, isTab: true },
-  });
+  })
 
   return (
     <div
@@ -32,8 +42,8 @@ function TabButton({ id, isActive, position, onClick }: { id: string; isActive: 
         {...listeners}
         {...attributes}
         onClick={(e) => {
-          e.stopPropagation();
-          onClick();
+          e.stopPropagation()
+          onClick()
         }}
         className="px-2.5 py-1.5 text-xs truncate cursor-grab active:cursor-grabbing max-w-[120px]"
       >
@@ -41,8 +51,8 @@ function TabButton({ id, isActive, position, onClick }: { id: string; isActive: 
       </button>
       <button
         onClick={(e) => {
-          e.stopPropagation();
-          removePanel(id);
+          e.stopPropagation()
+          removePanel(id)
         }}
         aria-label={`Close ${label}`}
         className="p-0.5 mr-1 rounded-sm hover:bg-destructive/20 hover:text-destructive transition-colors"
@@ -50,31 +60,29 @@ function TabButton({ id, isActive, position, onClick }: { id: string; isActive: 
         <X className="h-3 w-3" />
       </button>
     </div>
-  );
+  )
 }
 
 function GhostTab({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-0.5 shrink-0 select-none border-b-2 border-primary/40">
-      <span className="px-2.5 py-1.5 text-xs text-primary/40 truncate max-w-[120px]">
-        {label}
-      </span>
+      <span className="px-2.5 py-1.5 text-xs text-primary/40 truncate max-w-[120px]">{label}</span>
     </div>
-  );
+  )
 }
 
 export default function PanelArea({ group, position, groupIndex, ghostTabLabel }: PanelAreaProps) {
-  const activeTabIndex = useLayoutStore((s) => s.activeTab[group[0]] ?? 0);
-  const setActiveTab = useLayoutStore((s) => s.setActiveTab);
-  const activeIndex = Math.min(activeTabIndex, group.length - 1);
+  const activeTabIndex = useLayoutStore((s) => s.activeTab[group[0]] ?? 0)
+  const setActiveTab = useLayoutStore((s) => s.setActiveTab)
+  const activeIndex = Math.min(activeTabIndex, group.length - 1)
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `group-${group[0]}`,
     data: { panelId: group[0], panelIds: group, position, isGroup: true, groupIndex },
-  });
+  })
 
-  const isSingle = group.length === 1 && !ghostTabLabel;
-  const removePanel = useLayoutStore((s) => s.removePanel);
+  const isSingle = group.length === 1 && !ghostTabLabel
+  const removePanel = useLayoutStore((s) => s.removePanel)
 
   return (
     <div
@@ -96,8 +104,8 @@ export default function PanelArea({ group, position, groupIndex, ghostTabLabel }
             </span>
             <button
               onClick={(e) => {
-                e.stopPropagation();
-                removePanel(group[0]);
+                e.stopPropagation()
+                removePanel(group[0])
               }}
               onPointerDown={(e) => e.stopPropagation()}
               aria-label={`Close ${getPanelLabel(group[0])}`}
@@ -123,12 +131,10 @@ export default function PanelArea({ group, position, groupIndex, ghostTabLabel }
       </div>
       <div className="flex-1 min-h-0 relative">
         {group.map((id, i) => {
-          if (!PANEL_CONTENT[id]) return null;
-          return (
-            <PanelSlot key={id} id={id} visible={i === activeIndex} />
-          );
+          if (!PANEL_CONTENT[id]) return null
+          return <PanelSlot key={id} id={id} visible={i === activeIndex} />
         })}
       </div>
     </div>
-  );
+  )
 }

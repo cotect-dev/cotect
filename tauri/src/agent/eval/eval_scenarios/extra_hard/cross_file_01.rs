@@ -23,13 +23,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let models_file = ap(dir, "models.py");
-        std::fs::write(&models_file, r#"from datetime import datetime
+        std::fs::write(
+            &models_file,
+            r#"from datetime import datetime
 
 
 class RecordSet:
@@ -50,10 +52,14 @@ class RecordSet:
 
     def __bool__(self):
         return self.total_count > 0
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let source_file = ap(dir, "data_source.py");
-        std::fs::write(&source_file, r#"from datetime import datetime
+        std::fs::write(
+            &source_file,
+            r#"from datetime import datetime
 
 
 def _fetch_raw(query: str) -> list[dict]:
@@ -79,10 +85,14 @@ def fetch_records(query: str) -> list[dict]:
     """
     raw = _fetch_raw(query)
     return raw
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let transformer_file = ap(dir, "transformer.py");
-        std::fs::write(&transformer_file, r#"from data_source import fetch_records
+        std::fs::write(
+            &transformer_file,
+            r#"from data_source import fetch_records
 
 
 def normalize_scores(query: str) -> list[dict]:
@@ -110,10 +120,14 @@ def enrich_records(query: str, extra_field: str, default_value: str) -> list[dic
         enriched[extra_field] = default_value
         result.append(enriched)
     return result
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let aggregator_file = ap(dir, "aggregator.py");
-        std::fs::write(&aggregator_file, r#"from data_source import fetch_records
+        std::fs::write(
+            &aggregator_file,
+            r#"from data_source import fetch_records
 
 
 def count_records(query: str) -> int:
@@ -137,10 +151,14 @@ def top_scorer(query: str) -> dict | None:
     if not data:
         return None
     return max(data, key=lambda r: r["score"])
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let reporter_file = ap(dir, "reporter.py");
-        std::fs::write(&reporter_file, r#"from data_source import fetch_records
+        std::fs::write(
+            &reporter_file,
+            r#"from data_source import fetch_records
 
 
 def format_summary(info: dict) -> str:
@@ -171,10 +189,14 @@ def generate_report(query: str) -> str:
     if not lines:
         return "No records found."
     return "\n".join(lines)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_pipeline.py");
-        std::fs::write(&test_file, r#"from datetime import datetime
+        std::fs::write(
+            &test_file,
+            r#"from datetime import datetime
 from models import RecordSet
 from data_source import fetch_records, _fetch_raw
 from transformer import normalize_scores, enrich_records
@@ -280,10 +302,15 @@ if __name__ == "__main__":
     test_format_summary_unchanged()
     test_empty_recordset()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "This project has a data pipeline. A `RecordSet` wrapper class already \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "This project has a data pipeline. A `RecordSet` wrapper class already \
              exists in the codebase — find it and read its contract. The public \
              entrypoint that the rest of the pipeline uses to retrieve records \
              currently returns a plain list of dicts; change it so it returns a \
@@ -297,26 +324,46 @@ if __name__ == "__main__":
              fetching.\n\n\
              Apply all edits first, then run the bundled test suite \
              (`python3 test_pipeline.py`) and iterate until it prints \
-             ALL_TESTS_PASSED.".to_string()),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Entry point now returns RecordSet wrapper
-                file_has(&source_file, &["RecordSet"]),
-                file_lacks(&source_file, &["def fetch_records(query: str) -> list[dict]"]),
-                // Consumers now reach through .records
-                file_has(&transformer_file, &[".records"]),
-                file_has(&aggregator_file, &[".records"]),
-                file_has(&reporter_file, &[".records"]),
-                // Internal helper still returns a plain list (unchanged signature)
-                file_has(&source_file, &["def _fetch_raw"]),
-                // format_summary unrelated helper preserved
-                file_has(&reporter_file, &["def format_summary"]),
-                // The bundled end-to-end test must actually pass
-                run_has("python3 test_pipeline.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![source_file, transformer_file, aggregator_file, reporter_file, models_file]),
-            vec![test_file])
+             ALL_TESTS_PASSED."
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Entry point now returns RecordSet wrapper
+                        file_has(&source_file, &["RecordSet"]),
+                        file_lacks(
+                            &source_file,
+                            &["def fetch_records(query: str) -> list[dict]"],
+                        ),
+                        // Consumers now reach through .records
+                        file_has(&transformer_file, &[".records"]),
+                        file_has(&aggregator_file, &[".records"]),
+                        file_has(&reporter_file, &[".records"]),
+                        // Internal helper still returns a plain list (unchanged signature)
+                        file_has(&source_file, &["def _fetch_raw"]),
+                        // format_summary unrelated helper preserved
+                        file_has(&reporter_file, &["def format_summary"]),
+                        // The bundled end-to-end test must actually pass
+                        run_has("python3 test_pipeline.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![
+                    source_file,
+                    transformer_file,
+                    aggregator_file,
+                    reporter_file,
+                    models_file,
+                ],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_cross_file_01_return_type_cascade", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_cross_file_01_return_type_cascade",
+        Category::CrossFile,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

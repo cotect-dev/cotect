@@ -28,10 +28,5 @@ export default function EdgeDropTarget({ position, panelMode }: EdgeDropTargetPr
 
   const styles = panelMode ? panelPositionStyles[position] : positionStyles[position]
 
-  return (
-    <div
-      ref={setNodeRef}
-      className={`absolute ${styles} pointer-events-auto`}
-    />
-  )
+  return <div ref={setNodeRef} className={`absolute ${styles} pointer-events-auto`} />
 }

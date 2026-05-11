@@ -6,13 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores([
-    'dist',
-    'coverage',
-    'tauri/target',
-    'node_modules',
-    'public',
-  ]),
+  globalIgnores(['dist', 'coverage', 'tauri/target', 'node_modules', 'public']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -32,7 +26,10 @@ export default defineConfig([
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       'react-hooks/exhaustive-deps': 'error',
       // React Compiler rules bundled in eslint-plugin-react-hooks v7 —
       // disabled because the project doesn't use the compiler and the rules

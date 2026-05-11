@@ -36,9 +36,7 @@ describe('useDragHandle', () => {
   })
 
   it('preventDefault + stopPropagation on the initial mousedown', () => {
-    const { result } = renderHook(() =>
-      useDragHandle({ onMove: vi.fn() }),
-    )
+    const { result } = renderHook(() => useDragHandle({ onMove: vi.fn() }))
     const { event, preventDefault, stopPropagation } = makeMouseDown({ clientX: 10, clientY: 20 })
     act(() => result.current.handleProps.onMouseDown(event))
     expect(preventDefault).toHaveBeenCalledTimes(1)
@@ -78,9 +76,7 @@ describe('useDragHandle', () => {
   })
 
   it('sets document.body.cursor + userSelect on mousedown and restores on mouseup', () => {
-    const { result } = renderHook(() =>
-      useDragHandle({ cursor: 'row-resize', onMove: vi.fn() }),
-    )
+    const { result } = renderHook(() => useDragHandle({ cursor: 'row-resize', onMove: vi.fn() }))
     const { event } = makeMouseDown({ clientX: 0, clientY: 0 })
     act(() => result.current.handleProps.onMouseDown(event))
 

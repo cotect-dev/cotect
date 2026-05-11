@@ -19,12 +19,22 @@ const mockPlatform = {
   },
   storage: {
     get: vi.fn(async (key: string) => storage.get(key) ?? null),
-    set: vi.fn(async (key: string, value: unknown) => { storage.set(key, value) }),
-    setSync: vi.fn((key: string, value: unknown) => { storage.set(key, value) }),
-    remove: vi.fn(async (key: string) => { storage.delete(key) }),
-    removeSync: vi.fn((key: string) => { storage.delete(key) }),
+    set: vi.fn(async (key: string, value: unknown) => {
+      storage.set(key, value)
+    }),
+    setSync: vi.fn((key: string, value: unknown) => {
+      storage.set(key, value)
+    }),
+    remove: vi.fn(async (key: string) => {
+      storage.delete(key)
+    }),
+    removeSync: vi.fn((key: string) => {
+      storage.delete(key)
+    }),
     exists: vi.fn(async (key: string) => storage.has(key)),
-    listKeys: vi.fn(async (prefix: string) => [...storage.keys()].filter((k) => k.startsWith(prefix))),
+    listKeys: vi.fn(async (prefix: string) =>
+      [...storage.keys()].filter((k) => k.startsWith(prefix)),
+    ),
   },
   syncedState: {
     set: vi.fn(),
@@ -45,12 +55,18 @@ vi.mock('@/store/browser', () => ({
 }))
 
 import {
-  saveLayout, loadLayout, removeLayout,
-  saveGeometry, loadGeometry,
-  saveSession, loadSession,
+  saveLayout,
+  loadLayout,
+  removeLayout,
+  saveGeometry,
+  loadGeometry,
+  saveSession,
+  loadSession,
   getChildWindowIds,
   restoreGeometryOnMonitor,
-  type PersistedLayout, type PersistedGeometry, type PersistedSession,
+  type PersistedLayout,
+  type PersistedGeometry,
+  type PersistedSession,
 } from './windowManager'
 
 describe('windowManager', () => {
@@ -59,17 +75,30 @@ describe('windowManager', () => {
     vi.clearAllMocks()
     // Re-bind storage mocks after clearAllMocks
     mockPlatform.storage.get.mockImplementation(async (key: string) => storage.get(key) ?? null)
-    mockPlatform.storage.set.mockImplementation(async (key: string, value: unknown) => { storage.set(key, value) })
-    mockPlatform.storage.setSync.mockImplementation((key: string, value: unknown) => { storage.set(key, value) })
-    mockPlatform.storage.remove.mockImplementation(async (key: string) => { storage.delete(key) })
-    mockPlatform.storage.removeSync.mockImplementation((key: string) => { storage.delete(key) })
+    mockPlatform.storage.set.mockImplementation(async (key: string, value: unknown) => {
+      storage.set(key, value)
+    })
+    mockPlatform.storage.setSync.mockImplementation((key: string, value: unknown) => {
+      storage.set(key, value)
+    })
+    mockPlatform.storage.remove.mockImplementation(async (key: string) => {
+      storage.delete(key)
+    })
+    mockPlatform.storage.removeSync.mockImplementation((key: string) => {
+      storage.delete(key)
+    })
     mockPlatform.storage.exists.mockImplementation(async (key: string) => storage.has(key))
-    mockPlatform.storage.listKeys.mockImplementation(async (prefix: string) => [...storage.keys()].filter((k) => k.startsWith(prefix)))
+    mockPlatform.storage.listKeys.mockImplementation(async (prefix: string) =>
+      [...storage.keys()].filter((k) => k.startsWith(prefix)),
+    )
   })
 
   describe('layout persistence', () => {
     const layout: PersistedLayout = {
-      panels: { left: [['browser']], right: [['tasks']], bottom: [['console']] } as Record<string, string[][]>,
+      panels: { left: [['browser']], right: [['tasks']], bottom: [['console']] } as Record<
+        string,
+        string[][]
+      >,
       sizes: { left: [1], right: [1], bottom: [1] } as Record<string, number[]>,
       activeTab: { browser: 0 },
     }
@@ -102,7 +131,13 @@ describe('windowManager', () => {
   })
 
   describe('geometry persistence', () => {
-    const geometry: PersistedGeometry = { x: 100, y: 200, width: 1024, height: 768, isMaximized: false }
+    const geometry: PersistedGeometry = {
+      x: 100,
+      y: 200,
+      width: 1024,
+      height: 768,
+      isMaximized: false,
+    }
 
     it('saves and loads geometry', async () => {
       saveGeometry('main', geometry)
@@ -156,7 +191,13 @@ describe('windowManager', () => {
   describe('restoreGeometryOnMonitor', () => {
     it('moves window to saved position on non-Wayland', async () => {
       mockPlatform.isWayland.mockResolvedValue(false)
-      const geometry: PersistedGeometry = { x: 150, y: 250, width: 800, height: 600, isMaximized: false }
+      const geometry: PersistedGeometry = {
+        x: 150,
+        y: 250,
+        width: 800,
+        height: 600,
+        isMaximized: false,
+      }
 
       await restoreGeometryOnMonitor('main', geometry, mockPlatform as never)
 
@@ -166,12 +207,33 @@ describe('windowManager', () => {
     it('uses setWindowOnMonitor on Wayland when monitor matches', async () => {
       mockPlatform.isWayland.mockResolvedValue(true)
       mockPlatform.windows.getMonitors.mockResolvedValue([
-        { index: 0, model: 'DELL U2720Q', manufacturer: 'Dell Inc.', x: 0, y: 0, width: 2560, height: 1440, scale_factor: 1.0 },
+        {
+          index: 0,
+          model: 'DELL U2720Q',
+          manufacturer: 'Dell Inc.',
+          x: 0,
+          y: 0,
+          width: 2560,
+          height: 1440,
+          scale_factor: 1.0,
+        },
       ])
 
       const geometry: PersistedGeometry = {
-        x: 100, y: 200, width: 800, height: 600, isMaximized: false,
-        monitorInfo: { monitor_model: 'DELL U2720Q', monitor_manufacturer: 'Dell Inc.', monitor_x: 0, monitor_y: 0, monitor_width: 2560, monitor_height: 1440, scale_factor: 1.0 },
+        x: 100,
+        y: 200,
+        width: 800,
+        height: 600,
+        isMaximized: false,
+        monitorInfo: {
+          monitor_model: 'DELL U2720Q',
+          monitor_manufacturer: 'Dell Inc.',
+          monitor_x: 0,
+          monitor_y: 0,
+          monitor_width: 2560,
+          monitor_height: 1440,
+          scale_factor: 1.0,
+        },
       }
 
       await restoreGeometryOnMonitor('main', geometry, mockPlatform as never)
@@ -185,8 +247,20 @@ describe('windowManager', () => {
       mockPlatform.windows.getMonitors.mockResolvedValue([])
 
       const geometry: PersistedGeometry = {
-        x: 100, y: 200, width: 800, height: 600, isMaximized: false,
-        monitorInfo: { monitor_model: 'Unknown', monitor_manufacturer: 'Unknown', monitor_x: 0, monitor_y: 0, monitor_width: 1920, monitor_height: 1080, scale_factor: 1.0 },
+        x: 100,
+        y: 200,
+        width: 800,
+        height: 600,
+        isMaximized: false,
+        monitorInfo: {
+          monitor_model: 'Unknown',
+          monitor_manufacturer: 'Unknown',
+          monitor_x: 0,
+          monitor_y: 0,
+          monitor_width: 1920,
+          monitor_height: 1080,
+          scale_factor: 1.0,
+        },
       }
 
       await restoreGeometryOnMonitor('main', geometry, mockPlatform as never)
@@ -196,7 +270,13 @@ describe('windowManager', () => {
 
     it('falls back to move on Wayland when no monitorInfo saved', async () => {
       mockPlatform.isWayland.mockResolvedValue(true)
-      const geometry: PersistedGeometry = { x: 50, y: 75, width: 800, height: 600, isMaximized: false }
+      const geometry: PersistedGeometry = {
+        x: 50,
+        y: 75,
+        width: 800,
+        height: 600,
+        isMaximized: false,
+      }
 
       await restoreGeometryOnMonitor('main', geometry, mockPlatform as never)
 

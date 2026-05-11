@@ -14,13 +14,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let cache_file = ap(dir, "lru_cache.py");
-        std::fs::write(&cache_file, r#"class LRUCache:
+        std::fs::write(
+            &cache_file,
+            r#"class LRUCache:
     """A least-recently-used cache with fixed capacity.
 
     NOTE: not thread-safe — single-threaded use only.
@@ -80,10 +82,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     def keys(self):
         """Return keys in access order (oldest first)."""
         return list(self._order)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_lru.py");
-        std::fs::write(&test_file, r#"from lru_cache import LRUCache
+        std::fs::write(
+            &test_file,
+            r#"from lru_cache import LRUCache
 
 def test_basic_put_get():
     c = LRUCache(3)
@@ -152,26 +158,41 @@ if __name__ == "__main__":
     test_update_promotes_recency()
     test_eviction_order()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The LRU cache in {} is broken — eviction doesn't work correctly \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The LRU cache in {} is broken — eviction doesn't work correctly \
              and the cache sometimes holds more items than its capacity allows.\n\n\
              Step 1: Read the code, identify all bugs, and apply your fixes \
              WITHOUT running the code first.\n\
              Step 2: Run the existing `python3 test_lru.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              fix, and re-run until all tests pass.",
-            cache_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: the test suite must pass — it exercises eviction,
-                // promotion, capacity, and ordering so any correct fix will pass.
-                run_has("python3 test_lru.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![cache_file]),
-            vec![test_file])
+                        cache_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: the test suite must pass — it exercises eviction,
+                        // promotion, capacity, and ordering so any correct fix will pass.
+                        run_has("python3 test_lru.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![cache_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_bugfix_01_lru_cache", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_bugfix_01_lru_cache",
+        Category::Bugfix,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

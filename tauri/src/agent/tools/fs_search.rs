@@ -4,8 +4,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
-use super::ToolState;
 use super::fs_read::resolve_path;
+use super::ToolState;
 use crate::agent::utils::truncate_bytes;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -25,7 +25,9 @@ pub struct FSSearchInput {
 
 pub async fn execute(input: &FSSearchInput, state: &Arc<ToolState>) -> Result<String, String> {
     let search_path = match input.path.as_deref() {
-        Some(p) => resolve_path(p, &state.root_path).to_string_lossy().to_string(),
+        Some(p) => resolve_path(p, &state.root_path)
+            .to_string_lossy()
+            .to_string(),
         None => state.root_path.clone(),
     };
 
@@ -73,7 +75,11 @@ async fn try_ripgrep(input: &FSSearchInput, search_path: &str) -> Result<String,
     let result = if stdout.is_empty() {
         "No matches found.".into()
     } else {
-        truncate_bytes(&stdout, super::MAX_OUTPUT, &format!("Output truncated at {} bytes", super::MAX_OUTPUT))
+        truncate_bytes(
+            &stdout,
+            super::MAX_OUTPUT,
+            &format!("Output truncated at {} bytes", super::MAX_OUTPUT),
+        )
     };
 
     Ok(result)
@@ -84,7 +90,8 @@ async fn try_grep(input: &FSSearchInput, search_path: &str) -> Result<String, St
     cmd.arg("-rn")
         .arg("--color=never")
         .arg("-E")
-        .arg("-m").arg("100")
+        .arg("-m")
+        .arg("100")
         .arg(&input.pattern)
         .arg(search_path);
 
@@ -102,7 +109,11 @@ async fn try_grep(input: &FSSearchInput, search_path: &str) -> Result<String, St
     if stdout.is_empty() {
         Ok("No matches found.".into())
     } else {
-        Ok(truncate_bytes(&stdout, super::MAX_OUTPUT, &format!("Output truncated at {} bytes", super::MAX_OUTPUT)))
+        Ok(truncate_bytes(
+            &stdout,
+            super::MAX_OUTPUT,
+            &format!("Output truncated at {} bytes", super::MAX_OUTPUT),
+        ))
     }
 }
 
@@ -117,9 +128,21 @@ mod tests {
 
     fn setup_search_dir() -> TempDir {
         let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("hello.txt"), "hello world\nfoo bar\nhello again\n").unwrap();
-        std::fs::write(dir.path().join("test.rs"), "fn main() {\n    println!(\"test\");\n}\n").unwrap();
-        std::fs::write(dir.path().join("data.ts"), "export const x = 42;\nexport const y = 99;\n").unwrap();
+        std::fs::write(
+            dir.path().join("hello.txt"),
+            "hello world\nfoo bar\nhello again\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("test.rs"),
+            "fn main() {\n    println!(\"test\");\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("data.ts"),
+            "export const x = 42;\nexport const y = 99;\n",
+        )
+        .unwrap();
         dir
     }
 

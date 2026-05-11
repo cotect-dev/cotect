@@ -27,13 +27,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let http_file = ap(dir, "http_client.py");
-        std::fs::write(&http_file, r#"import time
+        std::fs::write(
+            &http_file,
+            r#"import time
 
 TIMEOUT = 30
 MAX_RETRIES = 3
@@ -67,10 +69,14 @@ class HttpClient:
 
     def get_config(self) -> dict:
         return {"timeout": self.timeout, "max_retries": self.max_retries}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let cache_file = ap(dir, "cache.py");
-        std::fs::write(&cache_file, r#"import time
+        std::fs::write(
+            &cache_file,
+            r#"import time
 
 TTL = 300
 MAX_ENTRIES = 1000
@@ -110,10 +116,14 @@ class Cache:
 
     def get_config(self) -> dict:
         return {"ttl": TTL, "max_entries": MAX_ENTRIES}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let limiter_file = ap(dir, "rate_limiter.py");
-        std::fs::write(&limiter_file, r#"import time
+        std::fs::write(
+            &limiter_file,
+            r#"import time
 
 RATE_LIMIT = 100
 WINDOW = 60
@@ -146,10 +156,14 @@ class RateLimiter:
 
     def get_config(self) -> dict:
         return {"rate_limit": RATE_LIMIT, "window": WINDOW}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let worker_file = ap(dir, "worker.py");
-        std::fs::write(&worker_file, r#"import time
+        std::fs::write(
+            &worker_file,
+            r#"import time
 
 BATCH_SIZE = 50
 POLL_INTERVAL = 5
@@ -180,10 +194,14 @@ class Worker:
 
     def get_config(self) -> dict:
         return {"batch_size": BATCH_SIZE, "poll_interval": POLL_INTERVAL}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_config.py");
-        std::fs::write(&test_file, r#"import config
+        std::fs::write(
+            &test_file,
+            r#"import config
 from http_client import HttpClient
 from cache import Cache
 from rate_limiter import RateLimiter
@@ -327,10 +345,15 @@ if __name__ == "__main__":
     test_worker_operations()
     test_no_local_constant_definitions()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "Several modules in this project declare their own tunable knobs \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "Several modules in this project declare their own tunable knobs \
              (timeouts, retry counts, TTLs, size caps, rate limits, batch sizes, \
              poll intervals, etc.) as module-level constants. Centralize all of \
              these public, shared-tunable constants into a single `config` \
@@ -344,32 +367,57 @@ if __name__ == "__main__":
              decide.\n\n\
              Apply all edits first, then run the bundled test suite \
              (`python3 test_config.py`) and iterate until it prints \
-             ALL_TESTS_PASSED.".to_string()),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // New shared config module exists and carries every value
-                file_exists(&ap(dir, "config.py")),
-                file_has(&ap(dir, "config.py"), &[
-                    "TIMEOUT", "MAX_RETRIES",
-                    "TTL", "MAX_ENTRIES",
-                    "RATE_LIMIT", "WINDOW",
-                    "BATCH_SIZE", "POLL_INTERVAL",
-                    "30", "3", "300", "1000", "100", "60", "50", "5",
-                ]),
-                // Original modules no longer assign these constants locally
-                file_lacks(&http_file, &["TIMEOUT = 30", "MAX_RETRIES = 3"]),
-                file_lacks(&cache_file, &["TTL = 300", "MAX_ENTRIES = 1000"]),
-                file_lacks(&limiter_file, &["RATE_LIMIT = 100", "WINDOW = 60"]),
-                file_lacks(&worker_file, &["BATCH_SIZE = 50", "POLL_INTERVAL = 5"]),
-                // Module-private bookkeeping stays put
-                file_has(&http_file, &["_DEFAULT_HEADERS"]),
-                file_has(&cache_file, &["_CACHE_VERSION"]),
-                // End-to-end behaviour works
-                run_has("python3 test_config.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![http_file, cache_file, limiter_file, worker_file]),
-            vec![test_file])
+             ALL_TESTS_PASSED."
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // New shared config module exists and carries every value
+                        file_exists(&ap(dir, "config.py")),
+                        file_has(
+                            &ap(dir, "config.py"),
+                            &[
+                                "TIMEOUT",
+                                "MAX_RETRIES",
+                                "TTL",
+                                "MAX_ENTRIES",
+                                "RATE_LIMIT",
+                                "WINDOW",
+                                "BATCH_SIZE",
+                                "POLL_INTERVAL",
+                                "30",
+                                "3",
+                                "300",
+                                "1000",
+                                "100",
+                                "60",
+                                "50",
+                                "5",
+                            ],
+                        ),
+                        // Original modules no longer assign these constants locally
+                        file_lacks(&http_file, &["TIMEOUT = 30", "MAX_RETRIES = 3"]),
+                        file_lacks(&cache_file, &["TTL = 300", "MAX_ENTRIES = 1000"]),
+                        file_lacks(&limiter_file, &["RATE_LIMIT = 100", "WINDOW = 60"]),
+                        file_lacks(&worker_file, &["BATCH_SIZE = 50", "POLL_INTERVAL = 5"]),
+                        // Module-private bookkeeping stays put
+                        file_has(&http_file, &["_DEFAULT_HEADERS"]),
+                        file_has(&cache_file, &["_CACHE_VERSION"]),
+                        // End-to-end behaviour works
+                        run_has("python3 test_config.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![http_file, cache_file, limiter_file, worker_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_cross_file_05_extract_config", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_cross_file_05_extract_config",
+        Category::CrossFile,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

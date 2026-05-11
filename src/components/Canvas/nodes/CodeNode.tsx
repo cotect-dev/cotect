@@ -2,11 +2,34 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useDragHandle } from '@/hooks/useDragHandle'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
-import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection, dropCursor, highlightSpecialChars, rectangularSelection, crosshairCursor } from '@codemirror/view'
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  drawSelection,
+  dropCursor,
+  highlightSpecialChars,
+  rectangularSelection,
+  crosshairCursor,
+} from '@codemirror/view'
 import { EditorState, Compartment, type Extension } from '@codemirror/state'
-import { defaultKeymap, history, historyKeymap, indentWithTab, copyLineDown, deleteLine, toggleComment } from '@codemirror/commands'
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+  copyLineDown,
+  deleteLine,
+  toggleComment,
+} from '@codemirror/commands'
 import { highlightSelectionMatches } from '@codemirror/search'
-import { closeBrackets, closeBracketsKeymap, autocompletion, acceptCompletion } from '@codemirror/autocomplete'
+import {
+  closeBrackets,
+  closeBracketsKeymap,
+  autocompletion,
+  acceptCompletion,
+} from '@codemirror/autocomplete'
 import { indentOnInput, bracketMatching, foldGutter, foldKeymap } from '@codemirror/language'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
@@ -167,9 +190,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
   const gitEntry = useMemo(() => {
     if (!gitStatus) return null
-    return (
-      gitStatus.files.find((f) => samePath(data.filePath, f.path, repoPath)) ?? null
-    )
+    return gitStatus.files.find((f) => samePath(data.filePath, f.path, repoPath)) ?? null
   }, [gitStatus, data.filePath, repoPath])
 
   const isNewFile = gitEntry?.status === 'A' || gitEntry?.status === 'U'
@@ -203,7 +224,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     Math.max(MIN_CODE_NODE_WIDTH, dragStartWidthRef.current + deltaX)
   const { handleProps: resizeHandleProps } = useDragHandle({
     cursor: 'col-resize',
-    onStart: () => { dragStartWidthRef.current = nodeWidth },
+    onStart: () => {
+      dragStartWidthRef.current = nodeWidth
+    },
     onMove: (_e, { deltaX }) => setNodeWidth(widthFromDelta(deltaX)),
     onEnd: (_e, { deltaX }) => setCodeNodeWidth(widthFromDelta(deltaX)),
   })
@@ -289,7 +312,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             key: 'Escape',
             run: (view) => {
               view.contentDOM.blur()
-              const container = document.querySelector('[data-canvas-container]') as HTMLElement | null
+              const container = document.querySelector(
+                '[data-canvas-container]',
+              ) as HTMLElement | null
               container?.focus()
               return true
             },
@@ -326,9 +351,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           // Override @codemirror/merge defaults: drop the faux-underline on
           // changedText, and use a luminance gap (red darker than green) so
           // red-green colorblind users can distinguish the two.
-          '&.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText, .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText': {
-            background: 'none',
-          },
+          '&.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText, .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText':
+            {
+              background: 'none',
+            },
           '&.cm-merge-a .cm-changedLine, .cm-deletedChunk': {
             backgroundColor: 'rgba(220, 60, 50, 0.22)',
           },
@@ -400,7 +426,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       if (line >= 1 && line <= maxLine) {
         try {
           positions.set(line, view.lineBlockAt(view.state.doc.line(line).from).top)
-        } catch { /* line out of range */ }
+        } catch {
+          /* line out of range */
+        }
       } else if (line > maxLine) {
         positions.set(line, beyondTop + (line - maxLine - 1) * REF_HEIGHT)
       }
@@ -460,22 +488,23 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       </div>
 
       <div className="relative">
-        <div
-          ref={editorRef}
-          className="nowheel"
-        />
+        <div ref={editorRef} className="nowheel" />
         {refLineLayout && editorHeight > 0 && (
           <div
             className="absolute top-0 pointer-events-none"
-            style={{ left: `calc(100% + ${REF_GAP / 4}px)`, height: overlayHeight, width: 999, overflow: 'hidden' }}
+            style={{
+              left: `calc(100% + ${REF_GAP / 4}px)`,
+              height: overlayHeight,
+              width: 999,
+              overflow: 'hidden',
+            }}
           >
             <div ref={refOverlayRef}>
               {[...refLineLayout.entries()]
                 .sort(([a], [b]) => a - b)
                 .map(([line, layout]) => {
-                  const lineColor = layout.items[0]?.kind === 'imported-by'
-                    ? 'bg-violet-400/20'
-                    : 'bg-green-400/20'
+                  const lineColor =
+                    layout.items[0]?.kind === 'imported-by' ? 'bg-violet-400/20' : 'bg-green-400/20'
                   const top = linePositions.get(line)
                   return (
                     <div
@@ -486,14 +515,17 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
                         height: REF_HEIGHT,
                       }}
                     >
-                      {layout.showConnector
-                        ? <div className="flex items-center shrink-0" style={{ width: REF_GAP + 12 }}>
-                            <div className={`h-px flex-1 ${lineColor}`} />
-                            <span className="text-[9px] text-muted-foreground/40 font-mono leading-none px-px">{line}</span>
-                            <div className={`h-px flex-1 ${lineColor}`} />
-                          </div>
-                        : <div className="shrink-0" style={{ width: REF_GAP + 12 }} />
-                      }
+                      {layout.showConnector ? (
+                        <div className="flex items-center shrink-0" style={{ width: REF_GAP + 12 }}>
+                          <div className={`h-px flex-1 ${lineColor}`} />
+                          <span className="text-[9px] text-muted-foreground/40 font-mono leading-none px-px">
+                            {line}
+                          </span>
+                          <div className={`h-px flex-1 ${lineColor}`} />
+                        </div>
+                      ) : (
+                        <div className="shrink-0" style={{ width: REF_GAP + 12 }} />
+                      )}
                       {layout.items.map((item, idx) => (
                         <Pill key={`${item.kind}:${item.resolvedPath}:${idx}`} item={item} />
                       ))}
@@ -512,9 +544,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           flex items-center z-10"
         role="separator"
       >
-        <div className="absolute inset-y-0 left-0 w-px
-          bg-foreground/10 group-hover/handle:bg-primary/40 group-data-[resizing]/handle:bg-primary/40 transition-colors" />
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[2px] rounded-lg transition-colors
+        <div
+          className="absolute inset-y-0 left-0 w-px
+          bg-foreground/10 group-hover/handle:bg-primary/40 group-data-[resizing]/handle:bg-primary/40 transition-colors"
+        />
+        <div
+          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[2px] rounded-lg transition-colors
           bg-background border border-foreground/15
           group-hover/handle:border-primary/40 group-data-[resizing]/handle:border-primary/40
           h-6 w-1.5"

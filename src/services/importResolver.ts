@@ -38,11 +38,7 @@ function probeJsTsPath(resolved: string, fromRel: string, knownFiles: Set<string
   return null
 }
 
-function resolveJsTs(
-  specifier: string,
-  fromRel: string,
-  knownFiles: Set<string>,
-): string | null {
+function resolveJsTs(specifier: string, fromRel: string, knownFiles: Set<string>): string | null {
   // Handle @/ path alias (common Vite/TS convention: @/* → src/*)
   if (specifier.startsWith('@/')) {
     const aliasResolved = 'src/' + specifier.slice(2)
@@ -62,11 +58,7 @@ function resolveJsTs(
 // Python
 // ---------------------------------------------------------------------------
 
-function resolvePython(
-  specifier: string,
-  fromRel: string,
-  knownFiles: Set<string>,
-): string | null {
+function resolvePython(specifier: string, fromRel: string, knownFiles: Set<string>): string | null {
   let dots = 0
   while (dots < specifier.length && specifier[dots] === '.') dots++
 
@@ -108,11 +100,7 @@ function resolvePython(
 // Go
 // ---------------------------------------------------------------------------
 
-function resolveGo(
-  specifier: string,
-  _fromRel: string,
-  knownFiles: Set<string>,
-): string | null {
+function resolveGo(specifier: string, _fromRel: string, knownFiles: Set<string>): string | null {
   // External imports contain a domain (has a dot in the first segment)
   // or are stdlib (single word like "fmt", "net/http")
   const firstSlash = specifier.indexOf('/')
@@ -132,11 +120,7 @@ function resolveGo(
 // Rust
 // ---------------------------------------------------------------------------
 
-function resolveRust(
-  specifier: string,
-  fromRel: string,
-  knownFiles: Set<string>,
-): string | null {
+function resolveRust(specifier: string, fromRel: string, knownFiles: Set<string>): string | null {
   if (specifier.startsWith('mod::')) {
     // `mod foo;` declaration — looks for foo.rs or foo/mod.rs as sibling
     const modName = specifier.slice(5)
@@ -190,7 +174,10 @@ function resolveRust(
 // Public API
 // ---------------------------------------------------------------------------
 
-const RESOLVERS: Record<LanguageId, (spec: string, from: string, known: Set<string>) => string | null> = {
+const RESOLVERS: Record<
+  LanguageId,
+  (spec: string, from: string, known: Set<string>) => string | null
+> = {
   typescript: resolveJsTs,
   javascript: resolveJsTs,
   python: resolvePython,

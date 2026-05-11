@@ -25,10 +25,21 @@ export function useCanvasInsets(): CanvasInsets {
 
   useEffect(() => {
     const measure = () => {
-      const top = (document.querySelector('[data-zone="top"]') as HTMLElement | null)?.getBoundingClientRect().height ?? 0
-      const left = (document.querySelector('[data-zone="left"]') as HTMLElement | null)?.getBoundingClientRect().width ?? 0
-      const right = (document.querySelector('[data-zone="right"]') as HTMLElement | null)?.getBoundingClientRect().width ?? 0
-      const bottom = (document.querySelector('[data-zone="bottom"]') as HTMLElement | null)?.getBoundingClientRect().height ?? 0
+      const top =
+        (document.querySelector('[data-zone="top"]') as HTMLElement | null)?.getBoundingClientRect()
+          .height ?? 0
+      const left =
+        (
+          document.querySelector('[data-zone="left"]') as HTMLElement | null
+        )?.getBoundingClientRect().width ?? 0
+      const right =
+        (
+          document.querySelector('[data-zone="right"]') as HTMLElement | null
+        )?.getBoundingClientRect().width ?? 0
+      const bottom =
+        (
+          document.querySelector('[data-zone="bottom"]') as HTMLElement | null
+        )?.getBoundingClientRect().height ?? 0
       setInsets((prev) =>
         prev.top === top && prev.left === left && prev.right === right && prev.bottom === bottom
           ? prev

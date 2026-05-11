@@ -118,7 +118,9 @@ export const tauriPlatform: Platform = {
     },
 
     onClose(callback) {
-      const handler = () => { callback() }
+      const handler = () => {
+        callback()
+      }
       window.addEventListener('beforeunload', handler)
       return () => {
         window.removeEventListener('beforeunload', handler)
@@ -135,11 +137,17 @@ export const tauriPlatform: Platform = {
       let unlisten: UnlistenFn | null = null
       listen(event, (e) => {
         callback(e.payload)
-      }).then((fn) => { unlisten = fn }).catch((err) => {
-        console.warn(`[ipc] failed to attach listener for "${event}":`, err)
       })
+        .then((fn) => {
+          unlisten = fn
+        })
+        .catch((err) => {
+          console.warn(`[ipc] failed to attach listener for "${event}":`, err)
+        })
 
-      return () => { unlisten?.() }
+      return () => {
+        unlisten?.()
+      }
     },
   },
 
@@ -148,8 +156,14 @@ export const tauriPlatform: Platform = {
       return invoke<string>('read_file_content', { filePath: path })
     },
 
-    async readFileHead(path: string, maxBytes: number): Promise<{ content: string; totalBytes: number }> {
-      const result = await invoke<{ content: string; total_bytes: number }>('read_file_head', { filePath: path, maxBytes })
+    async readFileHead(
+      path: string,
+      maxBytes: number,
+    ): Promise<{ content: string; totalBytes: number }> {
+      const result = await invoke<{ content: string; total_bytes: number }>('read_file_head', {
+        filePath: path,
+        maxBytes,
+      })
       return { content: result.content, totalBytes: result.total_bytes }
     },
 
@@ -163,7 +177,10 @@ export const tauriPlatform: Platform = {
     },
 
     async readDirectory(path: string): Promise<FSEntry[]> {
-      const entries = await invoke<Array<{ name: string; path: string; is_directory: boolean }>>('read_directory', { dirPath: path })
+      const entries = await invoke<Array<{ name: string; path: string; is_directory: boolean }>>(
+        'read_directory',
+        { dirPath: path },
+      )
       return entries.map((e) => ({
         name: e.name,
         path: e.path,
@@ -229,7 +246,10 @@ export const tauriPlatform: Platform = {
   syncedState: {
     set(name: string, state: unknown, windowId: string) {
       invoke('set_synced_state', { name, state, source: windowId }).catch((err) => {
-        console.warn(`[syncedState] set("${name}") failed — other windows may see stale state:`, err)
+        console.warn(
+          `[syncedState] set("${name}") failed — other windows may see stale state:`,
+          err,
+        )
       })
     },
 
@@ -241,14 +261,23 @@ export const tauriPlatform: Platform = {
       await invoke('clear_synced_state', { name })
     },
 
-    listen(name: string, callback: (payload: { state: unknown; source: string }) => void): () => void {
+    listen(
+      name: string,
+      callback: (payload: { state: unknown; source: string }) => void,
+    ): () => void {
       let unlisten: UnlistenFn | null = null
       listen(`synced-state-update:${name}`, (e) => {
         callback(e.payload as { state: unknown; source: string })
-      }).then((fn) => { unlisten = fn }).catch((err) => {
-        console.warn(`[syncedState] failed to attach listener for "${name}":`, err)
       })
-      return () => { unlisten?.() }
+        .then((fn) => {
+          unlisten = fn
+        })
+        .catch((err) => {
+          console.warn(`[syncedState] failed to attach listener for "${name}":`, err)
+        })
+      return () => {
+        unlisten?.()
+      }
     },
   },
 }

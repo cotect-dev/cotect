@@ -104,5 +104,4 @@ mod tests {
         assert!(result.starts_with("日"));
         assert!(result.contains("[truncated]"));
     }
-
 }

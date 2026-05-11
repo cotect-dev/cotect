@@ -23,13 +23,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let client_file = ap(dir, "client.py");
-        std::fs::write(&client_file, r#"from auth import make_headers
+        std::fs::write(
+            &client_file,
+            r#"from auth import make_headers
 from parser import parse_response, parse_error
 
 BASE_URL = "https://api.example.com/api/v1"
@@ -105,10 +107,14 @@ def _simulate_request(method: str, url: str, headers: dict) -> dict:
                 {"id": "u123", "name": "Alice", "email": "alice@example.com"},
                 {"id": "u456", "name": "Bob", "email": "bob@example.com"},
             ]
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let auth_file = ap(dir, "auth.py");
-        std::fs::write(&auth_file, r#"def make_headers(api_key: str) -> dict:
+        std::fs::write(
+            &auth_file,
+            r#"def make_headers(api_key: str) -> dict:
     """Build request headers with authentication and version info.
 
     X-API-Version tracks which API version we're targeting.
@@ -127,10 +133,14 @@ def validate_key(api_key: str) -> bool:
     if not api_key or len(api_key) < 8:
         return False
     return api_key.startswith("ek_")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let parser_file = ap(dir, "parser.py");
-        std::fs::write(&parser_file, r#"def parse_response(raw: dict) -> dict | list:
+        std::fs::write(
+            &parser_file,
+            r#"def parse_response(raw: dict) -> dict | list:
     """Parse a successful API response.
 
     Extracts the payload directly from the raw response dict.
@@ -154,10 +164,14 @@ def parse_error(raw: dict) -> dict:
         "code": raw.get("code", 500),
         "format": "v1_error",
     }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_api.py");
-        std::fs::write(&test_file, r#"from client import APIClient, BASE_URL
+        std::fs::write(
+            &test_file,
+            r#"from client import APIClient, BASE_URL
 from auth import make_headers
 from parser import parse_response
 
@@ -213,10 +227,15 @@ if __name__ == "__main__":
     test_list_users()
     test_legacy_endpoint_untouched()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The `test_api.py` suite in this directory is failing against our \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The `test_api.py` suite in this directory is failing against our \
              API client. The server has been upgraded and the existing client \
              code no longer matches its contract. Investigate the source files \
              and the failing tests, then make whatever changes are needed so \
@@ -225,20 +244,32 @@ if __name__ == "__main__":
              before editing. Apply your patches WITHOUT running the code, then \
              run `python3 test_api.py` to verify. If tests fail, read the errors \
              and iterate until all tests pass."
-            .to_string()
-        ),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: full test suite must pass. The suite enforces
-                // BASE_URL on v2, X-API-Version=2, X-Client-Version unchanged,
-                // legacy endpoint still on v1, and responses correctly unwrapped.
-                run_has("python3 test_api.py", &["ALL_TESTS_PASSED"]),
-                // Must have actually edited BASE_URL away from v1
-                file_lacks("client.py", &["BASE_URL = \"https://api.example.com/api/v1\""]),
-            ]),
-            vec![client_file, auth_file, parser_file]),
-            vec![test_file])
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: full test suite must pass. The suite enforces
+                        // BASE_URL on v2, X-API-Version=2, X-Client-Version unchanged,
+                        // legacy endpoint still on v1, and responses correctly unwrapped.
+                        run_has("python3 test_api.py", &["ALL_TESTS_PASSED"]),
+                        // Must have actually edited BASE_URL away from v1
+                        file_lacks(
+                            "client.py",
+                            &["BASE_URL = \"https://api.example.com/api/v1\""],
+                        ),
+                    ],
+                ),
+                vec![client_file, auth_file, parser_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_patch_01_api_version_migration", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_patch_01_api_version_migration",
+        Category::Patch,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

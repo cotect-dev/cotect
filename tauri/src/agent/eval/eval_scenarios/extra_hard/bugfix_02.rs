@@ -17,13 +17,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let task_file = ap(dir, "task.py");
-        std::fs::write(&task_file, r#"class Priority:
+        std::fs::write(
+            &task_file,
+            r#"class Priority:
     """Priority levels — higher number = more urgent."""
     LOW = 1
     MEDIUM = 5
@@ -64,10 +66,14 @@ class Task:
     @property
     def is_completed(self):
         return self._completed
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let scheduler_file = ap(dir, "scheduler.py");
-        std::fs::write(&scheduler_file, r#"import heapq
+        std::fs::write(
+            &scheduler_file,
+            r#"import heapq
 from task import Task
 
 class Scheduler:
@@ -109,10 +115,14 @@ class Scheduler:
     # def _sort_tasks(self):
     #     """Sort tasks by priority descending. No longer used."""
     #     self._tasks.sort(key=lambda t: t.priority, reverse=True)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let runner_file = ap(dir, "runner.py");
-        std::fs::write(&runner_file, r#"from scheduler import Scheduler
+        std::fs::write(
+            &runner_file,
+            r#"from scheduler import Scheduler
 from task import Task, Priority
 
 class TaskRunner:
@@ -153,10 +163,14 @@ def main():
     order = runner.run_all()
     # Expected: CRITICAL first, then HIGH, MEDIUM, LOWs last
     print(",".join(order))
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "verify_scheduling.py");
-        std::fs::write(&test_file, r#"from scheduler import Scheduler
+        std::fs::write(
+            &test_file,
+            r#"from scheduler import Scheduler
 from task import Task, Priority
 from runner import TaskRunner
 
@@ -208,31 +222,46 @@ if __name__ == "__main__":
     test_fifo_within_same_priority()
     test_mixed_scenario()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Prompt points to scheduler.py — but the root cause is in task.py.
         // The model may fix either file: flipping __lt__ in task.py
         // or negating priority in scheduler.py's heappush. Both are valid.
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The task scheduler in {} isn't ordering tasks correctly — \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The task scheduler in {} isn't ordering tasks correctly — \
              low-priority tasks like email sending are executed before \
              critical tasks like payment processing.\n\n\
              Step 1: Read the code and any related files to find the root cause.\n\
              Step 2: Apply your fix.\n\
              Step 3: Run the existing `python3 verify_scheduling.py` to verify. If tests \
              fail, read the errors and iterate until they pass.",
-            scheduler_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: the test suite must pass end-to-end
-                run_has("python3 verify_scheduling.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            // All three source files in scope. The prompt still points at
-            // scheduler.py as the culprit — the model must trace into task.py
-            // to find the real bug.
-            vec![scheduler_file, runner_file, task_file]),
-            vec![test_file])
+                        scheduler_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: the test suite must pass end-to-end
+                        run_has("python3 verify_scheduling.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                // All three source files in scope. The prompt still points at
+                // scheduler.py as the culprit — the model must trace into task.py
+                // to find the real bug.
+                vec![scheduler_file, runner_file, task_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_bugfix_02_cross_file_scheduler", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_bugfix_02_cross_file_scheduler",
+        Category::Bugfix,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

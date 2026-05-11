@@ -25,13 +25,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let logger_file = ap(dir, "logger.py");
-        std::fs::write(&logger_file, r#"from datetime import datetime
+        std::fs::write(
+            &logger_file,
+            r#"from datetime import datetime
 
 
 class LogBuffer:
@@ -84,10 +86,14 @@ def log_event(level: str, message: str) -> dict:
 def log_debug(message: str) -> dict:
     """Convenience: log a DEBUG-level message."""
     return log_event("DEBUG", message)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let auth_file = ap(dir, "auth.py");
-        std::fs::write(&auth_file, r#"from logger import log_event
+        std::fs::write(
+            &auth_file,
+            r#"from logger import log_event
 
 
 def login(username: str, password: str) -> dict:
@@ -117,10 +123,14 @@ def change_password(username: str, old_pw: str, new_pw: str) -> dict:
         return {"success": False, "error": "Password too short"}
     log_event("INFO", f"Password changed for user '{username}'")
     return {"success": True}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let api_file = ap(dir, "api.py");
-        std::fs::write(&api_file, r#"from logger import log_event
+        std::fs::write(
+            &api_file,
+            r#"from logger import log_event
 
 
 _metrics = []
@@ -153,10 +163,14 @@ def handle_delete_user(user_id: int) -> dict:
     """Handle DELETE /users/:id request."""
     log_event("WARN", f"Deleting user {user_id}")
     return {"status": 200, "data": {"deleted": user_id}}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let jobs_file = ap(dir, "jobs.py");
-        std::fs::write(&jobs_file, r#"from logger import log_event, log_debug
+        std::fs::write(
+            &jobs_file,
+            r#"from logger import log_event, log_debug
 
 
 # NOTE: the old `log()` function was removed in v2.0.
@@ -184,10 +198,14 @@ def run_report() -> dict:
     """Generate a daily report."""
     log_event("INFO", "Generating daily report")
     return {"report": "Daily summary", "items": 15}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_logging.py");
-        std::fs::write(&test_file, r#"from logger import log_event, log_debug, get_buffer
+        std::fs::write(
+            &test_file,
+            r#"from logger import log_event, log_debug, get_buffer
 from auth import login, logout, change_password
 from api import handle_get_users, handle_create_user, handle_delete_user
 from jobs import run_cleanup, run_sync, run_report
@@ -319,10 +337,15 @@ if __name__ == "__main__":
     test_jobs_report_logs_with_source()
     test_functionality_preserved()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The shared logging primitive in this project records log entries \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The shared logging primitive in this project records log entries \
              with only a level and a message. Change its contract: it must now \
              take a required `source` string as the FIRST positional argument \
              (before level and message) and the resulting log entry dict must \
@@ -337,24 +360,35 @@ if __name__ == "__main__":
              separate metrics mechanism) is out of scope and must not change.\n\n\
              Apply all edits first, then run the bundled test suite \
              (`python3 test_logging.py`) and iterate until it prints \
-             ALL_TESTS_PASSED.".to_string()),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Logger: old signatures gone (new ones must accept `source`)
-                file_lacks(&logger_file, &["def log_event(level: str, message: str)"]),
-                file_lacks(&logger_file, &["def log_debug(message: str)"]),
-                // Every caller file now mentions its own source label
-                file_has(&auth_file, &["\"auth\""]),
-                file_has(&api_file, &["\"api\""]),
-                file_has(&jobs_file, &["\"jobs\""]),
-                // Unrelated metrics helper preserved
-                file_has(&api_file, &["def _log_metric"]),
-                // End-to-end behaviour actually works
-                run_has("python3 test_logging.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![logger_file, auth_file, api_file, jobs_file]),
-            vec![test_file])
+             ALL_TESTS_PASSED."
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Logger: old signatures gone (new ones must accept `source`)
+                        file_lacks(&logger_file, &["def log_event(level: str, message: str)"]),
+                        file_lacks(&logger_file, &["def log_debug(message: str)"]),
+                        // Every caller file now mentions its own source label
+                        file_has(&auth_file, &["\"auth\""]),
+                        file_has(&api_file, &["\"api\""]),
+                        file_has(&jobs_file, &["\"jobs\""]),
+                        // Unrelated metrics helper preserved
+                        file_has(&api_file, &["def _log_metric"]),
+                        // End-to-end behaviour actually works
+                        run_has("python3 test_logging.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![logger_file, auth_file, api_file, jobs_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_cross_file_04_add_parameter", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_cross_file_04_add_parameter",
+        Category::CrossFile,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

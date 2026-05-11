@@ -145,22 +145,38 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: Role::System, content: content.into(), ..Default::default() }
+        Self {
+            role: Role::System,
+            content: content.into(),
+            ..Default::default()
+        }
     }
 
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: Role::User, content: content.into(), ..Default::default() }
+        Self {
+            role: Role::User,
+            content: content.into(),
+            ..Default::default()
+        }
     }
 
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: Role::Assistant, content: content.into(), ..Default::default() }
+        Self {
+            role: Role::Assistant,
+            content: content.into(),
+            ..Default::default()
+        }
     }
 
     pub fn assistant_with_tools(content: impl Into<String>, tool_calls: Vec<ToolCall>) -> Self {
         Self {
             role: Role::Assistant,
             content: content.into(),
-            tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
+            tool_calls: if tool_calls.is_empty() {
+                None
+            } else {
+                Some(tool_calls)
+            },
             ..Default::default()
         }
     }
@@ -289,5 +305,4 @@ mod tests {
         let cfg: ProviderConfig = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.disable_thinking, None);
     }
-
 }

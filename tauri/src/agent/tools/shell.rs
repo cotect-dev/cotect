@@ -21,17 +21,56 @@ fn appears_to_read_file(cmd: &str, file: &str) -> bool {
         return false;
     }
     let read_tokens: &[&str] = &[
-        "cat ", "head ", "tail ", "less ", "more ", "bat ", "batcat ",
-        "strings ", "od ", "xxd ", "hexdump ", "base64 ", "rev ", "tac ",
-        "nl ", "pr ", "fold ", "expand ", "unexpand ", "col ",
-        "grep ", "egrep ", "fgrep ", "rg ", "ag ",
-        "awk ", "gawk ", "mawk ", "sed ", "perl -pe ", "perl -ne ",
-        "vi ", "vim ", "nvim ", "view ", "nano ", "emacs ",
+        "cat ",
+        "head ",
+        "tail ",
+        "less ",
+        "more ",
+        "bat ",
+        "batcat ",
+        "strings ",
+        "od ",
+        "xxd ",
+        "hexdump ",
+        "base64 ",
+        "rev ",
+        "tac ",
+        "nl ",
+        "pr ",
+        "fold ",
+        "expand ",
+        "unexpand ",
+        "col ",
+        "grep ",
+        "egrep ",
+        "fgrep ",
+        "rg ",
+        "ag ",
+        "awk ",
+        "gawk ",
+        "mawk ",
+        "sed ",
+        "perl -pe ",
+        "perl -ne ",
+        "vi ",
+        "vim ",
+        "nvim ",
+        "view ",
+        "nano ",
+        "emacs ",
     ];
     let inline_read_patterns: &[&str] = &[
-        "open(", "readFileSync", "readFile(", "File.read", "File.open",
-        "file_get_contents", "Files.readAllBytes", "Files.readString",
-        "fs.readFile", "readlines(", ".read()",
+        "open(",
+        "readFileSync",
+        "readFile(",
+        "File.read",
+        "File.open",
+        "file_get_contents",
+        "Files.readAllBytes",
+        "Files.readString",
+        "fs.readFile",
+        "readlines(",
+        ".read()",
     ];
     // Only flag when a read tool and the blocked filename appear in the
     // *same* pipeline segment. Otherwise commands like
@@ -152,14 +191,22 @@ pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<Strin
             let mut result = String::new();
 
             if !stdout.is_empty() {
-                result.push_str(&truncate_bytes(&stdout, super::MAX_OUTPUT, &format!("stdout truncated at {} bytes", super::MAX_OUTPUT)));
+                result.push_str(&truncate_bytes(
+                    &stdout,
+                    super::MAX_OUTPUT,
+                    &format!("stdout truncated at {} bytes", super::MAX_OUTPUT),
+                ));
             }
 
             if !stderr.is_empty() {
                 if !result.is_empty() {
                     result.push_str("\n\n--- stderr ---\n");
                 }
-                result.push_str(&truncate_bytes(&stderr, super::MAX_OUTPUT, &format!("stderr truncated at {} bytes", super::MAX_OUTPUT)));
+                result.push_str(&truncate_bytes(
+                    &stderr,
+                    super::MAX_OUTPUT,
+                    &format!("stderr truncated at {} bytes", super::MAX_OUTPUT),
+                ));
             }
 
             if result.is_empty() {
@@ -169,7 +216,10 @@ pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<Strin
             }
 
             if cheat_flag {
-                result.insert_str(0, "[EVAL CHEAT DETECTED] Model used shell to read a blocked test file.\n\n");
+                result.insert_str(
+                    0,
+                    "[EVAL CHEAT DETECTED] Model used shell to read a blocked test file.\n\n",
+                );
             }
 
             Ok(result)
@@ -185,14 +235,23 @@ pub async fn execute(input: &ShellInput, state: &Arc<ToolState>) -> Result<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::agent::tools::test_helpers::make_state;
+    use tempfile::TempDir;
 
     #[test]
     fn cheat_detector_flags_direct_read() {
-        assert!(appears_to_read_file("cat test_entities.py", "test_entities.py"));
-        assert!(appears_to_read_file("head -50 test_entities.py", "test_entities.py"));
-        assert!(appears_to_read_file("grep foo test_entities.py", "test_entities.py"));
+        assert!(appears_to_read_file(
+            "cat test_entities.py",
+            "test_entities.py"
+        ));
+        assert!(appears_to_read_file(
+            "head -50 test_entities.py",
+            "test_entities.py"
+        ));
+        assert!(appears_to_read_file(
+            "grep foo test_entities.py",
+            "test_entities.py"
+        ));
     }
 
     #[test]

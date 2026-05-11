@@ -39,7 +39,7 @@ impl HealthCache {
         self.last_error = None;
         if let Some(ft) = first_token_ms {
             self.p50_first_token_ms = Some(match self.p50_first_token_ms {
-                Some(prev) => (prev * 7 + ft) / 8,    // EMA, alpha = 1/8
+                Some(prev) => (prev * 7 + ft) / 8, // EMA, alpha = 1/8
                 None => ft,
             });
         }

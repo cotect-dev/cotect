@@ -133,7 +133,10 @@ impl Orchestrator {
         // `/no_think` soft switch is officially Qwen 3 only, but 3.5/3.6
         // finetunes often still honour it. Complementary to server-side flags.
         if provider.disable_thinking == Some(true)
-            && matches!(provider.resolved_format(), crate::agent::adapter::PromptFormat::Qwen)
+            && matches!(
+                provider.resolved_format(),
+                crate::agent::adapter::PromptFormat::Qwen
+            )
         {
             system_prompt.push_str("\n\n/no_think\n");
         }
@@ -248,7 +251,7 @@ impl Orchestrator {
                          That's not a real action — it's thinking dressed up as a tool \
                          call. Either call a different tool (read / write / patch), or \
                          run a shell command that actually produces useful output (e.g. \
-                         a test invocation, not `python3 -c \"# ...\"`)."
+                         a test invocation, not `python3 -c \"# ...\"`).",
                     );
                 } else {
                     self.context.inject_system_reminder(&format!(
@@ -273,7 +276,10 @@ impl Orchestrator {
 
             let call_started = Instant::now();
             let stream_result = retry_with_backoff(
-                || self.llm.chat_stream(messages.clone(), Some(tool_defs.clone()), 1.0),
+                || {
+                    self.llm
+                        .chat_stream(messages.clone(), Some(tool_defs.clone()), 1.0)
+                },
                 3,
                 500,
             )
@@ -286,15 +292,7 @@ impl Orchestrator {
                     // Still record this as a usage row so the Analytics view
                     // surfaces failed-call counts.
                     let total_ms = call_started.elapsed().as_millis() as i64;
-                    self.record_call(
-                        &prompt_text,
-                        "",
-                        None,
-                        None,
-                        None,
-                        Some(total_ms),
-                        false,
-                    );
+                    self.record_call(&prompt_text, "", None, None, None, Some(total_ms), false);
                     return Err(e);
                 }
             };
@@ -316,22 +314,13 @@ impl Orchestrator {
                     t
                 }
                 Err(e) => {
-                    self.record_call(
-                        &prompt_text,
-                        "",
-                        None,
-                        None,
-                        None,
-                        Some(total_ms),
-                        false,
-                    );
+                    self.record_call(&prompt_text, "", None, None, None, Some(total_ms), false);
                     return Err(e);
                 }
             };
 
             // Stall tracker accumulates across turns until a tool call resets it.
-            self.reasoning_bytes_since_action +=
-                turn.reasoning.len() + turn.content.len();
+            self.reasoning_bytes_since_action += turn.reasoning.len() + turn.content.len();
             if !self.stall_emitted {
                 let elapsed = self.last_action_at.elapsed();
                 if elapsed.as_millis() as u64 >= STALL_WALL_MS
@@ -359,8 +348,9 @@ impl Orchestrator {
             let has_tools = !turn.tool_calls.is_empty();
             let has_content = !turn.content.trim().is_empty();
 
-            is_complete = (finish == Some("stop") || finish == Some("end_turn") || finish.is_none())
-                && !has_tools;
+            is_complete =
+                (finish == Some("stop") || finish == Some("end_turn") || finish.is_none())
+                    && !has_tools;
             should_yield = is_complete;
 
             // "timeout": no bytes for COTECT_STREAM_IDLE_TIMEOUT seconds.
@@ -403,7 +393,9 @@ impl Orchestrator {
                     if empty_turn_count >= MAX_EMPTY_TURNS {
                         self.sender
                             .send(TaskEvent::Interrupted {
-                                reason: "Model repeatedly hit token limit without producing output.".into(),
+                                reason:
+                                    "Model repeatedly hit token limit without producing output."
+                                        .into(),
                             })
                             .ok();
                         should_yield = true;
@@ -421,7 +413,8 @@ impl Orchestrator {
                 if empty_turn_count >= MAX_EMPTY_TURNS {
                     self.sender
                         .send(TaskEvent::Interrupted {
-                            reason: "Model produced no output for multiple consecutive turns.".into(),
+                            reason: "Model produced no output for multiple consecutive turns."
+                                .into(),
                         })
                         .ok();
                     should_yield = true;
@@ -481,7 +474,7 @@ impl Orchestrator {
                                         output.push_str(
                                             "\n\n[NOTE: The command exited with a non-zero code. \
                                              Analyze the output above, fix the underlying issue, \
-                                             and re-run the command.]"
+                                             and re-run the command.]",
                                         );
                                     }
                                 }
@@ -499,8 +492,7 @@ impl Orchestrator {
                         }
                     };
 
-                    let compact_for_context =
-                        truncate_tool_result_for_context(&tool_result_text);
+                    let compact_for_context = truncate_tool_result_for_context(&tool_result_text);
                     self.context
                         .append_tool_result(&tool_call.id, &compact_for_context);
 
@@ -706,7 +698,10 @@ fn extract_shell_exit_code(output: &str) -> Option<i32> {
     }
     if let Some(idx) = output.find("Command completed with exit code ") {
         let after = &output[idx + 33..];
-        let num: String = after.chars().take_while(|c| c.is_ascii_digit() || *c == '-').collect();
+        let num: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '-')
+            .collect();
         if let Ok(code) = num.parse::<i32>() {
             return Some(code);
         }
@@ -776,7 +771,10 @@ mod tests {
 
         assert!(out.contains("HEAD_MARKER_OF_INTEREST"), "head must survive");
         assert!(out.contains("TAIL_MARKER_EXIT_CODE_0"), "tail must survive");
-        assert!(out.contains("chars truncated"), "truncation marker must be visible");
+        assert!(
+            out.contains("chars truncated"),
+            "truncation marker must be visible"
+        );
         assert!(out.len() < input.len(), "truncated form must be smaller");
         // Should be roughly head + tail + marker — well under 10 KB.
         assert!(out.len() < 8_000, "truncated form must fit under ~8KB");
@@ -908,7 +906,10 @@ mod tests {
         tokio::spawn(async move {
             tx.send(LlmStreamEvent::TextDelta("Hello ".into())).ok();
             tx.send(LlmStreamEvent::TextDelta("world!".into())).ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("stop".into()) }).ok();
+            tx.send(LlmStreamEvent::Done {
+                finish_reason: Some("stop".into()),
+            })
+            .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -924,7 +925,10 @@ mod tests {
             events.push(e);
         }
         // Should have 2 partial text events + 1 final text event
-        let text_events: Vec<_> = events.iter().filter(|e| matches!(e, TaskEvent::Text { .. })).collect();
+        let text_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, TaskEvent::Text { .. }))
+            .collect();
         assert!(text_events.len() >= 2);
     }
 
@@ -939,14 +943,19 @@ mod tests {
                 id: Some("call_1".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file"#.into(),
-            }).ok();
+            })
+            .ok();
             tx.send(LlmStreamEvent::ToolCallDelta {
                 index: 0,
                 id: None,
                 name: None,
                 arguments_chunk: r#"_path":"/tmp/test"}"#.into(),
-            }).ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
+            })
+            .ok();
+            tx.send(LlmStreamEvent::Done {
+                finish_reason: Some("tool_calls".into()),
+            })
+            .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -955,7 +964,10 @@ mod tests {
         assert_eq!(result.tool_calls.len(), 1);
         assert_eq!(result.tool_calls[0].id, "call_1");
         assert_eq!(result.tool_calls[0].function.name, "read");
-        assert_eq!(result.tool_calls[0].function.arguments, r#"{"file_path":"/tmp/test"}"#);
+        assert_eq!(
+            result.tool_calls[0].function.arguments,
+            r#"{"file_path":"/tmp/test"}"#
+        );
     }
 
     #[tokio::test]
@@ -969,14 +981,19 @@ mod tests {
                 id: Some("c1".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file_path":"a.txt"}"#.into(),
-            }).ok();
+            })
+            .ok();
             tx.send(LlmStreamEvent::ToolCallDelta {
                 index: 1,
                 id: Some("c2".into()),
                 name: Some("shell".into()),
                 arguments_chunk: r#"{"command":"ls"}"#.into(),
-            }).ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
+            })
+            .ok();
+            tx.send(LlmStreamEvent::Done {
+                finish_reason: Some("tool_calls".into()),
+            })
+            .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -993,11 +1010,18 @@ mod tests {
         let (task_tx, mut task_rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
-            tx.send(LlmStreamEvent::ReasoningDelta("I think ".into())).ok();
-            tx.send(LlmStreamEvent::ReasoningDelta("this is ".into())).ok();
-            tx.send(LlmStreamEvent::ReasoningDelta("important.".into())).ok();
-            tx.send(LlmStreamEvent::TextDelta("The answer is 42.".into())).ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("stop".into()) }).ok();
+            tx.send(LlmStreamEvent::ReasoningDelta("I think ".into()))
+                .ok();
+            tx.send(LlmStreamEvent::ReasoningDelta("this is ".into()))
+                .ok();
+            tx.send(LlmStreamEvent::ReasoningDelta("important.".into()))
+                .ok();
+            tx.send(LlmStreamEvent::TextDelta("The answer is 42.".into()))
+                .ok();
+            tx.send(LlmStreamEvent::Done {
+                finish_reason: Some("stop".into()),
+            })
+            .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -1010,7 +1034,10 @@ mod tests {
         while let Ok(e) = task_rx.try_recv() {
             events.push(e);
         }
-        let reasoning_events: Vec<_> = events.iter().filter(|e| matches!(e, TaskEvent::Reasoning { .. })).collect();
+        let reasoning_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, TaskEvent::Reasoning { .. }))
+            .collect();
         assert_eq!(reasoning_events.len(), 3);
     }
 
@@ -1021,7 +1048,8 @@ mod tests {
 
         tokio::spawn(async move {
             tx.send(LlmStreamEvent::TextDelta("partial".into())).ok();
-            tx.send(LlmStreamEvent::Error("connection lost".into())).ok();
+            tx.send(LlmStreamEvent::Error("connection lost".into()))
+                .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -1037,7 +1065,10 @@ mod tests {
         let (task_tx, _task_rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
-            tx.send(LlmStreamEvent::Done { finish_reason: None }).ok();
+            tx.send(LlmStreamEvent::Done {
+                finish_reason: None,
+            })
+            .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -1057,15 +1088,20 @@ mod tests {
         // (e.g., Gemma 4 hallucinating content before tool results arrive).
         // The orchestrator should discard the hallucinated content.
         tokio::spawn(async move {
-            tx.send(LlmStreamEvent::TextDelta("Let me read ".into())).ok();
+            tx.send(LlmStreamEvent::TextDelta("Let me read ".into()))
+                .ok();
             tx.send(LlmStreamEvent::TextDelta("the file.".into())).ok();
             tx.send(LlmStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("c1".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file_path":"test.txt"}"#.into(),
-            }).ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
+            })
+            .ok();
+            tx.send(LlmStreamEvent::Done {
+                finish_reason: Some("tool_calls".into()),
+            })
+            .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -1090,9 +1126,13 @@ mod tests {
                     id: Some(format!("call_{i}")),
                     name: Some("read".into()),
                     arguments_chunk: r#"{"file_path":"/tmp/test.txt"}"#.into(),
-                }).ok();
+                })
+                .ok();
             }
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
+            tx.send(LlmStreamEvent::Done {
+                finish_reason: Some("tool_calls".into()),
+            })
+            .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -1114,14 +1154,19 @@ mod tests {
                 id: Some("c1".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file_path":"a.txt"}"#.into(),
-            }).ok();
+            })
+            .ok();
             tx.send(LlmStreamEvent::ToolCallDelta {
                 index: 1,
                 id: Some("c2".into()),
                 name: Some("read".into()),
                 arguments_chunk: r#"{"file_path":"b.txt"}"#.into(),
-            }).ok();
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
+            })
+            .ok();
+            tx.send(LlmStreamEvent::Done {
+                finish_reason: Some("tool_calls".into()),
+            })
+            .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -1144,9 +1189,13 @@ mod tests {
                     id: Some(format!("c{i}")),
                     name: Some("read".into()),
                     arguments_chunk: format!(r#"{{"file_path":"file_{i}.txt"}}"#),
-                }).ok();
+                })
+                .ok();
             }
-            tx.send(LlmStreamEvent::Done { finish_reason: Some("tool_calls".into()) }).ok();
+            tx.send(LlmStreamEvent::Done {
+                finish_reason: Some("tool_calls".into()),
+            })
+            .ok();
         });
 
         let orch = make_test_orchestrator(task_tx);
@@ -1243,7 +1292,8 @@ mod tests {
         let mut orch = make_test_orchestrator(tx);
 
         // Pretend the last action was 61 s ago.
-        orch.last_action_at = Instant::now() - std::time::Duration::from_millis(STALL_WALL_MS + 1_000);
+        orch.last_action_at =
+            Instant::now() - std::time::Duration::from_millis(STALL_WALL_MS + 1_000);
         orch.reasoning_bytes_since_action = STALL_REASONING_BYTES + 1;
 
         // Run the same one-shot logic the loop runs after consume_stream.
@@ -1318,5 +1368,4 @@ mod tests {
         let sys = orch.context.messages()[0].content.clone();
         assert!(!sys.contains("/no_think"));
     }
-
 }

@@ -67,7 +67,9 @@ describe('useTasksStore', () => {
     it('prepends new tasks (most recent first)', () => {
       vi.mocked(agentService.startTask).mockResolvedValue(undefined)
 
-      useTasksStore.getState().createTask('t1', 'First', 'implement', { root_path: '/p', files: [] })
+      useTasksStore
+        .getState()
+        .createTask('t1', 'First', 'implement', { root_path: '/p', files: [] })
       useTasksStore.getState().createTask('t2', 'Second', 'plan', { root_path: '/p', files: [] })
 
       const { tasks } = useTasksStore.getState()
@@ -134,9 +136,36 @@ describe('useTasksStore', () => {
     it('removes non-running tasks', () => {
       useTasksStore.setState({
         tasks: [
-          { id: 't1', prompt: 'A', role: 'implement', status: 'completed', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
-          { id: 't2', prompt: 'B', role: 'implement', status: 'running', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
-          { id: 't3', prompt: 'C', role: 'implement', status: 'errored', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
+          {
+            id: 't1',
+            prompt: 'A',
+            role: 'implement',
+            status: 'completed',
+            text: '',
+            reasoning: '',
+            toolActivity: [],
+            createdAt: 0,
+          },
+          {
+            id: 't2',
+            prompt: 'B',
+            role: 'implement',
+            status: 'running',
+            text: '',
+            reasoning: '',
+            toolActivity: [],
+            createdAt: 0,
+          },
+          {
+            id: 't3',
+            prompt: 'C',
+            role: 'implement',
+            status: 'errored',
+            text: '',
+            reasoning: '',
+            toolActivity: [],
+            createdAt: 0,
+          },
         ],
       })
 
@@ -150,8 +179,26 @@ describe('useTasksStore', () => {
     it('preserves pending tasks', () => {
       useTasksStore.setState({
         tasks: [
-          { id: 't1', prompt: 'A', role: 'implement', status: 'pending', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
-          { id: 't2', prompt: 'B', role: 'implement', status: 'completed', text: '', reasoning: '', toolActivity: [], createdAt: 0 },
+          {
+            id: 't1',
+            prompt: 'A',
+            role: 'implement',
+            status: 'pending',
+            text: '',
+            reasoning: '',
+            toolActivity: [],
+            createdAt: 0,
+          },
+          {
+            id: 't2',
+            prompt: 'B',
+            role: 'implement',
+            status: 'completed',
+            text: '',
+            reasoning: '',
+            toolActivity: [],
+            createdAt: 0,
+          },
         ],
       })
 
@@ -179,9 +226,13 @@ describe('useTasksStore', () => {
 
       // Mark t1 as completed so clearCompleted will remove it; t2 stays running
       useTasksStore.setState({
-        tasks: useTasksStore.getState().tasks.map((t) =>
-          t.id === 't1' ? { ...t, status: 'completed' as const } : { ...t, status: 'running' as const }
-        ),
+        tasks: useTasksStore
+          .getState()
+          .tasks.map((t) =>
+            t.id === 't1'
+              ? { ...t, status: 'completed' as const }
+              : { ...t, status: 'running' as const },
+          ),
       })
 
       useTasksStore.getState().clearCompleted()
@@ -202,7 +253,16 @@ describe('useTasksStore', () => {
       useTasksStore.setState({
         tasks: [
           ...useTasksStore.getState().tasks,
-          { id: 't2', prompt: 'B', role: 'implement' as const, status: 'completed' as const, text: '', reasoning: '', toolActivity: [], createdAt: 0 },
+          {
+            id: 't2',
+            prompt: 'B',
+            role: 'implement' as const,
+            status: 'completed' as const,
+            text: '',
+            reasoning: '',
+            toolActivity: [],
+            createdAt: 0,
+          },
         ],
       })
 
@@ -257,7 +317,12 @@ describe('useTasksStore', () => {
 
     it('handles tool_start event', () => {
       const cb = getEventCallback()
-      cb({ type: 'tool_start', tool_name: 'read', file_path: '/tmp/test.txt', description: 'Reading file' })
+      cb({
+        type: 'tool_start',
+        tool_name: 'read',
+        file_path: '/tmp/test.txt',
+        description: 'Reading file',
+      })
 
       const task = useTasksStore.getState().tasks[0]
       expect(task.toolActivity).toHaveLength(1)
@@ -269,7 +334,13 @@ describe('useTasksStore', () => {
     it('handles tool_end event - matches to tool_start', () => {
       const cb = getEventCallback()
       cb({ type: 'tool_start', tool_name: 'read', file_path: '/tmp/test.txt' })
-      cb({ type: 'tool_end', tool_name: 'read', file_path: '/tmp/test.txt', success: true, output: 'file contents' })
+      cb({
+        type: 'tool_end',
+        tool_name: 'read',
+        file_path: '/tmp/test.txt',
+        success: true,
+        output: 'file contents',
+      })
 
       const task = useTasksStore.getState().tasks[0]
       expect(task.toolActivity).toHaveLength(1)
@@ -297,7 +368,13 @@ describe('useTasksStore', () => {
     it('handles tool_end with failure', () => {
       const cb = getEventCallback()
       cb({ type: 'tool_start', tool_name: 'patch', file_path: '/a.txt' })
-      cb({ type: 'tool_end', tool_name: 'patch', file_path: '/a.txt', success: false, output: 'old_string not found' })
+      cb({
+        type: 'tool_end',
+        tool_name: 'patch',
+        file_path: '/a.txt',
+        success: false,
+        output: 'old_string not found',
+      })
 
       const task = useTasksStore.getState().tasks[0]
       expect(task.toolActivity[0].success).toBe(false)
@@ -317,9 +394,9 @@ describe('useTasksStore', () => {
 
       // Wait for the task to become running
       useTasksStore.setState({
-        tasks: useTasksStore.getState().tasks.map((t) =>
-          t.id === 't1' ? { ...t, status: 'running' as const } : t
-        ),
+        tasks: useTasksStore
+          .getState()
+          .tasks.map((t) => (t.id === 't1' ? { ...t, status: 'running' as const } : t)),
       })
 
       cb({ type: 'error', message: 'Rate limit exceeded' })
@@ -331,7 +408,11 @@ describe('useTasksStore', () => {
 
     it('handles followup event by storing question and options', () => {
       const cb = getEventCallback()
-      cb({ type: 'followup', question: 'Which file should I modify?', options: ['src/a.ts', 'src/b.ts'] })
+      cb({
+        type: 'followup',
+        question: 'Which file should I modify?',
+        options: ['src/a.ts', 'src/b.ts'],
+      })
 
       const task = useTasksStore.getState().tasks[0]
       expect(task.lastFollowup).toEqual({
@@ -387,7 +468,13 @@ describe('useTasksStore', () => {
 
       // Tool execution
       cb({ type: 'tool_start', tool_name: 'read', file_path: '/src/main.rs' })
-      cb({ type: 'tool_end', tool_name: 'read', file_path: '/src/main.rs', success: true, output: 'fn main() {}' })
+      cb({
+        type: 'tool_end',
+        tool_name: 'read',
+        file_path: '/src/main.rs',
+        success: true,
+        output: 'fn main() {}',
+      })
 
       // LLM responds again
       cb({ type: 'text', content: "I'll now modify it.", partial: true })
@@ -397,12 +484,12 @@ describe('useTasksStore', () => {
       cb({ type: 'tool_end', tool_name: 'patch', file_path: '/src/main.rs', success: true })
 
       // Final response
-      cb({ type: 'text', content: "Done! The file has been updated.", partial: false })
+      cb({ type: 'text', content: 'Done! The file has been updated.', partial: false })
       cb({ type: 'complete' })
 
       const task = useTasksStore.getState().tasks[0]
       expect(task.status).toBe('completed')
-      expect(task.text).toBe("Done! The file has been updated.")
+      expect(task.text).toBe('Done! The file has been updated.')
       expect(task.toolActivity).toHaveLength(2)
       expect(task.toolActivity[0].tool_name).toBe('read')
       expect(task.toolActivity[1].tool_name).toBe('patch')
@@ -417,14 +504,21 @@ describe('useTasksStore', () => {
 
       // Tool call
       cb({ type: 'tool_start', tool_name: 'fs_search', description: 'Searching for config files' })
-      cb({ type: 'tool_end', tool_name: 'fs_search', success: true, output: 'config.ts:5:export default {}' })
+      cb({
+        type: 'tool_end',
+        tool_name: 'fs_search',
+        success: true,
+        output: 'config.ts:5:export default {}',
+      })
 
       // Text response
       cb({ type: 'text', content: 'I found the config file.', partial: false })
       cb({ type: 'complete' })
 
       const task = useTasksStore.getState().tasks[0]
-      expect(task.reasoning).toBe('I need to understand the codebase. Let me search for relevant files.')
+      expect(task.reasoning).toBe(
+        'I need to understand the codebase. Let me search for relevant files.',
+      )
       expect(task.text).toBe('I found the config file.')
       expect(task.toolActivity).toHaveLength(1)
       expect(task.toolActivity[0].tool_name).toBe('fs_search')
@@ -454,14 +548,20 @@ describe('useTasksStore', () => {
       // Tool that keeps failing
       for (let i = 0; i < 5; i++) {
         cb({ type: 'tool_start', tool_name: 'patch', file_path: '/a.txt' })
-        cb({ type: 'tool_end', tool_name: 'patch', file_path: '/a.txt', success: false, output: 'not found' })
+        cb({
+          type: 'tool_end',
+          tool_name: 'patch',
+          file_path: '/a.txt',
+          success: false,
+          output: 'not found',
+        })
       }
 
       cb({ type: 'interrupted', reason: 'Too many tool errors. Stopping.' })
 
       const task = useTasksStore.getState().tasks[0]
       expect(task.status).toBe('interrupted')
-      const failedTools = task.toolActivity.filter(t => t.success === false)
+      const failedTools = task.toolActivity.filter((t) => t.success === false)
       expect(failedTools).toHaveLength(5)
     })
   })

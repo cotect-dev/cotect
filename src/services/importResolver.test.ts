@@ -26,11 +26,15 @@ describe('resolveImport', () => {
     })
 
     it('resolves relative import to index file', () => {
-      expect(resolveImport('./lib', 'src/main.ts', knownFiles, 'typescript')).toBe('src/lib/index.ts')
+      expect(resolveImport('./lib', 'src/main.ts', knownFiles, 'typescript')).toBe(
+        'src/lib/index.ts',
+      )
     })
 
     it('resolves parent directory import', () => {
-      expect(resolveImport('../main', 'src/lib/helpers.ts', knownFiles, 'typescript')).toBe('src/main.ts')
+      expect(resolveImport('../main', 'src/lib/helpers.ts', knownFiles, 'typescript')).toBe(
+        'src/main.ts',
+      )
     })
 
     it('resolves @/ alias imports to src/', () => {
@@ -38,15 +42,21 @@ describe('resolveImport', () => {
     })
 
     it('resolves @/ alias import to index file', () => {
-      expect(resolveImport('@/lib', 'src/main.ts', knownFiles, 'typescript')).toBe('src/lib/index.ts')
+      expect(resolveImport('@/lib', 'src/main.ts', knownFiles, 'typescript')).toBe(
+        'src/lib/index.ts',
+      )
     })
 
     it('resolves @/ alias import with nested path', () => {
-      expect(resolveImport('@/lib/helpers', 'src/main.ts', knownFiles, 'typescript')).toBe('src/lib/helpers.ts')
+      expect(resolveImport('@/lib/helpers', 'src/main.ts', knownFiles, 'typescript')).toBe(
+        'src/lib/helpers.ts',
+      )
     })
 
     it('resolves @/ alias import to .tsx file', () => {
-      expect(resolveImport('@/components/App', 'src/main.ts', knownFiles, 'typescript')).toBe('src/components/App.tsx')
+      expect(resolveImport('@/components/App', 'src/main.ts', knownFiles, 'typescript')).toBe(
+        'src/components/App.tsx',
+      )
     })
 
     it('returns null for bare specifiers', () => {
@@ -60,19 +70,27 @@ describe('resolveImport', () => {
 
   describe('Python resolution', () => {
     it('resolves relative import (single dot)', () => {
-      expect(resolveImport('.helpers', 'src/utils/__init__.py', knownFiles, 'python')).toBe('src/utils/helpers.py')
+      expect(resolveImport('.helpers', 'src/utils/__init__.py', knownFiles, 'python')).toBe(
+        'src/utils/helpers.py',
+      )
     })
 
     it('resolves double-dot relative import', () => {
-      expect(resolveImport('..main', 'src/utils/helpers.py', knownFiles, 'python')).toBe('src/main.py')
+      expect(resolveImport('..main', 'src/utils/helpers.py', knownFiles, 'python')).toBe(
+        'src/main.py',
+      )
     })
 
     it('resolves absolute import via dotted path', () => {
-      expect(resolveImport('src.utils.helpers', 'src/main.py', knownFiles, 'python')).toBe('src/utils/helpers.py')
+      expect(resolveImport('src.utils.helpers', 'src/main.py', knownFiles, 'python')).toBe(
+        'src/utils/helpers.py',
+      )
     })
 
     it('resolves to __init__.py for package imports', () => {
-      expect(resolveImport('src.utils', 'src/main.py', knownFiles, 'python')).toBe('src/utils/__init__.py')
+      expect(resolveImport('src.utils', 'src/main.py', knownFiles, 'python')).toBe(
+        'src/utils/__init__.py',
+      )
     })
 
     it('returns null for stdlib/external imports', () => {
@@ -101,7 +119,9 @@ describe('resolveImport', () => {
     })
 
     it('resolves crate:: to mod.rs', () => {
-      expect(resolveImport('crate::utils::helpers', 'src/main.rs', knownFiles, 'rust')).toBe('src/utils/helpers.rs')
+      expect(resolveImport('crate::utils::helpers', 'src/main.rs', knownFiles, 'rust')).toBe(
+        'src/utils/helpers.rs',
+      )
     })
 
     it('resolves mod:: declaration', () => {
@@ -109,7 +129,9 @@ describe('resolveImport', () => {
     })
 
     it('resolves super:: path', () => {
-      expect(resolveImport('super::lib', 'src/utils/helpers.rs', knownFiles, 'rust')).toBe('src/lib.rs')
+      expect(resolveImport('super::lib', 'src/utils/helpers.rs', knownFiles, 'rust')).toBe(
+        'src/lib.rs',
+      )
     })
 
     it('returns null for external crate imports', () => {

@@ -24,13 +24,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let schema_file = ap(dir, "schema.py");
-        std::fs::write(&schema_file, r#""""Database schema definitions for the billing system."""
+        std::fs::write(
+            &schema_file,
+            r#""""Database schema definitions for the billing system."""
 
 
 def create_tables(cursor) -> None:
@@ -82,10 +84,14 @@ def _migrate_legacy(cursor) -> None:
     Do NOT change this function — it must match the historical schema.
     """
     cursor.execute("SELECT COUNT(*) FROM orders WHERE total > 0")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let queries_file = ap(dir, "queries.py");
-        std::fs::write(&queries_file, r#""""Query functions for the billing system."""
+        std::fs::write(
+            &queries_file,
+            r#""""Query functions for the billing system."""
 
 
 def get_order_total_sum(cursor, customer_id: int):
@@ -134,10 +140,14 @@ def get_order_by_number(cursor, order_number: str) -> dict | None:
         "total": row[3],
         "status": row[4],
     }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let models_file = ap(dir, "models.py");
-        std::fs::write(&models_file, r#""""Data models for the billing system."""
+        std::fs::write(
+            &models_file,
+            r#""""Data models for the billing system."""
 
 from dataclasses import dataclass
 
@@ -178,7 +188,9 @@ def order_from_row(row: tuple) -> Order:
         total=row[3],
         status=row[4],
     )
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_billing.py");
         std::fs::write(&test_file, r#"import sqlite3
@@ -295,8 +307,11 @@ if __name__ == "__main__":
     print("ALL_TESTS_PASSED")
 "#).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The billing service is losing money. The `test_billing.py` suite \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The billing service is losing money. The `test_billing.py` suite \
              is failing because order totals are being truncated — customers \
              are charged 19.99 + 5.50 but the system reports 24 instead of \
              25.49. Other billing entities (invoices, payments) appear to be \
@@ -307,31 +322,44 @@ if __name__ == "__main__":
              Apply your patches WITHOUT running the code first, then run \
              `python3 test_billing.py` to verify. If tests fail, read the \
              errors and iterate until all tests pass."
-            .to_string()
-        ),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: all tests pass — the test suite inserts 19.99
-                // and 5.50 and verifies they sum to 25.49, plus asserts
-                // Order.total is float while Invoice/Payment.total stay int.
-                run_has("python3 test_billing.py", &["ALL_TESTS_PASSED"]),
-                // Orders schema must no longer declare total as INTEGER —
-                // the distinctive order_number line sits right above the
-                // total column, so this pins the orders table specifically.
-                file_lacks("schema.py", &[
-                    "order_number TEXT NOT NULL UNIQUE,\n            total INTEGER",
-                ]),
-                // Legacy migration function comment must remain untouched.
-                file_has("schema.py", &["orders: total INTEGER"]),
-                // Invoices and payments tables must remain INTEGER.
-                file_has("schema.py", &[
-                    "invoice_number TEXT NOT NULL UNIQUE,\n            total INTEGER",
-                    "payment_ref TEXT NOT NULL UNIQUE,\n            total INTEGER",
-                ]),
-            ]),
-            vec![schema_file, queries_file, models_file]),
-            vec![test_file])
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: all tests pass — the test suite inserts 19.99
+                        // and 5.50 and verifies they sum to 25.49, plus asserts
+                        // Order.total is float while Invoice/Payment.total stay int.
+                        run_has("python3 test_billing.py", &["ALL_TESTS_PASSED"]),
+                        // Orders schema must no longer declare total as INTEGER —
+                        // the distinctive order_number line sits right above the
+                        // total column, so this pins the orders table specifically.
+                        file_lacks(
+                            "schema.py",
+                            &["order_number TEXT NOT NULL UNIQUE,\n            total INTEGER"],
+                        ),
+                        // Legacy migration function comment must remain untouched.
+                        file_has("schema.py", &["orders: total INTEGER"]),
+                        // Invoices and payments tables must remain INTEGER.
+                        file_has(
+                            "schema.py",
+                            &[
+                                "invoice_number TEXT NOT NULL UNIQUE,\n            total INTEGER",
+                                "payment_ref TEXT NOT NULL UNIQUE,\n            total INTEGER",
+                            ],
+                        ),
+                    ],
+                ),
+                vec![schema_file, queries_file, models_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_patch_02_surgical_decimal_migration", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_patch_02_surgical_decimal_migration",
+        Category::Patch,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

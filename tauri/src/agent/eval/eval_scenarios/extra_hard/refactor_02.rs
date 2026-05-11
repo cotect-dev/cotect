@@ -45,8 +45,8 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
@@ -142,7 +142,9 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
         std::fs::write(&ref_file, ring_source).unwrap();
 
         let test_file = ap(dir, "test_ring_buffer.py");
-        std::fs::write(&test_file, r#"from ring_buffer import RingBuffer
+        std::fs::write(
+            &test_file,
+            r#"from ring_buffer import RingBuffer
 
 def test_basic_push_pop():
     r = RingBuffer(3)
@@ -268,7 +270,9 @@ if __name__ == "__main__":
     test_sentinel_is_unique()
     test_repr()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Conversational, plausible-but-wrong: the user names suspicions
         // a real teammate might raise, gives an explicit no-change
@@ -314,5 +318,11 @@ if __name__ == "__main__":
             vec![test_file, ref_file],
         )
     }
-    v.push(scen!("xhard_refactor_02_already_optimal", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_refactor_02_already_optimal",
+        Category::Refactor,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

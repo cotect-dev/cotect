@@ -27,13 +27,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let limiter_file = ap(dir, "rate_limiter.py");
-        std::fs::write(&limiter_file, r#"import time
+        std::fs::write(
+            &limiter_file,
+            r#"import time
 
 class TokenBucket:
     """A token-bucket rate limiter.
@@ -124,10 +126,14 @@ class TokenBucket:
     def log_size(self):
         """Number of entries in the consumption log."""
         return len(self._log)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_rate_limiter.py");
-        std::fs::write(&test_file, r#"import time
+        std::fs::write(
+            &test_file,
+            r#"import time
 from rate_limiter import TokenBucket
 
 def test_basic_consume():
@@ -222,10 +228,15 @@ if __name__ == "__main__":
     test_try_consume_invalid()
     test_deduplication()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The rate limiter in {} has a maintainability problem: `consume()` and \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The rate limiter in {} has a maintainability problem: `consume()` and \
              `try_consume()` both carry out the same refill/check/deduct/log \
              sequence, so any change to that path has to be made in two places \
              and can easily drift out of sync. Clean the class up so the shared \
@@ -235,19 +246,29 @@ if __name__ == "__main__":
              Step 2: Apply changes WITHOUT running the code first.\n\
              Step 3: Run the existing `python3 test_rate_limiter.py` to verify your refactoring \
              didn't break anything. If tests fail, iterate until they pass.",
-            limiter_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: the test suite must still pass — it exercises
-                // consume, try_consume, refill, __slots__, _clamp, and
-                // log compaction, so any correct refactoring will pass.
-                // The test suite itself enforces deduplication (counting
-                // self._log.append occurrences), so we only gate on behavior.
-                run_has("python3 test_rate_limiter.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![limiter_file]),
-            vec![test_file])
+                        limiter_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: the test suite must still pass — it exercises
+                        // consume, try_consume, refill, __slots__, _clamp, and
+                        // log compaction, so any correct refactoring will pass.
+                        // The test suite itself enforces deduplication (counting
+                        // self._log.append occurrences), so we only gate on behavior.
+                        run_has("python3 test_rate_limiter.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![limiter_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_refactor_01_deceptive_dead_code", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_refactor_01_deceptive_dead_code",
+        Category::Refactor,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

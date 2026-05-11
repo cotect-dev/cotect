@@ -31,8 +31,8 @@ use std::sync::Arc;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::ToolState;
 use super::fs_read::resolve_path;
+use super::ToolState;
 use super::MAX_FILE_SIZE;
 use crate::agent::utils::{io_err, line_has_number_prefix};
 
@@ -75,7 +75,11 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
     let path = path_owned.as_str();
 
     // Block patches to protected files (eval sandboxing).
-    if state.blocked_files.iter().any(|b| resolved.ends_with(b) || &resolved == b) {
+    if state
+        .blocked_files
+        .iter()
+        .any(|b| resolved.ends_with(b) || &resolved == b)
+    {
         return Err(format!("Access denied: {path} is a protected file"));
     }
 
@@ -84,7 +88,10 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
         .await
         .map_err(|e| format!("Cannot access {path}: {e}"))?;
     if meta.len() > MAX_FILE_SIZE {
-        return Err(format!("{path}: file too large to patch ({} bytes)", meta.len()));
+        return Err(format!(
+            "{path}: file too large to patch ({} bytes)",
+            meta.len()
+        ));
     }
 
     let content = tokio::fs::read_to_string(path)
@@ -134,10 +141,7 @@ pub async fn execute(input: &FSPatchInput, state: &Arc<ToolState>) -> Result<Str
     // does nothing for them.
     let region_ended_with_newline =
         end_byte > 0 && content.as_bytes().get(end_byte - 1) == Some(&b'\n');
-    if region_ended_with_newline
-        && !new_string.is_empty()
-        && !new_string.ends_with('\n')
-    {
+    if region_ended_with_newline && !new_string.is_empty() && !new_string.ends_with('\n') {
         new_string.push('\n');
     }
     let mut new_content = String::with_capacity(content.len());
@@ -254,9 +258,7 @@ fn resolve_string_match(old_string: &str, content: &str) -> Result<(usize, usize
         let pos = match first {
             Some((p, _)) => p,
             None => {
-                return Err(format!(
-                    "`old_string` not found in the file.{prefix_hint}"
-                ));
+                return Err(format!("`old_string` not found in the file.{prefix_hint}"));
             }
         };
         if iter.next().is_some() {

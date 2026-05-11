@@ -16,8 +16,14 @@ export default function HeadlineStrip() {
     <div className="grid grid-cols-2 gap-3">
       <Stat label="Total tokens" value={h.tokens.toLocaleString()} />
       <Stat label="Tasks" value={h.tasks.toString()} />
-      <Stat label="p50 first token" value={h.p50_first_token != null ? `${h.p50_first_token}ms` : '—'} />
-      <Stat label="p50 total" value={h.p50_total != null ? `${(h.p50_total / 1000).toFixed(1)}s` : '—'} />
+      <Stat
+        label="p50 first token"
+        value={h.p50_first_token != null ? `${h.p50_first_token}ms` : '—'}
+      />
+      <Stat
+        label="p50 total"
+        value={h.p50_total != null ? `${(h.p50_total / 1000).toFixed(1)}s` : '—'}
+      />
     </div>
   )
 }

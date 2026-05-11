@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
+    "fmt": "prettier --write 'src/**/*.{ts,tsx}' '*.{json,js,mjs}'",
+    "fmt:check": "prettier --check 'src/**/*.{ts,tsx}'",
     "lint": "eslint .",
     "vite:dev": "vite",
     "vite:build": "tsc -b && vite build",
@@ -22,6 +24,7 @@
   },
   "lint-staged": {
     "*.{ts,tsx}": [
+      "prettier --write",
       "eslint --fix --max-warnings=0"
     ]
   },
@@ -83,6 +86,7 @@
     "husky": "^9.1.7",
     "jsdom": "^29.0.1",
     "lint-staged": "^16.4.0",
+    "prettier": "^3.8.3",
     "shadcn": "^4.0.8",
     "tailwindcss": "^4.2.1",
     "tree-sitter-javascript": "^0.25.0",

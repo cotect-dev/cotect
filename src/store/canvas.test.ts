@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP, NODE_V_GAP_SMALL, CANVAS_PAD_Y, CANVAS_MARGIN } from '@/lib/constants'
+import {
+  NODE_WIDTH,
+  NODE_HEIGHT,
+  NODE_H_GAP,
+  NODE_V_GAP_SMALL,
+  CANVAS_PAD_Y,
+  CANVAS_MARGIN,
+} from '@/lib/constants'
 
 const mockReadDirectory = vi.fn()
 const mockReadFile = vi.fn()
@@ -54,12 +61,13 @@ describe('isTestFile detection (via directory node sorting)', () => {
   })
 
   it('sorts test files after regular files', async () => {
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'app.test.ts', path: '/proj/app.test.ts', isDirectory: false },
-      { name: 'utils.ts', path: '/proj/utils.ts', isDirectory: false },
-      { name: 'app.ts', path: '/proj/app.ts', isDirectory: false },
-    ]))
-
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: 'app.test.ts', path: '/proj/app.test.ts', isDirectory: false },
+        { name: 'utils.ts', path: '/proj/utils.ts', isDirectory: false },
+        { name: 'app.ts', path: '/proj/app.ts', isDirectory: false },
+      ]),
+    )
 
     await useCanvasStore.getState().initRoot('/proj')
 
@@ -72,12 +80,13 @@ describe('isTestFile detection (via directory node sorting)', () => {
   })
 
   it('sorts folders before files and test files last', async () => {
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'app.spec.ts', path: '/proj/app.spec.ts', isDirectory: false },
-      { name: 'src', path: '/proj/src', isDirectory: true },
-      { name: 'main.ts', path: '/proj/main.ts', isDirectory: false },
-    ]))
-
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: 'app.spec.ts', path: '/proj/app.spec.ts', isDirectory: false },
+        { name: 'src', path: '/proj/src', isDirectory: true },
+        { name: 'main.ts', path: '/proj/main.ts', isDirectory: false },
+      ]),
+    )
 
     await useCanvasStore.getState().initRoot('/proj')
 
@@ -88,18 +97,19 @@ describe('isTestFile detection (via directory node sorting)', () => {
   })
 
   it('recognizes various test file patterns', async () => {
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'regular.ts', path: '/p/regular.ts', isDirectory: false },
-      { name: 'foo.test.ts', path: '/p/foo.test.ts', isDirectory: false },
-      { name: 'bar.spec.js', path: '/p/bar.spec.js', isDirectory: false },
-      { name: 'baz_test.py', path: '/p/baz_test.py', isDirectory: false },
-      { name: 'qux-test.go', path: '/p/qux-test.go', isDirectory: false },
-      { name: 'test.js', path: '/p/test.js', isDirectory: false },
-      { name: 'tests.py', path: '/p/tests.py', isDirectory: false },
-      { name: 'jest.config.ts', path: '/p/jest.config.ts', isDirectory: false },
-      { name: 'vitest.config.js', path: '/p/vitest.config.js', isDirectory: false },
-    ]))
-
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: 'regular.ts', path: '/p/regular.ts', isDirectory: false },
+        { name: 'foo.test.ts', path: '/p/foo.test.ts', isDirectory: false },
+        { name: 'bar.spec.js', path: '/p/bar.spec.js', isDirectory: false },
+        { name: 'baz_test.py', path: '/p/baz_test.py', isDirectory: false },
+        { name: 'qux-test.go', path: '/p/qux-test.go', isDirectory: false },
+        { name: 'test.js', path: '/p/test.js', isDirectory: false },
+        { name: 'tests.py', path: '/p/tests.py', isDirectory: false },
+        { name: 'jest.config.ts', path: '/p/jest.config.ts', isDirectory: false },
+        { name: 'vitest.config.js', path: '/p/vitest.config.js', isDirectory: false },
+      ]),
+    )
 
     await useCanvasStore.getState().initRoot('/p')
 
@@ -119,11 +129,12 @@ describe('isTestFile detection (via directory node sorting)', () => {
   })
 
   it('marks test file nodes with isTestFile flag', async () => {
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'app.ts', path: '/p/app.ts', isDirectory: false },
-      { name: 'app.test.ts', path: '/p/app.test.ts', isDirectory: false },
-    ]))
-
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: 'app.ts', path: '/p/app.ts', isDirectory: false },
+        { name: 'app.test.ts', path: '/p/app.test.ts', isDirectory: false },
+      ]),
+    )
 
     await useCanvasStore.getState().initRoot('/p')
 
@@ -142,13 +153,14 @@ describe('directory filtering', () => {
   })
 
   it('filters out hidden directories like node_modules and .git', async () => {
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'src', path: '/p/src', isDirectory: true },
-      { name: 'node_modules', path: '/p/node_modules', isDirectory: true },
-      { name: '.git', path: '/p/.git', isDirectory: true },
-      { name: 'main.ts', path: '/p/main.ts', isDirectory: false },
-    ]))
-
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: 'src', path: '/p/src', isDirectory: true },
+        { name: 'node_modules', path: '/p/node_modules', isDirectory: true },
+        { name: '.git', path: '/p/.git', isDirectory: true },
+        { name: 'main.ts', path: '/p/main.ts', isDirectory: false },
+      ]),
+    )
 
     await useCanvasStore.getState().initRoot('/p')
 
@@ -161,12 +173,13 @@ describe('directory filtering', () => {
   })
 
   it('keeps dot-files (only filters dot-directories)', async () => {
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: '.env', path: '/p/.env', isDirectory: false },
-      { name: '.gitignore', path: '/p/.gitignore', isDirectory: false },
-      { name: '.hidden', path: '/p/.hidden', isDirectory: true },
-    ]))
-
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: '.env', path: '/p/.env', isDirectory: false },
+        { name: '.gitignore', path: '/p/.gitignore', isDirectory: false },
+        { name: '.hidden', path: '/p/.hidden', isDirectory: true },
+      ]),
+    )
 
     await useCanvasStore.getState().initRoot('/p')
 
@@ -225,10 +238,7 @@ describe('findVerticalNeighbor (via moveFocus)', () => {
 
   it('moveFocus ignores nodes in different X columns', () => {
     useCanvasStore.setState({
-      nodes: [
-        posNode('a', 0, 0),
-        posNode('b', NODE_WIDTH + NODE_H_GAP, 72),
-      ],
+      nodes: [posNode('a', 0, 0), posNode('b', NODE_WIDTH + NODE_H_GAP, 72)],
       focusedNodeId: 'a',
     })
 
@@ -297,10 +307,12 @@ describe('initRoot', () => {
   })
 
   it('creates root directory column', async () => {
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'src', path: '/proj/src', isDirectory: true },
-      { name: 'main.ts', path: '/proj/main.ts', isDirectory: false },
-    ]))
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: 'src', path: '/proj/src', isDirectory: true },
+        { name: 'main.ts', path: '/proj/main.ts', isDirectory: false },
+      ]),
+    )
 
     await useCanvasStore.getState().initRoot('/proj')
 
@@ -313,11 +325,12 @@ describe('initRoot', () => {
   })
 
   it('sets focusedNodeId to first directory node', async () => {
-
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'src', path: '/proj/src', isDirectory: true },
-      { name: 'main.ts', path: '/proj/main.ts', isDirectory: false },
-    ]))
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: 'src', path: '/proj/src', isDirectory: true },
+        { name: 'main.ts', path: '/proj/main.ts', isDirectory: false },
+      ]),
+    )
 
     await useCanvasStore.getState().initRoot('/proj')
 
@@ -327,7 +340,6 @@ describe('initRoot', () => {
   })
 
   it('handles empty directory', async () => {
-
     mockReadDirectory.mockResolvedValue([])
 
     await useCanvasStore.getState().initRoot('/empty')
@@ -349,11 +361,12 @@ describe('initRoot', () => {
   })
 
   it('renders flat nodes and edges via flattenAndRender', async () => {
-
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'a.ts', path: '/proj/a.ts', isDirectory: false },
-      { name: 'b.ts', path: '/proj/b.ts', isDirectory: false },
-    ]))
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: 'a.ts', path: '/proj/a.ts', isDirectory: false },
+        { name: 'b.ts', path: '/proj/b.ts', isDirectory: false },
+      ]),
+    )
 
     await useCanvasStore.getState().initRoot('/proj')
 
@@ -387,16 +400,20 @@ describe('navigateRight', () => {
   })
 
   it('navigates into a folder', async () => {
-
-    mockReadDirectory.mockResolvedValueOnce(makeFSEntries([
-      { name: 'src', path: '/proj/src', isDirectory: true },
-    ])).mockResolvedValueOnce(makeFSEntries([
-      // Preview load for src
-      { name: 'main.ts', path: '/proj/src/main.ts', isDirectory: false },
-    ])).mockResolvedValueOnce(makeFSEntries([
-      // Actual navigate into src
-      { name: 'main.ts', path: '/proj/src/main.ts', isDirectory: false },
-    ]))
+    mockReadDirectory
+      .mockResolvedValueOnce(makeFSEntries([{ name: 'src', path: '/proj/src', isDirectory: true }]))
+      .mockResolvedValueOnce(
+        makeFSEntries([
+          // Preview load for src
+          { name: 'main.ts', path: '/proj/src/main.ts', isDirectory: false },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        makeFSEntries([
+          // Actual navigate into src
+          { name: 'main.ts', path: '/proj/src/main.ts', isDirectory: false },
+        ]),
+      )
 
     await useCanvasStore.getState().initRoot('/proj')
 
@@ -409,9 +426,9 @@ describe('navigateRight', () => {
   })
 
   it('does not advance into a file — files are previewed in-place', async () => {
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'app.ts', path: '/proj/app.ts', isDirectory: false },
-    ]))
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([{ name: 'app.ts', path: '/proj/app.ts', isDirectory: false }]),
+    )
 
     await useCanvasStore.getState().initRoot('/proj')
     mockReadFile.mockResolvedValue('const x = 1;\n'.repeat(25))
@@ -425,16 +442,25 @@ describe('navigateRight', () => {
   it('promotes existing preview column when path matches', async () => {
     // Set up folder node + preview column for the folder
     const folderNode: AppNode = {
-      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'src', path: '/proj/src', isDirectory: true as const },
     }
     const previewFileNode: AppNode = {
-      id: '/proj/src/main.ts', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/src/main.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'main.ts', path: '/proj/src/main.ts' },
     }
 
     const currentCol: Column = { path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] }
-    const previewCol: Column = { path: '/proj/src', kind: 'directory', nodes: [previewFileNode], edges: [] }
+    const previewCol: Column = {
+      path: '/proj/src',
+      kind: 'directory',
+      nodes: [previewFileNode],
+      edges: [],
+    }
 
     useCanvasStore.setState({
       columns: [currentCol, previewCol],
@@ -471,11 +497,15 @@ describe('navigateLeft', () => {
 
   it('navigates back and restores focus to parent node', () => {
     const parentNode: AppNode = {
-      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'src', path: '/proj/src', isDirectory: true as const },
     }
     const childNode: AppNode = {
-      id: '/proj/src/main.ts', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/src/main.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'main.ts', path: '/proj/src/main.ts' },
     }
 
@@ -502,7 +532,9 @@ describe('navigateLeft', () => {
 
   it('falls back to first node when focus cannot be restored', () => {
     const node1: AppNode = {
-      id: 'node1', type: 'file', position: { x: 0, y: 0 },
+      id: 'node1',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'a.ts', path: '/proj/a.ts' },
     }
 
@@ -523,15 +555,21 @@ describe('navigateLeft', () => {
 
   it('records the focused child in rightFocusMemory', () => {
     const folderNode: AppNode = {
-      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'src', path: '/proj/src', isDirectory: true as const },
     }
     const childA: AppNode = {
-      id: '/proj/src/a.ts', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/src/a.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'a.ts', path: '/proj/src/a.ts' },
     }
     const childB: AppNode = {
-      id: '/proj/src/b.ts', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/src/b.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'b.ts', path: '/proj/src/b.ts' },
     }
 
@@ -555,7 +593,6 @@ describe('navigateLeft', () => {
       '/proj/src': '/proj/src/b.ts',
     })
   })
-
 })
 
 describe('rightFocusMemory', () => {
@@ -566,15 +603,21 @@ describe('rightFocusMemory', () => {
 
   it('navigateRight restores remembered focus from a preview promotion', async () => {
     const folderNode: AppNode = {
-      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'src', path: '/proj/src', isDirectory: true as const },
     }
     const childA: AppNode = {
-      id: '/proj/src/a.ts', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/src/a.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'a.ts', path: '/proj/src/a.ts' },
     }
     const childB: AppNode = {
-      id: '/proj/src/b.ts', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/src/b.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'b.ts', path: '/proj/src/b.ts' },
     }
 
@@ -605,14 +648,14 @@ describe('rightFocusMemory', () => {
 
   it('restores remembered focus from a fresh load when no preview exists', async () => {
     const folderNode: AppNode = {
-      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'src', path: '/proj/src', isDirectory: true as const },
     }
 
     useCanvasStore.setState({
-      columns: [
-        { path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] },
-      ],
+      columns: [{ path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] }],
       currentColumnIndex: 0,
       depthChain: ['/proj'],
       focusedNodeId: '/proj/src',
@@ -622,10 +665,12 @@ describe('rightFocusMemory', () => {
       rightFocusMemory: { '/proj/src': '/proj/src/b.ts' },
     })
 
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'a.ts', path: '/proj/src/a.ts', isDirectory: false },
-      { name: 'b.ts', path: '/proj/src/b.ts', isDirectory: false },
-    ]))
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([
+        { name: 'a.ts', path: '/proj/src/a.ts', isDirectory: false },
+        { name: 'b.ts', path: '/proj/src/b.ts', isDirectory: false },
+      ]),
+    )
 
     await useCanvasStore.getState().navigateRight()
 
@@ -634,14 +679,14 @@ describe('rightFocusMemory', () => {
 
   it('falls back to first node when remembered id no longer exists', async () => {
     const folderNode: AppNode = {
-      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'src', path: '/proj/src', isDirectory: true as const },
     }
 
     useCanvasStore.setState({
-      columns: [
-        { path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] },
-      ],
+      columns: [{ path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] }],
       currentColumnIndex: 0,
       depthChain: ['/proj'],
       focusedNodeId: '/proj/src',
@@ -649,9 +694,9 @@ describe('rightFocusMemory', () => {
       rightFocusMemory: { '/proj/src': '/proj/src/deleted.ts' },
     })
 
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'a.ts', path: '/proj/src/a.ts', isDirectory: false },
-    ]))
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([{ name: 'a.ts', path: '/proj/src/a.ts', isDirectory: false }]),
+    )
 
     await useCanvasStore.getState().navigateRight()
 
@@ -662,19 +707,27 @@ describe('rightFocusMemory', () => {
   it('2L+2R round trip returns the user to the exact starting focus', async () => {
     // Three-level tree: /proj → /proj/src → /proj/src/inner → /proj/src/inner/deep.ts
     const srcFolder: AppNode = {
-      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'src', path: '/proj/src', isDirectory: true as const },
     }
     const innerFolder: AppNode = {
-      id: '/proj/src/inner', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src/inner',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'inner', path: '/proj/src/inner', isDirectory: true as const },
     }
     const deepA: AppNode = {
-      id: '/proj/src/inner/a.ts', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/src/inner/a.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'a.ts', path: '/proj/src/inner/a.ts' },
     }
     const deepB: AppNode = {
-      id: '/proj/src/inner/b.ts', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/src/inner/b.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'b.ts', path: '/proj/src/inner/b.ts' },
     }
 
@@ -723,9 +776,9 @@ describe('rightFocusMemory', () => {
       rightFocusMemory: { '/old/path': '/old/path/something.ts' },
     })
 
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'a.ts', path: '/proj/a.ts', isDirectory: false },
-    ]))
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([{ name: 'a.ts', path: '/proj/a.ts', isDirectory: false }]),
+    )
 
     await useCanvasStore.getState().initRoot('/proj')
 
@@ -789,7 +842,9 @@ describe('updatePreview', () => {
 
   it('loads preview for a folder node', async () => {
     const folderNode: AppNode = {
-      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'src', path: '/proj/src', isDirectory: true as const },
     }
     useCanvasStore.setState({
@@ -798,9 +853,9 @@ describe('updatePreview', () => {
       currentColumnIndex: 0,
     })
 
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'index.ts', path: '/proj/src/index.ts', isDirectory: false },
-    ]))
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([{ name: 'index.ts', path: '/proj/src/index.ts', isDirectory: false }]),
+    )
 
     await useCanvasStore.getState().updatePreview()
 
@@ -812,7 +867,9 @@ describe('updatePreview', () => {
 
   it('loads preview for a file node', async () => {
     const fileNode: AppNode = {
-      id: '/proj/app.ts', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/app.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'app.ts', path: '/proj/app.ts' },
     }
     useCanvasStore.setState({
@@ -833,11 +890,15 @@ describe('updatePreview', () => {
 
   it('does not update preview when focused node is not in current column', async () => {
     const nodeInCol0: AppNode = {
-      id: 'col0-node', type: 'file', position: { x: 0, y: 0 },
+      id: 'col0-node',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'a.ts', path: '/proj/a.ts' },
     }
     const nodeInCol1: AppNode = {
-      id: 'col1-node', type: 'file', position: { x: 0, y: 0 },
+      id: 'col1-node',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'b.ts', path: '/proj/b.ts' },
     }
 
@@ -858,7 +919,9 @@ describe('updatePreview', () => {
 
   it('discards stale preview when focus changes during load', async () => {
     const folderNode: AppNode = {
-      id: '/proj/src', type: 'folder', position: { x: 0, y: 0 },
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
       data: { label: 'src', path: '/proj/src', isDirectory: true as const },
     }
     useCanvasStore.setState({
@@ -879,7 +942,6 @@ describe('updatePreview', () => {
     // Preview should have been discarded because focus changed
     expect(useCanvasStore.getState().columns).toHaveLength(1)
   })
-
 })
 
 describe('flattenAndRender', () => {
@@ -893,14 +955,18 @@ describe('flattenAndRender', () => {
   }
 
   function makeSimpleNode(id: string, type: string = 'file'): AppNode {
-    return { id, type: type as AppNode['type'], position: { x: 0, y: 0 }, data: { label: id, path: id } as AppNode['data'] } as AppNode
+    return {
+      id,
+      type: type as AppNode['type'],
+      position: { x: 0, y: 0 },
+      data: { label: id, path: id } as AppNode['data'],
+    } as AppNode
   }
 
   it('renders all columns regardless of current index', async () => {
-
-    mockReadDirectory.mockResolvedValue(makeFSEntries([
-      { name: 'a', path: '/p/a', isDirectory: false },
-    ]))
+    mockReadDirectory.mockResolvedValue(
+      makeFSEntries([{ name: 'a', path: '/p/a', isDirectory: false }]),
+    )
 
     // Set up 4 columns, current at index 2
     const cols = [
@@ -961,7 +1027,9 @@ describe('flattenAndRender', () => {
 
   it('tags hidden nodes with __isHidden', () => {
     const node: AppNode = {
-      id: 'hidden-node', type: 'file', position: { x: 0, y: 0 },
+      id: 'hidden-node',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'hidden.ts', path: '/p/hidden.ts' },
     }
 
@@ -1010,11 +1078,15 @@ describe('flattenAndRender', () => {
 
   it('orders hidden nodes after visible ones in each column', () => {
     const visibleNode: AppNode = {
-      id: 'visible', type: 'file', position: { x: 0, y: 0 },
+      id: 'visible',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'visible.ts', path: '/p/visible.ts' },
     }
     const hiddenNode: AppNode = {
-      id: 'hidden', type: 'file', position: { x: 0, y: 0 },
+      id: 'hidden',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'hidden.ts', path: '/p/hidden.ts' },
     }
 
@@ -1031,15 +1103,17 @@ describe('flattenAndRender', () => {
     useCanvasStore.getState().setFocus('visible')
 
     // Wait for preview to settle
-    return new Promise<void>((resolve) => setTimeout(() => {
-      const state = useCanvasStore.getState()
-      const visibleRendered = state.nodes.find((n) => n.id === 'visible')!
-      const hiddenRendered = state.nodes.find((n) => n.id === 'hidden')!
+    return new Promise<void>((resolve) =>
+      setTimeout(() => {
+        const state = useCanvasStore.getState()
+        const visibleRendered = state.nodes.find((n) => n.id === 'visible')!
+        const hiddenRendered = state.nodes.find((n) => n.id === 'hidden')!
 
-      // Visible should be positioned above hidden (lower Y)
-      expect(visibleRendered.position.y).toBeLessThan(hiddenRendered.position.y)
-      resolve()
-    }, 50))
+        // Visible should be positioned above hidden (lower Y)
+        expect(visibleRendered.position.y).toBeLessThan(hiddenRendered.position.y)
+        resolve()
+      }, 50),
+    )
   })
 
   it('handles empty columns', () => {
@@ -1180,7 +1254,8 @@ describe('flattenAndRender', () => {
     useCanvasStore.getState().toggleHideNode() // removes n-19 from hidden
 
     const cameraAfterBottom = useCanvasStore.getState().cameraY
-    const previewYAfterBottom = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!.position.y
+    const previewYAfterBottom = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!
+      .position.y
 
     // Now move focus up by one (simulating pressing W)
     const prevNodeId = `n-${count - 2}`
@@ -1190,7 +1265,8 @@ describe('flattenAndRender', () => {
     useCanvasStore.getState().toggleHideNode()
 
     const cameraAfterMoveUp = useCanvasStore.getState().cameraY
-    const previewYAfterMoveUp = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!.position.y
+    const previewYAfterMoveUp = useCanvasStore.getState().nodes.find((n) => n.id === 'prev0')!
+      .position.y
 
     // Camera should NOT have moved — the node above was already visible
     expect(cameraAfterMoveUp).toBe(cameraAfterBottom)
@@ -1245,7 +1321,9 @@ describe('buildFileNodes', () => {
 
   it('creates a full-file code node when no declarations found', async () => {
     const fileNode: AppNode = {
-      id: '/proj/config.json', type: 'file', position: { x: 0, y: 0 },
+      id: '/proj/config.json',
+      type: 'file',
+      position: { x: 0, y: 0 },
       data: { label: 'config.json', path: '/proj/config.json' },
     }
 
@@ -1271,7 +1349,6 @@ describe('buildFileNodes', () => {
       expect(firstNode.data.code).toBe('{\n  "key": "value"\n}\n')
     }
   })
-
 })
 
 describe('focusFileByPath', () => {
@@ -1283,14 +1360,14 @@ describe('focusFileByPath', () => {
   it('navigates columns to the parent directory of a nested file and focuses it', async () => {
     mockReadDirectory.mockImplementation((path: string) => {
       if (path === '/proj') {
-        return Promise.resolve(makeFSEntries([
-          { name: 'src', path: '/proj/src', isDirectory: true },
-        ]))
+        return Promise.resolve(
+          makeFSEntries([{ name: 'src', path: '/proj/src', isDirectory: true }]),
+        )
       }
       if (path === '/proj/src') {
-        return Promise.resolve(makeFSEntries([
-          { name: 'foo.ts', path: '/proj/src/foo.ts', isDirectory: false },
-        ]))
+        return Promise.resolve(
+          makeFSEntries([{ name: 'foo.ts', path: '/proj/src/foo.ts', isDirectory: false }]),
+        )
       }
       return Promise.resolve([])
     })
@@ -1309,9 +1386,9 @@ describe('focusFileByPath', () => {
   it('focuses the parent directory when the file is deleted from disk', async () => {
     mockReadDirectory.mockImplementation((path: string) => {
       if (path === '/proj') {
-        return Promise.resolve(makeFSEntries([
-          { name: 'src', path: '/proj/src', isDirectory: true },
-        ]))
+        return Promise.resolve(
+          makeFSEntries([{ name: 'src', path: '/proj/src', isDirectory: true }]),
+        )
       }
       if (path === '/proj/src') {
         return Promise.resolve([])
@@ -1327,4 +1404,3 @@ describe('focusFileByPath', () => {
     expect(focusedNodeId).toBeNull()
   })
 })
-

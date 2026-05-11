@@ -16,7 +16,9 @@ const STATUS_STYLES: Record<TaskStatus, string> = {
 
 function StatusBadge({ status }: { status: TaskStatus }) {
   return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_STYLES[status]}`}>
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_STYLES[status]}`}
+    >
       {status === 'running' && (
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
       )}
@@ -34,18 +36,33 @@ function ToolActivityList({ task }: { task: TaskEntry }) {
   return (
     <div className="flex flex-col gap-0.5 mt-1">
       {recent.map((a, i) => (
-        <div key={`${a.tool_name}-${a.timestamp}-${i}`} className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
-          <span className={a.success === undefined ? 'text-blue-400' : a.success ? 'text-green-400' : 'text-red-400'}>
+        <div
+          key={`${a.tool_name}-${a.timestamp}-${i}`}
+          className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono"
+        >
+          <span
+            className={
+              a.success === undefined
+                ? 'text-blue-400'
+                : a.success
+                  ? 'text-green-400'
+                  : 'text-red-400'
+            }
+          >
             {a.success === undefined ? '...' : a.success ? 'ok' : 'err'}
           </span>
           <span className="text-foreground/70">{a.tool_name}</span>
           {a.file_path && (
-            <span className="truncate max-w-[160px] text-muted-foreground/60">{a.file_path.split('/').pop()}</span>
+            <span className="truncate max-w-[160px] text-muted-foreground/60">
+              {a.file_path.split('/').pop()}
+            </span>
           )}
         </div>
       ))}
       {task.toolActivity.length > MAX_VISIBLE_ACTIVITY && (
-        <span className="text-[10px] text-muted-foreground/40">+{task.toolActivity.length - MAX_VISIBLE_ACTIVITY} more</span>
+        <span className="text-[10px] text-muted-foreground/40">
+          +{task.toolActivity.length - MAX_VISIBLE_ACTIVITY} more
+        </span>
       )}
     </div>
   )
@@ -85,12 +102,22 @@ const TaskCard = memo(function TaskCard({ task }: { task: TaskEntry }) {
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {isActive && (
-            <Button size="sm" variant="destructive" onClick={() => abortTask(task.id)} className="h-6 px-2 text-[10px]">
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => abortTask(task.id)}
+              className="h-6 px-2 text-[10px]"
+            >
               Stop
             </Button>
           )}
           {!isActive && (
-            <Button size="sm" variant="ghost" onClick={() => removeTask(task.id)} className="h-6 px-2 text-[10px]">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => removeTask(task.id)}
+              className="h-6 px-2 text-[10px]"
+            >
               Remove
             </Button>
           )}
@@ -100,7 +127,9 @@ const TaskCard = memo(function TaskCard({ task }: { task: TaskEntry }) {
       {isActive && <ToolActivityList task={task} />}
 
       {task.error && (
-        <div className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1 mt-0.5">{task.error}</div>
+        <div className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1 mt-0.5">
+          {task.error}
+        </div>
       )}
 
       {task.text && (
@@ -186,12 +215,7 @@ function NewTaskForm() {
           rows={2}
           className="flex-1 min-h-0 resize-none text-xs"
         />
-        <Button
-          size="sm"
-          onClick={handleSubmit}
-          disabled={!prompt.trim()}
-          className="shrink-0"
-        >
+        <Button size="sm" onClick={handleSubmit} disabled={!prompt.trim()} className="shrink-0">
           Run
         </Button>
       </div>

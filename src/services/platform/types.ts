@@ -104,6 +104,9 @@ export interface Platform {
     /** Clear a store's state in the backend (used on fresh start). */
     clear(name: string): Promise<void>
     /** Listen for state updates broadcast by the backend. */
-    listen(name: string, callback: (payload: { state: unknown; source: string }) => void): () => void
+    listen(
+      name: string,
+      callback: (payload: { state: unknown; source: string }) => void,
+    ): () => void
   }
 }

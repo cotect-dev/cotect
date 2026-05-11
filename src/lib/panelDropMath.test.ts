@@ -48,12 +48,30 @@ describe('computeInsertIndex', () => {
   it('three panels with equal sizes: each third partitions correctly', () => {
     const zone = { rect: horizontalRect, isVertical: false }
     // 3 equal panels: panelEnds at 1/3, 2/3, 1; mids at 1/6, 3/6, 5/6
-    expect(computeInsertIndex(zone, [1, 1, 1], 100, 50)).toEqual({ insertIndex: 0, neighborIndex: 0 }) // 0.1 < 1/6
-    expect(computeInsertIndex(zone, [1, 1, 1], 250, 50)).toEqual({ insertIndex: 1, neighborIndex: 0 }) // past 1/6, before 1/3
-    expect(computeInsertIndex(zone, [1, 1, 1], 400, 50)).toEqual({ insertIndex: 1, neighborIndex: 1 }) // past 1/3, before 1/2
-    expect(computeInsertIndex(zone, [1, 1, 1], 600, 50)).toEqual({ insertIndex: 2, neighborIndex: 1 }) // past 1/2, before 2/3
-    expect(computeInsertIndex(zone, [1, 1, 1], 750, 50)).toEqual({ insertIndex: 2, neighborIndex: 2 }) // past 2/3, before 5/6
-    expect(computeInsertIndex(zone, [1, 1, 1], 950, 50)).toEqual({ insertIndex: 3, neighborIndex: 2 }) // past 5/6
+    expect(computeInsertIndex(zone, [1, 1, 1], 100, 50)).toEqual({
+      insertIndex: 0,
+      neighborIndex: 0,
+    }) // 0.1 < 1/6
+    expect(computeInsertIndex(zone, [1, 1, 1], 250, 50)).toEqual({
+      insertIndex: 1,
+      neighborIndex: 0,
+    }) // past 1/6, before 1/3
+    expect(computeInsertIndex(zone, [1, 1, 1], 400, 50)).toEqual({
+      insertIndex: 1,
+      neighborIndex: 1,
+    }) // past 1/3, before 1/2
+    expect(computeInsertIndex(zone, [1, 1, 1], 600, 50)).toEqual({
+      insertIndex: 2,
+      neighborIndex: 1,
+    }) // past 1/2, before 2/3
+    expect(computeInsertIndex(zone, [1, 1, 1], 750, 50)).toEqual({
+      insertIndex: 2,
+      neighborIndex: 2,
+    }) // past 2/3, before 5/6
+    expect(computeInsertIndex(zone, [1, 1, 1], 950, 50)).toEqual({
+      insertIndex: 3,
+      neighborIndex: 2,
+    }) // past 5/6
   })
 
   it('vertical orientation uses pointerY against rect.top/height', () => {

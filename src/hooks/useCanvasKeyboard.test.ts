@@ -313,7 +313,11 @@ describe('useCanvasKeyboard', () => {
       outsideButton.focus()
 
       const moveFocusSpy = vi.spyOn(useCanvasStore.getState(), 'moveFocus')
-      const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowDown',
+        bubbles: true,
+        cancelable: true,
+      })
       document.dispatchEvent(event)
 
       expect(document.activeElement).toBe(container)
@@ -341,7 +345,11 @@ describe('useCanvasKeyboard', () => {
       outsideButton.focus()
 
       const navigateRightSpy = vi.spyOn(useCanvasStore.getState(), 'navigateRight')
-      const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        bubbles: true,
+        cancelable: true,
+      })
       document.dispatchEvent(event)
 
       expect(document.activeElement).toBe(container)

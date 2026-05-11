@@ -5,7 +5,7 @@ export interface KeyBinding {
   label: string
   scope: KeyScope
   group: 'Canvas' | 'Panels' | 'TopBar' | 'Settings' | 'Dev'
-  chord: string                  // human-readable, e.g. "Cmd+P"
+  chord: string // human-readable, e.g. "Cmd+P"
   matches: (e: KeyboardEvent) => boolean
 }
 
@@ -27,15 +27,15 @@ export function defineBinding(b: KeyBinding): KeyBinding {
 /** Helper: chord-match against a `KeyboardEvent`. */
 export function matchChord(e: KeyboardEvent, chord: string): boolean {
   const parts = chord.toLowerCase().split('+')
-  const wantMeta  = parts.includes('cmd') || parts.includes('meta')
-  const wantCtrl  = parts.includes('ctrl')
-  const wantAlt   = parts.includes('alt') || parts.includes('option')
+  const wantMeta = parts.includes('cmd') || parts.includes('meta')
+  const wantCtrl = parts.includes('ctrl')
+  const wantAlt = parts.includes('alt') || parts.includes('option')
   const wantShift = parts.includes('shift')
   const key = parts[parts.length - 1]
   return (
-    e.metaKey  === wantMeta &&
-    e.ctrlKey  === wantCtrl &&
-    e.altKey   === wantAlt &&
+    e.metaKey === wantMeta &&
+    e.ctrlKey === wantCtrl &&
+    e.altKey === wantAlt &&
     e.shiftKey === wantShift &&
     e.key.toLowerCase() === key
   )
@@ -43,7 +43,11 @@ export function matchChord(e: KeyboardEvent, chord: string): boolean {
 
 /** Helper to declare a binding from a chord string. */
 export function makeChordBinding(opts: {
-  id: string; label: string; scope: KeyScope; group: KeyBinding['group']; chord: string
+  id: string
+  label: string
+  scope: KeyScope
+  group: KeyBinding['group']
+  chord: string
 }): KeyBinding {
   return defineBinding({ ...opts, matches: (e) => matchChord(e, opts.chord) })
 }

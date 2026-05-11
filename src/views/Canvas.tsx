@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ReactFlow, ReactFlowProvider, useReactFlow, Background, BackgroundVariant, type Viewport as RFViewport } from '@xyflow/react'
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+  Background,
+  BackgroundVariant,
+  type Viewport as RFViewport,
+} from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCanvasStore, useBrowserStore, useViewStore } from '@/store'
 import Layout from '@/components/Layout'
@@ -20,20 +27,36 @@ import { defineBinding } from '@/lib/keybindings'
 // fire regardless of modifier state. A custom matcher preserves that exactly
 // (the stricter `matchChord` helper would require no modifiers held).
 const VIEW_FILES = defineBinding({
-  id: 'canvas.view.files', label: 'View: Files', scope: 'global', group: 'Canvas',
-  chord: '1', matches: (e) => e.key === '1',
+  id: 'canvas.view.files',
+  label: 'View: Files',
+  scope: 'global',
+  group: 'Canvas',
+  chord: '1',
+  matches: (e) => e.key === '1',
 })
 const VIEW_GRAPH = defineBinding({
-  id: 'canvas.view.graph', label: 'View: Graph', scope: 'global', group: 'Canvas',
-  chord: '2', matches: (e) => e.key === '2',
+  id: 'canvas.view.graph',
+  label: 'View: Graph',
+  scope: 'global',
+  group: 'Canvas',
+  chord: '2',
+  matches: (e) => e.key === '2',
 })
 const VIEW_SETTINGS = defineBinding({
-  id: 'canvas.view.settings', label: 'View: Settings', scope: 'global', group: 'Canvas',
-  chord: '3', matches: (e) => e.key === '3',
+  id: 'canvas.view.settings',
+  label: 'View: Settings',
+  scope: 'global',
+  group: 'Canvas',
+  chord: '3',
+  matches: (e) => e.key === '3',
 })
 const VIEW_ANALYTICS = defineBinding({
-  id: 'canvas.view.analytics', label: 'View: Analytics', scope: 'global', group: 'Canvas',
-  chord: '4', matches: (e) => e.key === '4',
+  id: 'canvas.view.analytics',
+  label: 'View: Analytics',
+  scope: 'global',
+  group: 'Canvas',
+  chord: '4',
+  matches: (e) => e.key === '4',
 })
 
 const proOptions = { hideAttribution: true }
@@ -60,9 +83,10 @@ function CanvasFlow() {
   // starting at 0 made the first panel-resize effect shift the viewport by
   // −panelW.
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-    const el = typeof document !== 'undefined'
-      ? document.querySelector('[data-zone="left"]') as HTMLElement | null
-      : null
+    const el =
+      typeof document !== 'undefined'
+        ? (document.querySelector('[data-zone="left"]') as HTMLElement | null)
+        : null
     return el ? el.getBoundingClientRect().width : 0
   })
   useEffect(() => {
@@ -185,35 +209,38 @@ function CanvasFlow() {
     containerRef.current?.focus()
   }, [])
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.stopPropagation()
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.stopPropagation()
 
-    const store = useCanvasStore.getState()
-    const focusedId = store.focusedNodeId
-    if (focusedId) {
-      const focused = store.nodes.find((n) => n.id === focusedId)
-      if (focused?.type === 'file') {
-        const previewCol = store.columns[store.currentColumnIndex + 1]
-        if (previewCol?.kind === 'file' && previewCol.nodes[0]) {
-          const previewEl = containerRef.current?.querySelector(
-            `[data-id="${CSS.escape(previewCol.nodes[0].id)}"]`,
-          )
-          const scroller = previewEl?.querySelector('.cm-scroller') as HTMLElement | null
-          if (scroller) {
-            scroller.scrollTop += e.deltaY
-            scroller.scrollLeft += e.deltaX
-            return
+      const store = useCanvasStore.getState()
+      const focusedId = store.focusedNodeId
+      if (focusedId) {
+        const focused = store.nodes.find((n) => n.id === focusedId)
+        if (focused?.type === 'file') {
+          const previewCol = store.columns[store.currentColumnIndex + 1]
+          if (previewCol?.kind === 'file' && previewCol.nodes[0]) {
+            const previewEl = containerRef.current?.querySelector(
+              `[data-id="${CSS.escape(previewCol.nodes[0].id)}"]`,
+            )
+            const scroller = previewEl?.querySelector('.cm-scroller') as HTMLElement | null
+            if (scroller) {
+              scroller.scrollTop += e.deltaY
+              scroller.scrollLeft += e.deltaX
+              return
+            }
           }
         }
       }
-    }
 
-    const viewport = reactFlow.getViewport()
-    void reactFlow.setViewport(
-      { x: viewport.x - e.deltaX, y: viewport.y - e.deltaY, zoom: viewport.zoom },
-      { duration: 0 },
-    )
-  }, [reactFlow])
+      const viewport = reactFlow.getViewport()
+      void reactFlow.setViewport(
+        { x: viewport.x - e.deltaX, y: viewport.y - e.deltaY, zoom: viewport.zoom },
+        { duration: 0 },
+      )
+    },
+    [reactFlow],
+  )
 
   const handleViewportChange = useCallback((vp: RFViewport) => {
     notifyCanvasScrolled()
@@ -287,18 +314,29 @@ function ViewSwitcher() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const active = document.activeElement as HTMLElement | null
-      if (active && (
-        active.tagName === 'INPUT' ||
-        active.tagName === 'TEXTAREA' ||
-        active.tagName === 'SELECT' ||
-        active.isContentEditable ||
-        active.closest('.cm-editor')
-      )) return
+      if (
+        active &&
+        (active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.tagName === 'SELECT' ||
+          active.isContentEditable ||
+          active.closest('.cm-editor'))
+      )
+        return
 
-      if (VIEW_FILES.matches(e)) { e.preventDefault(); setViewMode('files') }
-      else if (VIEW_GRAPH.matches(e)) { e.preventDefault(); setViewMode('graph') }
-      else if (VIEW_SETTINGS.matches(e)) { e.preventDefault(); setViewMode('settings') }
-      else if (VIEW_ANALYTICS.matches(e)) { e.preventDefault(); setViewMode('analytics') }
+      if (VIEW_FILES.matches(e)) {
+        e.preventDefault()
+        setViewMode('files')
+      } else if (VIEW_GRAPH.matches(e)) {
+        e.preventDefault()
+        setViewMode('graph')
+      } else if (VIEW_SETTINGS.matches(e)) {
+        e.preventDefault()
+        setViewMode('settings')
+      } else if (VIEW_ANALYTICS.matches(e)) {
+        e.preventDefault()
+        setViewMode('analytics')
+      }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -352,10 +390,8 @@ function ViewSwitcher() {
       </div>
 
       {/* Rendered outside view wrappers because opacity creates a stacking
-        * context that would trap the z-index. */}
-      {(viewMode === 'files' || viewMode === 'graph') && (
-        <Breadcrumbs />
-      )}
+       * context that would trap the z-index. */}
+      {(viewMode === 'files' || viewMode === 'graph') && <Breadcrumbs />}
     </>
   )
 }

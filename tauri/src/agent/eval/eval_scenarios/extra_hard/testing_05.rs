@@ -5,13 +5,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let account_file = ap(dir, "account.py");
-        std::fs::write(&account_file, r#""""Bank account with balance tracking."""
+        std::fs::write(
+            &account_file,
+            r#""""Bank account with balance tracking."""
 
 from datetime import date
 
@@ -78,10 +80,14 @@ class Account:
     def transactions(self):
         """Return a copy of the transaction list."""
         return list(self._transactions)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let transfer_file = ap(dir, "transfer.py");
-        std::fs::write(&transfer_file, r#""""Transfer service between accounts."""
+        std::fs::write(
+            &transfer_file,
+            r#""""Transfer service between accounts."""
 
 
 def transfer(source, destination, amount: float):
@@ -101,10 +107,14 @@ def transfer(source, destination, amount: float):
     """
     destination.deposit(amount)
     source.withdraw(amount)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let interest_file = ap(dir, "interest.py");
-        std::fs::write(&interest_file, r#""""Interest calculation utilities."""
+        std::fs::write(
+            &interest_file,
+            r#""""Interest calculation utilities."""
 
 
 def apply_interest(account, annual_rate: float):
@@ -122,10 +132,14 @@ def apply_interest(account, annual_rate: float):
     interest = int(account.balance * annual_rate / 100)
     if interest > 0:
         account.deposit(interest)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let statement_file = ap(dir, "statement.py");
-        std::fs::write(&statement_file, r#""""Account statement generation."""
+        std::fs::write(
+            &statement_file,
+            r#""""Account statement generation."""
 
 from datetime import date
 
@@ -161,11 +175,15 @@ def balance_at(account, target_date: date) -> float:
         if txn["date"] <= target_date:
             total += txn["amount"]
     return total
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Fixed versions
         let transfer_fixed = ap(dir, "transfer_fixed.py");
-        std::fs::write(&transfer_fixed, r#""""Transfer service between accounts."""
+        std::fs::write(
+            &transfer_fixed,
+            r#""""Transfer service between accounts."""
 
 
 def transfer(source, destination, amount: float):
@@ -185,10 +203,14 @@ def transfer(source, destination, amount: float):
     """
     source.withdraw(amount)
     destination.deposit(amount)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let interest_fixed = ap(dir, "interest_fixed.py");
-        std::fs::write(&interest_fixed, r#""""Interest calculation utilities."""
+        std::fs::write(
+            &interest_fixed,
+            r#""""Interest calculation utilities."""
 
 
 def apply_interest(account, annual_rate: float):
@@ -206,10 +228,14 @@ def apply_interest(account, annual_rate: float):
     interest = round(account.balance * annual_rate / 100, 2)
     if interest > 0:
         account.deposit(interest)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let statement_fixed = ap(dir, "statement_fixed.py");
-        std::fs::write(&statement_fixed, r#""""Account statement generation."""
+        std::fs::write(
+            &statement_fixed,
+            r#""""Account statement generation."""
 
 from datetime import date
 
@@ -248,10 +274,14 @@ def balance_at(account, target_date: date) -> float:
             else:
                 total -= txn["amount"]
     return total
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let runner = ap(dir, "run_tests.py");
-        std::fs::write(&runner, r#"import subprocess, sys, os, shutil
+        std::fs::write(
+            &runner,
+            r#"import subprocess, sys, os, shutil
 
 test_file = None
 for f in sorted(os.listdir(".")):
@@ -312,18 +342,35 @@ else:
     print(f"FAIL: tests fail on corrected code too")
     print(f"stdout: {fixed_result.stdout[-500:]}")
     print(f"stderr: {fixed_result.stderr[-500:]}")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // account.py has no bugs
         let transfer_buggy = ap(dir, "transfer_buggy.py");
-        std::fs::write(&transfer_buggy, std::fs::read_to_string(&transfer_file).unwrap()).unwrap();
+        std::fs::write(
+            &transfer_buggy,
+            std::fs::read_to_string(&transfer_file).unwrap(),
+        )
+        .unwrap();
         let interest_buggy = ap(dir, "interest_buggy.py");
-        std::fs::write(&interest_buggy, std::fs::read_to_string(&interest_file).unwrap()).unwrap();
+        std::fs::write(
+            &interest_buggy,
+            std::fs::read_to_string(&interest_file).unwrap(),
+        )
+        .unwrap();
         let statement_buggy = ap(dir, "statement_buggy.py");
-        std::fs::write(&statement_buggy, std::fs::read_to_string(&statement_file).unwrap()).unwrap();
+        std::fs::write(
+            &statement_buggy,
+            std::fs::read_to_string(&statement_file).unwrap(),
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The banking system spread across {}, {}, {}, and {} is \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The banking system spread across {}, {}, {}, and {} is \
              suspected to contain defects where the implementations diverge \
              from their documented contracts. Write a test suite that \
              catches any such divergence — a faithful implementation must \
@@ -341,16 +388,37 @@ else:
              faithful implementation. Stop as soon as you see that \
              sentinel — don't keep iterating. The structure, framework, \
              and choice of assertions is yours.",
-            account_file, transfer_file, interest_file, statement_file)),
+                        account_file, transfer_file, interest_file, statement_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![
+                    account_file.clone(),
+                    transfer_file.clone(),
+                    interest_file.clone(),
+                    statement_file.clone(),
+                ],
+            ),
             vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![account_file.clone(), transfer_file.clone(), interest_file.clone(),
-                 statement_file.clone()]),
-            vec![transfer_fixed, interest_fixed, statement_fixed,
-                 runner, transfer_buggy, interest_buggy, statement_buggy])
+                transfer_fixed,
+                interest_fixed,
+                statement_fixed,
+                runner,
+                transfer_buggy,
+                interest_buggy,
+                statement_buggy,
+            ],
+        )
     }
-    v.push(scen!("xhard_testing_05_banking_system", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_testing_05_banking_system",
+        Category::Testing,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

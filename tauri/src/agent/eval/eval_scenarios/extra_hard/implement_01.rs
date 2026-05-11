@@ -23,13 +23,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let inv_file = ap(dir, "inventory.py");
-        std::fs::write(&inv_file, r#"class Inventory:
+        std::fs::write(
+            &inv_file,
+            r#"class Inventory:
     """Product inventory with add, remove, list, and bulk operations."""
 
     def __init__(self):
@@ -107,10 +109,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     #   in_stock: bool
     # Returns items (same dict shape as list_items) matching every provided
     # filter. Items returned must not share identity with internal state.
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_inventory.py");
-        std::fs::write(&test_file, r#"from inventory import Inventory
+        std::fs::write(
+            &test_file,
+            r#"from inventory import Inventory
 
 
 def _make_inventory():
@@ -256,10 +262,15 @@ if __name__ == "__main__":
     test_search_sorted_by_id()
     test_existing_methods_still_work()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "Implement the `search()` method on the `Inventory` class in {}.\n\n\
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "Implement the `search()` method on the `Inventory` class in {}.\n\n\
              Contract:\n\
              - Signature: search(self, **kwargs) -> list[dict].\n\
              - Kwargs (any subset may be omitted): name_contains (str), \
@@ -277,14 +288,24 @@ if __name__ == "__main__":
                name, category, price, quantity), sorted by id, and mutating \
                a returned dict must not affect internal state.\n\n\
              Verify with `python3 test_inventory.py`.",
-            inv_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 test_inventory.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![inv_file]),
-            vec![test_file])
+                        inv_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 test_inventory.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![inv_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_implement_01_inventory_search", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_implement_01_inventory_search",
+        Category::Implement,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }
