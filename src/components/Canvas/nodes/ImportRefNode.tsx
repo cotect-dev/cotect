@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useState } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { FileCode, FileText, FlaskConical, Image } from 'lucide-react'
 import type { ImportRefNode, ImportRefItem } from '@/types/nodes'
@@ -38,6 +38,8 @@ export function Pill({ item }: { item: ImportRefItem }) {
     ? 'border-violet-500/30 group-hover/ref:border-violet-400/50'
     : 'border-green-500/30 group-hover/ref:border-green-400/50'
 
+  const [hovered, setHovered] = useState(false)
+
   const handleClick = useCallback(() => {
     void useCanvasStore.getState().focusFileByPath(item.resolvedPath)
   }, [item.resolvedPath])
@@ -47,11 +49,13 @@ export function Pill({ item }: { item: ImportRefItem }) {
       className={`pointer-events-auto flex items-center gap-1 rounded bg-background/90 px-1.5 border cursor-pointer
         ${borderColor} hover:bg-muted/40 transition-colors`}
       style={{ height: REF_HEIGHT - 4 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onClick={handleClick}
     >
       <Icon className={`h-3 w-3 shrink-0 ${iconColor}`} />
-      <span className="text-[10px] leading-none text-foreground/55 hover:text-foreground/80 truncate whitespace-nowrap transition-colors max-w-[120px]">
-        {item.label}
+      <span className={`text-[10px] leading-none text-foreground/55 hover:text-foreground/80 whitespace-nowrap transition-colors ${hovered ? '' : 'truncate max-w-[120px]'}`}>
+        {hovered ? item.resolvedPath : item.label}
       </span>
     </div>
   )
