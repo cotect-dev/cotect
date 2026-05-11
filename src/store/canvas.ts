@@ -16,7 +16,7 @@ import { joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
 import { withPersistence } from '@/store/persistence'
 import { useGitStore } from '@/store/git'
-import { parseImportsWithLines } from '@/services/treesitter'
+import { parseImportsWithLines, parseImportsWithBindings } from '@/services/treesitter'
 import { resolveImport } from '@/services/importResolver'
 import { getConfigForFile } from '@/services/treesitter-queries'
 import { useGraphStore } from '@/store/graph'
@@ -45,6 +45,8 @@ export interface ImportRef {
    */
   visualLine: number
   kind: ImportRefKind
+  /** Names imported from this file (for imported-by refs), e.g. ['useStore', 'getData']. */
+  importedNames?: string[]
 }
 
 export interface Column {
@@ -317,8 +319,9 @@ async function resolveFileImportRefs(
     const resolved = resolveImport(imp.specifier, repoRel, knownFiles, config.id)
     if (!resolved || resolved === repoRel) continue
     if (seen.has(resolved)) continue
-    seen.add(resolved)
     const label = resolved.split('/').pop() || resolved
+    if (isTestFile(label)) continue
+    seen.add(resolved)
     refs.push({
       resolvedPath: resolved, label,
       line: imp.line, visualLine: toVisual(imp.line),
@@ -329,6 +332,7 @@ async function resolveFileImportRefs(
   // --- imported-by (files that import this file) ---
   const importers = allEdges
     .filter((e) => e.target === repoRel && e.source !== repoRel)
+    .filter((e) => !isTestFile(e.source.split('/').pop() || e.source))
     .map((e) => e.source)
 
   if (importers.length > 0) {
@@ -344,7 +348,29 @@ async function resolveFileImportRefs(
       }
     }
 
-    for (const imp of importers) {
+    // Resolve imported binding names by parsing each importer's source.
+    const platform = getPlatform()
+    const importerBindings = await Promise.all(
+      importers.map(async (imp): Promise<{ imp: string; names: string[] }> => {
+        try {
+          const absPath = joinPath(repoPath, imp)
+          const impSource = await platform.fs.readFile(absPath)
+          const impConfig = getConfigForFile(imp)
+          if (!impConfig) return { imp, names: [] }
+          const bindings = await parseImportsWithBindings(imp, impSource)
+          // Find the import entry that resolves to our file
+          for (const b of bindings) {
+            const resolved = resolveImport(b.specifier, imp, knownFiles, impConfig.id)
+            if (resolved === repoRel) return { imp, names: b.names }
+          }
+          return { imp, names: [] }
+        } catch {
+          return { imp, names: [] }
+        }
+      }),
+    )
+
+    for (const { imp, names } of importerBindings) {
       if (seen.has(imp)) continue
       seen.add(imp)
       const label = imp.split('/').pop() || imp
@@ -352,8 +378,8 @@ async function resolveFileImportRefs(
         resolvedPath: imp, label,
         line: anchorLine, visualLine: toVisual(anchorLine),
         kind: 'imported-by',
+        importedNames: names.length > 0 ? names : undefined,
       })
-      anchorLine++
     }
   }
 
@@ -744,6 +770,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
   setCodeNodeWidth: (width: number) => {
     set({ codeNodeWidth: width })
+    flattenAndRender(get, set)
   },
 
   /**
@@ -1014,8 +1041,17 @@ function flattenAndRender(
       allEdges.push({ ...edge })
     }
 
-    // Position import ref nodes to the right of the code editor, aligned
-    // to the source line where each import statement appears.
+    // Position import ref nodes to the right of the code editor.
+    //
+    // Each visual line becomes ONE ReactFlow node whose component
+    // renders all its pills as a flex row — no fixed-width columns.
+    //
+    //  1. Import refs are pinned to their source line (immovable).
+    //  2. Imported-by refs fill empty lines downward from the anchor.
+    //     Available vertical space is measured, then items are divided
+    //     evenly across "wrap columns" so each row has the same count
+    //     (±1). Items that wrap share a line with earlier items and
+    //     the flex row handles spacing naturally.
     if (isPreviewCol && col.kind === 'file' && col.importRefs && col.importRefs.length > 0) {
       const codeNode = positioned[0]
       if (codeNode) {
@@ -1023,41 +1059,100 @@ function flattenAndRender(
         const codeX = codeNode.position.x
         const codeY = codeNode.position.y
 
-        // Must match CodeNode.tsx theme: explicit lineHeight '18px' on .cm-content.
-        const HEADER_HEIGHT = 33   // px-3 py-1.5 + text + border-b
-        const LINE_HEIGHT = 18     // pinned in CodeNode.tsx .cm-content lineHeight
-        const CM_PAD_TOP = 4       // .cm-content padding: '4px 0'
-        const REF_GAP = 16         // gap between code node right edge and ref column
-        const REF_COL_WIDTH = 160  // horizontal space per stacking column
+        const HEADER_HEIGHT = 33
+        const LINE_HEIGHT = 18
+        const CM_PAD_TOP = 4
+        const REF_GAP = 16
 
-        // Stack refs horizontally when they'd overlap on the same visual line.
         const refX0 = codeX + codeNodeWidth + REF_GAP
 
-        // Track occupied visual-line per horizontal stacking column.
-        const colBottoms: number[] = []
+        const importRefs = col.importRefs.filter((r) => r.kind === 'import')
+        const importedByRefs = col.importRefs.filter((r) => r.kind === 'imported-by')
 
-        for (const ref of col.importRefs) {
-          const vl = ref.visualLine
+        // lineItems: visualLine → ordered list of pill data for that line.
+        const lineItems = new Map<number, Array<{ ref: ImportRef; isFirstIB: boolean }>>()
+        const addToLine = (vl: number, ref: ImportRef, isFirstIB: boolean) => {
+          if (!lineItems.has(vl)) lineItems.set(vl, [])
+          lineItems.get(vl)!.push({ ref, isFirstIB })
+        }
+
+        // Pin import refs to their source lines.
+        for (const ref of importRefs) {
+          addToLine(ref.visualLine, ref, false)
+        }
+
+        // Imported-by: measure available vertical space, then distribute.
+        if (importedByRefs.length > 0) {
+          const anchorVl = importedByRefs[0].visualLine
+          const count = importedByRefs.length
+
+          // Count consecutive empty lines from anchor.
+          let maxRows = 0
+          let probe = anchorVl
+          while (maxRows < count) {
+            const occupants = lineItems.get(probe)
+            if (occupants && occupants.length > 0) break
+            maxRows++
+            probe++
+          }
+          if (maxRows < 1) maxRows = 1
+
+          // Balance into equal-height columns.
+          const numCols = Math.ceil(count / maxRows)
+          const rowsPerCol = Math.ceil(count / numCols)
+
+          // Fill column-major so wrapped items land on the same rows.
+          for (let ri = 0; ri < count; ri++) {
+            const row_idx = ri % rowsPerCol
+            const vl = anchorVl + row_idx
+            addToLine(vl, importedByRefs[ri], ri === 0)
+          }
+        }
+
+        // Emit one ReactFlow node per occupied visual line.
+        // Each node contains all pills for that line as a flex row.
+        const sortedLines = [...lineItems.keys()].sort((a, b) => a - b)
+
+        // Track whether we've seen the first imported-by line (for
+        // the connector line — only the very first ib row shows it).
+        let firstIBLineEmitted = false
+
+        for (const vl of sortedLines) {
+          const entries = lineItems.get(vl)!
           const refY = codeY + HEADER_HEIGHT + CM_PAD_TOP + (vl - 1) * LINE_HEIGHT
 
-          // Find the first horizontal column where this ref doesn't overlap.
-          let col_idx = 0
-          while (col_idx < colBottoms.length && colBottoms[col_idx] >= vl) {
-            col_idx++
-          }
-          colBottoms[col_idx] = vl
+          const items = entries.map(({ ref }) => ({
+            label: ref.label,
+            resolvedPath: ref.resolvedPath,
+            kind: ref.kind,
+            importedNames: ref.importedNames,
+          }))
 
-          const refX = refX0 + col_idx * REF_COL_WIDTH
+          // Show connector on import lines (always) and only the
+          // first visual line that contains imported-by items.
+          const hasIB = entries.some((e) => e.ref.kind === 'imported-by')
+          const hasImport = entries.some((e) => e.ref.kind === 'import')
+          let showConnector: boolean
+          if (hasImport && !hasIB) {
+            showConnector = true
+          } else if (hasIB && !firstIBLineEmitted) {
+            showConnector = true
+            firstIBLineEmitted = true
+          } else {
+            showConnector = false
+          }
+
+          // Stable id from the visual line (unique within a preview column).
+          const nodeId = `importRefLine:${vl}`
 
           allNodes.push({
-            id: `importRef:${ref.kind}:${ref.resolvedPath}:${ref.line}`,
+            id: nodeId,
             type: 'importRef',
-            position: { x: refX, y: refY },
+            position: { x: refX0, y: refY },
             data: {
-              label: ref.label,
-              resolvedPath: ref.resolvedPath,
-              line: ref.line,
-              kind: ref.kind,
+              items,
+              line: vl,
+              showConnector,
               __columnIndex: i,
               __isCurrent: true,
             },
