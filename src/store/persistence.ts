@@ -91,9 +91,7 @@ function flushScope(scope: 'global' | 'project') {
 
   if (Object.keys(pending).length === 0) return
 
-  for (const [key, value] of Object.entries(pending)) {
-    cache[key] = value
-  }
+  Object.assign(cache, pending)
   for (const key of Object.keys(pending)) {
     delete pending[key]
   }

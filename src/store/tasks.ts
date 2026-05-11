@@ -79,7 +79,7 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
         }))
       })
 
-      const unlisten = agentService.listenToTask(id, (event: TaskEvent) => {
+      const unlisten = agentService.listenToTask(id, (event) => {
         handleTaskEvent(id, event)
       })
 
@@ -140,7 +140,7 @@ function detachListener(taskId: string) {
 
 function handleTaskEvent(taskId: string, event: TaskEvent) {
   const { tasks } = useTasksStore.getState()
-  if (!tasks.find((t) => t.id === taskId)) return
+  if (!tasks.some((t) => t.id === taskId)) return
 
   switch (event.type) {
     case 'text':

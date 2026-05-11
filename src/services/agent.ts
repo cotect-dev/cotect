@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import type { ProbeInput, Probed } from './probe-types'
 
 export type AgentRole = 'implement' | 'research' | 'plan'
 
@@ -66,7 +67,6 @@ export function listenToTask(
   }
 }
 
-import type { ProbeInput, Probed } from './probe-types'
 export async function probeProvider(input: ProbeInput): Promise<Probed> {
   return invoke<Probed>('probe_provider', { input })
 }

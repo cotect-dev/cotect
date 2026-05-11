@@ -20,8 +20,6 @@ export const NODE_V_GAP_SMALL = 4
 export const CANVAS_MARGIN = 60
 export const CANVAS_PAD_Y = CANVAS_MARGIN
 
-// Maximum byte size for image previews (base64-encoded into a data URL).
-// Images larger than this will show a placeholder instead of loading.
 export const IMAGE_PREVIEW_MAX_BYTES = 5 * 1024 * 1024 // 5 MB
 
 export const HIDDEN_DIRECTORIES = new Set([

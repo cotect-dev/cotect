@@ -163,7 +163,6 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () => 
         }),
       )
 
-      // Build nodes
       const rawNodes: GraphFileNode[] = relFiles.map((rel) => {
         const config = getConfigForFile(rel)
         const filename = getFilename(rel)
@@ -179,7 +178,6 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () => 
         }
       })
 
-      // Build edges
       const edges: GraphFileEdge[] = []
       const seen = new Set<string>()
       for (const [from, specifiers] of importsByFile) {

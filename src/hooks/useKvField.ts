@@ -33,16 +33,15 @@ export function useKvField<T>(
     pending.current = next
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
-      void kvSet(key, pending.current as unknown)
+      void kvSet(key, pending.current)
     }, debounceMs)
   }, [key, debounceMs])
 
-  // Flush on unmount
   useEffect(() => {
     return () => {
       if (timer.current) {
         clearTimeout(timer.current)
-        void kvSet(key, pending.current as unknown)
+        void kvSet(key, pending.current)
       }
     }
   }, [key])

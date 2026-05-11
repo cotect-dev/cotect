@@ -31,16 +31,9 @@ function getLanguageExt(filePath: string) {
 }
 
 const MIN_CODE_NODE_WIDTH = 280
-// Editor grows until window.innerHeight - this, then scrolls internally.
 const CODE_NODE_HEIGHT_RESERVED = 120
 const CM_PAD_TOP = 4 // CodeMirror .cm-content padding-top
 const REF_GAP = 16 // Space between code right edge and annotation pills
-
-// ---------------------------------------------------------------------------
-// Annotation layout — distributes import refs across source lines.
-// Keyed by source line number so CodeNode can query CodeMirror for the
-// actual pixel position of each line (accounts for line wrapping).
-// ---------------------------------------------------------------------------
 
 interface RefLine {
   items: ImportRefItem[]
@@ -57,7 +50,6 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
     lineEntries.get(line)!.push(ref)
   }
 
-  // Pin import refs to their source lines.
   for (const ref of imports) add(ref.line, ref)
 
   // Imported-by: group refs by their anchor line (per-export) and spread
@@ -71,7 +63,6 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
       ibByLine.get(ref.line)!.push(ref)
     }
 
-    // Process groups in line order so earlier groups fill first.
     const sortedAnchors = [...ibByLine.keys()].sort((a, b) => a - b)
     for (const anchorLine of sortedAnchors) {
       ibAnchorLines.add(anchorLine)
@@ -95,8 +86,6 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
     }
   }
 
-  // Build output with connector logic.
-  // Every import line and every imported-by group anchor gets a connector.
   const result = new Map<number, RefLine>()
 
   for (const [line, entries] of lineEntries) {
@@ -162,7 +151,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [geometryVer, setGeometryVer] = useState(0)
   const [linePositions, setLinePositions] = useState<Map<number, number>>(new Map())
 
-  // Import ref annotations: subscribe to the preview column's resolved refs.
   const importRefs = useCanvasStore((s) => {
     const previewIdx = s.currentColumnIndex + 1
     const col = s.columns[previewIdx]
@@ -173,8 +161,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     return computeRefLineLayout(importRefs)
   }, [importRefs])
 
-  // Git-aware inline diff: if the file is dirty, mount unifiedMergeView
-  // comparing working tree vs HEAD.
   const gitStatus = useGitStore((s) => s.status)
   const repoPath = useGitStore((s) => s.repoPath)
   const loadHeadContent = useGitStore((s) => s.loadHeadContent)
@@ -187,7 +173,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   }, [gitStatus, data.filePath, repoPath])
 
   const isNewFile = gitEntry?.status === 'A' || gitEntry?.status === 'U'
-  // null = no diff needed; string = HEAD content (empty string for new files).
   const [headContent, setHeadContent] = useState<string | null>(null)
 
   useEffect(() => {
@@ -209,12 +194,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
   }, [gitEntry, isNewFile, data.filePath, repoPath, loadHeadContent])
 
-  // Sync from store on external changes (cross-window sync, hydration).
   useEffect(() => {
     setNodeWidth(storeWidth)
   }, [storeWidth])
 
-  // Snapshot width at drag start so memoized hook closures see a stable start.
   const dragStartWidthRef = useRef(0)
   const widthFromDelta = (deltaX: number) =>
     Math.max(MIN_CODE_NODE_WIDTH, dragStartWidthRef.current + deltaX)
@@ -245,14 +228,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   }, [data.filePath])
 
   const handleChunkAction = useCallback(
-    (type: 'accept' | 'reject') => {
-      // CodeMirror already mutated the doc in `action(e)`. Persist so the
-      // watcher → git refresh picks it up and merge highlighting reconciles.
+    (_type: 'accept' | 'reject') => {
       void saveToFile()
-      // TODO: hook real git actions (accept → git add -p, reject → git checkout -p).
-      console.log(`[CodeNode] ${type} chunk for ${data.filePath}`)
     },
-    [saveToFile, data.filePath],
+    [saveToFile],
   )
 
   useEffect(() => {
@@ -374,7 +353,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     registerEditorView(view)
     setGeometryVer((v) => v + 1)
 
-    // Scroll + resize tracking for the annotation overlay.
     const scrollDOM = view.scrollDOM
     const handleEditorScroll = () => {
       if (refOverlayRef.current) {
@@ -395,8 +373,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
   }, [data.code, data.filePath, data.startLine]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Swap the merge extension in-place on HEAD/dirty changes without
-  // destroying the editor or losing the user's unsaved edits.
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
@@ -407,10 +383,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     })
   }, [headContent, handleChunkAction])
 
-  // Compute actual pixel positions for annotation lines from CodeMirror's
-  // layout, accounting for line wrapping and merge-view decorations.
-  // Lines beyond the document are stacked at REF_HEIGHT intervals below
-  // the last line so they never overlap.
+  // Lines beyond document end are stacked at REF_HEIGHT intervals below
+  // the last line to avoid overlap.
   useLayoutEffect(() => {
     const view = viewRef.current
     if (!view || !refLineLayout || refLineLayout.size === 0) {
@@ -419,8 +393,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
     const positions = new Map<number, number>()
     const maxLine = view.state.doc.lines
-    // Pre-compute the bottom edge of the last document line so we can
-    // stack beyond-file annotations below it.
     const lastBlock = view.lineBlockAt(view.state.doc.line(maxLine).from)
     const beyondTop = lastBlock.top + lastBlock.height
 
@@ -434,10 +406,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       }
     }
     setLinePositions(positions)
-  }, [refLineLayout, geometryVer]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refLineLayout, geometryVer])
 
-  // The overlay must be tall enough to show annotations that extend past the
-  // visible editor area (e.g. many imported-by refs beyond the last line).
   const overlayHeight = useMemo(() => {
     if (!refLineLayout || refLineLayout.size === 0) return editorHeight
     let maxBottom = 0
@@ -494,7 +464,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           ref={editorRef}
           className="nowheel"
         />
-        {/* Import ref annotations — scroll-synchronized with the editor */}
         {refLineLayout && editorHeight > 0 && (
           <div
             className="absolute top-0 pointer-events-none"

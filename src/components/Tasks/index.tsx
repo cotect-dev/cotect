@@ -25,8 +25,10 @@ function StatusBadge({ status }: { status: TaskStatus }) {
   )
 }
 
+const MAX_VISIBLE_ACTIVITY = 5
+
 function ToolActivityList({ task }: { task: TaskEntry }) {
-  const recent = task.toolActivity.slice(-5)
+  const recent = task.toolActivity.slice(-MAX_VISIBLE_ACTIVITY)
   if (recent.length === 0) return null
 
   return (
@@ -42,8 +44,8 @@ function ToolActivityList({ task }: { task: TaskEntry }) {
           )}
         </div>
       ))}
-      {task.toolActivity.length > 5 && (
-        <span className="text-[10px] text-muted-foreground/40">+{task.toolActivity.length - 5} more</span>
+      {task.toolActivity.length > MAX_VISIBLE_ACTIVITY && (
+        <span className="text-[10px] text-muted-foreground/40">+{task.toolActivity.length - MAX_VISIBLE_ACTIVITY} more</span>
       )}
     </div>
   )

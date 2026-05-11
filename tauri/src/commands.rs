@@ -3,6 +3,8 @@ use std::fs;
 use std::path::Path;
 use tauri::Manager;
 
+const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+
 #[derive(Serialize)]
 pub struct FSEntry {
     name: String,
@@ -31,15 +33,9 @@ pub fn read_directory(dir_path: String) -> Result<Vec<FSEntry>, String> {
         .collect();
 
     entries.sort_by(|a, b| {
-        if a.is_directory != b.is_directory {
-            if a.is_directory {
-                std::cmp::Ordering::Less
-            } else {
-                std::cmp::Ordering::Greater
-            }
-        } else {
-            a.name.to_lowercase().cmp(&b.name.to_lowercase())
-        }
+        b.is_directory
+            .cmp(&a.is_directory)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
 
     Ok(entries)
@@ -47,7 +43,6 @@ pub fn read_directory(dir_path: String) -> Result<Vec<FSEntry>, String> {
 
 #[tauri::command]
 pub fn read_file_content(file_path: String) -> Result<String, String> {
-    const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
     let metadata = fs::metadata(&file_path).map_err(|e| e.to_string())?;
     if metadata.len() > MAX_FILE_SIZE {
         return Err(format!(
@@ -101,7 +96,6 @@ pub fn read_file_head(file_path: String, max_bytes: u64) -> Result<FileHead, Str
 
 #[tauri::command]
 pub fn read_binary_file(file_path: String) -> Result<Vec<u8>, String> {
-    const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
     let metadata = fs::metadata(&file_path).map_err(|e| e.to_string())?;
     if metadata.len() > MAX_FILE_SIZE {
         return Err(format!(
@@ -127,9 +121,8 @@ fn find_gtk_window_by_title(
     target_title: &str,
 ) -> Option<gtk::Window> {
     for widget in gtk::Window::list_toplevels() {
-        let gtk_win: gtk::Window = match widget.downcast() {
-            Ok(w) => w,
-            Err(_) => continue,
+        let Ok(gtk_win) = widget.downcast::<gtk::Window>() else {
+            continue;
         };
         let Some(gtk_title) = gtk_win.title() else {
             continue;
@@ -152,9 +145,8 @@ fn with_matching_gtk_windows<T>(
 ) -> Option<T> {
     let tauri_windows = app.webview_windows();
     for widget in gtk::Window::list_toplevels() {
-        let gtk_win: gtk::Window = match widget.downcast() {
-            Ok(w) => w,
-            Err(_) => continue,
+        let Ok(gtk_win) = widget.downcast::<gtk::Window>() else {
+            continue;
         };
         let Some(gdk_win) = gtk_win.window() else {
             continue;
@@ -248,14 +240,12 @@ pub fn get_window_monitor(app: tauri::AppHandle, label: String) -> Option<Window
 
 #[tauri::command]
 pub fn set_window_on_monitor(app: tauri::AppHandle, label: String, monitor_index: i32) -> bool {
-    let display = match gdk::Display::default() {
-        Some(d) => d,
-        None => return false,
+    let Some(display) = gdk::Display::default() else {
+        return false;
     };
 
-    let monitor = match display.monitor(monitor_index) {
-        Some(m) => m,
-        None => return false,
+    let Some(monitor) = display.monitor(monitor_index) else {
+        return false;
     };
 
     let geo = monitor.geometry();
@@ -303,9 +293,8 @@ pub struct MonitorInfo {
 
 #[tauri::command]
 pub fn get_monitors() -> Vec<MonitorInfo> {
-    let display = match gdk::Display::default() {
-        Some(d) => d,
-        None => return vec![],
+    let Some(display) = gdk::Display::default() else {
+        return vec![];
     };
 
     let n = display.n_monitors();

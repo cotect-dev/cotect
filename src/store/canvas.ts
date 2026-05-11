@@ -69,7 +69,6 @@ export type CanvasState = {
 
   focusedNodeId: string | null
 
-  // The "current" column is columns[currentColumnIndex]; all columns are rendered.
   columns: Column[]
   currentColumnIndex: number
 
@@ -506,11 +505,8 @@ function findVerticalNeighbor(
 
   for (const node of sameCol) {
     const dy = node.position.y - fy
-    if (direction === 'up' && dy < 0 && Math.abs(dy) < bestDist) {
-      bestDist = Math.abs(dy)
-      bestId = node.id
-    }
-    if (direction === 'down' && dy > 0 && Math.abs(dy) < bestDist) {
+    const inDirection = direction === 'up' ? dy < 0 : dy > 0
+    if (inDirection && Math.abs(dy) < bestDist) {
       bestDist = Math.abs(dy)
       bestId = node.id
     }
@@ -566,11 +562,9 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     if (nodes.length === 0) return
 
     if (!focusedNodeId) {
-      if (nodes.length > 0) {
-        set({ focusedNodeId: nodes[0].id })
-        flattenAndRender(get, set)
-        void get().updatePreview()
-      }
+      set({ focusedNodeId: nodes[0].id })
+      flattenAndRender(get, set)
+      void get().updatePreview()
       return
     }
 

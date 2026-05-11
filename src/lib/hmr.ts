@@ -29,8 +29,6 @@ export function createStoreWithHMR<S extends StoreApi<unknown>>(
   const existing = hot.data[storeKey] as S | undefined
 
   if (existing) {
-    // Patch only function properties (actions) from the fresh store onto
-    // the existing instance so new code takes effect without losing data state.
     const freshState = fresh.getState() as Record<string, unknown>
     const patch: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(freshState)) {

@@ -114,8 +114,6 @@ export default function DropZone({
 
   const isDragging = !!activePanelId;
 
-  // Pixel-based pair adjustment from a live drag (sibling-mode ResizeHandle).
-  // Ratio-only callers go through `useLayoutStore.resizePanels` instead.
   const makeResizeHandler = useCallback((leftKey: string, rightKey: string) => {
     return (pixelLeft: number, pixelRight: number, totalPixelWidth: number) => {
       useLayoutStore.setState(state => {

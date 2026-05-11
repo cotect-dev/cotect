@@ -38,8 +38,8 @@ interface TopBarProps {
 }
 
 const PANEL_GROUPS = [
-  { group: 'git' as const, label: 'Git' },
-  { group: 'agent' as const, label: 'Agent' },
+  { group: 'git', label: 'Git' },
+  { group: 'agent', label: 'Agent' },
 ] as const
 
 export default function TopBar({ onResetZoneSizes }: TopBarProps) {

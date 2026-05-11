@@ -3,7 +3,7 @@ import { createStoreWithHMR } from '@/lib/hmr'
 import { listen } from '@tauri-apps/api/event'
 import {
   usageQuery, usageAggregate,
-  type UsageRecord, type AggregateRow, type UsageFilter, type GroupBy,
+  type UsageRecord, type AggregateRow, type UsageFilter,
 } from '@/services/db'
 
 export type RangePreset = 'today' | '7d' | '30d' | 'all' | 'custom'
@@ -13,6 +13,8 @@ export interface DateRange {
   from: number | null
   to: number | null
 }
+
+const MS_PER_DAY = 86_400_000
 
 function rangeToFilter(range: DateRange): UsageFilter {
   return { from_ts: range.from, to_ts: range.to, provider_id: null, model: null, role: null, limit: null }
@@ -35,14 +37,14 @@ interface UsageState {
 }
 
 function defaultRange(): DateRange {
-  return { preset: '7d', from: Date.now() - 7 * 86_400_000, to: null }
+  return { preset: '7d', from: Date.now() - 7 * MS_PER_DAY, to: null }
 }
 
 function presetToRange(preset: RangePreset): DateRange {
   switch (preset) {
     case 'today': return { preset, from: new Date().setHours(0, 0, 0, 0), to: null }
-    case '7d':    return { preset, from: Date.now() - 7  * 86_400_000, to: null }
-    case '30d':   return { preset, from: Date.now() - 30 * 86_400_000, to: null }
+    case '7d':    return { preset, from: Date.now() - 7  * MS_PER_DAY, to: null }
+    case '30d':   return { preset, from: Date.now() - 30 * MS_PER_DAY, to: null }
     case 'all':   return { preset, from: null, to: null }
     case 'custom':return { preset, from: null, to: null }   // caller fills in
   }
@@ -51,11 +53,11 @@ function presetToRange(preset: RangePreset): DateRange {
 async function refreshAll(get: () => UsageState, set: (p: Partial<UsageState>) => void): Promise<void> {
   const filter = rangeToFilter(get().range)
   const [byProvider, byRole, byDay, byModel, byTuple, recent] = await Promise.all([
-    usageAggregate(filter, 'Provider' as GroupBy),
-    usageAggregate(filter, 'Role' as GroupBy),
-    usageAggregate(filter, 'Day' as GroupBy),
-    usageAggregate(filter, 'Model' as GroupBy),
-    usageAggregate(filter, 'ProviderDay' as GroupBy),
+    usageAggregate(filter, 'Provider'),
+    usageAggregate(filter, 'Role'),
+    usageAggregate(filter, 'Day'),
+    usageAggregate(filter, 'Model'),
+    usageAggregate(filter, 'ProviderDay'),
     usageQuery({ ...filter, limit: 500 }),
   ])
   const tasks = recent.length

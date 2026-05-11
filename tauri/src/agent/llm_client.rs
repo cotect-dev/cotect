@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, bail};
 use reqwest::Client;
-use serde::Deserialize;
 use tokio::sync::mpsc;
 
 use super::adapter::{self, ModelAdapter};
@@ -12,28 +11,6 @@ pub struct LlmClient {
     api_key: Option<String>,
     model: String,
     adapter: Box<dyn ModelAdapter>,
-}
-
-#[derive(Deserialize)]
-struct ModelsResponse {
-    /// OpenAI-standard format uses "data", LM Studio uses "models".
-    #[serde(default)]
-    data: Vec<ModelEntry>,
-    #[serde(default)]
-    models: Vec<LmStudioModelEntry>,
-}
-
-#[derive(Deserialize)]
-struct ModelEntry {
-    id: String,
-}
-
-#[derive(Deserialize)]
-struct LmStudioModelEntry {
-    key: String,
-    /// Only include LLM-type models, not embeddings.
-    #[serde(default)]
-    r#type: Option<String>,
 }
 
 /// Normalize an endpoint URL to the OpenAI-compatible base path:
@@ -135,61 +112,6 @@ impl LlmClient {
         Ok(rx)
     }
 
-    /// Tries OpenAI-compat `/v1/models` first, then LM Studio's `/api/v1/models`.
-    pub async fn list_models(&self) -> Result<Vec<String>> {
-        let lm_studio_url = if self.endpoint.ends_with("/v1") {
-            let base = &self.endpoint[..self.endpoint.len() - "/v1".len()];
-            format!("{base}/api/v1/models")
-        } else {
-            String::new()
-        };
-
-        let mut urls = vec![format!("{}/models", self.endpoint)];
-        if !lm_studio_url.is_empty() {
-            urls.push(lm_studio_url);
-        }
-
-        let mut last_err = None;
-        for url in &urls {
-            let mut request = self.http.get(url);
-            if let Some(key) = &self.api_key {
-                request = request.bearer_auth(key);
-            }
-
-            let resp = match request.send().await {
-                Ok(r) if r.status().is_success() => r,
-                Ok(r) => {
-                    let status = r.status();
-                    let body = r.text().await.unwrap_or_default();
-                    last_err = Some(format!("Models API error {status}: {body}"));
-                    continue;
-                }
-                Err(e) => {
-                    last_err = Some(format!("Failed to connect to models endpoint: {e}"));
-                    continue;
-                }
-            };
-
-            let models: ModelsResponse =
-                resp.json().await.context("Failed to parse models response")?;
-
-            // Merge "data" (OpenAI) and "models" (LM Studio) fields.
-            let mut ids: Vec<String> = models.data.into_iter().map(|m| m.id).collect();
-            ids.extend(
-                models
-                    .models
-                    .into_iter()
-                    .filter(|m| m.r#type.as_deref() != Some("embedding"))
-                    .map(|m| m.key),
-            );
-
-            if !ids.is_empty() {
-                return Ok(ids);
-            }
-        }
-
-        bail!(last_err.unwrap_or_else(|| "No models found".into()))
-    }
 }
 
 /// Parse SSE lines and emit `LlmStreamEvent`s via the adapter's parser.

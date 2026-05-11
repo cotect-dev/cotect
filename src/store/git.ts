@@ -198,7 +198,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () => crea
         branches: branches.status === 'fulfilled' ? branches.value : [],
         lastCommitTimestamp: lastCommitTime.status === 'fulfilled' ? lastCommitTime.value : null,
       }
-      const headSha = log.status === 'fulfilled' && log.value && log.value[0] ? log.value[0].hash : ''
+      const headSha = log.status === 'fulfilled' ? log.value?.[0]?.hash ?? '' : ''
       const currentHeadContent = get().headContent
       const nextHeadContent =
         currentHeadContent.sha === headSha

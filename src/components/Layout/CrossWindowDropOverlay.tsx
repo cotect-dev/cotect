@@ -140,8 +140,6 @@ export default function CrossWindowDropOverlay({ zoneRefs, mode = 'main' }: Prop
           })
 
           useLayoutStore.getState().moveGroup(currentIncoming.panelIds, currentZone, insertIndex, neighborIndex)
-          // Load current state from the backend for the incoming panels
-          // so the target window has content immediately.
           for (const id of currentIncoming.panelIds) {
             void reloadStoreFromBackend(id)
           }

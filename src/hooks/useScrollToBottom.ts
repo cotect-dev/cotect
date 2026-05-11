@@ -10,6 +10,12 @@ export function useScrollToBottom(dep: unknown) {
       rafRef.current = null
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     })
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+    }
   }, [dep])
 
   return bottomRef
