@@ -51,6 +51,10 @@ const TOGGLE_HIDE = defineBinding({
   id: 'canvas.toggleHide', label: 'Toggle hide node', scope: 'canvas', group: 'Canvas',
   chord: 'H', matches: keyIs('h'),
 })
+const NAV_BACK = defineBinding({
+  id: 'canvas.nav.back', label: 'Navigate back', scope: 'canvas', group: 'Canvas',
+  chord: 'Q', matches: keyIs('q'),
+})
 const SHOW_IN_FOLDER = defineBinding({
   id: 'canvas.showInFolder', label: 'Show in folder', scope: 'canvas', group: 'Canvas',
   chord: 'F', matches: keyIs('f'),
@@ -105,6 +109,11 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
       if (NAV_RIGHT_D.matches(e) || NAV_RIGHT_ARROW.matches(e)) {
         e.preventDefault()
         void store.navigateRight()
+        return
+      }
+      if (NAV_BACK.matches(e)) {
+        e.preventDefault()
+        void store.navigateBack()
         return
       }
       if (FOCUS_EDITOR.matches(e)) {

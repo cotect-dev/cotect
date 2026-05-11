@@ -93,6 +93,11 @@ export type CanvasState = {
   // Persisted per-project so the canvas restores the same file on relaunch.
   lastOpenedFile: string | null
 
+  // Navigation history: stack of repo-relative file paths visited via
+  // focusFileByPath (annotation clicks, graph jumps, etc.). navigateBack
+  // pops the most recent entry and restores it.
+  fileHistory: string[]
+
   // Viewport position saved by CanvasFlow before it unmounts (view switch).
   // Restored on remount so the user's scroll position doesn't jump.
   savedViewport: { x: number; y: number } | null
@@ -108,6 +113,7 @@ export type CanvasState = {
   setCodeNodeWidth: (width: number) => void
   updatePreview: () => Promise<void>
   focusFileByPath: (repoRelativePath: string) => Promise<void>
+  navigateBack: () => Promise<void>
 }
 
 async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
@@ -546,6 +552,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   codeNodeWidth: 650,
   rightFocusMemory: {},
   lastOpenedFile: null,
+  fileHistory: [],
   viewportHeight: 0,
   cameraY: CANVAS_PAD_Y,
   savedViewport: null,
@@ -628,6 +635,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         focusedNodeId: (dirNodes.find((n) => !get().hiddenNodeIds.has(n.id)) ?? dirNodes[0])?.id ?? null,
         cameraY: CANVAS_PAD_Y,
         rightFocusMemory: {},
+        fileHistory: [],
       })
 
       flattenAndRender(get, set)
@@ -651,13 +659,18 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   },
 
   focusFileByPath: async (repoRelativePath: string) => {
-    const { columns } = get()
+    const { columns, lastOpenedFile, fileHistory } = get()
     const rootCol = columns[0]
     if (!rootCol) return
     const rootPath = rootCol.path
 
     const segments = repoRelativePath.split('/').filter(Boolean)
     if (segments.length === 0) return
+
+    // Push the current file onto the history stack before jumping.
+    const nextHistory = lastOpenedFile && lastOpenedFile !== repoRelativePath
+      ? [...fileHistory, lastOpenedFile]
+      : fileHistory
 
     let currentPath = rootPath
     const newColumns: Column[] = [rootCol]
@@ -695,6 +708,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         depthChain: newColumns.map((c) => c.path),
         focusedNodeId: hasFile ? fileNodeId : null,
         cameraY: CANVAS_PAD_Y,
+        fileHistory: nextHistory,
       })
 
       flattenAndRender(get, set)
@@ -702,6 +716,21 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
     } catch (err) {
       console.warn('[canvas] focusFileByPath failed:', err)
     }
+  },
+
+  navigateBack: async () => {
+    const { fileHistory } = get()
+    if (fileHistory.length === 0) return
+    const prev = fileHistory[fileHistory.length - 1]
+    // Pop the entry before navigating — focusFileByPath would otherwise
+    // push the current file back onto the stack, creating a ping-pong.
+    set({ fileHistory: fileHistory.slice(0, -1) })
+    // Temporarily clear lastOpenedFile so focusFileByPath doesn't push it.
+    const saved = get().lastOpenedFile
+    set({ lastOpenedFile: null })
+    await get().focusFileByPath(prev)
+    // If focusFileByPath didn't set lastOpenedFile (e.g. file gone), restore.
+    if (get().lastOpenedFile === null) set({ lastOpenedFile: saved })
   },
 
   navigateRight: async () => {
