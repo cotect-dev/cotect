@@ -89,6 +89,10 @@ export type CanvasState = {
   // the preview column without waiting for the actual viewport animation.
   cameraY: number
 
+  // Repo-relative path of the last file opened in the preview column.
+  // Persisted per-project so the canvas restores the same file on relaunch.
+  lastOpenedFile: string | null
+
   // Viewport position saved by CanvasFlow before it unmounts (view switch).
   // Restored on remount so the user's scroll position doesn't jump.
   savedViewport: { x: number; y: number } | null
@@ -541,6 +545,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
   hiddenNodeIds: new Set(),
   codeNodeWidth: 650,
   rightFocusMemory: {},
+  lastOpenedFile: null,
   viewportHeight: 0,
   cameraY: CANVAS_PAD_Y,
   savedViewport: null,
@@ -614,6 +619,8 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
       const rootColumn: Column = { path: rootPath, kind: 'directory', nodes: dirNodes, edges: [] }
 
+      const { lastOpenedFile } = get()
+
       set({
         columns: [rootColumn],
         currentColumnIndex: 0,
@@ -624,7 +631,13 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       })
 
       flattenAndRender(get, set)
-      void get().updatePreview()
+
+      // Restore the last opened file if persisted, otherwise show default preview.
+      if (lastOpenedFile) {
+        void get().focusFileByPath(lastOpenedFile)
+      } else {
+        void get().updatePreview()
+      }
 
       // Trigger graph scan in background so import refs are available
       // when the user focuses a code file.
@@ -905,6 +918,8 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         }
         if (contentNode) {
           previewCol = { path, kind: 'file', nodes: [contentNode], edges: [], importRefs }
+          const { repoPath } = useGitStore.getState()
+          if (repoPath) set({ lastOpenedFile: toRepoRelative(path, repoPath) })
         }
       }
 
@@ -931,6 +946,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
       name: 'canvas',
       fields: {
         codeNodeWidth: { scope: 'global' },
+        lastOpenedFile: { scope: 'project' },
         hiddenNodeIds: {
           scope: 'project',
           serialize: (s: Set<string>) => [...s],
