@@ -361,14 +361,109 @@ const ROW_GAP = 30          // minimum visual gap between folder backgrounds
 const FOLDER_GROUP_GAP = 15
 const SIBLING_GAP = 8       // extra gap before siblings in the center row
 
+// Y-step between sub-rows when a folder row wraps into multiple visual rows.
+// = folder-bg height (NODE_HEIGHT + 2*FOLDER_PAD + FOLDER_LABEL_H) + ROW_GAP
+const SUB_ROW_STEP = NODE_HEIGHT + 2 * FOLDER_PAD + FOLDER_LABEL_H + ROW_GAP
+
+type FolderGroupInfo = { nodes: EgoNode[]; nodesW: number; bgW: number }
+
+/** Total pixel width of a set of folder groups laid out in a single row. */
+function folderRowWidth(groups: FolderGroupInfo[]): number {
+  let w = 0
+  for (let i = 0; i < groups.length; i++) {
+    w += groups[i].bgW
+    if (i < groups.length - 1) w += FOLDER_GROUP_GAP
+  }
+  return w
+}
+
+/**
+ * Distribute folder groups into `numRows` contiguous visual rows by
+ * finding the partition that minimises the maximum row width (optimal
+ * linear partition).  This avoids the greedy pitfall where a single
+ * wide group causes an early break, leaving it alone on a row while
+ * related groups that should sit beside it end up in a separate row.
+ *
+ * The number of groups is always small (≤ ~12) so enumerating all
+ * C(n-1, k-1) split-point combinations is trivially fast.
+ */
+function distributeFolderGroups(
+  groups: FolderGroupInfo[],
+  numRows: number,
+): FolderGroupInfo[][] {
+  const n = groups.length
+  if (numRows <= 1 || n <= 1) return [groups.slice()]
+  if (numRows >= n) return groups.map((g) => [g])
+
+  /** Width of the contiguous slice groups[start..end). */
+  function sliceWidth(start: number, end: number): number {
+    let w = 0
+    for (let i = start; i < end; i++) {
+      w += groups[i].bgW
+      if (i < end - 1) w += FOLDER_GROUP_GAP
+    }
+    return w
+  }
+
+  let bestMaxW = Infinity
+  let bestMinW = -1 // tiebreaker: among same maxW, prefer most balanced rows
+  let bestSplits: number[] = []
+
+  /** Enumerate all ways to place (numRows - 1) split points in [1, n). */
+  function enumerate(
+    splits: number[],
+    depth: number,
+    minPos: number,
+  ): void {
+    if (depth === numRows - 1) {
+      const all = [0, ...splits, n]
+      let maxW = 0
+      let minW = Infinity
+      for (let r = 0; r < numRows; r++) {
+        const rw = sliceWidth(all[r], all[r + 1])
+        maxW = Math.max(maxW, rw)
+        minW = Math.min(minW, rw)
+      }
+      if (maxW < bestMaxW || (maxW === bestMaxW && minW > bestMinW)) {
+        bestMaxW = maxW
+        bestMinW = minW
+        bestSplits = splits.slice()
+      }
+      return
+    }
+    const maxPos = n - (numRows - 1 - depth)
+    for (let pos = minPos; pos <= maxPos; pos++) {
+      splits.push(pos)
+      enumerate(splits, depth + 1, pos + 1)
+      splits.pop()
+    }
+  }
+
+  enumerate([], 0, 1)
+
+  const all = [0, ...bestSplits, n]
+  return Array.from({ length: numRows }, (_, r) =>
+    groups.slice(all[r], all[r + 1]),
+  )
+}
+
+/**
+ * Layout folder-grouped nodes in one or more visual rows, automatically
+ * wrapping into a roughly rectangular shape when there are many groups.
+ *
+ * @param direction  +1 to stack additional rows downward (bottom row),
+ *                   -1 to stack additional rows upward (top row).
+ */
 function layoutFolderRow(
   row: EgoNode[],
   rowY: number,
   nodeWidths: Map<string, number>,
   positions: Map<string, { x: number; y: number }>,
+  direction: 1 | -1 = 1,
 ): void {
   const w = (id: string) => nodeWidths.get(id) ?? NODE_WIDTH
 
+  // ---- Group nodes by folder ----
   const byFolder = new Map<string, EgoNode[]>()
   for (const en of row) {
     const folder = en.node.folder || '.'
@@ -382,7 +477,8 @@ function layoutFolderRow(
     group.sort((a, b) => a.node.id.localeCompare(b.node.id))
   }
 
-  const groupEffective: { nodes: EgoNode[]; nodesW: number; bgW: number }[] = []
+  // ---- Compute effective widths for each folder group ----
+  const groupInfos: FolderGroupInfo[] = []
   for (const [folder, group] of folderGroups) {
     let nodesW = 0
     for (let ni = 0; ni < group.length; ni++) {
@@ -392,40 +488,133 @@ function layoutFolderRow(
     const folderLabel = folder === '.' ? '(root)' : folder
     const labelW = measureFolderLabelWidth(folderLabel)
     const bgW = Math.max(labelW, nodesW + FOLDER_PAD * 2)
-    groupEffective.push({ nodes: group, nodesW, bgW })
+    groupInfos.push({ nodes: group, nodesW, bgW })
   }
 
-  let totalWidth = 0
-  for (let gi = 0; gi < groupEffective.length; gi++) {
-    totalWidth += groupEffective[gi].bgW
-    if (gi < groupEffective.length - 1) totalWidth += FOLDER_GROUP_GAP
-  }
+  // ---- Find the optimal number of visual rows ----
+  // Try 1..min(count, 5) rows, pick the aspect ratio closest to a
+  // pleasant wide rectangle (TARGET_ASPECT ≈ 3:1).  A wider target
+  // favors fewer rows, avoiding unnecessary vertical stacking that
+  // forces edges to thread through intermediate sub-rows.
+  const TARGET_ASPECT = 3.0
+  const singleBgH = NODE_HEIGHT + 2 * FOLDER_PAD + FOLDER_LABEL_H
+  const maxRows = Math.min(groupInfos.length, 5)
 
-  let cursor = -totalWidth / 2
-  for (let gi = 0; gi < groupEffective.length; gi++) {
-    const { nodes: group, nodesW, bgW } = groupEffective[gi]
-    const nodesStart = cursor + (bgW - nodesW) / 2
-    let nodeCursor = nodesStart
-    for (let ni = 0; ni < group.length; ni++) {
-      const nw = w(group[ni].node.id)
-      positions.set(group[ni].node.id, {
-        x: nodeCursor + nw / 2,
-        y: rowY,
-      })
-      nodeCursor += nw
-      if (ni < group.length - 1) nodeCursor += NODE_GAP
+  let bestLayout: FolderGroupInfo[][] = [groupInfos]
+  let bestScore = Infinity
+
+  for (let nr = 1; nr <= maxRows; nr++) {
+    const layout = distributeFolderGroups(groupInfos, nr)
+    const maxW = Math.max(...layout.map(folderRowWidth))
+    const totalH =
+      layout.length * singleBgH + Math.max(0, layout.length - 1) * ROW_GAP
+    const aspect = maxW / totalH
+    const score = Math.abs(Math.log(aspect / TARGET_ASPECT))
+
+    if (score < bestScore) {
+      bestScore = score
+      bestLayout = layout
     }
-    cursor += bgW
-    if (gi < groupEffective.length - 1) cursor += FOLDER_GROUP_GAP
+  }
+
+  // ---- Reorder sub-rows: widest last ----
+  // The last sub-row is centered (no trunk avoidance needed) while earlier
+  // sub-rows are split left/right.  Putting the widest sub-row last lets
+  // it benefit from clean centered placement instead of being awkwardly
+  // split, and the narrower rows are easier to partition around the trunk.
+  if (bestLayout.length > 1) {
+    let widestIdx = 0
+    let widestW = -1
+    for (let ri = 0; ri < bestLayout.length; ri++) {
+      const rw = folderRowWidth(bestLayout[ri])
+      if (rw > widestW) { widestW = rw; widestIdx = ri }
+    }
+    if (widestIdx !== bestLayout.length - 1) {
+      const widest = bestLayout.splice(widestIdx, 1)[0]
+      bestLayout.push(widest)
+    }
+  }
+
+  // ---- Position nodes within each visual sub-row ----
+  // When there are multiple sub-rows, edges from the selected node travel
+  // vertically at x=0 and pass through intermediate sub-rows.  Non-last
+  // sub-rows are split into left/right halves straddling x=0 (balanced by
+  // total width) so no folder background covers the trunk line.
+  const lastSubRowIdx = bestLayout.length - 1
+  const TRUNK_HALF_GAP = FOLDER_GROUP_GAP / 2
+
+  /** Place a list of folder groups left-to-right starting at `startX`. */
+  const placeGroups = (
+    groups: FolderGroupInfo[],
+    startX: number,
+    y: number,
+  ) => {
+    let cursor = startX
+    for (const g of groups) {
+      const nodesStart = cursor + (g.bgW - g.nodesW) / 2
+      let nodeCursor = nodesStart
+      for (let ni = 0; ni < g.nodes.length; ni++) {
+        const nw = w(g.nodes[ni].node.id)
+        positions.set(g.nodes[ni].node.id, { x: nodeCursor + nw / 2, y })
+        nodeCursor += nw
+        if (ni < g.nodes.length - 1) nodeCursor += NODE_GAP
+      }
+      cursor += g.bgW + FOLDER_GROUP_GAP
+    }
+  }
+
+  for (let ri = 0; ri < bestLayout.length; ri++) {
+    const subRow = bestLayout[ri]
+    const subRowY = rowY + direction * ri * SUB_ROW_STEP
+    const totalW = folderRowWidth(subRow)
+
+    const needAvoidance = bestLayout.length > 1 && ri < lastSubRowIdx
+
+    if (needAvoidance && subRow.length > 1) {
+      // Balanced partition: try all 2^n subsets (n is small), pick the
+      // one that minimises |leftWidth − rightWidth|.  On ties prefer the
+      // highest mask so later (alphabetically) groups land on the right,
+      // giving a natural left-to-right reading order.
+      const n = subRow.length
+      let bestMask = 1
+      let bestDiff = Infinity
+
+      for (let mask = 1; mask < (1 << n) - 1; mask++) {
+        let lw = 0, rw = 0, lc = 0, rc = 0
+        for (let gi = 0; gi < n; gi++) {
+          if (mask & (1 << gi)) { rw += subRow[gi].bgW; rc++ }
+          else { lw += subRow[gi].bgW; lc++ }
+        }
+        lw += Math.max(0, lc - 1) * FOLDER_GROUP_GAP
+        rw += Math.max(0, rc - 1) * FOLDER_GROUP_GAP
+        const diff = Math.abs(lw - rw)
+        if (diff < bestDiff || (diff === bestDiff && mask > bestMask)) {
+          bestDiff = diff; bestMask = mask
+        }
+      }
+
+      const leftGroups: FolderGroupInfo[] = []
+      const rightGroups: FolderGroupInfo[] = []
+      for (let gi = 0; gi < n; gi++) {
+        if (bestMask & (1 << gi)) rightGroups.push(subRow[gi])
+        else leftGroups.push(subRow[gi])
+      }
+
+      const leftW = folderRowWidth(leftGroups)
+      placeGroups(leftGroups, -TRUNK_HALF_GAP - leftW, subRowY)
+      placeGroups(rightGroups, TRUNK_HALF_GAP, subRowY)
+    } else if (needAvoidance && subRow.length === 1) {
+      // Single group: place entirely to the right of the trunk
+      placeGroups(subRow, TRUNK_HALF_GAP, subRowY)
+    } else {
+      // Centered (single sub-row or last sub-row)
+      placeGroups(subRow, -totalW / 2, subRowY)
+    }
   }
 }
 
 interface LayoutMeta {
   positions: Map<string, { x: number; y: number }>
-  /** Y where edges going UP should turn (midpoint of top gap) */
-  turnYUp: number
-  /** Y where edges going DOWN should turn (midpoint of bottom gap) */
-  turnYDown: number
 }
 
 function layeredLayout(
@@ -434,11 +623,11 @@ function layeredLayout(
   nodeWidths: Map<string, number>,
 ): LayoutMeta {
   const positions = new Map<string, { x: number; y: number }>()
-  if (egoNodes.length === 0) return { positions, turnYUp: -60, turnYDown: 60 }
+  if (egoNodes.length === 0) return { positions }
 
   const w = (id: string) => nodeWidths.get(id) ?? NODE_WIDTH
   const centerNode = egoNodes.find((en) => en.node.id === centerId)
-  if (!centerNode) return { positions, turnYUp: -60, turnYDown: 60 }
+  if (!centerNode) return { positions }
 
   const selectedName = centerNode.node.label
 
@@ -500,28 +689,63 @@ function layeredLayout(
     }
   }
 
-  // Siblings → right column below imported-by (or centered if no imported-by)
+  // Siblings → split across left and right columns to equalise heights
   const siblings = egoNodes
     .filter((en) => en.depth === 0 && en.relation === 'sibling')
     .sort((a, b) => a.node.label.localeCompare(b.node.label))
 
   if (siblings.length > 0) {
-    let sibStartY: number
-    if (sameImportedBy.length > 0) {
-      const impStackH = sameImportedBy.length * NODE_HEIGHT + (sameImportedBy.length - 1) * STACK_V_GAP
-      const impStartY = -(impStackH - NODE_HEIGHT) / 2
-      sibStartY = impStartY + sameImportedBy.length * (NODE_HEIGHT + STACK_V_GAP) + SIBLING_GAP
-    } else {
-      const sibStackH = siblings.length * NODE_HEIGHT + (siblings.length - 1) * STACK_V_GAP
-      sibStartY = -(sibStackH - NODE_HEIGHT) / 2
+    // Decide how many go on each side to balance total column heights
+    const leftBaseCount = sameImports.length
+    const rightBaseCount = sameImportedBy.length
+    const idealLeftSibs = Math.round(
+      (rightBaseCount - leftBaseCount + siblings.length) / 2,
+    )
+    const leftSibCount = Math.max(0, Math.min(siblings.length, idealLeftSibs))
+
+    const leftSibs = siblings.slice(0, leftSibCount)
+    const rightSibs = siblings.slice(leftSibCount)
+
+    // Left siblings: below same-folder imports, right-aligned
+    if (leftSibs.length > 0) {
+      let sibStartY: number
+      if (sameImports.length > 0) {
+        const impStackH = sameImports.length * NODE_HEIGHT + (sameImports.length - 1) * STACK_V_GAP
+        const impStartY = -(impStackH - NODE_HEIGHT) / 2
+        sibStartY = impStartY + sameImports.length * (NODE_HEIGHT + STACK_V_GAP) + SIBLING_GAP
+      } else {
+        const sibStackH = leftSibs.length * NODE_HEIGHT + (leftSibs.length - 1) * STACK_V_GAP
+        sibStartY = -(sibStackH - NODE_HEIGHT) / 2
+      }
+      for (let i = 0; i < leftSibs.length; i++) {
+        const en = leftSibs[i]
+        const nw = w(en.node.id)
+        positions.set(en.node.id, {
+          x: leftRightEdge - nw / 2,
+          y: sibStartY + i * (NODE_HEIGHT + STACK_V_GAP),
+        })
+      }
     }
-    for (let i = 0; i < siblings.length; i++) {
-      const en = siblings[i]
-      const nw = w(en.node.id)
-      positions.set(en.node.id, {
-        x: rightLeftEdge + nw / 2,
-        y: sibStartY + i * (NODE_HEIGHT + STACK_V_GAP),
-      })
+
+    // Right siblings: below same-folder imported-by, left-aligned
+    if (rightSibs.length > 0) {
+      let sibStartY: number
+      if (sameImportedBy.length > 0) {
+        const impStackH = sameImportedBy.length * NODE_HEIGHT + (sameImportedBy.length - 1) * STACK_V_GAP
+        const impStartY = -(impStackH - NODE_HEIGHT) / 2
+        sibStartY = impStartY + sameImportedBy.length * (NODE_HEIGHT + STACK_V_GAP) + SIBLING_GAP
+      } else {
+        const sibStackH = rightSibs.length * NODE_HEIGHT + (rightSibs.length - 1) * STACK_V_GAP
+        sibStartY = -(sibStackH - NODE_HEIGHT) / 2
+      }
+      for (let i = 0; i < rightSibs.length; i++) {
+        const en = rightSibs[i]
+        const nw = w(en.node.id)
+        positions.set(en.node.id, {
+          x: rightLeftEdge + nw / 2,
+          y: sibStartY + i * (NODE_HEIGHT + STACK_V_GAP),
+        })
+      }
     }
   }
 
@@ -555,18 +779,12 @@ function layeredLayout(
 
   // === Top (depth -1) and bottom (depth 1) rows: folder-grouped layout ===
   const topRow = egoNodes.filter((en) => en.depth === -1)
-  if (topRow.length > 0) layoutFolderRow(topRow, topRowY, nodeWidths, positions)
+  if (topRow.length > 0) layoutFolderRow(topRow, topRowY, nodeWidths, positions, -1)
 
   const bottomRow = egoNodes.filter((en) => en.depth === 1)
-  if (bottomRow.length > 0) layoutFolderRow(bottomRow, bottomRowY, nodeWidths, positions)
+  if (bottomRow.length > 0) layoutFolderRow(bottomRow, bottomRowY, nodeWidths, positions, 1)
 
-  // Compute turn points: midpoint of gap between center bg and top/bottom bg
-  const topBgBottom = topRowY + NODE_HEIGHT / 2 + FOLDER_PAD
-  const bottomBgTop = bottomRowY - NODE_HEIGHT / 2 - FOLDER_PAD - FOLDER_LABEL_H
-  const turnYUp = (centerBgTop + topBgBottom) / 2
-  const turnYDown = (centerBgBottom + bottomBgTop) / 2
-
-  return { positions, turnYUp, turnYDown }
+  return { positions }
 }
 
 // ---------------------------------------------------------------------------
@@ -670,7 +888,7 @@ function buildGraphData(
   nodeWidths: Map<string, number>,
   selectedId: string,
 ): { nodes: Node[]; edges: Edge[] } {
-  const { positions, turnYUp, turnYDown } = layoutMeta
+  const { positions } = layoutMeta
   const folderBgNodes = buildFolderBackgrounds(egoNodes, positions, nodeWidths)
 
   const rfNodes: Node[] = egoNodes.map((en) => {
@@ -722,14 +940,23 @@ function buildGraphData(
       stroke = EDGE_COLOR_DEPENDENT
     }
 
-    // For cross-folder (vertical) edges, set turnY to the gap midpoint.
-    // Use the *depth* of the other node, not dy, because imported-by edges
-    // have source=bottomNode → target=selected (dy < 0 despite being bottom row).
+    // For cross-folder (vertical) edges, compute turnY per-edge so it sits
+    // in the gap directly above/below the target's sub-row.  This prevents
+    // edges to farther sub-rows from routing their horizontal segment through
+    // a closer sub-row's nodes.
     const isCrossFolder = !centerRowIds.has(otherId)
     let edgeData: { turnY?: number } | undefined
     if (isCrossFolder) {
+      const otherPos = positions.get(otherId)
       const otherDepth = egoNodes.find((en) => en.node.id === otherId)?.depth ?? 0
-      edgeData = { turnY: otherDepth < 0 ? turnYUp : turnYDown }
+      if (otherPos) {
+        const edgeTurnY = otherDepth < 0
+          // Top row: turn in the gap just below the target's folder background
+          ? otherPos.y + NODE_HEIGHT / 2 + FOLDER_PAD + ROW_GAP / 2
+          // Bottom row: turn in the gap just above the target's folder background
+          : otherPos.y - NODE_HEIGHT / 2 - FOLDER_PAD - FOLDER_LABEL_H - ROW_GAP / 2
+        edgeData = { turnY: edgeTurnY }
+      }
     }
 
     return {
