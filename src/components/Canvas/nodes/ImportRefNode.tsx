@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { FileCode, FileText, FlaskConical, Image } from 'lucide-react'
-import type { ImportRefNode } from '@/types/nodes'
+import type { ImportRefNode, ImportRefItem } from '@/types/nodes'
 import { getConfigForFile } from '@/services/treesitter-queries'
 import { isImageFile } from '@/lib/constants'
 import { useCanvasStore } from '@/store/canvas'
@@ -19,11 +19,11 @@ function isTestFile(name: string): boolean {
  */
 const REF_HEIGHT = 18
 
-export default memo(function ImportRefNode({ data }: NodeProps<ImportRefNode>) {
-  const parseable = getConfigForFile(data.label) !== null
-  const isTest = isTestFile(data.label)
-  const isImg = isImageFile(data.label)
-  const isImportedBy = data.kind === 'imported-by'
+function Pill({ item }: { item: ImportRefItem }) {
+  const parseable = getConfigForFile(item.label) !== null
+  const isTest = isTestFile(item.label)
+  const isImg = isImageFile(item.label)
+  const isImportedBy = item.kind === 'imported-by'
 
   const Icon = isTest ? FlaskConical : isImg ? Image : parseable ? FileCode : FileText
   const iconColor = isTest
@@ -32,40 +32,58 @@ export default memo(function ImportRefNode({ data }: NodeProps<ImportRefNode>) {
       ? 'text-emerald-400/70'
       : isImportedBy
         ? 'text-violet-400/70'
-        : parseable
-          ? 'text-blue-400/70'
-          : 'text-muted-foreground/70'
+        : 'text-green-400/70'
 
   const borderColor = isImportedBy
     ? 'border-violet-500/30 group-hover/ref:border-violet-400/50'
-    : 'border-border/40 group-hover/ref:border-primary/40'
+    : 'border-green-500/30 group-hover/ref:border-green-400/50'
 
-  const lineColor = isImportedBy
-    ? 'bg-violet-400/20 group-hover/ref:bg-violet-400/40'
-    : 'bg-foreground/10 group-hover/ref:bg-foreground/25'
+  const importedNames = isImportedBy && item.importedNames && item.importedNames.length > 0
+    ? item.importedNames.join(', ')
+    : null
 
   const handleClick = useCallback(() => {
-    void useCanvasStore.getState().focusFileByPath(data.resolvedPath)
-  }, [data.resolvedPath])
+    void useCanvasStore.getState().focusFileByPath(item.resolvedPath)
+  }, [item.resolvedPath])
 
   return (
     <div
-      className="pointer-events-auto flex items-center cursor-pointer group/ref"
-      style={{ height: REF_HEIGHT }}
+      className={`pointer-events-auto flex items-center gap-1 rounded bg-background/90 px-1.5 border cursor-pointer
+        ${borderColor} hover:bg-muted/40 transition-colors`}
+      style={{ height: REF_HEIGHT - 4 }}
       onClick={handleClick}
     >
-      {/* Leading connector line */}
-      <div className={`w-3 h-px shrink-0 transition-colors ${lineColor}`} />
-      {/* Pill */}
-      <div
-        className={`flex items-center gap-1 rounded bg-background/90 px-1.5 border ${borderColor} group-hover/ref:bg-muted/40 transition-colors`}
-        style={{ height: REF_HEIGHT - 4 }}
-      >
-        <Icon className={`h-3 w-3 shrink-0 ${iconColor}`} />
-        <span className="text-[10px] leading-none text-foreground/55 group-hover/ref:text-foreground/80 truncate whitespace-nowrap transition-colors max-w-[120px]">
-          {data.label}
+      <Icon className={`h-3 w-3 shrink-0 ${iconColor}`} />
+      <span className="text-[10px] leading-none text-foreground/55 hover:text-foreground/80 truncate whitespace-nowrap transition-colors max-w-[120px]">
+        {item.label}
+      </span>
+      {importedNames && (
+        <span className="text-[9px] leading-none text-violet-400/50 truncate whitespace-nowrap transition-colors max-w-[100px]">
+          {importedNames}
         </span>
-      </div>
+      )}
+    </div>
+  )
+}
+
+export default memo(function ImportRefNode({ data }: NodeProps<ImportRefNode>) {
+  const lineColor = data.items[0]?.kind === 'imported-by'
+    ? 'bg-violet-400/20'
+    : 'bg-green-400/20'
+
+  return (
+    <div
+      className="flex items-center gap-0.5"
+      style={{ height: REF_HEIGHT }}
+    >
+      {/* Leading connector line */}
+      {data.showConnector
+        ? <div className={`w-3 h-px shrink-0 transition-colors ${lineColor}`} />
+        : <div className="w-3 shrink-0" />
+      }
+      {data.items.map((item, idx) => (
+        <Pill key={`${item.kind}:${item.resolvedPath}:${idx}`} item={item} />
+      ))}
     </div>
   )
 })

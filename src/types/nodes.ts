@@ -40,13 +40,20 @@ export interface CodeNodeData extends NodeDisplayFlags, Record<string, unknown> 
   endLine: number
 }
 
-export interface ImportRefNodeData extends NodeDisplayFlags, Record<string, unknown> {
+export interface ImportRefItem {
   label: string
-  /** Repo-relative path to the resolved import target. */
   resolvedPath: string
-  /** 1-based line number of the import statement in the source file. */
-  line: number
   kind: 'import' | 'imported-by'
+  importedNames?: string[]
+}
+
+export interface ImportRefNodeData extends NodeDisplayFlags, Record<string, unknown> {
+  /** All ref pills to render on this visual line, in order. */
+  items: ImportRefItem[]
+  /** 1-based source line number (used for node ID). */
+  line: number
+  /** Whether the leading connector line should be shown. */
+  showConnector: boolean
 }
 
 export type FolderNode = Node<FolderNodeData, 'folder'>
