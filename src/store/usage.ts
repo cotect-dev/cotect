@@ -25,6 +25,7 @@ interface UsageState {
   headline: { tokens: number; tasks: number; p50_first_token: number | null; p50_total: number | null } | null
   spendByProvider: AggregateRow[] | null
   spendByRole: AggregateRow[] | null
+  spendByDay: AggregateRow[] | null
   latencyByModel: AggregateRow[] | null
   breakdown: AggregateRow[] | null
   tasks: UsageRecord[] | null
@@ -49,9 +50,10 @@ function presetToRange(preset: RangePreset): DateRange {
 
 async function refreshAll(get: () => UsageState, set: (p: Partial<UsageState>) => void): Promise<void> {
   const filter = rangeToFilter(get().range)
-  const [byProvider, byRole, byModel, byTuple, recent] = await Promise.all([
+  const [byProvider, byRole, byDay, byModel, byTuple, recent] = await Promise.all([
     usageAggregate(filter, 'Provider' as GroupBy),
     usageAggregate(filter, 'Role' as GroupBy),
+    usageAggregate(filter, 'Day' as GroupBy),
     usageAggregate(filter, 'Model' as GroupBy),
     usageAggregate(filter, 'ProviderDay' as GroupBy),
     usageQuery({ ...filter, limit: 500 }),
@@ -68,6 +70,7 @@ async function refreshAll(get: () => UsageState, set: (p: Partial<UsageState>) =
     },
     spendByProvider: byProvider,
     spendByRole: byRole,
+    spendByDay: byDay,
     latencyByModel: byModel,
     breakdown: byTuple,
     tasks: recent,
@@ -79,7 +82,7 @@ export const useUsageStore = createStoreWithHMR(import.meta.hot, 'usage', () =>
     range: defaultRange(),
     setRange: (r) => { set({ range: r }); void refreshAll(get, set) },
 
-    headline: null, spendByProvider: null, spendByRole: null, latencyByModel: null, breakdown: null, tasks: null,
+    headline: null, spendByProvider: null, spendByRole: null, spendByDay: null, latencyByModel: null, breakdown: null, tasks: null,
 
     refresh: () => refreshAll(get, set),
 
