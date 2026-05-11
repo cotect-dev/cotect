@@ -43,7 +43,8 @@ pub fn list(c: &Conn) -> Result<Vec<Provider>> {
             position: r.get(6)?,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 pub fn upsert(c: &Conn, p: &Provider) -> Result<()> {
@@ -130,9 +131,13 @@ mod tests {
 
     fn fixture() -> Provider {
         Provider {
-            id: "p1".into(), label: "Local".into(),
+            id: "p1".into(),
+            label: "Local".into(),
             endpoint: "http://localhost:11434/v1".into(),
-            api_key: None, detected_json: None, health_json: None, position: 0,
+            api_key: None,
+            detected_json: None,
+            health_json: None,
+            position: 0,
         }
     }
 
@@ -160,13 +165,17 @@ mod tests {
         let db = Db::open(&dir.path().join("t.db")).unwrap();
         let c = db.conn().unwrap();
         upsert(&c, &fixture()).unwrap();
-        set_assignment(&c, &ActiveAssignment {
-            default_provider_id: Some("p1".into()),
-            default_model: Some("llama3".into()),
-            implement_provider_id: Some("p1".into()),
-            implement_model: Some("llama3".into()),
-            ..Default::default()
-        }).unwrap();
+        set_assignment(
+            &c,
+            &ActiveAssignment {
+                default_provider_id: Some("p1".into()),
+                default_model: Some("llama3".into()),
+                implement_provider_id: Some("p1".into()),
+                implement_model: Some("llama3".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         remove(&c, "p1").unwrap();
         let a = get_assignment(&c).unwrap();
         assert!(a.default_provider_id.is_none());

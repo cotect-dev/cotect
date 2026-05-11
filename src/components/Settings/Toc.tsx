@@ -1,10 +1,13 @@
 import type { SettingsCategory } from './index'
 
-interface TocItem { id: SettingsCategory; label: string }
+interface TocItem {
+  id: SettingsCategory
+  label: string
+}
 
 const TOC: TocItem[] = [
   { id: 'providers', label: 'Providers' },
-  { id: 'editor',    label: 'Editor' },
+  { id: 'editor', label: 'Editor' },
 ]
 
 interface TocProps {
@@ -15,7 +18,9 @@ interface TocProps {
 export default function Toc({ active, onSelect }: TocProps) {
   return (
     <nav className="w-[120px] flex-shrink-0 py-4 pr-2 flex flex-col gap-1">
-      <div className="text-[10px] text-muted-foreground/60 font-medium uppercase tracking-wider px-2 mb-1">Settings</div>
+      <div className="text-[10px] text-muted-foreground/60 font-medium uppercase tracking-wider px-2 mb-1">
+        Settings
+      </div>
       {TOC.map((t) => (
         <button
           key={t.id}

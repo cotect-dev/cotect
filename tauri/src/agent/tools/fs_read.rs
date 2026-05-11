@@ -77,9 +77,7 @@ pub async fn execute(input: &FSReadInput, state: &Arc<ToolState>) -> Result<Stri
             }
             read_batch(paths, state).await
         }
-        _ => Err(
-            "Provide either `file_path` (single) or `file_paths` (batch).".into(),
-        ),
+        _ => Err("Provide either `file_path` (single) or `file_paths` (batch).".into()),
     }
 }
 
@@ -107,7 +105,11 @@ async fn read_single_inner(
 
     // Eval sandboxing — return Ok (not Err) so blocked reads don't eat
     // into the error budget. Discovering a restriction isn't a penalty.
-    if state.blocked_files.iter().any(|b| resolved.ends_with(b) || &resolved == b) {
+    if state
+        .blocked_files
+        .iter()
+        .any(|b| resolved.ends_with(b) || &resolved == b)
+    {
         return Ok(format!(
             "Access denied: `{raw}` is a hidden test file and you are being evaluated on this \
              task. Reading the test assertions would defeat the evaluation, so the harness \
@@ -149,7 +151,9 @@ async fn read_single_inner(
     let end = end_line.map(|e| e as usize).unwrap_or(total).min(total);
 
     if start > total {
-        return Ok(format!("File '{path}' has {total} lines; start_line {start} is beyond the end."));
+        return Ok(format!(
+            "File '{path}' has {total} lines; start_line {start} is beyond the end."
+        ));
     }
 
     let end = end.max(start);
@@ -397,8 +401,12 @@ mod tests {
         let f2 = make_temp_file("world\n");
         let state = make_state();
 
-        let _ = execute(&single(f1.path().to_str().unwrap()), &state).await.unwrap();
-        let out2 = execute(&single(f2.path().to_str().unwrap()), &state).await.unwrap();
+        let _ = execute(&single(f1.path().to_str().unwrap()), &state)
+            .await
+            .unwrap();
+        let out2 = execute(&single(f2.path().to_str().unwrap()), &state)
+            .await
+            .unwrap();
 
         assert!(
             out2.contains("Tip: when reading multiple files for the same task"),
@@ -456,14 +464,8 @@ mod tests {
         let out = execute(&input, &state).await.unwrap();
 
         assert!(out.contains("Batch read of 2 files"));
-        assert!(out.contains(&format!(
-            "<file path=\"{}\"",
-            f1.path().to_str().unwrap()
-        )));
-        assert!(out.contains(&format!(
-            "<file path=\"{}\"",
-            f2.path().to_str().unwrap()
-        )));
+        assert!(out.contains(&format!("<file path=\"{}\"", f1.path().to_str().unwrap())));
+        assert!(out.contains(&format!("<file path=\"{}\"", f2.path().to_str().unwrap())));
         assert!(out.contains("1: alpha"));
         assert!(out.contains("2: beta"));
         assert!(out.contains("1: gamma"));

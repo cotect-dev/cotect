@@ -1,9 +1,9 @@
-pub mod fs_read;
-pub mod fs_write;
-pub mod fs_patch;
-pub mod fs_search;
-pub mod shell;
 pub mod fetch;
+pub mod fs_patch;
+pub mod fs_read;
+pub mod fs_search;
+pub mod fs_write;
+pub mod shell;
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
@@ -27,7 +27,7 @@ use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 
-use super::types::{FunctionDef, ToolCall, ToolDefinition, AgentRole};
+use super::types::{AgentRole, FunctionDef, ToolCall, ToolDefinition};
 
 /// Shared state across tool executions within a single task.
 #[derive(Debug)]
@@ -68,10 +68,7 @@ fn parse_args<T: DeserializeOwned>(args: &str) -> Result<T, String> {
     serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))
 }
 
-pub async fn execute_tool(
-    tool_call: &ToolCall,
-    state: &Arc<ToolState>,
-) -> Result<String, String> {
+pub async fn execute_tool(tool_call: &ToolCall, state: &Arc<ToolState>) -> Result<String, String> {
     let name = tool_call.function.name.as_str();
     let args = &tool_call.function.arguments;
 
@@ -103,7 +100,8 @@ pub async fn execute_tool(
                      shell with a short command that references the file by path \
                      (e.g. `python3 script.py`). If you genuinely need a long \
                      inline script, break it into a helper file first via `write`.",
-                    args.len(), MAX_SHELL_ARGS_BYTES,
+                    args.len(),
+                    MAX_SHELL_ARGS_BYTES,
                 ));
             }
             shell::execute(&parse_args(args)?, state).await
@@ -304,11 +302,16 @@ mod tests {
     #[test]
     fn test_tool_schemas_are_valid_json() {
         for def in all_definitions() {
-            assert!(def.function.parameters.is_object(), "Schema for {} is not an object", def.function.name);
+            assert!(
+                def.function.parameters.is_object(),
+                "Schema for {} is not an object",
+                def.function.name
+            );
             // Should not contain $schema key (OpenAI compat)
             assert!(
                 def.function.parameters.get("$schema").is_none(),
-                "Schema for {} should not have $schema", def.function.name
+                "Schema for {} should not have $schema",
+                def.function.name
             );
         }
     }
@@ -374,13 +377,18 @@ mod tests {
             call_type: "function".into(),
             function: super::super::types::FunctionCall {
                 name: "write".into(),
-                arguments: format!(r#"{{"file_path":"{}","content":"hello dispatch"}}"#, path_str),
+                arguments: format!(
+                    r#"{{"file_path":"{}","content":"hello dispatch"}}"#,
+                    path_str
+                ),
             },
         };
         let state = ToolState::new("/tmp".into());
         let result = execute_tool(&tool_call, &state).await;
         assert!(result.is_ok());
-        assert!(std::fs::read_to_string(&path).unwrap().contains("hello dispatch"));
+        assert!(std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("hello dispatch"));
     }
 
     #[tokio::test]
@@ -405,7 +413,10 @@ mod tests {
         // instead of calling `write`. The shell tool should refuse before
         // execution and steer the model to `write`.
         let huge_body = "x".repeat(MAX_SHELL_ARGS_BYTES + 2_000);
-        let arguments = format!(r#"{{"command":"python3 << 'PYEOF'\n{}\nPYEOF"}}"#, huge_body);
+        let arguments = format!(
+            r#"{{"command":"python3 << 'PYEOF'\n{}\nPYEOF"}}"#,
+            huge_body
+        );
         let tool_call = ToolCall {
             id: "call_heredoc".into(),
             call_type: "function".into(),
@@ -419,7 +430,10 @@ mod tests {
         assert!(result.is_err(), "oversized shell call must be rejected");
         let msg = result.unwrap_err();
         assert!(msg.contains("exceeds"), "error must explain the size cap");
-        assert!(msg.contains("`write`"), "error must point to the write tool");
+        assert!(
+            msg.contains("`write`"),
+            "error must point to the write tool"
+        );
     }
 
     #[tokio::test]
@@ -455,7 +469,10 @@ mod tests {
             call_type: "function".into(),
             function: super::super::types::FunctionCall {
                 name: "fs_search".into(),
-                arguments: format!(r#"{{"pattern":"unique_marker_1234","path":"{}"}}"#, dir.path().to_str().unwrap()),
+                arguments: format!(
+                    r#"{{"pattern":"unique_marker_1234","path":"{}"}}"#,
+                    dir.path().to_str().unwrap()
+                ),
             },
         };
         let state = ToolState::new(dir.path().to_str().unwrap().into());
@@ -544,7 +561,10 @@ mod tests {
             call_type: "function".into(),
             function: super::super::types::FunctionCall {
                 name: "write".into(),
-                arguments: format!(r#"{{"file_path":"{}","content":"completely new content"}}"#, path),
+                arguments: format!(
+                    r#"{{"file_path":"{}","content":"completely new content"}}"#,
+                    path
+                ),
             },
         };
         let write_result = execute_tool(&write_call, &state).await.unwrap();

@@ -11,7 +11,9 @@ setInterval(() => {
 
 function subscribe(callback: () => void): () => void {
   listeners.add(callback)
-  return () => { listeners.delete(callback) }
+  return () => {
+    listeners.delete(callback)
+  }
 }
 
 function getSnapshot(): number {

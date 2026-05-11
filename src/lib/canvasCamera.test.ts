@@ -102,12 +102,10 @@ describe('clampToFocus', () => {
   })
 
   it('skips X clamp when container width is 0 (not measured)', () => {
-    const result = clampToFocus(
-      { x: -1000, y: CANVAS_MARGIN },
-      { x: 0, y: 0 },
-      panelW,
-      { width: 0, height: 800 },
-    )
+    const result = clampToFocus({ x: -1000, y: CANVAS_MARGIN }, { x: 0, y: 0 }, panelW, {
+      width: 0,
+      height: 800,
+    })
     expect(result.x).toBe(-1000)
   })
 

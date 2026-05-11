@@ -34,18 +34,28 @@ describe('AddProviderRow', () => {
       probe_ms: 120,
     })
     render(<AddProviderRow />)
-    fireEvent.change(screen.getByPlaceholderText(/host:port/i), { target: { value: 'localhost:11434' } })
+    fireEvent.change(screen.getByPlaceholderText(/host:port/i), {
+      target: { value: 'localhost:11434' },
+    })
     fireEvent.click(screen.getByRole('button', { name: /connect/i }))
-    await waitFor(() => expect(probeProvider).toHaveBeenCalledWith({ endpoint: 'localhost:11434', api_key: null }))
+    await waitFor(() =>
+      expect(probeProvider).toHaveBeenCalledWith({ endpoint: 'localhost:11434', api_key: null }),
+    )
   })
 
   it('persists provider via upsert after successful probe', async () => {
     vi.mocked(probeProvider).mockResolvedValue({
       normalized_endpoint: 'http://localhost:11434/v1',
-      server_type: 'Ollama', models: [], capabilities: [], format_per_model: {}, probe_ms: 100,
+      server_type: 'Ollama',
+      models: [],
+      capabilities: [],
+      format_per_model: {},
+      probe_ms: 100,
     })
     render(<AddProviderRow />)
-    fireEvent.change(screen.getByPlaceholderText(/host:port/i), { target: { value: 'localhost:11434' } })
+    fireEvent.change(screen.getByPlaceholderText(/host:port/i), {
+      target: { value: 'localhost:11434' },
+    })
     fireEvent.click(screen.getByRole('button', { name: /connect/i }))
     await waitFor(() => expect(upsertSpy).toHaveBeenCalled())
     const arg = upsertSpy.mock.calls[0][0]
@@ -54,10 +64,16 @@ describe('AddProviderRow', () => {
   })
 
   it('shows diagnostic when probe fails', async () => {
-    vi.mocked(probeProvider).mockRejectedValue('endpoint unreachable\n\nIs the server running on :11434?')
+    vi.mocked(probeProvider).mockRejectedValue(
+      'endpoint unreachable\n\nIs the server running on :11434?',
+    )
     render(<AddProviderRow />)
-    fireEvent.change(screen.getByPlaceholderText(/host:port/i), { target: { value: 'localhost:11434' } })
+    fireEvent.change(screen.getByPlaceholderText(/host:port/i), {
+      target: { value: 'localhost:11434' },
+    })
     fireEvent.click(screen.getByRole('button', { name: /connect/i }))
-    await waitFor(() => expect(screen.getByText(/Is the server running on :11434/)).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText(/Is the server running on :11434/)).toBeInTheDocument(),
+    )
   })
 })

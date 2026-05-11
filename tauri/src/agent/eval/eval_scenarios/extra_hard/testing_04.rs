@@ -5,13 +5,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let node_file = ap(dir, "node.py");
-        std::fs::write(&node_file, r#"class _Node:
+        std::fs::write(
+            &node_file,
+            r#"class _Node:
     """Internal node for the doubly linked list.
 
     Each node stores a value and references to the previous and next nodes.
@@ -28,10 +30,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
         pv = self.prev.value if self.prev else None
         nv = self.next.value if self.next else None
         return f"_Node({self.value!r}, prev={pv!r}, next={nv!r})"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let dll_file = ap(dir, "linkedlist.py");
-        std::fs::write(&dll_file, r#"from node import _Node
+        std::fs::write(
+            &dll_file,
+            r#"from node import _Node
 
 
 class DoublyLinkedList:
@@ -148,12 +154,16 @@ class DoublyLinkedList:
     def to_list(self):
         """Return all values as a Python list."""
         return list(self)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Buggy version: remove() doesn't update _tail, reverse() doesn't swap head/tail,
         // take_while() includes one extra element
         let dll_buggy = ap(dir, "linkedlist_buggy.py");
-        std::fs::write(&dll_buggy, r#"from node import _Node
+        std::fs::write(
+            &dll_buggy,
+            r#"from node import _Node
 
 
 class DoublyLinkedList:
@@ -269,14 +279,18 @@ class DoublyLinkedList:
     def to_list(self):
         """Return all values as a Python list."""
         return list(self)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Fixed version
         let dll_fixed = ap(dir, "linkedlist_fixed.py");
         std::fs::write(&dll_fixed, std::fs::read_to_string(&dll_file).unwrap()).unwrap();
 
         let runner = ap(dir, "run_tests.py");
-        std::fs::write(&runner, r#"import subprocess, sys, os, shutil
+        std::fs::write(
+            &runner,
+            r#"import subprocess, sys, os, shutil
 
 test_file = None
 for f in sorted(os.listdir(".")):
@@ -328,10 +342,15 @@ else:
     print(f"FAIL: tests fail on corrected code too")
     print(f"stdout: {fixed_result.stdout[-500:]}")
     print(f"stderr: {fixed_result.stderr[-500:]}")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The doubly linked list implementation across {} and {} is \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The doubly linked list implementation across {} and {} is \
              suspected to contain defects where the behaviour diverges from \
              its documented contract. Write a test suite that catches any \
              such divergence — a faithful implementation must pass every \
@@ -350,14 +369,24 @@ else:
              faithful implementation. Stop as soon as you see that \
              sentinel — don't keep iterating. The structure, framework, \
              and choice of assertions is yours.",
-            node_file, dll_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![node_file.clone(), dll_file.clone()]),
-            vec![dll_fixed, runner, dll_buggy])
+                        node_file, dll_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![node_file.clone(), dll_file.clone()],
+            ),
+            vec![dll_fixed, runner, dll_buggy],
+        )
     }
-    v.push(scen!("xhard_testing_04_linked_list", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_testing_04_linked_list",
+        Category::Testing,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

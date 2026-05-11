@@ -5,13 +5,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let src_file = ap(dir, "strutil.py");
-        std::fs::write(&src_file, r#"class StringUtil:
+        std::fs::write(
+            &src_file,
+            r#"class StringUtil:
     """Utility class for common string operations."""
 
     @staticmethod
@@ -73,10 +75,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
         if current:
             lines.append(current)
         return lines
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let fixed_file = ap(dir, "strutil_fixed.py");
-        std::fs::write(&fixed_file, r#"class StringUtil:
+        std::fs::write(
+            &fixed_file,
+            r#"class StringUtil:
     """Utility class for common string operations."""
 
     @staticmethod
@@ -140,10 +146,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
         if current:
             lines.append(current)
         return lines
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let runner = ap(dir, "run_tests.py");
-        std::fs::write(&runner, r#"import subprocess, sys, os, shutil
+        std::fs::write(
+            &runner,
+            r#"import subprocess, sys, os, shutil
 
 test_file = None
 for f in sorted(os.listdir(".")):
@@ -201,13 +211,18 @@ else:
     print(f"FAIL: tests fail on corrected code too")
     print(f"stdout: {fixed_result.stdout[-500:]}")
     print(f"stderr: {fixed_result.stderr[-500:]}")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let buggy_copy = ap(dir, "strutil_buggy.py");
         std::fs::write(&buggy_copy, std::fs::read_to_string(&src_file).unwrap()).unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-             "The string utility module at {} is suspected to contain defects \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The string utility module at {} is suspected to contain defects \
              where the implementation diverges from its documented contract. \
              Write a test suite that would catch any such divergence — \
              a correct implementation must pass every assertion, and any \
@@ -224,14 +239,24 @@ else:
              sentinel — don't keep iterating. You may choose any testing \
              approach (plain asserts, unittest, pytest, custom harness) \
              as long as this contract is honoured.",
-            src_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![src_file.clone()]),
-            vec![fixed_file, runner, buggy_copy])
+                        src_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![src_file.clone()],
+            ),
+            vec![fixed_file, runner, buggy_copy],
+        )
     }
-    v.push(scen!("xhard_testing_01_string_util", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_testing_01_string_util",
+        Category::Testing,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

@@ -25,11 +25,9 @@ use serde_json::Value;
 
 use super::super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
 use super::{
-    ModelAdapter, StreamChunk, StreamParser,
     build_openai_request_body, emit_format_error, safe_emit_len, safe_emit_len_multi,
-    strip_paired_blocks, strip_tag_pairs,
+    strip_paired_blocks, strip_tag_pairs, ModelAdapter, StreamChunk, StreamParser,
 };
-
 
 pub struct QwenAdapter;
 
@@ -57,7 +55,6 @@ impl ModelAdapter for QwenAdapter {
         Box::new(QwenStreamParser::new())
     }
 }
-
 
 /// Wraps the standard OpenAI SSE format but adds: `<think>...</think>`
 /// stripping from `content`, raw tool-call token filtering, and fallback
@@ -137,9 +134,7 @@ impl StreamParser for QwenStreamParser {
                         index: tc.index,
                         id: tc.id.clone(),
                         name: func.and_then(|f| f.name.clone()),
-                        arguments_chunk: func
-                            .and_then(|f| f.arguments.clone())
-                            .unwrap_or_default(),
+                        arguments_chunk: func.and_then(|f| f.arguments.clone()).unwrap_or_default(),
                     });
                 }
             }
@@ -228,7 +223,10 @@ impl QwenStreamParser {
                 }
                 if let Some(end) = self.text_buffer.find("</tool_call>") {
                     // Save the raw token to accumulated_text for fallback parsing.
-                    let raw_tc: String = self.text_buffer.drain(..end + "</tool_call>".len()).collect();
+                    let raw_tc: String = self
+                        .text_buffer
+                        .drain(..end + "</tool_call>".len())
+                        .collect();
                     self.accumulated_text.push_str(&raw_tc);
                     continue;
                 }
@@ -305,7 +303,9 @@ impl QwenStreamParser {
             self.parse_all_tool_calls(&accumulated, events);
         }
 
-        if !self.has_structured_tool_calls && contains_tool_call_pattern(&self.reasoning_accumulated) {
+        if !self.has_structured_tool_calls
+            && contains_tool_call_pattern(&self.reasoning_accumulated)
+        {
             let reasoning = std::mem::take(&mut self.reasoning_accumulated);
             self.parse_all_tool_calls(&reasoning, events);
         }
@@ -405,7 +405,6 @@ impl QwenStreamParser {
     }
 }
 
-
 /// Parses Qwen's Hermes-style tool call: `{"name": "...", "arguments": {...}}`
 /// inside `<tool_call>...</tool_call>`. Returns `(name, arguments_json)`.
 fn parse_qwen_tool_call(input: &str) -> Result<(String, String), String> {
@@ -416,9 +415,7 @@ fn parse_qwen_tool_call(input: &str) -> Result<(String, String), String> {
     }
 
     if let Ok(obj) = serde_json::from_str::<serde_json::Map<String, Value>>(input) {
-        if let (Some(Value::String(name)), Some(args)) =
-            (obj.get("name"), obj.get("arguments"))
-        {
+        if let (Some(Value::String(name)), Some(args)) = (obj.get("name"), obj.get("arguments")) {
             let args_json = serde_json::to_string(args).unwrap_or_else(|_| "{}".to_string());
             return Ok((name.clone(), args_json));
         }
@@ -553,30 +550,27 @@ fn extract_balanced_json(input: &str) -> Option<String> {
     None
 }
 
-
 fn strip_thinking(text: &str) -> String {
     strip_paired_blocks(text, "<think>", "</think>", true)
 }
 
 /// Removes `<tool_call>...</tool_call>` and `<tool_response>...</tool_response>`.
 fn strip_raw_tool_tokens(text: &str) -> String {
-    strip_tag_pairs(text, &[
-        ("<tool_call>", "</tool_call>"),
-        ("<tool_response>", "</tool_response>"),
-    ])
+    strip_tag_pairs(
+        text,
+        &[
+            ("<tool_call>", "</tool_call>"),
+            ("<tool_response>", "</tool_response>"),
+        ],
+    )
 }
 
 /// First byte offset of any XML pseudo-tool-call marker, or None.
 fn find_xml_pseudo_marker(text: &str) -> Option<usize> {
-    [
-        "<function=",
-        "<parameter=",
-        "</parameter>",
-        "</function>",
-    ]
-    .iter()
-    .filter_map(|m| text.find(m))
-    .min()
+    ["<function=", "<parameter=", "</parameter>", "</function>"]
+        .iter()
+        .filter_map(|m| text.find(m))
+        .min()
 }
 
 /// XML pseudo-tool-call fragments without a matching `<function=NAME>`
@@ -586,9 +580,7 @@ fn has_xml_param_fragment(text: &str) -> bool {
     if text.contains("<function=") {
         return false;
     }
-    text.contains("<parameter=")
-        || text.contains("</parameter>")
-        || text.contains("</function>")
+    text.contains("<parameter=") || text.contains("</parameter>") || text.contains("</function>")
 }
 
 /// Detects three shapes that need fallback parsing:
@@ -603,11 +595,9 @@ fn contains_tool_call_pattern(text: &str) -> bool {
         || text.contains("</function>")
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn parse_hermes_style_tool_call() {
@@ -666,14 +656,14 @@ mod tests {
     #[test]
     fn parse_salvage_json_with_prefix() {
         // Sometimes models emit text before the JSON
-        let (name, args) =
-            parse_qwen_tool_call(r#"Sure, let me call: {"name": "shell", "arguments": {"command": "ls"}}"#)
-                .unwrap();
+        let (name, args) = parse_qwen_tool_call(
+            r#"Sure, let me call: {"name": "shell", "arguments": {"command": "ls"}}"#,
+        )
+        .unwrap();
         assert_eq!(name, "shell");
         let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
         assert_eq!(parsed["command"], "ls");
     }
-
 
     #[test]
     fn strip_thinking_block() {
@@ -698,11 +688,9 @@ mod tests {
         assert_eq!(strip_thinking(input), "Hello");
     }
 
-
     #[test]
     fn strip_raw_tool_call_tokens() {
-        let input =
-            r#"text before<tool_call>{"name":"shell","arguments":{"cmd":"ls"}}</tool_call>text after"#;
+        let input = r#"text before<tool_call>{"name":"shell","arguments":{"cmd":"ls"}}</tool_call>text after"#;
         assert_eq!(strip_raw_tool_tokens(input), "text beforetext after");
     }
 
@@ -717,14 +705,15 @@ mod tests {
         assert_eq!(strip_raw_tool_tokens("plain text"), "plain text");
     }
 
-
     #[test]
     fn parse_openai_text_delta() {
         let mut parser = QwenStreamParser::new();
         let events = parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}"#,
         );
-        assert!(events.iter().any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t == "Hello")));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t == "Hello")));
     }
 
     #[test]
@@ -754,17 +743,20 @@ mod tests {
     #[test]
     fn parse_openai_done() {
         let mut parser = QwenStreamParser::new();
-        let events = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
-        assert!(events.iter().any(|e| matches!(e, LlmStreamEvent::Done { .. })));
+        let events =
+            parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::Done { .. })));
     }
 
     #[test]
     fn parse_done_marker() {
         let mut parser = QwenStreamParser::new();
         let events = parser.process_sse_data("[DONE]");
-        assert!(events.iter().any(|e| matches!(e, LlmStreamEvent::Done { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::Done { .. })));
     }
 
     #[test]
@@ -806,9 +798,7 @@ mod tests {
             r#"{"choices":[{"delta":{"content":"<tool_call>\n{\"name\": \"shell\", \"arguments\": {\"command\": \"ls\"}}\n</tool_call>"},"finish_reason":null}]}"#,
         );
         // Now finish without structured tool_calls
-        let e2 = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e2 = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         // Should have fallback-parsed the tool call
         assert!(e2.iter().any(|e| matches!(
             e,
@@ -822,9 +812,7 @@ mod tests {
         let _e1 = parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"<tool_call>\n{\"name\": \"read\", \"arguments\": {\"file_path\": \"/a.txt\"}}\n</tool_call>\n<tool_call>\n{\"name\": \"read\", \"arguments\": {\"file_path\": \"/b.txt\"}}\n</tool_call>"},"finish_reason":null}]}"#,
         );
-        let e2 = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e2 = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         let tool_calls: Vec<_> = e2
             .iter()
             .filter(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. }))
@@ -845,13 +833,12 @@ mod tests {
             LlmStreamEvent::ToolCallDelta { name: Some(n), .. } if n == "shell"
         )));
         // Finish
-        let e2 = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e2 = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         // Should NOT have a duplicate fallback call
-        assert!(!e2.iter().any(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. })));
+        assert!(!e2
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. })));
     }
-
 
     #[test]
     fn streaming_think_across_chunks() {
@@ -861,17 +848,22 @@ mod tests {
         let e1 = parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"<think>\nLet me think"},"finish_reason":null}]}"#,
         );
-        assert!(e1.iter().any(|e| matches!(e, LlmStreamEvent::ReasoningDelta(t) if t.contains("think"))));
+        assert!(e1
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::ReasoningDelta(t) if t.contains("think"))));
         assert!(!e1.iter().any(|e| matches!(e, LlmStreamEvent::TextDelta(_))));
 
         // Chunk 2: end of thinking + text
         let e2 = parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":" about it.\n</think>\nHere is the answer."},"finish_reason":null}]}"#,
         );
-        assert!(e2.iter().any(|e| matches!(e, LlmStreamEvent::ReasoningDelta(t) if t.contains("about it"))));
-        assert!(e2.iter().any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t.contains("answer"))));
+        assert!(e2
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::ReasoningDelta(t) if t.contains("about it"))));
+        assert!(e2
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t.contains("answer"))));
     }
-
 
     #[test]
     fn safe_emit_partial_tag() {
@@ -887,7 +879,6 @@ mod tests {
             5
         );
     }
-
 
     #[test]
     fn extract_balanced_simple() {
@@ -912,7 +903,6 @@ mod tests {
         let input = r#"{"name": "te\"st"}"#;
         assert_eq!(extract_balanced_json(input).unwrap(), input);
     }
-
 
     // XML-function tool-call format (Llama-3/Claude style emitted by some Qwen fine-tunes).
 
@@ -971,19 +961,23 @@ mod tests {
         parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"Sure, I'll write the file.\n<function=write>\n<parameter=file_path>\n/tmp/foo.py\n</parameter>\n<parameter=content>\nprint('hi')\n</parameter>\n</function>"},"finish_reason":null}]}"#,
         );
-        let e = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         let calls: Vec<_> = e
             .iter()
             .filter_map(|ev| match ev {
-                LlmStreamEvent::ToolCallDelta { name: Some(n), arguments_chunk, .. } => {
-                    Some((n.clone(), arguments_chunk.clone()))
-                }
+                LlmStreamEvent::ToolCallDelta {
+                    name: Some(n),
+                    arguments_chunk,
+                    ..
+                } => Some((n.clone(), arguments_chunk.clone())),
                 _ => None,
             })
             .collect();
-        assert_eq!(calls.len(), 1, "expected exactly one tool call, got {calls:?}");
+        assert_eq!(
+            calls.len(),
+            1,
+            "expected exactly one tool call, got {calls:?}"
+        );
         assert_eq!(calls[0].0, "write");
         let parsed: serde_json::Map<String, Value> = serde_json::from_str(&calls[0].1).unwrap();
         assert_eq!(parsed["file_path"], "/tmp/foo.py");
@@ -1001,18 +995,23 @@ mod tests {
         parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"</parameter>\n<parameter=file_path>\n/tmp/x.py\n</parameter>\n<parameter=content>\nbody\n</parameter>\n</function>"},"finish_reason":null}]}"#,
         );
-        let e = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         let format_errors: Vec<_> = e
             .iter()
             .filter_map(|ev| match ev {
-                LlmStreamEvent::ToolCallDelta { name: Some(n), arguments_chunk, .. }
-                    if n == "__format_error__" => Some(arguments_chunk.clone()),
+                LlmStreamEvent::ToolCallDelta {
+                    name: Some(n),
+                    arguments_chunk,
+                    ..
+                } if n == "__format_error__" => Some(arguments_chunk.clone()),
                 _ => None,
             })
             .collect();
-        assert_eq!(format_errors.len(), 1, "expected one format error, got events: {e:?}");
+        assert_eq!(
+            format_errors.len(),
+            1,
+            "expected one format error, got events: {e:?}"
+        );
         assert!(format_errors[0].contains("stray XML tool-call fragments"));
     }
 
@@ -1022,15 +1021,15 @@ mod tests {
         parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"<tool_call>\n<function=read>\n<parameter=file_path>\n/tmp/x.py\n</parameter>\n</function>\n</tool_call>"},"finish_reason":null}]}"#,
         );
-        let e = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         let calls: Vec<_> = e
             .iter()
             .filter_map(|ev| match ev {
-                LlmStreamEvent::ToolCallDelta { name: Some(n), arguments_chunk, .. } => {
-                    Some((n.clone(), arguments_chunk.clone()))
-                }
+                LlmStreamEvent::ToolCallDelta {
+                    name: Some(n),
+                    arguments_chunk,
+                    ..
+                } => Some((n.clone(), arguments_chunk.clone())),
                 _ => None,
             })
             .collect();
@@ -1039,7 +1038,6 @@ mod tests {
         let parsed: serde_json::Map<String, Value> = serde_json::from_str(&calls[0].1).unwrap();
         assert_eq!(parsed["file_path"], "/tmp/x.py");
     }
-
 
     // Tool calls emitted via the reasoning channel (some servers route them
     // into `reasoning_content` or wrap them in `<think>` blocks).
@@ -1050,9 +1048,7 @@ mod tests {
         parser.process_sse_data(
             r#"{"choices":[{"delta":{"reasoning_content":"planning step...\n<tool_call>\n<function=read>\n<parameter=file_path>\n/tmp/y.py\n</parameter>\n</function>\n</tool_call>"},"finish_reason":null}]}"#,
         );
-        let e = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         assert!(e.iter().any(|ev| matches!(
             ev,
             LlmStreamEvent::ToolCallDelta { name: Some(n), .. } if n == "read"
@@ -1065,9 +1061,7 @@ mod tests {
         parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"<think>\nthinking...\n<tool_call>\n{\"name\": \"shell\", \"arguments\": {\"command\": \"ls\"}}\n</tool_call>\n</think>"},"finish_reason":null}]}"#,
         );
-        let e = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         assert!(e.iter().any(|ev| matches!(
             ev,
             LlmStreamEvent::ToolCallDelta { name: Some(n), .. } if n == "shell"
@@ -1082,9 +1076,7 @@ mod tests {
         parser.process_sse_data(
             r#"{"choices":[{"delta":{"reasoning_content":"<tool_call>\n<function=read>\n<parameter=file_path>\n/a\n</parameter>\n</function>\n</tool_call>","tool_calls":[{"index":0,"id":"id_1","function":{"name":"read","arguments":"{\"file_path\":\"/a\"}"}}]},"finish_reason":null}]}"#,
         );
-        let e = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         let calls: Vec<_> = e
             .iter()
             .filter(|ev| matches!(ev, LlmStreamEvent::ToolCallDelta { .. }))

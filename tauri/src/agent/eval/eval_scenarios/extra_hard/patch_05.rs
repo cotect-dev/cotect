@@ -28,13 +28,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let limiter_file = ap(dir, "limiter.py");
-        std::fs::write(&limiter_file, r#"import time
+        std::fs::write(
+            &limiter_file,
+            r#"import time
 
 
 class RateLimiter:
@@ -75,10 +77,14 @@ class RateLimiter:
     @property
     def remaining(self) -> int:
         return self._tokens
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let middleware_file = ap(dir, "middleware.py");
-        std::fs::write(&middleware_file, r#""""Request processing middleware chain."""
+        std::fs::write(
+            &middleware_file,
+            r#""""Request processing middleware chain."""
 
 
 class LoggingMiddleware:
@@ -147,10 +153,14 @@ class CorsMiddleware:
             "authenticated": context.get("authenticated", False),
             "response_headers": response_headers,
         }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let handler_file = ap(dir, "handler.py");
-        std::fs::write(&handler_file, r#""""Request handler — produces the final HTTP response."""
+        std::fs::write(
+            &handler_file,
+            r#""""Request handler — produces the final HTTP response."""
 
 
 def handle_request(context: dict) -> dict:
@@ -174,10 +184,14 @@ def handle_request(context: dict) -> dict:
         "body": {"message": "OK", "path": context.get("path", "/")},
         "headers": headers,
     }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let pipeline_file = ap(dir, "pipeline.py");
-        std::fs::write(&pipeline_file, r#""""Pipeline orchestrator — wires middleware together."""
+        std::fs::write(
+            &pipeline_file,
+            r#""""Pipeline orchestrator — wires middleware together."""
 
 from limiter import RateLimiter
 from middleware import LoggingMiddleware, AuthMiddleware, CorsMiddleware
@@ -221,10 +235,14 @@ def quick_request(path: str, token: str = "valid-token") -> dict:
         "method": "GET",
         "auth_token": token,
     })
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_pipeline.py");
-        std::fs::write(&test_file, r#"from pipeline import Pipeline, quick_request
+        std::fs::write(
+            &test_file,
+            r#"from pipeline import Pipeline, quick_request
 from limiter import RateLimiter
 
 
@@ -307,10 +325,15 @@ if __name__ == "__main__":
     test_auth_still_works()
     test_quick_request_convenience()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The HTTP pipeline's test suite (`test_pipeline.py`) is failing. \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The HTTP pipeline's test suite (`test_pipeline.py`) is failing. \
              The tests describe the contract the pipeline should satisfy for \
              rate-limiting visibility and the existing CORS and auth behavior \
              must remain intact.\n\n\
@@ -321,26 +344,41 @@ if __name__ == "__main__":
              Apply your patches WITHOUT running the code first, then run the \
              tests. If they fail, read the errors and iterate until all tests \
              pass."
-            .to_string()
-        ),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: test suite must pass — it verifies the rate limit
-                // header is present, decrements, appears on denied requests,
-                // CORS headers are preserved, and auth still works.
-                run_has("python3 test_pipeline.py", &["ALL_TESTS_PASSED"]),
-                // CORS header constants must stay byte-identical.
-                file_has("middleware.py", &[
-                    "\"X-Cors-Allow-Origin\": \"*\"",
-                    "\"X-Cors-Allow-Methods\": \"GET, POST, PUT, DELETE\"",
-                    "\"X-Cors-Max-Age\": \"3600\"",
-                ]),
-                // The _debug_headers helper must be preserved verbatim.
-                file_has("pipeline.py", &["def _debug_headers(self, context: dict) -> None:"]),
-            ]),
-            vec![limiter_file, middleware_file, handler_file, pipeline_file]),
-            vec![test_file])
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: test suite must pass — it verifies the rate limit
+                        // header is present, decrements, appears on denied requests,
+                        // CORS headers are preserved, and auth still works.
+                        run_has("python3 test_pipeline.py", &["ALL_TESTS_PASSED"]),
+                        // CORS header constants must stay byte-identical.
+                        file_has(
+                            "middleware.py",
+                            &[
+                                "\"X-Cors-Allow-Origin\": \"*\"",
+                                "\"X-Cors-Allow-Methods\": \"GET, POST, PUT, DELETE\"",
+                                "\"X-Cors-Max-Age\": \"3600\"",
+                            ],
+                        ),
+                        // The _debug_headers helper must be preserved verbatim.
+                        file_has(
+                            "pipeline.py",
+                            &["def _debug_headers(self, context: dict) -> None:"],
+                        ),
+                    ],
+                ),
+                vec![limiter_file, middleware_file, handler_file, pipeline_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_patch_05_middleware_header_threading", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_patch_05_middleware_header_threading",
+        Category::Patch,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

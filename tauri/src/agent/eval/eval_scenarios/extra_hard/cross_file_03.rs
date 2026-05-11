@@ -20,13 +20,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let models_file = ap(dir, "models.py");
-        std::fs::write(&models_file, r#"class User:
+        std::fs::write(
+            &models_file,
+            r#"class User:
     def __init__(self, name: str, email: str, address: str, bio: str = ""):
         self.name = name
         self.email = email
@@ -38,10 +40,14 @@ pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
 
     def __repr__(self):
         return f"User({self.name!r}, {self.email!r})"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let service_file = ap(dir, "service.py");
-        std::fs::write(&service_file, r#"from models import User
+        std::fs::write(
+            &service_file,
+            r#"from models import User
 from validator import validate_user
 
 
@@ -67,10 +73,14 @@ def get_user_summary(user: User) -> dict:
         "email": user.email,
         "address": user.display_address(),
     }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let serializer_file = ap(dir, "serializer.py");
-        std::fs::write(&serializer_file, r#"import json
+        std::fs::write(
+            &serializer_file,
+            r#"import json
 from models import User
 
 
@@ -102,10 +112,14 @@ def serialize_list(users: list[User]) -> str:
     for user in users:
         items.append(json.loads(to_json(user)))
     return json.dumps(items, indent=2)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let validator_file = ap(dir, "validator.py");
-        std::fs::write(&validator_file, r#"def validate_email(email: str) -> bool:
+        std::fs::write(
+            &validator_file,
+            r#"def validate_email(email: str) -> bool:
     """Check basic email format. Unrelated to address validation."""
     return "@" in email and "." in email.split("@")[-1]
 
@@ -122,10 +136,14 @@ def validate_user(user) -> list[str]:
     if user.bio and len(user.bio) > 500:
         errors.append("Bio must be 500 characters or less")
     return errors
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_migration.py");
-        std::fs::write(&test_file, r#"import inspect
+        std::fs::write(
+            &test_file,
+            r#"import inspect
 import json
 from models import User
 from service import create_user, update_address, get_user_summary
@@ -271,10 +289,15 @@ if __name__ == "__main__":
     test_bio_still_string()
     test_validate_email_unchanged()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The `User` type in this project currently stores `address` as a \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The `User` type in this project currently stores `address` as a \
              plain string. Migrate `address` to a structured dict carrying four \
              sub-fields — street, city, state, zip — and propagate that change \
              everywhere the field is produced, consumed, serialized, or \
@@ -292,26 +315,37 @@ if __name__ == "__main__":
              address, must stay exactly as they are.\n\n\
              Apply all edits first, then run the bundled test suite \
              (`python3 test_migration.py`) and iterate until it prints \
-             ALL_TESTS_PASSED.".to_string()),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Model: signature no longer declares address as str
-                file_lacks(&models_file, &["address: str"]),
-                // Service layer: no more `address: str` param in create_user / update_address
-                file_lacks(&service_file, &["address: str", "new_address: str"]),
-                // Validator must check structured keys
-                file_has(&validator_file, &["street", "city", "state", "zip"]),
-                // Old validator string-emptiness check on address must be gone
-                file_lacks(&validator_file, &["user.address.strip()"]),
-                // bio field and validate_email untouched
-                file_has(&models_file, &["bio"]),
-                file_has(&validator_file, &["def validate_email"]),
-                // End-to-end behaviour works
-                run_has("python3 test_migration.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![models_file, service_file, serializer_file, validator_file]),
-            vec![test_file])
+             ALL_TESTS_PASSED."
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Model: signature no longer declares address as str
+                        file_lacks(&models_file, &["address: str"]),
+                        // Service layer: no more `address: str` param in create_user / update_address
+                        file_lacks(&service_file, &["address: str", "new_address: str"]),
+                        // Validator must check structured keys
+                        file_has(&validator_file, &["street", "city", "state", "zip"]),
+                        // Old validator string-emptiness check on address must be gone
+                        file_lacks(&validator_file, &["user.address.strip()"]),
+                        // bio field and validate_email untouched
+                        file_has(&models_file, &["bio"]),
+                        file_has(&validator_file, &["def validate_email"]),
+                        // End-to-end behaviour works
+                        run_has("python3 test_migration.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![models_file, service_file, serializer_file, validator_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_cross_file_03_schema_migration", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_cross_file_03_schema_migration",
+        Category::CrossFile,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

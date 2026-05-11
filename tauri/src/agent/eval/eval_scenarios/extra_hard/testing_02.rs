@@ -5,13 +5,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let stats_file = ap(dir, "stats.py");
-        std::fs::write(&stats_file, r#""""Basic statistics functions."""
+        std::fs::write(
+            &stats_file,
+            r#""""Basic statistics functions."""
 
 import math
 
@@ -63,10 +65,14 @@ def stdev(values):
     m = mean(values)
     ss = sum((x - m) ** 2 for x in values)
     return math.sqrt(ss / len(values))
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let transform_file = ap(dir, "transform.py");
-        std::fs::write(&transform_file, r#""""Data transformation utilities built on stats module."""
+        std::fs::write(
+            &transform_file,
+            r#""""Data transformation utilities built on stats module."""
 
 from stats import mean
 
@@ -104,10 +110,14 @@ def z_scores(values):
     m = mean(values)
     s = sd(values)
     return [(v - m) / s for v in values]
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let stats_fixed = ap(dir, "stats_fixed.py");
-        std::fs::write(&stats_fixed, r#""""Basic statistics functions."""
+        std::fs::write(
+            &stats_fixed,
+            r#""""Basic statistics functions."""
 
 import math
 
@@ -159,10 +169,14 @@ def stdev(values):
     m = mean(values)
     ss = sum((x - m) ** 2 for x in values)
     return math.sqrt(ss / (len(values) - 1))
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let transform_fixed = ap(dir, "transform_fixed.py");
-        std::fs::write(&transform_fixed, r#""""Data transformation utilities built on stats module."""
+        std::fs::write(
+            &transform_fixed,
+            r#""""Data transformation utilities built on stats module."""
 
 from stats import mean
 
@@ -200,10 +214,14 @@ def z_scores(values):
     m = mean(values)
     s = sd(values)
     return [(v - m) / s for v in values]
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let runner = ap(dir, "run_tests.py");
-        std::fs::write(&runner, r#"import subprocess, sys, os, shutil
+        std::fs::write(
+            &runner,
+            r#"import subprocess, sys, os, shutil
 
 test_file = None
 for f in sorted(os.listdir(".")):
@@ -263,15 +281,24 @@ else:
     print(f"FAIL: tests fail on corrected code too")
     print(f"stdout: {fixed_result.stdout[-500:]}")
     print(f"stderr: {fixed_result.stderr[-500:]}")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let stats_buggy = ap(dir, "stats_buggy.py");
         std::fs::write(&stats_buggy, std::fs::read_to_string(&stats_file).unwrap()).unwrap();
         let transform_buggy = ap(dir, "transform_buggy.py");
-        std::fs::write(&transform_buggy, std::fs::read_to_string(&transform_file).unwrap()).unwrap();
+        std::fs::write(
+            &transform_buggy,
+            std::fs::read_to_string(&transform_file).unwrap(),
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The statistics library consisting of {} and {} is suspected to \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The statistics library consisting of {} and {} is suspected to \
              contain defects where the implementations diverge from their \
              documented contracts. Write a test suite that catches any such \
              divergence — a faithful implementation must pass every \
@@ -287,14 +314,30 @@ else:
              faithful implementation. Stop as soon as you see that \
              sentinel — don't keep iterating. You decide the structure, \
              framework, and which behaviours are worth asserting.",
-            stats_file, transform_file)),
+                        stats_file, transform_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![stats_file.clone(), transform_file.clone()],
+            ),
             vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 run_tests.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![stats_file.clone(), transform_file.clone()]),
-            vec![stats_fixed, transform_fixed, runner, stats_buggy, transform_buggy])
+                stats_fixed,
+                transform_fixed,
+                runner,
+                stats_buggy,
+                transform_buggy,
+            ],
+        )
     }
-    v.push(scen!("xhard_testing_02_stats_library", Category::Testing, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_testing_02_stats_library",
+        Category::Testing,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

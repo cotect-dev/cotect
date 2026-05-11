@@ -50,10 +50,7 @@ export async function abortTask(taskId: string): Promise<void> {
 }
 
 /** Listens on the `agent-task-event:{taskId}` Tauri event. */
-export function listenToTask(
-  taskId: string,
-  callback: (event: TaskEvent) => void,
-): () => void {
+export function listenToTask(taskId: string, callback: (event: TaskEvent) => void): () => void {
   const promise = listen<TaskEvent>(`agent-task-event:${taskId}`, (e) => {
     callback(e.payload)
   })
@@ -61,9 +58,11 @@ export function listenToTask(
     console.warn(`[agent] failed to attach listener for task "${taskId}":`, err)
   })
   return () => {
-    promise.then((fn) => fn()).catch((err) => {
-      console.warn(`[agent] failed to detach listener for task "${taskId}":`, err)
-    })
+    promise
+      .then((fn) => fn())
+      .catch((err) => {
+        console.warn(`[agent] failed to detach listener for task "${taskId}":`, err)
+      })
   }
 }
 

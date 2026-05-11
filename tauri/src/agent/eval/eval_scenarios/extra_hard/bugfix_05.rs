@@ -39,13 +39,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let store_file = ap(dir, "event_store.py");
-        std::fs::write(&store_file, r#"from datetime import datetime
+        std::fs::write(
+            &store_file,
+            r#"from datetime import datetime
 
 class EventStore:
     """Append-only event store with sequence numbering."""
@@ -82,10 +84,14 @@ class EventStore:
         if not self._events:
             return -1
         return self._events[-1]["seq"]
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let projector_file = ap(dir, "projector.py");
-        std::fs::write(&projector_file, r#""""Event projector — rebuilds current state from events."""
+        std::fs::write(
+            &projector_file,
+            r#""""Event projector — rebuilds current state from events."""
 
 class Projector:
     """Projects an event stream into a materialized state dict."""
@@ -153,10 +159,14 @@ class Projector:
     @property
     def applied_count(self) -> int:
         return self._applied_count
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let snapshot_file = ap(dir, "snapshot.py");
-        std::fs::write(&snapshot_file, r#"import json
+        std::fs::write(
+            &snapshot_file,
+            r#"import json
 from datetime import date, datetime
 
 class StateEncoder(json.JSONEncoder):
@@ -190,10 +200,14 @@ def load_snapshot(path: str) -> dict:
     """Deserialize state from a JSON file."""
     with open(path, 'r') as f:
         return json.load(f, cls=StateDecoder)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let system_file = ap(dir, "system.py");
-        std::fs::write(&system_file, r#"import threading
+        std::fs::write(
+            &system_file,
+            r#"import threading
 import os
 from event_store import EventStore
 from projector import Projector
@@ -246,10 +260,14 @@ class EventSourcedSystem:
     def get_account(self, account_id: str) -> dict | None:
         """Get current state of a single account."""
         return self.projector.state.get(account_id)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_system.py");
-        std::fs::write(&test_file, r#"import os
+        std::fs::write(
+            &test_file,
+            r#"import os
 import tempfile
 from datetime import datetime
 from event_store import EventStore
@@ -389,10 +407,15 @@ if __name__ == "__main__":
     test_full_system_integration()
     test_independent_stores()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The event-sourcing system has subtle bugs that surface under specific \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The event-sourcing system has subtle bugs that surface under specific \
              conditions. The bugs interact — you may need to fix one to see the \
              next clearly.\n\n\
              Step 1: Read all source files (event_store.py, projector.py, \
@@ -401,18 +424,27 @@ if __name__ == "__main__":
              Step 2: Run the existing `python3 test_system.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              fixes, and re-run until all tests pass."
-            .to_string()
-        ),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: all tests must pass — they cover independent store sequences,
-                // same-timestamp event handling, datetime snapshot roundtrips,
-                // full system integration, and store isolation.
-                run_has("python3 test_system.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![store_file, projector_file, snapshot_file, system_file]),
-            vec![test_file])
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: all tests must pass — they cover independent store sequences,
+                        // same-timestamp event handling, datetime snapshot roundtrips,
+                        // full system integration, and store isolation.
+                        run_has("python3 test_system.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![store_file, projector_file, snapshot_file, system_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_bugfix_05_diabolical_eventsource", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_bugfix_05_diabolical_eventsource",
+        Category::Bugfix,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

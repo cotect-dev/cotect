@@ -25,13 +25,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let protocol_file = ap(dir, "protocol.py");
-        std::fs::write(&protocol_file, r#"import struct
+        std::fs::write(
+            &protocol_file,
+            r#"import struct
 
 # Old magic bytes from v1 protocol — kept for backward compat detection.
 MAGIC_BYTES = b'\xDE\xAD'
@@ -78,10 +80,14 @@ def decode_batch(data: bytes) -> list[bytes]:
         messages.append(data[offset:offset + length])
         offset += length
     return messages
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let config_file = ap(dir, "config.py");
-        std::fs::write(&config_file, r#"import os
+        std::fs::write(
+            &config_file,
+            r#"import os
 
 class PathResolver:
     """Resolves file paths relative to a configurable base directory."""
@@ -114,10 +120,14 @@ class PathResolver:
 
 def default_resolver() -> PathResolver:
     return PathResolver("/data/messages")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let relay_file = ap(dir, "relay.py");
-        std::fs::write(&relay_file, r#"import time
+        std::fs::write(
+            &relay_file,
+            r#"import time
 import os
 from protocol import encode_message, decode_message, encode_batch, decode_batch
 from config import PathResolver
@@ -167,10 +177,14 @@ class MessageRelay:
     @property
     def processed_count(self):
         return self._processed
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_relay.py");
-        std::fs::write(&test_file, r#"import os
+        std::fs::write(
+            &test_file,
+            r#"import os
 import tempfile
 from protocol import encode_message, decode_message, encode_batch, decode_batch
 from config import PathResolver
@@ -236,10 +250,15 @@ if __name__ == "__main__":
     test_path_resolver_multi_dot()
     test_full_relay_roundtrip()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The message relay system is failing in production. A test suite \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The message relay system is failing in production. A test suite \
              `test_relay.py` exercises the code end-to-end; several of its \
              assertions fail. Small payloads appear to round-trip fine in \
              isolation, but the full integration test reports corrupted data, \
@@ -250,22 +269,31 @@ if __name__ == "__main__":
              Step 2: Run the existing `python3 test_relay.py` to check your work.\n\
              Step 3: If any tests fail, read the error output, adjust your \
              fixes, and re-run until all tests pass."
-            .to_string()
-        ),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: the full test suite must pass — it covers short/long
-                // message roundtrips, batch encoding, path resolution with
-                // extensions, multi-dot filenames, and full relay integration.
-                // Tests exercise both bugs (endianness + normalize) so any
-                // valid fix works: flipping encoder to '>I', flipping decoder
-                // to '<I', or rewriting the normalize() strip logic in any
-                // way that preserves extensions and multi-dot filenames.
-                run_has("python3 test_relay.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![relay_file, protocol_file, config_file]),
-            vec![test_file])
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: the full test suite must pass — it covers short/long
+                        // message roundtrips, batch encoding, path resolution with
+                        // extensions, multi-dot filenames, and full relay integration.
+                        // Tests exercise both bugs (endianness + normalize) so any
+                        // valid fix works: flipping encoder to '>I', flipping decoder
+                        // to '<I', or rewriting the normalize() strip logic in any
+                        // way that preserves extensions and multi-dot filenames.
+                        run_has("python3 test_relay.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![relay_file, protocol_file, config_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_bugfix_03_cross_domain_relay", Category::Bugfix, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_bugfix_03_cross_domain_relay",
+        Category::Bugfix,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

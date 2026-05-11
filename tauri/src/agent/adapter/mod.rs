@@ -44,11 +44,10 @@ use serde_json::json;
 
 use super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
 
+pub mod gemma;
 pub mod openai_compat;
 pub mod plain;
-pub mod gemma;
 pub mod qwen;
-
 
 /// Which wire format to use when talking to the LLM backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,7 +111,6 @@ impl PromptFormat {
         }
     }
 }
-
 
 /// Infer the appropriate [`PromptFormat`] from a model identifier string.
 ///
@@ -188,7 +186,6 @@ pub fn detect_format(model_id: &str) -> PromptFormat {
     PromptFormat::OpenAICompat
 }
 
-
 /// Where an adapter's [`endpoint_path`](ModelAdapter::endpoint_path) is rooted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EndpointScope {
@@ -259,7 +256,6 @@ pub trait StreamParser: Send {
     fn finalize(&mut self) -> Vec<LlmStreamEvent>;
 }
 
-
 /// Construct a boxed adapter for the given format.
 ///
 /// Phase 1 only implements [`PromptFormat::OpenAICompat`]. Unimplemented
@@ -276,7 +272,6 @@ pub fn build_adapter(format: PromptFormat) -> Box<dyn ModelAdapter> {
         PromptFormat::ChatML => Box::new(openai_compat::OpenAICompatAdapter),
     }
 }
-
 
 #[derive(Deserialize, Default)]
 pub(crate) struct StreamChunk {
@@ -316,7 +311,6 @@ pub(crate) struct StreamFunctionDelta {
     pub arguments: Option<String>,
 }
 
-
 #[derive(Serialize)]
 pub(crate) struct ChatCompletionRequest {
     pub model: String,
@@ -330,7 +324,6 @@ pub(crate) struct ChatCompletionRequest {
     pub reasoning_effort: Option<String>,
 }
 
-
 /// Build a standard OpenAI-compat request body for chat completions.
 pub(crate) fn build_openai_request_body(
     model: &str,
@@ -342,7 +335,11 @@ pub(crate) fn build_openai_request_body(
     let body = ChatCompletionRequest {
         model: model.to_string(),
         messages: messages.to_vec(),
-        tools: if tools.is_empty() { None } else { Some(tools.to_vec()) },
+        tools: if tools.is_empty() {
+            None
+        } else {
+            Some(tools.to_vec())
+        },
         stream: true,
         temperature,
         max_tokens,
@@ -389,10 +386,10 @@ pub(crate) fn emit_format_error(idx: usize, content: &str, err: &str) -> LlmStre
         arguments_chunk: json!({
             "raw": truncated,
             "error": err
-        }).to_string(),
+        })
+        .to_string(),
     }
 }
-
 
 /// Remove all `open_prefix … close_tag` blocks from `text`.
 ///
@@ -439,7 +436,6 @@ pub(crate) fn strip_tag_pairs(text: &str, pairs: &[(&str, &str)]) -> String {
     }
     result
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -500,7 +496,10 @@ mod tests {
 
     #[test]
     fn detect_format_unknown_falls_back_to_openai_compat() {
-        assert_eq!(detect_format("some-random-model"), PromptFormat::OpenAICompat);
+        assert_eq!(
+            detect_format("some-random-model"),
+            PromptFormat::OpenAICompat
+        );
         assert_eq!(
             detect_format("my-custom-finetune"),
             PromptFormat::OpenAICompat
@@ -519,14 +518,10 @@ mod tests {
             "openai_compat"
         );
         // Unimplemented native formats still fall through.
-        for format in [
-            PromptFormat::Llama3,
-            PromptFormat::ChatML,
-        ] {
+        for format in [PromptFormat::Llama3, PromptFormat::ChatML] {
             assert_eq!(build_adapter(format).name(), "openai_compat");
         }
     }
-
 
     #[test]
     fn strip_paired_blocks_basic() {

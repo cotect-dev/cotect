@@ -20,7 +20,9 @@ interface ViewState {
   setViewMode: (mode: ViewMode) => void
 }
 
-export const useViewStore = createStoreWithHMR(import.meta.hot, 'view', () => create<ViewState>((set) => ({
-  viewMode: 'files',
-  setViewMode: (mode) => set({ viewMode: mode }),
-})))
+export const useViewStore = createStoreWithHMR(import.meta.hot, 'view', () =>
+  create<ViewState>((set) => ({
+    viewMode: 'files',
+    setViewMode: (mode) => set({ viewMode: mode }),
+  })),
+)

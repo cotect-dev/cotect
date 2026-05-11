@@ -24,13 +24,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let config_file = ap(dir, "config.py");
-        std::fs::write(&config_file, r#"# Application configuration
+        std::fs::write(
+            &config_file,
+            r#"# Application configuration
 
 DATABASE_NAME = "app.db"
 MAX_CONNECTIONS = 5
@@ -39,10 +41,14 @@ DEBUG = False
 # Cache settings
 CACHE_TTL_SECONDS = 2
 CACHE_MAX_SIZE = 3
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let repo_file = ap(dir, "repo.py");
-        std::fs::write(&repo_file, r#"class DataRepository:
+        std::fs::write(
+            &repo_file,
+            r#"class DataRepository:
     """Simulated data repository (in-memory for testing)."""
 
     def __init__(self):
@@ -74,10 +80,14 @@ CACHE_MAX_SIZE = 3
     def call_counts(self) -> dict:
         """Return a copy of the call counter."""
         return dict(self._call_count)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let service_file = ap(dir, "service.py");
-        std::fs::write(&service_file, r#"from repo import DataRepository
+        std::fs::write(
+            &service_file,
+            r#"from repo import DataRepository
 from config import CACHE_TTL_SECONDS, CACHE_MAX_SIZE
 
 
@@ -134,10 +144,14 @@ class DataService:
     #   - "hits" counts cached_get calls served from the cache,
     #   - "misses" counts cached_get calls that consulted the repository,
     #   - "size" is the number of keys currently cached.
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_service.py");
-        std::fs::write(&test_file, r#"import time
+        std::fs::write(
+            &test_file,
+            r#"import time
 from repo import DataRepository
 from service import DataService
 
@@ -313,23 +327,38 @@ if __name__ == "__main__":
     test_get_record_bypasses_cache()
     test_existing_methods_still_work()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "Add caching to the `DataService` in {} by implementing \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "Add caching to the `DataService` in {} by implementing \
              `cached_get` and `cache_stats` as specified in the TODO \
              contracts. The behaviour is fully defined there: TTL is \
              CACHE_TTL_SECONDS, capacity is CACHE_MAX_SIZE, writes invalidate \
              the affected key, and cache_stats reports hits/misses/size.\n\n\
              Verify with `python3 test_service.py`.",
-            service_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 test_service.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![config_file, repo_file, service_file]),
-            vec![test_file])
+                        service_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 test_service.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![config_file, repo_file, service_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_implement_03_caching_layer", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_implement_03_caching_layer",
+        Category::Implement,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

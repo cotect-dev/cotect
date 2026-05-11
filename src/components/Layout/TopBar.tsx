@@ -14,7 +14,12 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu'
-import { useLayoutStore, loadLayoutIntoStore, PANEL_DEFINITIONS, getEffectivePosition } from '@/store/layout'
+import {
+  useLayoutStore,
+  loadLayoutIntoStore,
+  PANEL_DEFINITIONS,
+  getEffectivePosition,
+} from '@/store/layout'
 import { useBrowserStore } from '@/store'
 import { getPlatform } from '@/services/platform'
 import { saveLayout } from '@/services/windowManager'
@@ -24,12 +29,19 @@ import { useViewStore, type ViewMode } from '@/store/view'
 import RelativeTime from '@/components/RelativeTime'
 import { DEV } from '@/lib/env'
 import { useState, useCallback, Fragment } from 'react'
-import { GitBranch, ChevronDown, FolderTree, Network, Settings as SettingsIcon, BarChart3 } from 'lucide-react'
+import {
+  GitBranch,
+  ChevronDown,
+  FolderTree,
+  Network,
+  Settings as SettingsIcon,
+  BarChart3,
+} from 'lucide-react'
 
 const VIEW_BUTTONS: { mode: ViewMode; key: string; label: string; Icon: typeof FolderTree }[] = [
-  { mode: 'files',     key: '1', label: 'Files',     Icon: FolderTree },
-  { mode: 'graph',     key: '2', label: 'Graph',     Icon: Network },
-  { mode: 'settings',  key: '3', label: 'Settings',  Icon: SettingsIcon },
+  { mode: 'files', key: '1', label: 'Files', Icon: FolderTree },
+  { mode: 'graph', key: '2', label: 'Graph', Icon: Network },
+  { mode: 'settings', key: '3', label: 'Settings', Icon: SettingsIcon },
   { mode: 'analytics', key: '4', label: 'Analytics', Icon: BarChart3 },
 ]
 
@@ -81,9 +93,16 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
     [checkoutBranch, currentBranchName],
   )
 
-  const isPanelVisible = useCallback((id: string) => {
-    return panels.left.some(g => g.includes(id)) || panels.right.some(g => g.includes(id)) || panels.bottom.some(g => g.includes(id))
-  }, [panels])
+  const isPanelVisible = useCallback(
+    (id: string) => {
+      return (
+        panels.left.some((g) => g.includes(id)) ||
+        panels.right.some((g) => g.includes(id)) ||
+        panels.bottom.some((g) => g.includes(id))
+      )
+    },
+    [panels],
+  )
 
   return (
     <Menubar className="shrink-0 pointer-events-auto bg-background/80 backdrop-blur-sm">
@@ -112,9 +131,7 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
           {DEV && (
             <>
               <MenubarSeparator />
-              <MenubarItem onClick={() => setTestError(true)}>
-                Trigger Test Error
-              </MenubarItem>
+              <MenubarItem onClick={() => setTestError(true)}>Trigger Test Error</MenubarItem>
             </>
           )}
         </MenubarContent>
@@ -149,7 +166,9 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
           {PANEL_GROUPS.map(({ group, label }, i) => (
             <Fragment key={group}>
               {i > 0 && <MenubarSeparator />}
-              <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">{label}</div>
+              <div className="px-2 py-1 text-[11px] text-muted-foreground/50 font-medium select-none">
+                {label}
+              </div>
               {PANEL_DEFINITIONS.filter((d) => d.group === group).map((def) => {
                 const visible = isPanelVisible(def.id)
                 return (
@@ -208,7 +227,10 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
                 {branches.length > 0 && <ChevronDown className="h-3 w-3 opacity-60" />}
               </DropdownMenuTrigger>
               {branches.length > 0 && (
-                <DropdownMenuContent align="end" className="max-h-[60vh] overflow-y-auto font-mono text-xs">
+                <DropdownMenuContent
+                  align="end"
+                  className="max-h-[60vh] overflow-y-auto font-mono text-xs"
+                >
                   <DropdownMenuRadioGroup
                     value={currentBranchName ?? ''}
                     onValueChange={handleBranchSelect}
@@ -229,8 +251,13 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
               {totalDeletions > 0 && <span className="text-red-500">-{totalDeletions}</span>}
               {lastCommitTimestamp && (
                 <>
-                  {(totalInsertions > 0 || totalDeletions > 0) && <span className="text-muted-foreground/40">·</span>}
-                  <RelativeTime timestamp={lastCommitTimestamp} className="text-muted-foreground/60" />
+                  {(totalInsertions > 0 || totalDeletions > 0) && (
+                    <span className="text-muted-foreground/40">·</span>
+                  )}
+                  <RelativeTime
+                    timestamp={lastCommitTimestamp}
+                    className="text-muted-foreground/60"
+                  />
                 </>
               )}
             </div>

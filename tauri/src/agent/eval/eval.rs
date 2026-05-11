@@ -77,19 +77,31 @@ impl EvalConfig {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(600u64);
-        let filter = std::env::var("COTECT_EVAL_FILTER").ok().filter(|s| !s.is_empty());
-        let category = std::env::var("COTECT_EVAL_CATEGORY").ok().and_then(Category::parse);
-        let difficulty = std::env::var("COTECT_EVAL_DIFFICULTY").ok().and_then(Difficulty::parse);
+        let filter = std::env::var("COTECT_EVAL_FILTER")
+            .ok()
+            .filter(|s| !s.is_empty());
+        let category = std::env::var("COTECT_EVAL_CATEGORY")
+            .ok()
+            .and_then(Category::parse);
+        let difficulty = std::env::var("COTECT_EVAL_DIFFICULTY")
+            .ok()
+            .and_then(Difficulty::parse);
         let system_style = std::env::var("COTECT_EVAL_SYSTEM_STYLE")
             .ok()
             .and_then(SystemStyle::parse)
             .unwrap_or(SystemStyle::Default);
-        let limit = std::env::var("COTECT_EVAL_LIMIT").ok().and_then(|v| v.parse().ok());
-        let transcript_dir = std::env::var("COTECT_EVAL_TRANSCRIPTS").ok().map(std::path::PathBuf::from);
+        let limit = std::env::var("COTECT_EVAL_LIMIT")
+            .ok()
+            .and_then(|v| v.parse().ok());
+        let transcript_dir = std::env::var("COTECT_EVAL_TRANSCRIPTS")
+            .ok()
+            .map(std::path::PathBuf::from);
         let format_override = std::env::var("COTECT_EVAL_FORMAT")
             .ok()
             .and_then(|v| parse_format_override(&v));
-        let keep_dirs = std::env::var("COTECT_EVAL_KEEP_DIRS").ok().is_some_and(|v| v == "1" || v == "true");
+        let keep_dirs = std::env::var("COTECT_EVAL_KEEP_DIRS")
+            .ok()
+            .is_some_and(|v| v == "1" || v == "true");
         // Opt the model out of thinking mode. For Qwen this appends `/no_think`
         // to the system prompt; for other formats it's a no-op today. Pair
         // with `--reasoning-budget 0` on the server for a hard cap.
@@ -375,7 +387,9 @@ struct RunOutcome {
 }
 
 fn used_tool(events: &[TaskEvent], name: &str) -> bool {
-    events.iter().any(|e| matches!(e, TaskEvent::ToolStart { tool_name, .. } if tool_name == name))
+    events
+        .iter()
+        .any(|e| matches!(e, TaskEvent::ToolStart { tool_name, .. } if tool_name == name))
 }
 
 fn tool_succeeded(events: &[TaskEvent], name: &str) -> bool {
@@ -387,8 +401,17 @@ fn tool_succeeded(events: &[TaskEvent], name: &str) -> bool {
 /// first try without needing to iterate.
 fn first_shell_passed(events: &[TaskEvent]) -> Option<bool> {
     for ev in events {
-        if let TaskEvent::ToolEnd { tool_name, output: Some(out), .. } = ev {
-            if tool_name == "shell" && (out.contains("ALL_TESTS_PASSED") || out.contains("assert") || out.contains("Traceback")) {
+        if let TaskEvent::ToolEnd {
+            tool_name,
+            output: Some(out),
+            ..
+        } = ev
+        {
+            if tool_name == "shell"
+                && (out.contains("ALL_TESTS_PASSED")
+                    || out.contains("assert")
+                    || out.contains("Traceback"))
+            {
                 return Some(out.contains("ALL_TESTS_PASSED"));
             }
         }
@@ -398,7 +421,9 @@ fn first_shell_passed(events: &[TaskEvent]) -> Option<bool> {
 
 /// Returns true if no tool call failed (no `success: false` in ToolEnd events).
 fn all_tools_succeeded(events: &[TaskEvent]) -> bool {
-    !events.iter().any(|e| matches!(e, TaskEvent::ToolEnd { success, .. } if !success))
+    !events
+        .iter()
+        .any(|e| matches!(e, TaskEvent::ToolEnd { success, .. } if !success))
 }
 
 /// Determine "1st try": for test-running scenarios use shell output heuristic,
@@ -416,11 +441,7 @@ fn contains_ci(hay: &str, needle: &str) -> bool {
 
 // Check evaluation
 
-fn evaluate_checks(
-    checks: &[Check],
-    outcome: &RunOutcome,
-    dir: &Path,
-) -> (bool, Vec<String>) {
+fn evaluate_checks(checks: &[Check], outcome: &RunOutcome, dir: &Path) -> (bool, Vec<String>) {
     let mut failures = Vec::new();
     for check in checks {
         if let Some(err) = evaluate_one_check(check, outcome, dir) {
@@ -435,59 +456,91 @@ fn evaluate_one_check(check: &Check, outcome: &RunOutcome, dir: &Path) -> Option
         Check::OutputContains(needle) => {
             if !contains_ci(&outcome.full_text, needle) {
                 Some(format!("output missing: {:?}", needle))
-            } else { None }
+            } else {
+                None
+            }
         }
         Check::OutputContainsAll(needles) => {
-            let missing: Vec<&str> = needles.iter().filter(|n| !contains_ci(&outcome.full_text, n)).map(|s| s.as_str()).collect();
+            let missing: Vec<&str> = needles
+                .iter()
+                .filter(|n| !contains_ci(&outcome.full_text, n))
+                .map(|s| s.as_str())
+                .collect();
             if !missing.is_empty() {
                 Some(format!("output missing all-of: {:?}", missing))
-            } else { None }
+            } else {
+                None
+            }
         }
         Check::OutputContainsAny(needles) => {
             if !needles.iter().any(|n| contains_ci(&outcome.full_text, n)) {
                 Some(format!("output missing any-of: {:?}", needles))
-            } else { None }
+            } else {
+                None
+            }
         }
         Check::OutputDoesNotContain(needles) => {
-            let found: Vec<&str> = needles.iter().filter(|n| contains_ci(&outcome.full_text, n)).map(|s| s.as_str()).collect();
+            let found: Vec<&str> = needles
+                .iter()
+                .filter(|n| contains_ci(&outcome.full_text, n))
+                .map(|s| s.as_str())
+                .collect();
             if !found.is_empty() {
                 Some(format!("output contains forbidden: {:?}", found))
-            } else { None }
+            } else {
+                None
+            }
         }
         Check::UsedTool(name) => {
             if !used_tool(&outcome.events, name) {
                 Some(format!("tool not used: {}", name))
-            } else { None }
+            } else {
+                None
+            }
         }
         Check::ToolSucceeded(name) => {
             if !tool_succeeded(&outcome.events, name) {
                 Some(format!("tool not succeeded: {}", name))
-            } else { None }
+            } else {
+                None
+            }
         }
         Check::UsedAnyTool(names) => {
             if !names.iter().any(|n| used_tool(&outcome.events, n)) {
                 Some(format!("none of tools used: {:?}", names))
-            } else { None }
+            } else {
+                None
+            }
         }
         Check::Completed => {
             if !outcome.completed {
                 Some("scenario did not complete".into())
-            } else { None }
+            } else {
+                None
+            }
         }
         Check::FileExists(rel) => {
             let p = dir.join(rel);
             if !p.exists() {
                 Some(format!("file missing: {}", rel))
-            } else { None }
+            } else {
+                None
+            }
         }
         Check::FileContains(rel, needles) => {
             let p = dir.join(rel);
             match std::fs::read_to_string(&p) {
                 Ok(content) => {
-                    let missing: Vec<&str> = needles.iter().filter(|n| !content.contains(n.as_str())).map(|s| s.as_str()).collect();
+                    let missing: Vec<&str> = needles
+                        .iter()
+                        .filter(|n| !content.contains(n.as_str()))
+                        .map(|s| s.as_str())
+                        .collect();
                     if !missing.is_empty() {
                         Some(format!("file {} missing: {:?}", rel, missing))
-                    } else { None }
+                    } else {
+                        None
+                    }
                 }
                 Err(e) => Some(format!("file {} unreadable: {}", rel, e)),
             }
@@ -496,10 +549,16 @@ fn evaluate_one_check(check: &Check, outcome: &RunOutcome, dir: &Path) -> Option
             let p = dir.join(rel);
             match std::fs::read_to_string(&p) {
                 Ok(content) => {
-                    let found: Vec<&str> = needles.iter().filter(|n| content.contains(n.as_str())).map(|s| s.as_str()).collect();
+                    let found: Vec<&str> = needles
+                        .iter()
+                        .filter(|n| content.contains(n.as_str()))
+                        .map(|s| s.as_str())
+                        .collect();
                     if !found.is_empty() {
                         Some(format!("file {} contains forbidden: {:?}", rel, found))
-                    } else { None }
+                    } else {
+                        None
+                    }
                 }
                 Err(e) => Some(format!("file {} unreadable: {}", rel, e)),
             }
@@ -510,8 +569,13 @@ fn evaluate_one_check(check: &Check, outcome: &RunOutcome, dir: &Path) -> Option
                 Ok(content) => {
                     let n = content.lines().count();
                     if n < *min || n > *max {
-                        Some(format!("file {} has {} lines, expected {}..={}", rel, n, min, max))
-                    } else { None }
+                        Some(format!(
+                            "file {} has {} lines, expected {}..={}",
+                            rel, n, min, max
+                        ))
+                    } else {
+                        None
+                    }
                 }
                 Err(e) => Some(format!("file {} unreadable: {}", rel, e)),
             }
@@ -525,14 +589,23 @@ fn evaluate_one_check(check: &Check, outcome: &RunOutcome, dir: &Path) -> Option
             let mut i = 0;
             while i < bytes.len() {
                 let c = bytes[i];
-                if c.is_ascii_digit() || (c == b'-' && i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit()) {
+                if c.is_ascii_digit()
+                    || (c == b'-' && i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit())
+                {
                     // Skip negative sign only if preceded by non-alphanumeric
                     let start = i;
-                    if c == b'-' { i += 1; }
-                    while i < bytes.len() && bytes[i].is_ascii_digit() { i += 1; }
+                    if c == b'-' {
+                        i += 1;
+                    }
+                    while i < bytes.len() && bytes[i].is_ascii_digit() {
+                        i += 1;
+                    }
                     // Allow commas inside numbers (like 1,234) - skip them
                     let slice = &text[start..i];
-                    let cleaned: String = slice.chars().filter(|c| c.is_ascii_digit() || *c == '-').collect();
+                    let cleaned: String = slice
+                        .chars()
+                        .filter(|c| c.is_ascii_digit() || *c == '-')
+                        .collect();
                     if let Ok(n) = cleaned.parse::<i64>() {
                         last = Some(n);
                     }
@@ -549,38 +622,67 @@ fn evaluate_one_check(check: &Check, outcome: &RunOutcome, dir: &Path) -> Option
         Check::RunExitOk(cmd, timeout_secs) => {
             run_check_shell(cmd, *timeout_secs, dir, |_output, code| {
                 if code != 0 {
-                    Some(format!("command `{}` exited with code {}", cmd_preview(cmd), code))
-                } else { None }
+                    Some(format!(
+                        "command `{}` exited with code {}",
+                        cmd_preview(cmd),
+                        code
+                    ))
+                } else {
+                    None
+                }
             })
         }
         Check::RunOutputContains(cmd, timeout_secs, needles) => {
             run_check_shell(cmd, *timeout_secs, dir, |output, code| {
                 if code != 0 {
-                    return Some(format!("command `{}` exited with code {} (expected 0). output: {}",
-                        cmd_preview(cmd), code, output_preview(&output)));
+                    return Some(format!(
+                        "command `{}` exited with code {} (expected 0). output: {}",
+                        cmd_preview(cmd),
+                        code,
+                        output_preview(&output)
+                    ));
                 }
-                let missing: Vec<&str> = needles.iter()
+                let missing: Vec<&str> = needles
+                    .iter()
                     .filter(|n| !contains_ci(&output, n))
-                    .map(|s| s.as_str()).collect();
+                    .map(|s| s.as_str())
+                    .collect();
                 if !missing.is_empty() {
-                    Some(format!("command `{}` output missing: {:?}. got: {}",
-                        cmd_preview(cmd), missing, output_preview(&output)))
-                } else { None }
+                    Some(format!(
+                        "command `{}` output missing: {:?}. got: {}",
+                        cmd_preview(cmd),
+                        missing,
+                        output_preview(&output)
+                    ))
+                } else {
+                    None
+                }
             })
         }
         Check::RunOutputLacks(cmd, timeout_secs, needles) => {
             run_check_shell(cmd, *timeout_secs, dir, |output, code| {
                 if code != 0 {
-                    return Some(format!("command `{}` exited with code {} (expected 0). output: {}",
-                        cmd_preview(cmd), code, output_preview(&output)));
+                    return Some(format!(
+                        "command `{}` exited with code {} (expected 0). output: {}",
+                        cmd_preview(cmd),
+                        code,
+                        output_preview(&output)
+                    ));
                 }
-                let found: Vec<&str> = needles.iter()
+                let found: Vec<&str> = needles
+                    .iter()
                     .filter(|n| contains_ci(&output, n))
-                    .map(|s| s.as_str()).collect();
+                    .map(|s| s.as_str())
+                    .collect();
                 if !found.is_empty() {
-                    Some(format!("command `{}` output contains forbidden: {:?}",
-                        cmd_preview(cmd), found))
-                } else { None }
+                    Some(format!(
+                        "command `{}` output contains forbidden: {:?}",
+                        cmd_preview(cmd),
+                        found
+                    ))
+                } else {
+                    None
+                }
             })
         }
         Check::FileDiffLinesAtMost(reference_abs, target_rel, max_changed) => {
@@ -599,7 +701,9 @@ fn evaluate_one_check(check: &Check, outcome: &RunOutcome, dir: &Path) -> Option
                         "file {} diffs by {} lines vs reference, max allowed {}",
                         target_rel, count, max_changed,
                     ))
-                } else { None }
+                } else {
+                    None
+                }
             })
         }
     }
@@ -642,11 +746,19 @@ fn run_check_shell(
 }
 
 fn cmd_preview(cmd: &str) -> String {
-    if cmd.len() > 80 { format!("{}...", &cmd[..77]) } else { cmd.to_string() }
+    if cmd.len() > 80 {
+        format!("{}...", &cmd[..77])
+    } else {
+        cmd.to_string()
+    }
 }
 
 fn output_preview(output: &str) -> String {
-    if output.len() > 200 { format!("{}...", &output[..197]) } else { output.to_string() }
+    if output.len() > 200 {
+        format!("{}...", &output[..197])
+    } else {
+        output.to_string()
+    }
 }
 
 // Prompt prefix based on system style
@@ -668,7 +780,11 @@ fn blocked_files_notice(blocked: &[String]) -> Option<String> {
                 .unwrap_or_else(|| p.clone())
         })
         .collect();
-    let list = names.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n");
+    let list = names
+        .iter()
+        .map(|n| format!("- {n}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     Some(format!(
         "## Evaluation sandbox\n\n\
          You are being evaluated. The following files are hidden test artifacts used \
@@ -795,7 +911,12 @@ fn build_transcript(
             TaskEvent::Reasoning { .. } => {
                 // Skipped — see consolidated "Reasoning" section above.
             }
-            TaskEvent::ToolStart { tool_name, file_path, description, arguments } => {
+            TaskEvent::ToolStart {
+                tool_name,
+                file_path,
+                description,
+                arguments,
+            } => {
                 let gap_marker = match last_tool_time {
                     None => " · Δ start".to_string(),
                     Some(prev) => format!(" · Δ{:.1}s", t - prev),
@@ -817,7 +938,12 @@ fn build_transcript(
                     let _ = writeln!(s);
                 }
             }
-            TaskEvent::ToolEnd { tool_name, success, output, file_path: _ } => {
+            TaskEvent::ToolEnd {
+                tool_name,
+                success,
+                output,
+                file_path: _,
+            } => {
                 let marker = if *success { "OK" } else { "ERR" };
                 let out = output.as_deref().unwrap_or("");
                 let out = truncate_for_transcript(out, 4000);
@@ -891,7 +1017,10 @@ fn truncate_for_transcript(s: &str, max_chars: usize) -> String {
         s.to_string()
     } else {
         let prefix: String = s.chars().take(max_chars).collect();
-        format!("{prefix}\n... [truncated, {} chars total]", s.chars().count())
+        format!(
+            "{prefix}\n... [truncated, {} chars total]",
+            s.chars().count()
+        )
     }
 }
 
@@ -903,26 +1032,36 @@ const INDENT: &str = "            "; // 12 spaces — aligns under `[  1/125] `
 const DETAIL_INDENT: &str = "              "; // 14 spaces — nested one step
 const RULE_WIDTH: usize = 78;
 
-fn rule_heavy() -> String { "═".repeat(RULE_WIDTH) }
-fn rule_light() -> String { "─".repeat(RULE_WIDTH) }
+fn rule_heavy() -> String {
+    "═".repeat(RULE_WIDTH)
+}
+fn rule_light() -> String {
+    "─".repeat(RULE_WIDTH)
+}
 
 fn diff_badge(d: Difficulty) -> &'static str {
     match d {
-        Difficulty::Easy   => "\x1b[1;32m[E]\x1b[0m",
+        Difficulty::Easy => "\x1b[1;32m[E]\x1b[0m",
         Difficulty::Medium => "\x1b[1;33m[M]\x1b[0m",
-        Difficulty::Hard   => "\x1b[1;31m[H]\x1b[0m",
+        Difficulty::Hard => "\x1b[1;31m[H]\x1b[0m",
     }
 }
 
 fn progress_bar(passed: usize, total: usize, width: usize) -> String {
-    if total == 0 { return "\x1b[2m".to_string() + &"░".repeat(width) + "\x1b[0m"; }
+    if total == 0 {
+        return "\x1b[2m".to_string() + &"░".repeat(width) + "\x1b[0m";
+    }
     let frac = passed as f64 / total as f64;
     let filled = (frac * width as f64).round() as usize;
     let filled = filled.min(width);
     let pct = frac * 100.0;
-    let color = if pct >= 80.0 { "\x1b[32m" }
-                else if pct >= 50.0 { "\x1b[33m" }
-                else { "\x1b[31m" };
+    let color = if pct >= 80.0 {
+        "\x1b[32m"
+    } else if pct >= 50.0 {
+        "\x1b[33m"
+    } else {
+        "\x1b[31m"
+    };
     format!(
         "{}{}\x1b[0m\x1b[2m{}\x1b[0m",
         color,
@@ -958,8 +1097,9 @@ fn fmt_bytes(n: usize) -> String {
 }
 
 fn truncate_display(s: &str, max: usize) -> String {
-    if s.chars().count() <= max { s.to_string() }
-    else {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
         let prefix: String = s.chars().take(max.saturating_sub(1)).collect();
         format!("{prefix}…")
     }
@@ -995,8 +1135,7 @@ fn format_tool_timestamp_prefix(
 /// Render a streaming tool-call line.
 /// Layout:  `· <name pad>  <detail>` — name is cyan, detail is dim.
 fn format_tool_line(tool_name: &str, arguments: Option<&str>, dir: &Path) -> String {
-    let args_val: Option<serde_json::Value> = arguments
-        .and_then(|a| serde_json::from_str(a).ok());
+    let args_val: Option<serde_json::Value> = arguments.and_then(|a| serde_json::from_str(a).ok());
 
     let detail = match tool_name {
         "shell" => args_val
@@ -1008,7 +1147,11 @@ fn format_tool_line(tool_name: &str, arguments: Option<&str>, dir: &Path) -> Str
             }),
         "fs_search" => args_val
             .as_ref()
-            .and_then(|v| v.get("pattern").and_then(|p| p.as_str()).map(str::to_string))
+            .and_then(|v| {
+                v.get("pattern")
+                    .and_then(|p| p.as_str())
+                    .map(str::to_string)
+            })
             .map(|p| format!("\x1b[2m/{}/\x1b[0m", truncate_display(&p, 60))),
         "fetch" => args_val
             .as_ref()
@@ -1018,30 +1161,30 @@ fn format_tool_line(tool_name: &str, arguments: Option<&str>, dir: &Path) -> Str
             // Single-path tools surface the path. Batch reads (`read`
             // with `file_paths: [...]`) surface a count + the first
             // path so the heartbeat doesn't go blank.
-            args_val
-                .as_ref()
-                .and_then(|v| {
-                    if let Some(p) = v.get("file_path").or_else(|| v.get("path"))
-                        .and_then(|p| p.as_str())
-                    {
-                        return Some(format!("\x1b[2m{}\x1b[0m", rel_path_str(p, dir)));
-                    }
-                    if let Some(arr) = v.get("file_paths").and_then(|p| p.as_array()) {
-                        let first = arr.first().and_then(|p| p.as_str()).unwrap_or("?");
-                        let extra = arr.len().saturating_sub(1);
-                        let suffix = if extra > 0 {
-                            format!(" \x1b[90m+{} more\x1b[0m", extra)
-                        } else {
-                            String::new()
-                        };
-                        return Some(format!(
-                            "\x1b[2m{}\x1b[0m{}",
-                            rel_path_str(first, dir),
-                            suffix,
-                        ));
-                    }
-                    None
-                })
+            args_val.as_ref().and_then(|v| {
+                if let Some(p) = v
+                    .get("file_path")
+                    .or_else(|| v.get("path"))
+                    .and_then(|p| p.as_str())
+                {
+                    return Some(format!("\x1b[2m{}\x1b[0m", rel_path_str(p, dir)));
+                }
+                if let Some(arr) = v.get("file_paths").and_then(|p| p.as_array()) {
+                    let first = arr.first().and_then(|p| p.as_str()).unwrap_or("?");
+                    let extra = arr.len().saturating_sub(1);
+                    let suffix = if extra > 0 {
+                        format!(" \x1b[90m+{} more\x1b[0m", extra)
+                    } else {
+                        String::new()
+                    };
+                    return Some(format!(
+                        "\x1b[2m{}\x1b[0m{}",
+                        rel_path_str(first, dir),
+                        suffix,
+                    ));
+                }
+                None
+            })
         }
     };
 
@@ -1060,10 +1203,16 @@ fn format_result_line(
     elapsed: Duration,
     tool_count: usize,
 ) -> String {
-    let status = if passed { "\x1b[1;32m✓ PASS\x1b[0m" } else { "\x1b[1;31m✗ FAIL\x1b[0m" };
+    let status = if passed {
+        "\x1b[1;32m✓ PASS\x1b[0m"
+    } else {
+        "\x1b[1;31m✗ FAIL\x1b[0m"
+    };
     let first_try_tag = if passed && first_try == Some(true) {
         " \x1b[90m·\x1b[0m \x1b[1;36m1st try\x1b[0m"
-    } else { "" };
+    } else {
+        ""
+    };
     format!(
         "{}{} \x1b[90m·\x1b[0m \x1b[33m{:>5.1}s\x1b[0m \x1b[90m·\x1b[0m \x1b[2m{} tool{}\x1b[0m",
         status,
@@ -1199,7 +1348,7 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         let silence_start = std::time::Instant::now();
         let mut silence_started: Option<std::time::Instant> = None;
         let mut thinking_line_open = false;
-        const SPINNER: [char; 10] = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+        const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
         let mut spin_idx: usize = 0;
         // Bytes of text/reasoning streamed since the last action event.
         let mut text_bytes_since_action: usize = 0;
@@ -1232,15 +1381,16 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         // True when the next action event should reset the silence/byte
         // counters. Streaming events (Text/Reasoning) accumulate but do NOT
         // reset, so a runaway generation tail stays visible as `streaming…`.
-        let reset_action_state = |silence_started: &mut Option<std::time::Instant>,
-                                   text_bytes: &mut usize,
-                                   reasoning_bytes: &mut usize,
-                                   heartbeat: &mut tokio::time::Interval| {
-            heartbeat.reset();
-            *silence_started = None;
-            *text_bytes = 0;
-            *reasoning_bytes = 0;
-        };
+        let reset_action_state =
+            |silence_started: &mut Option<std::time::Instant>,
+             text_bytes: &mut usize,
+             reasoning_bytes: &mut usize,
+             heartbeat: &mut tokio::time::Interval| {
+                heartbeat.reset();
+                *silence_started = None;
+                *text_bytes = 0;
+                *reasoning_bytes = 0;
+            };
 
         loop {
             tokio::select! {
@@ -1379,7 +1529,8 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         let mut orch = Orchestrator::new(&cfg.provider(), &request, tx, None, None);
         orch.set_max_turns(cfg.max_turns);
         orch.run().await
-    }).await;
+    })
+    .await;
 
     let elapsed = start.elapsed();
     let outcome = events_handle.await.unwrap_or_else(|_| RunOutcome {
@@ -1406,7 +1557,9 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
             // code as FAIL purely because the model didn't say "done" in
             // time — which happened on refactor_05 in our eval run.
             let effective_checks: Vec<Check> = if outcome.interrupted.is_some() {
-                setup.checks.iter()
+                setup
+                    .checks
+                    .iter()
                     .filter(|c| !matches!(c, Check::Completed))
                     .cloned()
                     .collect()
@@ -1416,10 +1569,16 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
             let (ok, failures) = evaluate_checks(&effective_checks, &outcome, &dir_path);
             (ok, failures, outcome.interrupted.clone())
         }
-        Ok(Err(e)) => (false, vec![format!("orch error: {e}")], outcome.interrupted.clone()),
+        Ok(Err(e)) => (
+            false,
+            vec![format!("orch error: {e}")],
+            outcome.interrupted.clone(),
+        ),
         Err(_) => {
             // Wall-clock timeout — same treatment as an interrupt.
-            let timeout_checks: Vec<Check> = setup.checks.iter()
+            let timeout_checks: Vec<Check> = setup
+                .checks
+                .iter()
                 .filter(|c| !matches!(c, Check::Completed))
                 .cloned()
                 .collect();
@@ -1429,7 +1588,11 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
         }
     };
 
-    let first_try = if passed { determine_first_try(&outcome.events) } else { None };
+    let first_try = if passed {
+        determine_first_try(&outcome.events)
+    } else {
+        None
+    };
     eprintln!(
         "{}{}",
         INDENT,
@@ -1453,8 +1616,16 @@ async fn run_scenario(cfg: &EvalConfig, spec: &ScenarioSpec) -> EvalResult {
     if let Some(ref tdir) = cfg.transcript_dir {
         let transcript_path = tdir.join(format!("{}.md", spec.id));
         let transcript = build_transcript(
-            spec, &setup.prompt, &setup.scope_files, &outcome,
-            passed, first_try, &failed_checks, elapsed, &interrupted, &dir_path,
+            spec,
+            &setup.prompt,
+            &setup.scope_files,
+            &outcome,
+            passed,
+            first_try,
+            &failed_checks,
+            elapsed,
+            &interrupted,
+            &dir_path,
         );
         let _ = std::fs::write(&transcript_path, transcript);
     }
@@ -1508,7 +1679,8 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     let passed: usize = scored.iter().filter(|r| r.passed).count();
     let total_time: Duration = scored.iter().map(|r| r.elapsed).sum();
     let total_tools: usize = scored.iter().map(|r| r.tool_calls.len()).sum();
-    let first_try_count = scored.iter()
+    let first_try_count = scored
+        .iter()
         .filter(|r| r.passed && r.first_try == Some(true))
         .count();
 
@@ -1522,24 +1694,44 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     println!();
     println!("  \x1b[1mBy category\x1b[0m");
     let cats = [
-        Category::Bugfix, Category::Refactor, Category::Implement, Category::Patch,
-        Category::Understanding, Category::Search, Category::CrossFile,
-        Category::Testing, Category::Security, Category::Concurrency,
-        Category::Performance, Category::Context,
+        Category::Bugfix,
+        Category::Refactor,
+        Category::Implement,
+        Category::Patch,
+        Category::Understanding,
+        Category::Search,
+        Category::CrossFile,
+        Category::Testing,
+        Category::Security,
+        Category::Concurrency,
+        Category::Performance,
+        Category::Context,
     ];
     for cat in cats {
         let cat_results: Vec<&&EvalResult> = scored.iter().filter(|r| r.category == cat).collect();
-        if cat_results.is_empty() { continue; }
+        if cat_results.is_empty() {
+            continue;
+        }
         let p = cat_results.iter().filter(|r| r.passed).count();
-        let ft = cat_results.iter().filter(|r| r.passed && r.first_try == Some(true)).count();
+        let ft = cat_results
+            .iter()
+            .filter(|r| r.passed && r.first_try == Some(true))
+            .count();
         let t = cat_results.len();
         let pct = (p as f64 / t as f64) * 100.0;
         let ft_str = if ft > 0 {
             format!("   \x1b[36m{} first-try\x1b[0m", ft)
-        } else { String::new() };
+        } else {
+            String::new()
+        };
         println!(
             "    {:<15}  {}  {:>3}/{:<3}  {:>5.1}%{}",
-            cat.label(), progress_bar(p, t, 20), p, t, pct, ft_str,
+            cat.label(),
+            progress_bar(p, t, 20),
+            p,
+            t,
+            pct,
+            ft_str,
         );
     }
 
@@ -1548,24 +1740,37 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     println!("  \x1b[1mBy difficulty\x1b[0m");
     for diff in [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard] {
         let d_results: Vec<&&EvalResult> = scored.iter().filter(|r| r.difficulty == diff).collect();
-        if d_results.is_empty() { continue; }
+        if d_results.is_empty() {
+            continue;
+        }
         let p = d_results.iter().filter(|r| r.passed).count();
-        let ft = d_results.iter().filter(|r| r.passed && r.first_try == Some(true)).count();
+        let ft = d_results
+            .iter()
+            .filter(|r| r.passed && r.first_try == Some(true))
+            .count();
         let t = d_results.len();
         let pct = (p as f64 / t as f64) * 100.0;
         let ft_str = if ft > 0 {
             format!("   \x1b[36m{} first-try\x1b[0m", ft)
-        } else { String::new() };
+        } else {
+            String::new()
+        };
         let label = format!("{:?}", diff);
         let label_plain = format!("{:<10}", label); // pad to match category column visually
         let label_colored = match diff {
-            Difficulty::Easy   => format!("\x1b[32m{}\x1b[0m", label_plain),
+            Difficulty::Easy => format!("\x1b[32m{}\x1b[0m", label_plain),
             Difficulty::Medium => format!("\x1b[33m{}\x1b[0m", label_plain),
-            Difficulty::Hard   => format!("\x1b[31m{}\x1b[0m", label_plain),
+            Difficulty::Hard => format!("\x1b[31m{}\x1b[0m", label_plain),
         };
         println!(
             "    {} {}  {}  {:>3}/{:<3}  {:>5.1}%{}",
-            diff_badge(diff), label_colored, progress_bar(p, t, 20), p, t, pct, ft_str,
+            diff_badge(diff),
+            label_colored,
+            progress_bar(p, t, 20),
+            p,
+            t,
+            pct,
+            ft_str,
         );
     }
 
@@ -1573,7 +1778,10 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
     let fails: Vec<&&EvalResult> = scored.iter().filter(|r| !r.passed).collect();
     if !fails.is_empty() {
         println!();
-        println!("  \x1b[1;31mFailures\x1b[0m \x1b[2m({})\x1b[0m", fails.len());
+        println!(
+            "  \x1b[1;31mFailures\x1b[0m \x1b[2m({})\x1b[0m",
+            fails.len()
+        );
         for r in &fails {
             let first = r.failed_checks.first().map(|s| s.as_str()).unwrap_or("?");
             let tools = r.tool_calls.len();
@@ -1595,24 +1803,47 @@ fn print_report(cfg: &EvalConfig, results: &[EvalResult]) {
         println!();
         println!("  \x1b[1;33mSkipped\x1b[0m \x1b[2m({})\x1b[0m", skips.len());
         for r in &skips {
-            let reason = r.failed_checks.first().map(|s| s.as_str()).unwrap_or("missing tool");
+            let reason = r
+                .failed_checks
+                .first()
+                .map(|s| s.as_str())
+                .unwrap_or("missing tool");
             println!(
                 "    {} \x1b[1m{:<40}\x1b[0m  \x1b[2m{}\x1b[0m",
-                diff_badge(r.difficulty), r.id, reason,
+                diff_badge(r.difficulty),
+                r.id,
+                reason,
             );
         }
     }
 
     // Summary
-    let pct_total = if total > 0 { (passed as f64 / total as f64) * 100.0 } else { 0.0 };
-    let pct_ft = if total > 0 { (first_try_count as f64 / total as f64) * 100.0 } else { 0.0 };
-    let avg = if total > 0 { total_time.as_secs_f64() / total as f64 } else { 0.0 };
+    let pct_total = if total > 0 {
+        (passed as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    let pct_ft = if total > 0 {
+        (first_try_count as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    let avg = if total > 0 {
+        total_time.as_secs_f64() / total as f64
+    } else {
+        0.0
+    };
 
     println!();
     println!("\x1b[34m{}\x1b[0m", rule_light());
     let skip_tag = if skipped > 0 {
-        format!("   \x1b[90m·\x1b[0m   \x1b[1;33mskipped\x1b[0m  {}", skipped)
-    } else { String::new() };
+        format!(
+            "   \x1b[90m·\x1b[0m   \x1b[1;33mskipped\x1b[0m  {}",
+            skipped
+        )
+    } else {
+        String::new()
+    };
     println!(
         "  \x1b[1mScore\x1b[0m   \x1b[1;32m{}\x1b[0m/{}  (\x1b[1m{:.1}%\x1b[0m)   \x1b[90m·\x1b[0m   \x1b[1;36m1st try\x1b[0m  {} ({:.1}%){}",
         passed, total, pct_total, first_try_count, pct_ft, skip_tag,
@@ -1667,14 +1898,23 @@ async fn eval_suite() {
     eprintln!("  \x1b[36mmodel\x1b[0m      {}", cfg.model);
     eprintln!("  \x1b[36mendpoint\x1b[0m   {}", cfg.endpoint);
     eprintln!("  \x1b[36mstyle\x1b[0m      {}", cfg.system_style.label());
-    eprintln!("  \x1b[36mtimeout\x1b[0m    {}s/scenario", cfg.timeout.as_secs());
+    eprintln!(
+        "  \x1b[36mtimeout\x1b[0m    {}s/scenario",
+        cfg.timeout.as_secs()
+    );
     eprintln!("  \x1b[36mmax turns\x1b[0m  {}", cfg.max_turns);
     if cfg.disable_thinking == Some(true) {
         eprintln!("  \x1b[36mthinking\x1b[0m   disabled (/no_think for Qwen)");
     }
-    if let Some(c) = cfg.category { eprintln!("  \x1b[36mcategory\x1b[0m   {}", c.label()); }
-    if let Some(d) = cfg.difficulty { eprintln!("  \x1b[36mdifficulty\x1b[0m {}", d.label()); }
-    if let Some(f) = &cfg.filter { eprintln!("  \x1b[36mfilter\x1b[0m     {}", f); }
+    if let Some(c) = cfg.category {
+        eprintln!("  \x1b[36mcategory\x1b[0m   {}", c.label());
+    }
+    if let Some(d) = cfg.difficulty {
+        eprintln!("  \x1b[36mdifficulty\x1b[0m {}", d.label());
+    }
+    if let Some(f) = &cfg.filter {
+        eprintln!("  \x1b[36mfilter\x1b[0m     {}", f);
+    }
     eprintln!("\x1b[34m{}\x1b[0m", rule_light());
     eprintln!();
 
@@ -1683,7 +1923,9 @@ async fn eval_suite() {
     for (i, spec) in scenarios.iter().enumerate() {
         eprint!(
             "\x1b[90m[\x1b[0m{:>w$}\x1b[90m/{}]\x1b[0m ",
-            i + 1, total, w = idx_width,
+            i + 1,
+            total,
+            w = idx_width,
         );
         let r = run_scenario(&cfg, spec).await;
         results.push(r);
@@ -1707,7 +1949,8 @@ async fn run_category(cat: Category) {
 
     eprint_banner(&format!(
         "Category \x1b[35m{}\x1b[0m \x1b[90m·\x1b[0m \x1b[1m{}\x1b[0m scenarios",
-        cat.label(), total,
+        cat.label(),
+        total,
     ));
     eprintln!();
     let mut results = Vec::with_capacity(total);
@@ -1715,7 +1958,9 @@ async fn run_category(cat: Category) {
     for (i, spec) in scenarios.iter().enumerate() {
         eprint!(
             "\x1b[90m[\x1b[0m{:>w$}\x1b[90m/{}]\x1b[0m ",
-            i + 1, total, w = idx_width,
+            i + 1,
+            total,
+            w = idx_width,
         );
         let r = run_scenario(&cfg, spec).await;
         results.push(r);
@@ -1725,51 +1970,75 @@ async fn run_category(cat: Category) {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_bugfix() { run_category(Category::Bugfix).await; }
+async fn eval_category_bugfix() {
+    run_category(Category::Bugfix).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_refactor() { run_category(Category::Refactor).await; }
+async fn eval_category_refactor() {
+    run_category(Category::Refactor).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_implement() { run_category(Category::Implement).await; }
+async fn eval_category_implement() {
+    run_category(Category::Implement).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_patch() { run_category(Category::Patch).await; }
+async fn eval_category_patch() {
+    run_category(Category::Patch).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_understanding() { run_category(Category::Understanding).await; }
+async fn eval_category_understanding() {
+    run_category(Category::Understanding).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_search() { run_category(Category::Search).await; }
+async fn eval_category_search() {
+    run_category(Category::Search).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_cross_file() { run_category(Category::CrossFile).await; }
+async fn eval_category_cross_file() {
+    run_category(Category::CrossFile).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_testing() { run_category(Category::Testing).await; }
+async fn eval_category_testing() {
+    run_category(Category::Testing).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_security() { run_category(Category::Security).await; }
+async fn eval_category_security() {
+    run_category(Category::Security).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_concurrency() { run_category(Category::Concurrency).await; }
+async fn eval_category_concurrency() {
+    run_category(Category::Concurrency).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_performance() { run_category(Category::Performance).await; }
+async fn eval_category_performance() {
+    run_category(Category::Performance).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn eval_category_context() { run_category(Category::Context).await; }
+async fn eval_category_context() {
+    run_category(Category::Context).await;
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
@@ -1791,7 +2060,9 @@ async fn eval_extra_hard() {
     for (i, spec) in scenarios.iter().enumerate() {
         eprint!(
             "\x1b[90m[\x1b[0m{:>w$}\x1b[90m/{}]\x1b[0m ",
-            i + 1, total, w = idx_width,
+            i + 1,
+            total,
+            w = idx_width,
         );
         let r = run_scenario(&cfg, spec).await;
         results.push(r);

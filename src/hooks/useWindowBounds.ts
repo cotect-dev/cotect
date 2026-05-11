@@ -27,32 +27,41 @@ export function useWindowBounds() {
       }
     }
 
-    Promise.all([
-      platform.windows.getPosition(),
-      platform.windows.getSize(),
-    ]).then(([p, s]) => {
-      pos = p
-      size = s
-      recompute()
-    }).catch((err) => {
-      console.warn('[useWindowBounds] initial position/size fetch failed:', err)
-    })
+    Promise.all([platform.windows.getPosition(), platform.windows.getSize()])
+      .then(([p, s]) => {
+        pos = p
+        size = s
+        recompute()
+      })
+      .catch((err) => {
+        console.warn('[useWindowBounds] initial position/size fetch failed:', err)
+      })
 
     const cleanups: (() => void)[] = []
 
-    platform.windows.onMoved((p) => {
-      pos = p
-      recompute()
-    }).then((unlisten) => { cleanups.push(unlisten) }).catch((err) => {
-      console.warn('[useWindowBounds] onMoved listener attach failed:', err)
-    })
+    platform.windows
+      .onMoved((p) => {
+        pos = p
+        recompute()
+      })
+      .then((unlisten) => {
+        cleanups.push(unlisten)
+      })
+      .catch((err) => {
+        console.warn('[useWindowBounds] onMoved listener attach failed:', err)
+      })
 
-    platform.windows.onResized((s) => {
-      size = s
-      recompute()
-    }).then((unlisten) => { cleanups.push(unlisten) }).catch((err) => {
-      console.warn('[useWindowBounds] onResized listener attach failed:', err)
-    })
+    platform.windows
+      .onResized((s) => {
+        size = s
+        recompute()
+      })
+      .then((unlisten) => {
+        cleanups.push(unlisten)
+      })
+      .catch((err) => {
+        console.warn('[useWindowBounds] onResized listener attach failed:', err)
+      })
 
     return () => {
       for (const fn of cleanups) fn()

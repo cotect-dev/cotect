@@ -54,7 +54,9 @@ export function Pill({ item }: { item: ImportRefItem }) {
       onClick={handleClick}
     >
       <Icon className={`h-3 w-3 shrink-0 ${iconColor}`} />
-      <span className={`text-[10px] leading-none text-foreground/55 hover:text-foreground/80 whitespace-nowrap transition-colors ${hovered ? '' : 'truncate max-w-[120px]'}`}>
+      <span
+        className={`text-[10px] leading-none text-foreground/55 hover:text-foreground/80 whitespace-nowrap transition-colors ${hovered ? '' : 'truncate max-w-[120px]'}`}
+      >
         {hovered ? item.resolvedPath : item.label}
       </span>
     </div>
@@ -62,23 +64,21 @@ export function Pill({ item }: { item: ImportRefItem }) {
 }
 
 export default memo(function ImportRefNode({ data }: NodeProps<ImportRefNode>) {
-  const lineColor = data.items[0]?.kind === 'imported-by'
-    ? 'bg-violet-400/20'
-    : 'bg-green-400/20'
+  const lineColor = data.items[0]?.kind === 'imported-by' ? 'bg-violet-400/20' : 'bg-green-400/20'
 
   return (
-    <div
-      className="flex items-center gap-0.5"
-      style={{ height: REF_HEIGHT }}
-    >
-      {data.showConnector
-        ? <div className="flex items-center shrink-0" style={{ width: 28, marginLeft: -16 }}>
-            <div className={`h-px flex-1 transition-colors ${lineColor}`} />
-            <span className="text-[9px] text-muted-foreground/40 font-mono leading-none px-px">{data.line}</span>
-            <div className={`h-px flex-1 transition-colors ${lineColor}`} />
-          </div>
-        : <div className="w-3 shrink-0" />
-      }
+    <div className="flex items-center gap-0.5" style={{ height: REF_HEIGHT }}>
+      {data.showConnector ? (
+        <div className="flex items-center shrink-0" style={{ width: 28, marginLeft: -16 }}>
+          <div className={`h-px flex-1 transition-colors ${lineColor}`} />
+          <span className="text-[9px] text-muted-foreground/40 font-mono leading-none px-px">
+            {data.line}
+          </span>
+          <div className={`h-px flex-1 transition-colors ${lineColor}`} />
+        </div>
+      ) : (
+        <div className="w-3 shrink-0" />
+      )}
       {data.items.map((item, idx) => (
         <Pill key={`${item.kind}:${item.resolvedPath}:${idx}`} item={item} />
       ))}

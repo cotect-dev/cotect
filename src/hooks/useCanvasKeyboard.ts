@@ -12,56 +12,108 @@ const FOCUS_GUARD_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 const keyIs = (key: string) => (e: KeyboardEvent) => e.key.toLowerCase() === key
 
 const FOCUS_UP_W = defineBinding({
-  id: 'canvas.focus.up.w', label: 'Focus up', scope: 'canvas', group: 'Canvas',
-  chord: 'W', matches: keyIs('w'),
+  id: 'canvas.focus.up.w',
+  label: 'Focus up',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'W',
+  matches: keyIs('w'),
 })
 const FOCUS_UP_ARROW = defineBinding({
-  id: 'canvas.focus.up.arrow', label: 'Focus up', scope: 'canvas', group: 'Canvas',
-  chord: 'ArrowUp', matches: keyIs('arrowup'),
+  id: 'canvas.focus.up.arrow',
+  label: 'Focus up',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'ArrowUp',
+  matches: keyIs('arrowup'),
 })
 const FOCUS_DOWN_S = defineBinding({
-  id: 'canvas.focus.down.s', label: 'Focus down', scope: 'canvas', group: 'Canvas',
-  chord: 'S', matches: keyIs('s'),
+  id: 'canvas.focus.down.s',
+  label: 'Focus down',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'S',
+  matches: keyIs('s'),
 })
 const FOCUS_DOWN_ARROW = defineBinding({
-  id: 'canvas.focus.down.arrow', label: 'Focus down', scope: 'canvas', group: 'Canvas',
-  chord: 'ArrowDown', matches: keyIs('arrowdown'),
+  id: 'canvas.focus.down.arrow',
+  label: 'Focus down',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'ArrowDown',
+  matches: keyIs('arrowdown'),
 })
 const NAV_LEFT_A = defineBinding({
-  id: 'canvas.nav.left.a', label: 'Navigate to parent column', scope: 'canvas', group: 'Canvas',
-  chord: 'A', matches: keyIs('a'),
+  id: 'canvas.nav.left.a',
+  label: 'Navigate to parent column',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'A',
+  matches: keyIs('a'),
 })
 const NAV_LEFT_ARROW = defineBinding({
-  id: 'canvas.nav.left.arrow', label: 'Navigate to parent column', scope: 'canvas', group: 'Canvas',
-  chord: 'ArrowLeft', matches: keyIs('arrowleft'),
+  id: 'canvas.nav.left.arrow',
+  label: 'Navigate to parent column',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'ArrowLeft',
+  matches: keyIs('arrowleft'),
 })
 const NAV_RIGHT_D = defineBinding({
-  id: 'canvas.nav.right.d', label: 'Enter focused node', scope: 'canvas', group: 'Canvas',
-  chord: 'D', matches: keyIs('d'),
+  id: 'canvas.nav.right.d',
+  label: 'Enter focused node',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'D',
+  matches: keyIs('d'),
 })
 const NAV_RIGHT_ARROW = defineBinding({
-  id: 'canvas.nav.right.arrow', label: 'Enter focused node', scope: 'canvas', group: 'Canvas',
-  chord: 'ArrowRight', matches: keyIs('arrowright'),
+  id: 'canvas.nav.right.arrow',
+  label: 'Enter focused node',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'ArrowRight',
+  matches: keyIs('arrowright'),
 })
 const FOCUS_EDITOR = defineBinding({
-  id: 'canvas.focus.editor', label: 'Focus code editor', scope: 'canvas', group: 'Canvas',
-  chord: 'E', matches: keyIs('e'),
+  id: 'canvas.focus.editor',
+  label: 'Focus code editor',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'E',
+  matches: keyIs('e'),
 })
 const TOGGLE_HIDE = defineBinding({
-  id: 'canvas.toggleHide', label: 'Toggle hide node', scope: 'canvas', group: 'Canvas',
-  chord: 'H', matches: keyIs('h'),
+  id: 'canvas.toggleHide',
+  label: 'Toggle hide node',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'H',
+  matches: keyIs('h'),
 })
 const NAV_BACK = defineBinding({
-  id: 'canvas.nav.back', label: 'Navigate back', scope: 'canvas', group: 'Canvas',
-  chord: 'Q', matches: keyIs('q'),
+  id: 'canvas.nav.back',
+  label: 'Navigate back',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'Q',
+  matches: keyIs('q'),
 })
 const SHOW_IN_FOLDER = defineBinding({
-  id: 'canvas.showInFolder', label: 'Show in folder', scope: 'canvas', group: 'Canvas',
-  chord: 'F', matches: keyIs('f'),
+  id: 'canvas.showInFolder',
+  label: 'Show in folder',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'F',
+  matches: keyIs('f'),
 })
 const SWALLOW_TAB = defineBinding({
-  id: 'canvas.swallowTab', label: 'Swallow Tab (keep canvas focus)', scope: 'canvas', group: 'Canvas',
-  chord: 'Tab', matches: keyIs('tab'),
+  id: 'canvas.swallowTab',
+  label: 'Swallow Tab (keep canvas focus)',
+  scope: 'canvas',
+  group: 'Canvas',
+  chord: 'Tab',
+  matches: keyIs('tab'),
 })
 
 /**
@@ -76,11 +128,12 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
 
     function handleKeyDown(e: KeyboardEvent) {
       const active = document.activeElement as HTMLElement | null
-      if (active && (
-        FOCUS_GUARD_TAGS.has(active.tagName) ||
-        active.isContentEditable ||
-        active.closest('.cm-editor')
-      )) {
+      if (
+        active &&
+        (FOCUS_GUARD_TAGS.has(active.tagName) ||
+          active.isContentEditable ||
+          active.closest('.cm-editor'))
+      ) {
         return
       }
 
@@ -152,15 +205,18 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
         if (!focusedId) return
         const focusedNode = store.nodes.find((n) => n.id === focusedId)
         if (!focusedNode) return
-        const nodePath =
+        const nodePath = (
           focusedNode.type === 'folder' || focusedNode.type === 'file'
             ? focusedNode.data.path
             : focusedNode.data.filePath
+        ) as string | undefined
         if (nodePath) {
           e.preventDefault()
-          getPlatform().fs.showInFolder(nodePath).catch((err) => {
-            console.error('Failed to open in folder:', err)
-          })
+          getPlatform()
+            .fs.showInFolder(nodePath)
+            .catch((err) => {
+              console.error('Failed to open in folder:', err)
+            })
         }
         return
       }
@@ -177,26 +233,31 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
       if (useViewStore.getState().viewMode !== 'files') return
 
       const active = document.activeElement as HTMLElement | null
-      if (active && container.contains(active)) return
+      if (active && container?.contains(active)) return
 
-      if (active && (
-        FOCUS_GUARD_TAGS.has(active.tagName) ||
-        active.isContentEditable ||
-        active.closest('.cm-editor')
-      )) {
+      if (
+        active &&
+        (FOCUS_GUARD_TAGS.has(active.tagName) ||
+          active.isContentEditable ||
+          active.closest('.cm-editor'))
+      ) {
         return
       }
 
       const isNavKey =
-        FOCUS_UP_W.matches(e) || FOCUS_UP_ARROW.matches(e) ||
-        FOCUS_DOWN_S.matches(e) || FOCUS_DOWN_ARROW.matches(e) ||
-        NAV_LEFT_A.matches(e) || NAV_LEFT_ARROW.matches(e) ||
-        NAV_RIGHT_D.matches(e) || NAV_RIGHT_ARROW.matches(e)
+        FOCUS_UP_W.matches(e) ||
+        FOCUS_UP_ARROW.matches(e) ||
+        FOCUS_DOWN_S.matches(e) ||
+        FOCUS_DOWN_ARROW.matches(e) ||
+        NAV_LEFT_A.matches(e) ||
+        NAV_LEFT_ARROW.matches(e) ||
+        NAV_RIGHT_D.matches(e) ||
+        NAV_RIGHT_ARROW.matches(e)
 
       if (!isNavKey) return
 
       e.preventDefault()
-      container.focus()
+      container?.focus()
 
       const store = useCanvasStore.getState()
       if (FOCUS_UP_W.matches(e) || FOCUS_UP_ARROW.matches(e)) {

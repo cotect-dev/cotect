@@ -48,9 +48,7 @@ export function usePanelDrag() {
     bottom: null,
   })
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
-  )
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const collisionDetection: CollisionDetection = useCallback((args) => {
     const collisions = pointerWithin(args)
@@ -59,7 +57,13 @@ export function usePanelDrag() {
   }, [])
 
   const computeInsertIndex = useCallback(
-    (position: PanelPosition, pointerX: number, pointerY: number, dragPanelId: string, isGroup: boolean): { insertIndex: number; neighborIndex: number } => {
+    (
+      position: PanelPosition,
+      pointerX: number,
+      pointerY: number,
+      dragPanelId: string,
+      isGroup: boolean,
+    ): { insertIndex: number; neighborIndex: number } => {
       const el = zoneRefs.current[position]
       if (!el) return { insertIndex: 0, neighborIndex: 0 }
 
@@ -80,11 +84,17 @@ export function usePanelDrag() {
 
       return computeInsertIndexMath({ rect, isVertical }, visibleSizes, pointerX, pointerY)
     },
-    [panels]
+    [panels],
   )
 
   const detectTabInto = useCallback(
-    (position: PanelPosition, pointerX: number, pointerY: number, dragPanelId: string, isGroup: boolean): string | null => {
+    (
+      position: PanelPosition,
+      pointerX: number,
+      pointerY: number,
+      dragPanelId: string,
+      isGroup: boolean,
+    ): string | null => {
       const el = zoneRefs.current[position]
       if (!el) return null
 
@@ -123,12 +133,20 @@ export function usePanelDrag() {
         if (isVertical) {
           const panelTop = rect.top + start * rect.height
           const panelBottom = rect.top + end * rect.height
-          inBounds = pointerX >= rect.left && pointerX <= rect.right && pointerY >= panelTop && pointerY <= panelBottom
+          inBounds =
+            pointerX >= rect.left &&
+            pointerX <= rect.right &&
+            pointerY >= panelTop &&
+            pointerY <= panelBottom
           inHeader = pointerY <= panelTop + TAB_INTO_HEIGHT
         } else {
           const panelLeft = rect.left + start * rect.width
           const panelRight = rect.left + end * rect.width
-          inBounds = pointerY >= rect.top && pointerY <= rect.bottom && pointerX >= panelLeft && pointerX <= panelRight
+          inBounds =
+            pointerY >= rect.top &&
+            pointerY <= rect.bottom &&
+            pointerX >= panelLeft &&
+            pointerX <= panelRight
           inHeader = pointerY <= rect.top + TAB_INTO_HEIGHT
         }
 
@@ -138,29 +156,32 @@ export function usePanelDrag() {
       }
       return null
     },
-    []
+    [],
   )
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const data = event.active.data.current
-    if (data?.panelId && data?.position) {
-      setDragState({
-        panelId: data.panelId,
-        panelIds: data.isGroup ? data.panelIds : undefined,
-        isGroup: !!data.isGroup,
-        fromPosition: data.position,
-        overPosition: null,
-        insertIndex: 0,
-        neighborIndex: 0,
-        tabIntoGroupKey: null,
-      })
-      void platform.ipc.emit('drag-start', {
-        panelId: data.panelId,
-        panelIds: data.isGroup ? data.panelIds : [data.panelId],
-        sourceWindow: windowId,
-      })
-    }
-  }, [platform, windowId])
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const data = event.active.data.current
+      if (data?.panelId && data?.position) {
+        setDragState({
+          panelId: data.panelId,
+          panelIds: data.isGroup ? data.panelIds : undefined,
+          isGroup: !!data.isGroup,
+          fromPosition: data.position,
+          overPosition: null,
+          insertIndex: 0,
+          neighborIndex: 0,
+          tabIntoGroupKey: null,
+        })
+        void platform.ipc.emit('drag-start', {
+          panelId: data.panelId,
+          panelIds: data.isGroup ? data.panelIds : [data.panelId],
+          sourceWindow: windowId,
+        })
+      }
+    },
+    [platform, windowId],
+  )
 
   const handleDragMove = useCallback(
     (event: DragMoveEvent) => {
@@ -171,8 +192,7 @@ export function usePanelDrag() {
       const clientY = initial0.clientY + event.delta.y
 
       wasDragOutside.current =
-        clientX < 0 || clientX > window.innerWidth ||
-        clientY < 0 || clientY > window.innerHeight
+        clientX < 0 || clientX > window.innerWidth || clientY < 0 || clientY > window.innerHeight
 
       if (now - lastDragMoveTs.current >= DRAG_MOVE_THROTTLE) {
         lastDragMoveTs.current = now
@@ -191,28 +211,53 @@ export function usePanelDrag() {
 
         if (!overPosition) {
           if (prev.overPosition === null && prev.tabIntoGroupKey === null) return prev
-          return { ...prev, overPosition: null, insertIndex: 0, neighborIndex: 0, tabIntoGroupKey: null }
+          return {
+            ...prev,
+            overPosition: null,
+            insertIndex: 0,
+            neighborIndex: 0,
+            tabIntoGroupKey: null,
+          }
         }
 
         const initial = event.activatorEvent as PointerEvent
         const pointerX = initial.clientX + event.delta.x
         const pointerY = initial.clientY + event.delta.y
 
-        const tabIntoGroupKey = detectTabInto(overPosition, pointerX, pointerY, prev.panelId, prev.isGroup)
+        const tabIntoGroupKey = detectTabInto(
+          overPosition,
+          pointerX,
+          pointerY,
+          prev.panelId,
+          prev.isGroup,
+        )
 
         if (tabIntoGroupKey) {
-          if (prev.tabIntoGroupKey === tabIntoGroupKey && prev.overPosition === overPosition) return prev
+          if (prev.tabIntoGroupKey === tabIntoGroupKey && prev.overPosition === overPosition)
+            return prev
           return { ...prev, overPosition, insertIndex: 0, neighborIndex: 0, tabIntoGroupKey }
         }
 
-        const { insertIndex, neighborIndex } = computeInsertIndex(overPosition, pointerX, pointerY, prev.panelId, prev.isGroup)
+        const { insertIndex, neighborIndex } = computeInsertIndex(
+          overPosition,
+          pointerX,
+          pointerY,
+          prev.panelId,
+          prev.isGroup,
+        )
 
-        if (prev.overPosition === overPosition && prev.insertIndex === insertIndex && prev.neighborIndex === neighborIndex && prev.tabIntoGroupKey === null) return prev
+        if (
+          prev.overPosition === overPosition &&
+          prev.insertIndex === insertIndex &&
+          prev.neighborIndex === neighborIndex &&
+          prev.tabIntoGroupKey === null
+        )
+          return prev
         return { ...prev, overPosition, insertIndex, neighborIndex, tabIntoGroupKey: null }
       })
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [computeInsertIndex, detectTabInto]
+    [computeInsertIndex, detectTabInto],
   )
 
   const handleDragEnd = useCallback(
@@ -250,7 +295,7 @@ export function usePanelDrag() {
       wasDragOutside.current = false
       void platform.ipc.emit('drag-end', { sourceWindow: windowId })
     },
-    [platform, windowId]
+    [platform, windowId],
   )
 
   const handleDragCancel = useCallback(() => {
@@ -291,7 +336,7 @@ export function usePanelDrag() {
       let count = panels[pos].length
       if (dragState) {
         const draggedGroupIdx = panels[pos].findIndex((g) =>
-          dragState.isGroup ? g[0] === dragState.panelId : g.includes(dragState.panelId)
+          dragState.isGroup ? g[0] === dragState.panelId : g.includes(dragState.panelId),
         )
         if (draggedGroupIdx >= 0) {
           const isSplittingGroup = !dragState.isGroup && panels[pos][draggedGroupIdx].length > 1
@@ -301,7 +346,7 @@ export function usePanelDrag() {
       }
       return count
     },
-    [panels, dragState]
+    [panels, dragState],
   )
 
   const isZoneEmpty = useCallback(
@@ -314,7 +359,7 @@ export function usePanelDrag() {
       })
       return remaining.length === 0
     },
-    [isDragging, panels, dragState]
+    [isDragging, panels, dragState],
   )
 
   return {

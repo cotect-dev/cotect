@@ -15,7 +15,11 @@ pub fn upsert(c: &Conn, root_path: &str) -> Result<i64> {
         "INSERT INTO repos(root_path) VALUES(?1) ON CONFLICT(root_path) DO NOTHING",
         params![root_path],
     )?;
-    let id: i64 = c.query_row("SELECT id FROM repos WHERE root_path = ?1", [root_path], |r| r.get(0))?;
+    let id: i64 = c.query_row(
+        "SELECT id FROM repos WHERE root_path = ?1",
+        [root_path],
+        |r| r.get(0),
+    )?;
     Ok(id)
 }
 
@@ -23,7 +27,12 @@ pub fn get(c: &Conn, root_path: &str) -> Result<Option<Repo>> {
     let row = c.query_row(
         "SELECT id, root_path FROM repos WHERE root_path = ?1",
         [root_path],
-        |r| Ok(Repo { id: r.get(0)?, root_path: r.get(1)? }),
+        |r| {
+            Ok(Repo {
+                id: r.get(0)?,
+                root_path: r.get(1)?,
+            })
+        },
     );
     Ok(row.ok())
 }

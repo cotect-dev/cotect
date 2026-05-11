@@ -1,9 +1,13 @@
 import { create } from 'zustand'
 import { createStoreWithHMR } from '@/lib/hmr'
 import {
-  providersList, providersUpsert, providersRemove,
-  assignmentGet, assignmentSet,
-  type Provider, type ActiveAssignment,
+  providersList,
+  providersUpsert,
+  providersRemove,
+  assignmentGet,
+  assignmentSet,
+  type Provider,
+  type ActiveAssignment,
 } from '@/services/db'
 
 interface ProvidersState {

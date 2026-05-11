@@ -28,7 +28,11 @@ const filterOptions: { value: LogLevel | null; label: string }[] = [
 
 function formatTime(ts: number): string {
   const d = new Date(ts)
-  return d.toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0')
+  return (
+    d.toLocaleTimeString('en-GB', { hour12: false }) +
+    '.' +
+    String(d.getMilliseconds()).padStart(3, '0')
+  )
 }
 
 export default function Console() {
@@ -38,7 +42,7 @@ export default function Console() {
   const setFilter = useConsoleStore((s) => s.setFilter)
 
   const filtered = useMemo(
-    () => filter ? entries.filter((e) => e.level === filter) : entries,
+    () => (filter ? entries.filter((e) => e.level === filter) : entries),
     [entries, filter],
   )
 
@@ -46,7 +50,10 @@ export default function Console() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-border/50 shrink-0" role="tablist">
+      <div
+        className="flex items-center gap-1 px-2 py-1 border-b border-border/50 shrink-0"
+        role="tablist"
+      >
         {filterOptions.map((opt) => (
           <button
             key={opt.label}

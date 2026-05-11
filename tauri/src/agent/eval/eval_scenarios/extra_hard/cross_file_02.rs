@@ -18,13 +18,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let notification_file = ap(dir, "notification.py");
-        std::fs::write(&notification_file, r#"NOTIFICATION_STATUSES = ["PENDING", "SENT", "FAILED", "CANCELLED"]
+        std::fs::write(
+            &notification_file,
+            r#"NOTIFICATION_STATUSES = ["PENDING", "SENT", "FAILED", "CANCELLED"]
 
 DEFAULT_STATUS = "PENDING"
 
@@ -59,10 +61,14 @@ class Notification:
             "status": self.status,
             "attempts": self.attempts,
         }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let dispatcher_file = ap(dir, "dispatcher.py");
-        std::fs::write(&dispatcher_file, r#"from notification import Notification
+        std::fs::write(
+            &dispatcher_file,
+            r#"from notification import Notification
 
 
 class Dispatcher:
@@ -99,10 +105,14 @@ class Dispatcher:
         for n in self._queue:
             result[n.status] = result.get(n.status, 0) + 1
         return result
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let formatter_file = ap(dir, "formatter.py");
-        std::fs::write(&formatter_file, r#"STATUS_LABELS = {
+        std::fs::write(
+            &formatter_file,
+            r#"STATUS_LABELS = {
     "PENDING": "Waiting to send",
     "SENT": "Delivered",
     "FAILED": "Delivery failed",
@@ -130,10 +140,14 @@ def format_status_report(summary: dict) -> str:
         label = STATUS_LABELS.get(status, status)
         lines.append(f"  {status}: {count} ({label})")
     return "\n".join(lines)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let payments_file = ap(dir, "payments.py");
-        std::fs::write(&payments_file, r#"PAYMENT_STATUS_PENDING = "PENDING"
+        std::fs::write(
+            &payments_file,
+            r#"PAYMENT_STATUS_PENDING = "PENDING"
 PAYMENT_STATUS_COMPLETED = "COMPLETED"
 PAYMENT_STATUS_REFUNDED = "REFUNDED"
 
@@ -159,10 +173,14 @@ class Payment:
             "currency": self.currency,
             "status": self.status,
         }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_rename.py");
-        std::fs::write(&test_file, r#"from notification import Notification, NOTIFICATION_STATUSES, DEFAULT_STATUS
+        std::fs::write(
+            &test_file,
+            r#"from notification import Notification, NOTIFICATION_STATUSES, DEFAULT_STATUS
 from dispatcher import Dispatcher
 from formatter import format_notification, format_status_report, STATUS_LABELS, STATUS_ICONS
 from payments import Payment, PAYMENT_STATUS_PENDING
@@ -273,10 +291,15 @@ if __name__ == "__main__":
     test_payment_status_unchanged()
     test_payment_workflow_unchanged()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "In this codebase, notifications currently start life in a status \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "In this codebase, notifications currently start life in a status \
              named \"PENDING\". Rename that notification status to \"QUEUED\" \
              everywhere it appears in notification code — the status list, the \
              default, all comparisons, the display label map, the icon map, and \
@@ -289,25 +312,41 @@ if __name__ == "__main__":
              belong to the notification domain and which do not.\n\n\
              Apply all edits first, then run the bundled test suite \
              (`python3 test_rename.py`) and iterate until it prints \
-             ALL_TESTS_PASSED.".to_string()),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Notification domain: old string fully gone, new string present
-                file_has(&notification_file, &["QUEUED"]),
-                file_lacks(&notification_file, &["PENDING"]),
-                file_has(&dispatcher_file, &["QUEUED"]),
-                file_lacks(&dispatcher_file, &["PENDING"]),
-                file_has(&formatter_file, &["QUEUED"]),
-                file_lacks(&formatter_file, &["PENDING"]),
-                // Payment domain left alone
-                file_has(&payments_file, &["PAYMENT_STATUS_PENDING", "\"PENDING\""]),
-                file_lacks(&payments_file, &["QUEUED"]),
-                // End-to-end behaviour actually works
-                run_has("python3 test_rename.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![notification_file, dispatcher_file, formatter_file, payments_file]),
-            vec![test_file])
+             ALL_TESTS_PASSED."
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Notification domain: old string fully gone, new string present
+                        file_has(&notification_file, &["QUEUED"]),
+                        file_lacks(&notification_file, &["PENDING"]),
+                        file_has(&dispatcher_file, &["QUEUED"]),
+                        file_lacks(&dispatcher_file, &["PENDING"]),
+                        file_has(&formatter_file, &["QUEUED"]),
+                        file_lacks(&formatter_file, &["PENDING"]),
+                        // Payment domain left alone
+                        file_has(&payments_file, &["PAYMENT_STATUS_PENDING", "\"PENDING\""]),
+                        file_lacks(&payments_file, &["QUEUED"]),
+                        // End-to-end behaviour actually works
+                        run_has("python3 test_rename.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![
+                    notification_file,
+                    dispatcher_file,
+                    formatter_file,
+                    payments_file,
+                ],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_cross_file_02_selective_rename", Category::CrossFile, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_cross_file_02_selective_rename",
+        Category::CrossFile,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

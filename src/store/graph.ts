@@ -5,7 +5,11 @@ import { HIDDEN_DIRECTORIES } from '@/lib/constants'
 import { toRepoRelative } from '@/lib/repoPath'
 import { parseImports } from '@/services/treesitter'
 import { resolveImport } from '@/services/importResolver'
-import { PARSEABLE_EXTENSIONS, getConfigForFile, type LanguageId } from '@/services/treesitter-queries'
+import {
+  PARSEABLE_EXTENSIONS,
+  getConfigForFile,
+  type LanguageId,
+} from '@/services/treesitter-queries'
 
 export const DEFAULT_HUB_COUNT = 30
 const MAX_FILES = 500
@@ -125,94 +129,99 @@ async function collectParseableFiles(
   return found
 }
 
-export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () => create<GraphState>((set) => ({
-  scanState: 'idle',
-  scannedCount: 0,
-  errorMessage: null,
-  allNodes: [],
-  allEdges: [],
-  selectedNodeId: null,
-  truncated: false,
+export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () =>
+  create<GraphState>((set) => ({
+    scanState: 'idle',
+    scannedCount: 0,
+    errorMessage: null,
+    allNodes: [],
+    allEdges: [],
+    selectedNodeId: null,
+    truncated: false,
 
-  setSelectedNodeId: (id) => set({ selectedNodeId: id }),
+    setSelectedNodeId: (id) => set({ selectedNodeId: id }),
 
-  scan: async (rootPath: string) => {
-    set({ scanState: 'scanning', scannedCount: 0, errorMessage: null })
+    scan: async (rootPath: string) => {
+      set({ scanState: 'scanning', scannedCount: 0, errorMessage: null })
 
-    try {
-      const budget = { remaining: MAX_FILES }
-      const absFiles = await collectParseableFiles(rootPath, budget, (count) => {
-        set({ scannedCount: count })
-      })
-      const truncated = absFiles.length >= MAX_FILES
-      const relFiles = absFiles.map((p) => toRepoRelative(p, rootPath))
-      const knownFiles = new Set(relFiles)
+      try {
+        const budget = { remaining: MAX_FILES }
+        const absFiles = await collectParseableFiles(rootPath, budget, (count) => {
+          set({ scannedCount: count })
+        })
+        const truncated = absFiles.length >= MAX_FILES
+        const relFiles = absFiles.map((p) => toRepoRelative(p, rootPath))
+        const knownFiles = new Set(relFiles)
 
-      const platform = getPlatform()
-      const importsByFile = new Map<string, string[]>()
-      await Promise.all(
-        absFiles.map(async (abs, i) => {
-          const rel = relFiles[i]
-          try {
-            const source = await platform.fs.readFile(abs)
-            const specifiers = await parseImports(rel, source)
-            importsByFile.set(rel, specifiers)
-          } catch {
-            importsByFile.set(rel, [])
+        const platform = getPlatform()
+        const importsByFile = new Map<string, string[]>()
+        await Promise.all(
+          absFiles.map(async (abs, i) => {
+            const rel = relFiles[i]
+            try {
+              const source = await platform.fs.readFile(abs)
+              const specifiers = await parseImports(rel, source)
+              importsByFile.set(rel, specifiers)
+            } catch {
+              importsByFile.set(rel, [])
+            }
+          }),
+        )
+
+        const rawNodes: GraphFileNode[] = relFiles.map((rel) => {
+          const config = getConfigForFile(rel)
+          const filename = getFilename(rel)
+          return {
+            id: rel,
+            label: filename,
+            folder: getDirname(rel),
+            language: config?.id ?? 'typescript',
+            inDegree: 0,
+            outDegree: 0,
+            score: 0,
+            isTestFile: isTestFile(filename),
           }
-        }),
-      )
+        })
 
-      const rawNodes: GraphFileNode[] = relFiles.map((rel) => {
-        const config = getConfigForFile(rel)
-        const filename = getFilename(rel)
-        return {
-          id: rel,
-          label: filename,
-          folder: getDirname(rel),
-          language: config?.id ?? 'typescript',
-          inDegree: 0,
-          outDegree: 0,
-          score: 0,
-          isTestFile: isTestFile(filename),
+        const edges: GraphFileEdge[] = []
+        const seen = new Set<string>()
+        for (const [from, specifiers] of importsByFile) {
+          const config = getConfigForFile(from)
+          if (!config) continue
+          for (const spec of specifiers) {
+            const target = resolveImport(spec, from, knownFiles, config.id)
+            if (!target || target === from) continue
+            const key = `${from}->${target}`
+            if (seen.has(key)) continue
+            seen.add(key)
+            edges.push({ source: from, target })
+          }
         }
-      })
 
-      const edges: GraphFileEdge[] = []
-      const seen = new Set<string>()
-      for (const [from, specifiers] of importsByFile) {
-        const config = getConfigForFile(from)
-        if (!config) continue
-        for (const spec of specifiers) {
-          const target = resolveImport(spec, from, knownFiles, config.id)
-          if (!target || target === from) continue
-          const key = `${from}->${target}`
-          if (seen.has(key)) continue
-          seen.add(key)
-          edges.push({ source: from, target })
+        const scoredNodes = scoreNodes(rawNodes, edges)
+
+        // Auto-select the most connected file as the initial focus
+        let topNodeId: string | null = null
+        if (scoredNodes.length > 0) {
+          topNodeId = scoredNodes.reduce(
+            (best, n) => (n.score > best.score ? n : best),
+            scoredNodes[0],
+          ).id
         }
+
+        set({
+          scanState: 'ready',
+          allNodes: scoredNodes,
+          allEdges: edges,
+          selectedNodeId: topNodeId,
+          truncated,
+        })
+      } catch (err) {
+        set({
+          scanState: 'error',
+          errorMessage: (err as Error).message ?? 'unknown error',
+        })
       }
-
-      const scoredNodes = scoreNodes(rawNodes, edges)
-
-      // Auto-select the most connected file as the initial focus
-      let topNodeId: string | null = null
-      if (scoredNodes.length > 0) {
-        topNodeId = scoredNodes.reduce((best, n) => n.score > best.score ? n : best, scoredNodes[0]).id
-      }
-
-      set({
-        scanState: 'ready',
-        allNodes: scoredNodes,
-        allEdges: edges,
-        selectedNodeId: topNodeId,
-        truncated,
-      })
-    } catch (err) {
-      set({
-        scanState: 'error',
-        errorMessage: (err as Error).message ?? 'unknown error',
-      })
-    }
-  },
-})))
+    },
+  })),
+)

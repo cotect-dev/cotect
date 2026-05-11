@@ -21,16 +21,16 @@ function getBcChannel(): BroadcastChannel {
 }
 
 export const browserPlatform: Platform = {
-  async isWayland() { return false },
+  async isWayland() {
+    return false
+  },
 
   windows: {
     getWindowId,
 
     async create(id, opts) {
       const url = `${window.location.origin}/?window=${id}`
-      const features = opts
-        ? `width=${opts.width ?? 800},height=${opts.height ?? 600}`
-        : undefined
+      const features = opts ? `width=${opts.width ?? 800},height=${opts.height ?? 600}` : undefined
       window.open(url, '_blank', features)
     },
 
@@ -79,7 +79,9 @@ export const browserPlatform: Platform = {
     },
 
     async onResized(callback) {
-      const handler = () => { callback({ width: window.outerWidth, height: window.outerHeight }) }
+      const handler = () => {
+        callback({ width: window.outerWidth, height: window.outerHeight })
+      }
       window.addEventListener('resize', handler)
       return () => window.removeEventListener('resize', handler)
     },
@@ -95,7 +97,9 @@ export const browserPlatform: Platform = {
     },
 
     onClose(callback) {
-      const handler = () => { callback() }
+      const handler = () => {
+        callback()
+      }
       window.addEventListener('beforeunload', handler)
       return () => window.removeEventListener('beforeunload', handler)
     },
@@ -210,7 +214,10 @@ export const browserPlatform: Platform = {
       localStorage.removeItem(lsKey(`panel-${name}`))
     },
 
-    listen(name: string, callback: (payload: { state: unknown; source: string }) => void): () => void {
+    listen(
+      name: string,
+      callback: (payload: { state: unknown; source: string }) => void,
+    ): () => void {
       const handler = (e: MessageEvent) => {
         if (e.data?.event === `synced-state-update:${name}`) {
           callback(e.data.payload)

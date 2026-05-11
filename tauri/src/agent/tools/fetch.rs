@@ -23,11 +23,7 @@ pub async fn execute(input: &FetchInput) -> Result<String, String> {
         .map_err(|e| format!("Fetch failed for '{}': {e}", input.url))?;
 
     if !response.status().is_success() {
-        return Err(format!(
-            "HTTP {} for '{}'",
-            response.status(),
-            input.url
-        ));
+        return Err(format!("HTTP {} for '{}'", response.status(), input.url));
     }
 
     let body = response
@@ -35,5 +31,9 @@ pub async fn execute(input: &FetchInput) -> Result<String, String> {
         .await
         .map_err(|e| format!("Failed to read response body: {e}"))?;
 
-    Ok(truncate_bytes(&body, super::MAX_OUTPUT, &format!("Response truncated at {} bytes", super::MAX_OUTPUT)))
+    Ok(truncate_bytes(
+        &body,
+        super::MAX_OUTPUT,
+        &format!("Response truncated at {} bytes", super::MAX_OUTPUT),
+    ))
 }

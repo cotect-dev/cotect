@@ -35,13 +35,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let pipeline_file = ap(dir, "pipeline.py");
-        std::fs::write(&pipeline_file, r#"import csv
+        std::fs::write(
+            &pipeline_file,
+            r#"import csv
 import json
 import io
 
@@ -181,10 +183,14 @@ class DataPipeline:
     @property
     def data(self) -> list[dict]:
         return list(self._data)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_pipeline.py");
-        std::fs::write(&test_file, r#"import json
+        std::fs::write(
+            &test_file,
+            r#"import json
 from pipeline import DataPipeline
 
 def test_load_csv():
@@ -312,10 +318,15 @@ if __name__ == "__main__":
     test_chunk_size_exists()
     test_god_class_decomposed()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "The DataPipeline class in {} has grown to handle loading (CSV and \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "The DataPipeline class in {} has grown to handle loading (CSV and \
              JSON), encoding cleanup, transform registration, validation, chunked \
              processing, and export all inside one class. It is now hard to read, \
              hard to test in isolation, and any change touches unrelated concerns. \
@@ -326,18 +337,28 @@ if __name__ == "__main__":
              Step 2: Apply your refactoring.\n\
              Step 3: Run the existing `python3 test_pipeline.py` to verify. If tests fail, \
              you may have removed or relocated something that's actually used.",
-            pipeline_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: tests must pass — they cover CSV/JSON loading,
-                // mojibake cleanup, custom transforms, validation, strict mode,
-                // chunked processing, and export. The suite also enforces
-                // decomposition via a line-count check on DataPipeline.
-                run_has("python3 test_pipeline.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![pipeline_file]),
-            vec![test_file])
+                        pipeline_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: tests must pass — they cover CSV/JSON loading,
+                        // mojibake cleanup, custom transforms, validation, strict mode,
+                        // chunked processing, and export. The suite also enforces
+                        // decomposition via a line-count check on DataPipeline.
+                        run_has("python3 test_pipeline.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![pipeline_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_refactor_05_god_class_decomposition", Category::Refactor, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_refactor_05_god_class_decomposition",
+        Category::Refactor,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

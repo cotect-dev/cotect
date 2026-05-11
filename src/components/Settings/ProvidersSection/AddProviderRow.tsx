@@ -3,7 +3,8 @@ import { probeProvider } from '@/services/agent'
 import { useProvidersStore } from '@/store/providers'
 import { Button } from '@/components/ui/button'
 
-const INPUT = 'h-7 px-2 text-xs rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary'
+const INPUT =
+  'h-7 px-2 text-xs rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary'
 const MONO = `${INPUT} font-mono`
 
 export default function AddProviderRow() {
@@ -21,7 +22,8 @@ export default function AddProviderRow() {
       const id = crypto.randomUUID()
       const label = `${probed.server_type} — ${endpoint}`
       await upsert({
-        id, label,
+        id,
+        label,
         endpoint: probed.normalized_endpoint,
         api_key: apiKey || null,
         detected_json: JSON.stringify({

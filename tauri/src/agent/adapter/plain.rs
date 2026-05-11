@@ -23,11 +23,9 @@
 //! structured chat messages.
 
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
-use super::super::types::{
-    ChatMessage, LlmStreamEvent, Role, ToolCall, ToolDefinition,
-};
+use super::super::types::{ChatMessage, LlmStreamEvent, Role, ToolCall, ToolDefinition};
 use super::{ModelAdapter, StreamParser};
 
 /// The turn separator marker. Distinctive enough to be rare in content,
@@ -73,7 +71,6 @@ impl ModelAdapter for PlainAdapter {
         Box::new(PlainStreamParser::new())
     }
 }
-
 
 /// Render the full conversation into a single prompt string.
 pub(crate) fn render_prompt(messages: &[ChatMessage], tools: &[ToolDefinition]) -> String {
@@ -282,7 +279,6 @@ fn extract_type(prop: &Value) -> String {
     }
 }
 
-
 #[derive(Deserialize, Default)]
 struct CompletionChunk {
     #[serde(default)]
@@ -293,7 +289,6 @@ struct CompletionChunk {
     #[allow(dead_code)]
     stop_type: Option<String>,
 }
-
 
 /// State machine for parsing the model's raw streaming output.
 ///
@@ -490,7 +485,6 @@ impl StreamParser for PlainStreamParser {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,20 +516,14 @@ mod tests {
 
     #[test]
     fn build_request_body_has_prompt_and_stops() {
-        let body = PlainAdapter.build_request_body(
-            "model",
-            &[ChatMessage::user("Hi")],
-            &[],
-            0.2,
-            100,
-        );
+        let body =
+            PlainAdapter.build_request_body("model", &[ChatMessage::user("Hi")], &[], 0.2, 100);
         assert!(body["prompt"].is_string());
         assert!(body["prompt"].as_str().unwrap().contains("<<<USER>>>"));
         assert_eq!(body["stream"], json!(true));
         assert_eq!(body["n_predict"], json!(100));
         assert_eq!(body["stop"][0], json!("<<<"));
     }
-
 
     #[test]
     fn renders_system_user_basic() {
@@ -689,7 +677,6 @@ mod tests {
         assert_eq!(render_parameters(&params), "(none)");
     }
 
-
     #[test]
     fn parser_emits_plain_text() {
         let mut p = PlainStreamParser::new();
@@ -817,11 +804,9 @@ mod tests {
     fn parser_finalize_emits_done_if_needed() {
         let mut p = PlainStreamParser::new();
         let events = p.finalize();
-        assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, LlmStreamEvent::Done { .. }))
-        );
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::Done { .. })));
     }
 
     #[test]
@@ -854,9 +839,7 @@ mod tests {
         let mut p = PlainStreamParser::new();
         let chunk = chunk_json("<tool_call>\nnot valid json\n</tool_call>");
         let events = p.process_sse_data(&chunk);
-        let has_error = events
-            .iter()
-            .any(|e| matches!(e, LlmStreamEvent::Error(_)));
+        let has_error = events.iter().any(|e| matches!(e, LlmStreamEvent::Error(_)));
         assert!(has_error);
     }
 

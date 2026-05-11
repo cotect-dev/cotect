@@ -26,13 +26,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let request_file = ap(dir, "request.py");
-        std::fs::write(&request_file, r#"class Request:
+        std::fs::write(
+            &request_file,
+            r#"class Request:
     """HTTP request object."""
 
     def __init__(self, method: str, path: str, headers: dict | None = None,
@@ -70,10 +72,14 @@ class Response:
             "body": self.body,
             "headers": dict(self.headers),
         }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let handlers_file = ap(dir, "handlers.py");
-        std::fs::write(&handlers_file, r#"from request import Request, Response
+        std::fs::write(
+            &handlers_file,
+            r#"from request import Request, Response
 
 
 def handle_home(request: Request) -> Response:
@@ -97,10 +103,14 @@ def handle_create_user(request: Request) -> Response:
 def handle_health(request: Request) -> Response:
     """Handle GET /health"""
     return Response(200, "OK")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let app_file = ap(dir, "app.py");
-        std::fs::write(&app_file, r#"from request import Request, Response
+        std::fs::write(
+            &app_file,
+            r#"from request import Request, Response
 
 
 class App:
@@ -148,10 +158,14 @@ class App:
     #   value replaces the current response. Every middleware sees the
     #   response, including when an earlier middleware short-circuited.
     # - The final response is returned.
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let middleware_file = ap(dir, "middleware.py");
-        std::fs::write(&middleware_file, r#"from request import Request, Response
+        std::fs::write(
+            &middleware_file,
+            r#"from request import Request, Response
 
 
 # TODO: implement three middleware classes. Each must expose
@@ -181,10 +195,14 @@ class App:
 #     "Access-Control-Allow-Origin" set to allowed_origin and an
 #     "Access-Control-Allow-Methods" header (value describing allowed
 #     methods).
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_app.py");
-        std::fs::write(&test_file, r#"from request import Request, Response
+        std::fs::write(
+            &test_file,
+            r#"from request import Request, Response
 from handlers import handle_home, handle_users, handle_create_user, handle_health
 from app import App
 from middleware import LoggingMiddleware, AuthMiddleware, CorsMiddleware
@@ -353,23 +371,38 @@ if __name__ == "__main__":
     test_post_with_middleware()
     test_no_middleware_still_works()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(format!(
-            "Add a middleware pipeline to the App in {} (implement `use` and \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(format!(
+                        "Add a middleware pipeline to the App in {} (implement `use` and \
              extend `handle`) and implement the three middleware classes — \
              LoggingMiddleware, AuthMiddleware, CorsMiddleware — in {}. \
              Follow the contracts in the TODO comments; the exact ordering, \
              short-circuit, and response-phase rules are specified there.\n\n\
              Verify with `python3 test_app.py`.",
-            app_file, middleware_file)),
-            vec![
-                complete(),
-                succeeded("shell"),
-                run_has("python3 test_app.py", &["ALL_TESTS_PASSED"]),
-            ]),
-            vec![request_file, handlers_file, app_file, middleware_file]),
-            vec![test_file])
+                        app_file, middleware_file
+                    )),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        run_has("python3 test_app.py", &["ALL_TESTS_PASSED"]),
+                    ],
+                ),
+                vec![request_file, handlers_file, app_file, middleware_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_implement_05_middleware_pipeline", Category::Implement, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_implement_05_middleware_pipeline",
+        Category::Implement,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

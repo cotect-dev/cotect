@@ -26,11 +26,9 @@ use serde_json::Value;
 
 use super::super::types::{ChatMessage, LlmStreamEvent, ToolDefinition};
 use super::{
-    ModelAdapter, StreamChunk, StreamParser,
     build_openai_request_body, emit_format_error, safe_emit_len, safe_emit_len_multi,
-    strip_paired_blocks, strip_tag_pairs,
+    strip_paired_blocks, strip_tag_pairs, ModelAdapter, StreamChunk, StreamParser,
 };
-
 
 pub struct GemmaAdapter;
 
@@ -58,7 +56,6 @@ impl ModelAdapter for GemmaAdapter {
         Box::new(GemmaStreamParser::new())
     }
 }
-
 
 /// Wraps the standard OpenAI SSE format with Gemma-4-specific stripping
 /// of thinking tokens, raw tool-call tokens, and fallback parsing of
@@ -128,9 +125,7 @@ impl StreamParser for GemmaStreamParser {
                         index: tc.index,
                         id: tc.id.clone(),
                         name: func.and_then(|f| f.name.clone()),
-                        arguments_chunk: func
-                            .and_then(|f| f.arguments.clone())
-                            .unwrap_or_default(),
+                        arguments_chunk: func.and_then(|f| f.arguments.clone()).unwrap_or_default(),
                     });
                 }
             }
@@ -185,10 +180,14 @@ impl GemmaStreamParser {
                 return;
             }
 
-            let think_marker = self.text_buffer.find("<|channel>thought\n")
+            let think_marker = self
+                .text_buffer
+                .find("<|channel>thought\n")
                 .map(|pos| (pos, "<|channel>thought\n".len()))
                 .or_else(|| {
-                    self.text_buffer.find("<|channel>thought ").map(|pos| (pos, "<|channel>thought ".len()))
+                    self.text_buffer
+                        .find("<|channel>thought ")
+                        .map(|pos| (pos, "<|channel>thought ".len()))
                 });
             if let Some((pos, marker_len)) = think_marker {
                 if pos > 0 {
@@ -213,7 +212,10 @@ impl GemmaStreamParser {
                 }
                 if let Some(end) = self.text_buffer.find("<tool_call|>") {
                     // Save the raw token to accumulated_text for fallback parsing.
-                    let raw: String = self.text_buffer.drain(..end + "<tool_call|>".len()).collect();
+                    let raw: String = self
+                        .text_buffer
+                        .drain(..end + "<tool_call|>".len())
+                        .collect();
                     self.accumulated_text.push_str(&raw);
                     continue;
                 }
@@ -338,8 +340,9 @@ impl GemmaStreamParser {
                         in_string = !in_string;
                     }
                     if !in_string {
-                        if c == '{' { depth += 1; }
-                        else if c == '}' {
+                        if c == '{' {
+                            depth += 1;
+                        } else if c == '}' {
                             depth -= 1;
                             if depth == 0 {
                                 end_pos = i + 1;
@@ -390,7 +393,6 @@ impl GemmaStreamParser {
     }
 }
 
-
 /// Parse a tool call from the model's output. Tries multiple strategies:
 ///
 /// 1. Standard JSON: `{"name":"read","arguments":{"file_path":"/tmp/x.txt"}}`
@@ -409,8 +411,7 @@ fn parse_gemma_tool_call(input: &str) -> Result<(String, String), String> {
     // Strategy 1: Try standard JSON
     if input.starts_with('{') {
         if let Ok(obj) = serde_json::from_str::<serde_json::Map<String, Value>>(input) {
-            if let (Some(Value::String(name)), Some(args)) =
-                (obj.get("name"), obj.get("arguments"))
+            if let (Some(Value::String(name)), Some(args)) = (obj.get("name"), obj.get("arguments"))
             {
                 let args_json = serde_json::to_string(args).unwrap_or_else(|_| "{}".to_string());
                 return Ok((name.clone(), args_json));
@@ -605,10 +606,7 @@ fn parse_gemma_quoted_string(chars: &mut std::iter::Peekable<std::str::Chars>) -
     s
 }
 
-fn parse_quoted_string(
-    chars: &mut std::iter::Peekable<std::str::Chars>,
-    quote: char,
-) -> String {
+fn parse_quoted_string(chars: &mut std::iter::Peekable<std::str::Chars>, quote: char) -> String {
     let mut s = String::new();
     while let Some(c) = chars.next() {
         if c == '\\' {
@@ -654,10 +652,13 @@ fn collect_until_matching_brace(chars: &mut std::iter::Peekable<std::str::Chars>
             in_string = !in_string;
         }
         if !in_string {
-            if c == '{' { depth += 1; }
-            else if c == '}' {
+            if c == '{' {
+                depth += 1;
+            } else if c == '}' {
                 depth -= 1;
-                if depth == 0 { break; }
+                if depth == 0 {
+                    break;
+                }
             }
         }
         s.push(c);
@@ -685,7 +686,6 @@ fn parse_array(chars: &mut std::iter::Peekable<std::str::Chars>) -> Result<Value
     Ok(Value::Array(arr))
 }
 
-
 /// Strip `<|channel>thought\n...<channel|>` blocks from text.
 fn strip_thinking(text: &str) -> String {
     // Gemma uses two variants of the thinking open tag (newline and space).
@@ -697,17 +697,19 @@ fn strip_thinking(text: &str) -> String {
 /// Strip raw Gemma tool-call tokens from text.
 /// Removes `<|tool_call>...<tool_call|>` and `<|tool_response>...<tool_response|>`.
 fn strip_raw_tool_tokens(text: &str) -> String {
-    strip_tag_pairs(text, &[
-        ("<|tool_call>", "<tool_call|>"),
-        ("<|tool_response>", "<tool_response|>"),
-    ])
+    strip_tag_pairs(
+        text,
+        &[
+            ("<|tool_call>", "<tool_call|>"),
+            ("<|tool_response>", "<tool_response|>"),
+        ],
+    )
 }
 
 /// Check if text contains a tool-call pattern that needs fallback parsing.
 fn contains_tool_call_pattern(text: &str) -> bool {
     text.contains("<|tool_call>") || text.contains("call:")
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -737,8 +739,7 @@ mod tests {
 
     #[test]
     fn parse_single_quoted_values() {
-        let (name, args) =
-            parse_gemma_tool_call("call:shell{command: 'echo \"hello\"'}").unwrap();
+        let (name, args) = parse_gemma_tool_call("call:shell{command: 'echo \"hello\"'}").unwrap();
         assert_eq!(name, "shell");
         let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
         assert_eq!(parsed["command"], "echo \"hello\"");
@@ -746,9 +747,10 @@ mod tests {
 
     #[test]
     fn parse_escaped_newlines() {
-        let (name, args) =
-            parse_gemma_tool_call("call:patch{old_string: \"line1\\nline2\", new_string: \"line1\\nline3\"}")
-                .unwrap();
+        let (name, args) = parse_gemma_tool_call(
+            "call:patch{old_string: \"line1\\nline2\", new_string: \"line1\\nline3\"}",
+        )
+        .unwrap();
         assert_eq!(name, "patch");
         let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
         assert_eq!(parsed["old_string"], "line1\nline2");
@@ -757,8 +759,7 @@ mod tests {
 
     #[test]
     fn parse_no_spaces() {
-        let (name, args) =
-            parse_gemma_tool_call("call:shell{command:\"ls -la\"}").unwrap();
+        let (name, args) = parse_gemma_tool_call("call:shell{command:\"ls -la\"}").unwrap();
         assert_eq!(name, "shell");
         let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
         assert_eq!(parsed["command"], "ls -la");
@@ -766,8 +767,7 @@ mod tests {
 
     #[test]
     fn parse_without_call_prefix() {
-        let (name, args) =
-            parse_gemma_tool_call("shell{command: \"ls\"}").unwrap();
+        let (name, args) = parse_gemma_tool_call("shell{command: \"ls\"}").unwrap();
         assert_eq!(name, "shell");
         let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
         assert_eq!(parsed["command"], "ls");
@@ -783,8 +783,7 @@ mod tests {
 
     #[test]
     fn parse_bare_boolean_value() {
-        let (name, args) =
-            parse_gemma_tool_call(r#"call:tool{flag: true, name: "test"}"#).unwrap();
+        let (name, args) = parse_gemma_tool_call(r#"call:tool{flag: true, name: "test"}"#).unwrap();
         assert_eq!(name, "tool");
         let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
         assert_eq!(parsed["flag"], true);
@@ -802,14 +801,13 @@ mod tests {
 
     #[test]
     fn parse_standard_json_tool_call() {
-        let (name, args) = parse_gemma_tool_call(
-            r#"{"name": "shell", "arguments": {"command": "ls -la"}}"#
-        ).unwrap();
+        let (name, args) =
+            parse_gemma_tool_call(r#"{"name": "shell", "arguments": {"command": "ls -la"}}"#)
+                .unwrap();
         assert_eq!(name, "shell");
         let parsed: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
         assert_eq!(parsed["command"], "ls -la");
     }
-
 
     #[test]
     fn parse_gemma_pipe_quote_simple() {
@@ -827,7 +825,10 @@ mod tests {
         assert_eq!(name, "shell");
         let args: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
         assert_eq!(args.get("command").unwrap().as_str().unwrap(), "echo hello");
-        assert_eq!(args.get("description").unwrap().as_str().unwrap(), "Say hello");
+        assert_eq!(
+            args.get("description").unwrap().as_str().unwrap(),
+            "Say hello"
+        );
     }
 
     #[test]
@@ -848,11 +849,13 @@ mod tests {
         let (name, args) = parse_gemma_tool_call(input).unwrap();
         assert_eq!(name, "patch");
         let args: serde_json::Map<String, Value> = serde_json::from_str(&args).unwrap();
-        assert_eq!(args.get("file_path").unwrap().as_str().unwrap(), "/tmp/foo.txt");
+        assert_eq!(
+            args.get("file_path").unwrap().as_str().unwrap(),
+            "/tmp/foo.txt"
+        );
         assert_eq!(args.get("old_string").unwrap().as_str().unwrap(), "hello");
         assert_eq!(args.get("new_string").unwrap().as_str().unwrap(), "world");
     }
-
 
     #[test]
     fn strip_thinking_block() {
@@ -862,7 +865,8 @@ mod tests {
 
     #[test]
     fn strip_multiple_thinking_blocks() {
-        let input = "<|channel>thought\nthink1<channel|>text1<|channel>thought\nthink2<channel|>text2";
+        let input =
+            "<|channel>thought\nthink1<channel|>text1<|channel>thought\nthink2<channel|>text2";
         assert_eq!(strip_thinking(input), "text1text2");
     }
 
@@ -870,7 +874,6 @@ mod tests {
     fn strip_thinking_preserves_plain_text() {
         assert_eq!(strip_thinking("Hello world"), "Hello world");
     }
-
 
     #[test]
     fn strip_raw_tool_call_tokens() {
@@ -889,14 +892,15 @@ mod tests {
         assert_eq!(strip_raw_tool_tokens("plain text"), "plain text");
     }
 
-
     #[test]
     fn parse_openai_text_delta() {
         let mut parser = GemmaStreamParser::new();
         let events = parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}"#,
         );
-        assert!(events.iter().any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t == "Hello")));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t == "Hello")));
     }
 
     #[test]
@@ -905,7 +909,9 @@ mod tests {
         let events = parser.process_sse_data(
             r#"{"choices":[{"delta":{"reasoning_content":"thinking..."},"finish_reason":null}]}"#,
         );
-        assert!(events.iter().any(|e| matches!(e, LlmStreamEvent::ReasoningDelta(t) if t == "thinking...")));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::ReasoningDelta(t) if t == "thinking...")));
     }
 
     #[test]
@@ -923,17 +929,20 @@ mod tests {
     #[test]
     fn parse_openai_done() {
         let mut parser = GemmaStreamParser::new();
-        let events = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
-        assert!(events.iter().any(|e| matches!(e, LlmStreamEvent::Done { .. })));
+        let events =
+            parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::Done { .. })));
     }
 
     #[test]
     fn parse_done_marker() {
         let mut parser = GemmaStreamParser::new();
         let events = parser.process_sse_data("[DONE]");
-        assert!(events.iter().any(|e| matches!(e, LlmStreamEvent::Done { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::Done { .. })));
     }
 
     #[test]
@@ -942,10 +951,16 @@ mod tests {
         let events = parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"<|channel>thought\nI think...<channel|>The answer"},"finish_reason":null}]}"#,
         );
-        assert!(events.iter().any(|e| matches!(e, LlmStreamEvent::ReasoningDelta(t) if t.contains("think"))));
-        assert!(events.iter().any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t.contains("answer"))));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::ReasoningDelta(t) if t.contains("think"))));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t.contains("answer"))));
         // Should NOT have raw thinking tokens in text
-        assert!(!events.iter().any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t.contains("<|channel>"))));
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t.contains("<|channel>"))));
     }
 
     #[test]
@@ -956,7 +971,9 @@ mod tests {
             r#"{"choices":[{"delta":{"content":"<|tool_call>call:shell{cmd:\"ls\"}<tool_call|>"},"finish_reason":null}]}"#,
         );
         // Should filter out the raw tokens
-        assert!(!e1.iter().any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t.contains("call:shell"))));
+        assert!(!e1
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::TextDelta(t) if t.contains("call:shell"))));
     }
 
     #[test]
@@ -967,9 +984,7 @@ mod tests {
             r#"{"choices":[{"delta":{"content":"<|tool_call>call:shell{command: \"ls\"}<tool_call|>"},"finish_reason":null}]}"#,
         );
         // Now finish without structured tool_calls
-        let e2 = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e2 = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         // Should have fallback-parsed the tool call
         assert!(e2.iter().any(|e| matches!(
             e, LlmStreamEvent::ToolCallDelta { name: Some(n), .. } if n == "shell"
@@ -983,21 +998,24 @@ mod tests {
         let _e1 = parser.process_sse_data(
             r#"{"choices":[{"delta":{"content":"<|tool_call>call:read{file_path: \"/a.txt\"}<tool_call|><|tool_call>call:read{file_path: \"/b.txt\"}<tool_call|>"},"finish_reason":null}]}"#,
         );
-        let e2 = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e2 = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         let tool_calls: Vec<_> = e2
             .iter()
             .filter(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. }))
             .collect();
-        assert_eq!(tool_calls.len(), 2, "Should parse both tool calls from tagged blocks");
+        assert_eq!(
+            tool_calls.len(),
+            2,
+            "Should parse both tool calls from tagged blocks"
+        );
     }
 
     #[test]
     fn fallback_parse_multiple_bare_tool_calls() {
         let mut parser = GemmaStreamParser::new();
         // Simulate model emitting bare call: patterns in text buffer (not accumulated via tags)
-        parser.text_buffer = "call:read{file_path: \"/a.txt\"}\ncall:read{file_path: \"/b.txt\"}".into();
+        parser.text_buffer =
+            "call:read{file_path: \"/a.txt\"}\ncall:read{file_path: \"/b.txt\"}".into();
         let mut events = Vec::new();
         parser.flush_remaining(&mut events);
         let tool_calls: Vec<_> = events
@@ -1019,13 +1037,12 @@ mod tests {
             e, LlmStreamEvent::ToolCallDelta { name: Some(n), .. } if n == "shell"
         )));
         // Finish
-        let e2 = parser.process_sse_data(
-            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        );
+        let e2 = parser.process_sse_data(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
         // Should NOT have a duplicate fallback call
-        assert!(!e2.iter().any(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. })));
+        assert!(!e2
+            .iter()
+            .any(|e| matches!(e, LlmStreamEvent::ToolCallDelta { .. })));
     }
-
 
     #[test]
     fn safe_emit_partial_tag() {
@@ -1041,6 +1058,4 @@ mod tests {
             5
         );
     }
-
-
 }

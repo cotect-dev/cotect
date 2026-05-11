@@ -13,7 +13,12 @@ export default memo(function Breadcrumbs() {
   const fileHistory = useCanvasStore((s) => s.fileHistory)
 
   const crumbs = useMemo(
-    () => depthChain.map((path, i) => ({ path, label: crumbLabel(path), isCurrent: i === currentColumnIndex })),
+    () =>
+      depthChain.map((path, i) => ({
+        path,
+        label: crumbLabel(path),
+        isCurrent: i === currentColumnIndex,
+      })),
     [depthChain, currentColumnIndex],
   )
 

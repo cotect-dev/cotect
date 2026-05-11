@@ -15,20 +15,29 @@ const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry 
       role="button"
       tabIndex={0}
       onClick={() => setExpanded((v) => !v)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded((v) => !v) } }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          setExpanded((v) => !v)
+        }
+      }}
       aria-expanded={expanded}
     >
       <div className="flex items-center justify-between text-[10px] text-muted-foreground/50 font-mono">
         <span>{commit.hash}</span>
         <RelativeTime timestamp={commit.timestamp} />
       </div>
-      <div className={`text-xs mt-0.5 ${expanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}>
+      <div
+        className={`text-xs mt-0.5 ${expanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
+      >
         {commit.message}
       </div>
       <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-muted-foreground/50 font-mono">
         {commit.insertions > 0 && <span className="text-green-500">+{commit.insertions}</span>}
         {commit.deletions > 0 && <span className="text-red-500">-{commit.deletions}</span>}
-        <span>· {commit.files.length} file{commit.files.length !== 1 ? 's' : ''}</span>
+        <span>
+          · {commit.files.length} file{commit.files.length !== 1 ? 's' : ''}
+        </span>
       </div>
       {expanded && commit.body && (
         <div className="mt-1.5 pl-2 border-l border-border/30 text-[11px] whitespace-pre-wrap break-words text-muted-foreground/80">
@@ -114,11 +123,7 @@ export default function History() {
 
   return (
     <div className="flex flex-col h-full">
-      <div
-        ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto"
-        onScroll={handleScroll}
-      >
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto" onScroll={handleScroll}>
         {allCommits.map((commit, i) => (
           <CommitEntry key={`${commit.hash}-${i}`} commit={commit} />
         ))}

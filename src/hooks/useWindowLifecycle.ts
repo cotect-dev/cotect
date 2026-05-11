@@ -1,11 +1,27 @@
 import { useEffect, useState } from 'react'
 import { getPlatform } from '@/services/platform'
-import { loadLayout, loadGeometry, loadSession, getChildWindowIds, removeLayout, startGeometryPersistence, stopGeometryPersistence, startSessionPersistence, stopSessionPersistence, restoreGeometryOnMonitor } from '@/services/windowManager'
+import {
+  loadLayout,
+  loadGeometry,
+  loadSession,
+  getChildWindowIds,
+  removeLayout,
+  startGeometryPersistence,
+  stopGeometryPersistence,
+  startSessionPersistence,
+  stopSessionPersistence,
+  restoreGeometryOnMonitor,
+} from '@/services/windowManager'
 import { useBrowserStore } from '@/store/browser'
 import { useGitStore, startGitWatcher, stopGitWatcher } from '@/store/git'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
-import { initPersistence, stopPersistence, flushPendingWrites, switchProject } from '@/store/persistence'
+import {
+  initPersistence,
+  stopPersistence,
+  flushPendingWrites,
+  switchProject,
+} from '@/store/persistence'
 import { useTasksStore } from '@/store/tasks'
 import { computeProjectId } from '@/lib/projectId'
 
@@ -51,7 +67,16 @@ export function useWindowLifecycle() {
         }
       }
 
-      loadLayoutIntoStore(saved ?? (isMain ? DEFAULT_MAIN_LAYOUT : { panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {} }))
+      loadLayoutIntoStore(
+        saved ??
+          (isMain
+            ? DEFAULT_MAIN_LAYOUT
+            : {
+                panels: { left: [], right: [], bottom: [] },
+                sizes: { left: [], right: [], bottom: [] },
+                activeTab: {},
+              }),
+      )
       startLayoutPersistence(windowId)
 
       if (isMain) void platform.windows.show()
@@ -72,15 +97,22 @@ export function useWindowLifecycle() {
             const hasPosition = geo && (isWayland ? !!geo.monitorInfo : true)
             // Don't call restoreGeometryOnMonitor from the parent —
             // move() targets the current window, not the child.
-            await platform.windows.create(childIds[i], geo ? {
-              width: Math.round(geo.width / dpr),
-              height: Math.round(geo.height / dpr),
-              x: hasPosition ? Math.round(geo.x / dpr) : undefined,
-              y: hasPosition ? Math.round(geo.y / dpr) : undefined,
-              center: !hasPosition,
-            } : undefined).catch((err) => {
-              console.error('Failed to create window:', err)
-            })
+            await platform.windows
+              .create(
+                childIds[i],
+                geo
+                  ? {
+                      width: Math.round(geo.width / dpr),
+                      height: Math.round(geo.height / dpr),
+                      x: hasPosition ? Math.round(geo.x / dpr) : undefined,
+                      y: hasPosition ? Math.round(geo.y / dpr) : undefined,
+                      center: !hasPosition,
+                    }
+                  : undefined,
+              )
+              .catch((err) => {
+                console.error('Failed to create window:', err)
+              })
           }
         }
 
@@ -107,13 +139,15 @@ export function useWindowLifecycle() {
             useTasksStore.getState().clearAll()
             stopGitWatcher()
             startGitWatcher(state.rootPath, windowId)
-            computeProjectId(state.rootPath).then((newProjectId) => {
-              switchProject(newProjectId).catch((err) => {
-                console.warn('[windowLifecycle] persistence project switch failed:', err)
+            computeProjectId(state.rootPath)
+              .then((newProjectId) => {
+                switchProject(newProjectId).catch((err) => {
+                  console.warn('[windowLifecycle] persistence project switch failed:', err)
+                })
               })
-            }).catch((err) => {
-              console.warn('[windowLifecycle] project ID computation failed:', err)
-            })
+              .catch((err) => {
+                console.warn('[windowLifecycle] project ID computation failed:', err)
+              })
             gitState.refresh().catch((err) => {
               console.warn('[windowLifecycle] git refresh after root change failed:', err)
             })
@@ -126,18 +160,24 @@ export function useWindowLifecycle() {
         if (currentRoot && currentRoot !== useGitStore.getState().repoPath) {
           useGitStore.getState().setRepoPath(currentRoot)
           startGitWatcher(currentRoot, windowId)
-          useGitStore.getState().refresh().catch((err) => {
-            console.warn('[windowLifecycle] git refresh during restore failed:', err)
-          })
+          useGitStore
+            .getState()
+            .refresh()
+            .catch((err) => {
+              console.warn('[windowLifecycle] git refresh during restore failed:', err)
+            })
         }
       }
 
       if (session?.rootPath && !isMain) {
         useGitStore.getState().setRepoPath(session.rootPath)
         startGitWatcher(session.rootPath, windowId)
-        useGitStore.getState().refresh().catch((err) => {
-          console.warn('[windowLifecycle] git refresh on child window restore failed:', err)
-        })
+        useGitStore
+          .getState()
+          .refresh()
+          .catch((err) => {
+            console.warn('[windowLifecycle] git refresh on child window restore failed:', err)
+          })
       }
 
       platform.ipc.emit('window-opened', { windowId }).catch((err) => {
@@ -147,7 +187,9 @@ export function useWindowLifecycle() {
       setIsReady(true)
     })()
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

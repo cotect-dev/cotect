@@ -22,7 +22,9 @@ fn save_child_window_list(window: &tauri::Window) {
         .cloned()
         .collect();
     let app = window.app_handle();
-    let Some(db) = app.try_state::<std::sync::Arc<crate::db::Db>>() else { return };
+    let Some(db) = app.try_state::<std::sync::Arc<crate::db::Db>>() else {
+        return;
+    };
     let Ok(c) = db.conn() else { return };
     let _ = crate::db::kv::set(&c, "wm-children", &serde_json::json!(children));
     // Also clean up wm-{layout,geometry,zones}-{id} for windows that no longer exist

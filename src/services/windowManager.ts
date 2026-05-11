@@ -27,9 +27,7 @@ export async function getChildWindowIds(): Promise<string[]> {
   if (ids) return ids
 
   const keys = await platform.storage.listKeys('wm-layout-')
-  return keys
-    .map((k) => k.slice('wm-layout-'.length))
-    .filter((id) => id !== 'main')
+  return keys.map((k) => k.slice('wm-layout-'.length)).filter((id) => id !== 'main')
 }
 
 export function saveLayout(windowId: string, layout: PersistedLayout): void {
@@ -81,7 +79,7 @@ export async function startGeometryPersistence(windowId: string): Promise<void> 
 
     let monitorInfo: WindowMonitorInfo | undefined
     if (isWayland) {
-      monitorInfo = await platform.windows.getWindowMonitor(windowId) ?? undefined
+      monitorInfo = (await platform.windows.getWindowMonitor(windowId)) ?? undefined
     }
 
     const geometry: PersistedGeometry = {
@@ -159,7 +157,7 @@ export function stopSessionPersistence(): void {
 export async function restoreGeometryOnMonitor(
   windowId: string,
   geometry: PersistedGeometry,
-  platform: ReturnType<typeof getPlatform>
+  platform: ReturnType<typeof getPlatform>,
 ): Promise<void> {
   const isWayland = await platform.isWayland()
 
@@ -168,7 +166,7 @@ export async function restoreGeometryOnMonitor(
     const targetMonitor = monitors.findIndex(
       (m: MonitorInfo) =>
         m.model === geometry.monitorInfo!.monitor_model &&
-        m.manufacturer === geometry.monitorInfo!.monitor_manufacturer
+        m.manufacturer === geometry.monitorInfo!.monitor_manufacturer,
     )
     if (targetMonitor >= 0) {
       await platform.windows.setWindowOnMonitor(windowId, targetMonitor)

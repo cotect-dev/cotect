@@ -40,13 +40,7 @@ pub fn set_synced_state(
 ) -> Result<(), String> {
     {
         let mut entries = app_state.entries.lock().map_err(|e| e.to_string())?;
-        entries.insert(
-            name.clone(),
-            StoreEntry {
-                state,
-                source,
-            },
-        );
+        entries.insert(name.clone(), StoreEntry { state, source });
     }
     {
         let mut dirty = app_state.dirty.lock().map_err(|e| e.to_string())?;
@@ -119,7 +113,10 @@ pub fn start_batch_broadcaster(app: AppHandle) {
 pub fn load_from_db(store: &SyncedStateStore, db: &Db) -> anyhow::Result<()> {
     let c = db.conn()?;
     let entries_kv = kv::get_prefix(&c, "persist:")?;
-    let mut entries = store.entries.lock().map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
+    let mut entries = store
+        .entries
+        .lock()
+        .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
     for (key, value) in entries_kv {
         entries.insert(
             key,
@@ -135,12 +132,18 @@ pub fn load_from_db(store: &SyncedStateStore, db: &Db) -> anyhow::Result<()> {
 pub fn persist_to_db(store: &SyncedStateStore, db: &Db) -> anyhow::Result<()> {
     let c = db.conn()?;
     let dirty: Vec<String> = {
-        let mut d = store.dirty.lock().map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
+        let mut d = store
+            .dirty
+            .lock()
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
         let v = d.iter().cloned().collect();
         d.clear();
         v
     };
-    let entries = store.entries.lock().map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
+    let entries = store
+        .entries
+        .lock()
+        .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
     for key in dirty {
         if let Some(e) = entries.get(&key) {
             kv::set(&c, &key, &e.state)?;
@@ -207,4 +210,3 @@ mod tests {
         assert_eq!(entry.state, json!({"y": 2}));
     }
 }
-

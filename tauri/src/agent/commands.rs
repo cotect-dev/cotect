@@ -19,26 +19,27 @@ struct TaskHandle {
 
 impl AgentState {
     pub fn new() -> Self {
-        Self { active_tasks: RwLock::new(HashMap::new()) }
+        Self {
+            active_tasks: RwLock::new(HashMap::new()),
+        }
     }
 }
 
-fn build_provider_config(
-    db_provider: &db_providers::Provider,
-    model: &str,
-) -> ProviderConfig {
+fn build_provider_config(db_provider: &db_providers::Provider, model: &str) -> ProviderConfig {
     ProviderConfig {
         id: db_provider.id.clone(),
         name: db_provider.label.clone(),
         endpoint: db_provider.endpoint.clone(),
         api_key: db_provider.api_key.clone(),
         model: model.into(),
-        format: db_provider.detected_json.as_ref()
+        format: db_provider
+            .detected_json
+            .as_ref()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
             .and_then(|v| v.get("format_per_model").cloned())
             .and_then(|fpm| fpm.get(model).and_then(|s| s.as_str().map(String::from)))
             .and_then(|s| super::adapter::PromptFormat::parse(&s)),
-        disable_thinking: None,    // sourced from kv `agent.disable_thinking` in orchestrator
+        disable_thinking: None, // sourced from kv `agent.disable_thinking` in orchestrator
     }
 }
 
@@ -48,9 +49,15 @@ fn lookup_provider_for_role(
     role: AgentRole,
 ) -> Option<(db_providers::Provider, String)> {
     let (pid, model) = match role {
-        AgentRole::Implement => (a.implement_provider_id.as_deref(), a.implement_model.as_deref()),
-        AgentRole::Research  => (a.research_provider_id.as_deref(),  a.research_model.as_deref()),
-        AgentRole::Plan      => (a.plan_provider_id.as_deref(),      a.plan_model.as_deref()),
+        AgentRole::Implement => (
+            a.implement_provider_id.as_deref(),
+            a.implement_model.as_deref(),
+        ),
+        AgentRole::Research => (
+            a.research_provider_id.as_deref(),
+            a.research_model.as_deref(),
+        ),
+        AgentRole::Plan => (a.plan_provider_id.as_deref(), a.plan_model.as_deref()),
     };
     let pid = pid.or(a.default_provider_id.as_deref())?;
     let model = model.or(a.default_model.as_deref())?;
@@ -109,15 +116,17 @@ pub async fn agent_start_task(
         }
     });
 
-    state.active_tasks.write().await.insert(task_id, TaskHandle { _abort_sender: abort_tx });
+    state.active_tasks.write().await.insert(
+        task_id,
+        TaskHandle {
+            _abort_sender: abort_tx,
+        },
+    );
     Ok(())
 }
 
 #[tauri::command]
-pub async fn agent_abort(
-    state: State<'_, Arc<AgentState>>,
-    task_id: String,
-) -> Result<(), String> {
+pub async fn agent_abort(state: State<'_, Arc<AgentState>>, task_id: String) -> Result<(), String> {
     state.active_tasks.write().await.remove(&task_id);
     Ok(())
 }

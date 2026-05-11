@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tauri::State;
 
-use super::{Db, kv, providers, repos, usage};
+use super::{kv, providers, repos, usage, Db};
 
 #[tauri::command]
 pub async fn kv_get(db: State<'_, Arc<Db>>, key: String) -> Result<Option<Value>, String> {
@@ -24,7 +24,10 @@ pub async fn kv_delete(db: State<'_, Arc<Db>>, key: String) -> Result<(), String
 }
 
 #[tauri::command]
-pub async fn kv_get_prefix(db: State<'_, Arc<Db>>, prefix: String) -> Result<HashMap<String, Value>, String> {
+pub async fn kv_get_prefix(
+    db: State<'_, Arc<Db>>,
+    prefix: String,
+) -> Result<HashMap<String, Value>, String> {
     let c = db.conn().map_err(|e| e.to_string())?;
     kv::get_prefix(&c, &prefix).map_err(|e| e.to_string())
 }
@@ -36,7 +39,10 @@ pub async fn providers_list(db: State<'_, Arc<Db>>) -> Result<Vec<providers::Pro
 }
 
 #[tauri::command]
-pub async fn providers_upsert(db: State<'_, Arc<Db>>, provider: providers::Provider) -> Result<(), String> {
+pub async fn providers_upsert(
+    db: State<'_, Arc<Db>>,
+    provider: providers::Provider,
+) -> Result<(), String> {
     let c = db.conn().map_err(|e| e.to_string())?;
     providers::upsert(&c, &provider).map_err(|e| e.to_string())
 }
@@ -54,7 +60,10 @@ pub async fn assignment_get(db: State<'_, Arc<Db>>) -> Result<providers::ActiveA
 }
 
 #[tauri::command]
-pub async fn assignment_set(db: State<'_, Arc<Db>>, assignment: providers::ActiveAssignment) -> Result<(), String> {
+pub async fn assignment_set(
+    db: State<'_, Arc<Db>>,
+    assignment: providers::ActiveAssignment,
+) -> Result<(), String> {
     let c = db.conn().map_err(|e| e.to_string())?;
     providers::set_assignment(&c, &assignment).map_err(|e| e.to_string())
 }
@@ -66,25 +75,38 @@ pub async fn db_repo_upsert(db: State<'_, Arc<Db>>, root_path: String) -> Result
 }
 
 #[tauri::command]
-pub async fn db_repo_get(db: State<'_, Arc<Db>>, root_path: String) -> Result<Option<repos::Repo>, String> {
+pub async fn db_repo_get(
+    db: State<'_, Arc<Db>>,
+    root_path: String,
+) -> Result<Option<repos::Repo>, String> {
     let c = db.conn().map_err(|e| e.to_string())?;
     repos::get(&c, &root_path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn usage_record(db: State<'_, Arc<Db>>, record: usage::UsageRecord) -> Result<(), String> {
+pub async fn usage_record(
+    db: State<'_, Arc<Db>>,
+    record: usage::UsageRecord,
+) -> Result<(), String> {
     let c = db.conn().map_err(|e| e.to_string())?;
     usage::record(&c, &record).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn usage_query(db: State<'_, Arc<Db>>, filter: usage::UsageFilter) -> Result<Vec<usage::UsageRecord>, String> {
+pub async fn usage_query(
+    db: State<'_, Arc<Db>>,
+    filter: usage::UsageFilter,
+) -> Result<Vec<usage::UsageRecord>, String> {
     let c = db.conn().map_err(|e| e.to_string())?;
     usage::query(&c, &filter).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn usage_aggregate(db: State<'_, Arc<Db>>, filter: usage::UsageFilter, group_by: usage::GroupBy) -> Result<Vec<usage::AggregateRow>, String> {
+pub async fn usage_aggregate(
+    db: State<'_, Arc<Db>>,
+    filter: usage::UsageFilter,
+    group_by: usage::GroupBy,
+) -> Result<Vec<usage::AggregateRow>, String> {
     let c = db.conn().map_err(|e| e.to_string())?;
     usage::aggregate(&c, &filter, group_by).map_err(|e| e.to_string())
 }

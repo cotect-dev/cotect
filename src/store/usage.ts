@@ -2,8 +2,11 @@ import { create } from 'zustand'
 import { createStoreWithHMR } from '@/lib/hmr'
 import { listen } from '@tauri-apps/api/event'
 import {
-  usageQuery, usageAggregate,
-  type UsageRecord, type AggregateRow, type UsageFilter,
+  usageQuery,
+  usageAggregate,
+  type UsageRecord,
+  type AggregateRow,
+  type UsageFilter,
 } from '@/services/db'
 
 export type RangePreset = 'today' | '7d' | '30d' | 'all' | 'custom'
@@ -17,14 +20,26 @@ export interface DateRange {
 const MS_PER_DAY = 86_400_000
 
 function rangeToFilter(range: DateRange): UsageFilter {
-  return { from_ts: range.from, to_ts: range.to, provider_id: null, model: null, role: null, limit: null }
+  return {
+    from_ts: range.from,
+    to_ts: range.to,
+    provider_id: null,
+    model: null,
+    role: null,
+    limit: null,
+  }
 }
 
 interface UsageState {
   range: DateRange
   setRange: (r: DateRange) => void
 
-  headline: { tokens: number; tasks: number; p50_first_token: number | null; p50_total: number | null } | null
+  headline: {
+    tokens: number
+    tasks: number
+    p50_first_token: number | null
+    p50_total: number | null
+  } | null
   spendByProvider: AggregateRow[] | null
   spendByRole: AggregateRow[] | null
   spendByDay: AggregateRow[] | null
@@ -42,15 +57,23 @@ function defaultRange(): DateRange {
 
 function presetToRange(preset: RangePreset): DateRange {
   switch (preset) {
-    case 'today': return { preset, from: new Date().setHours(0, 0, 0, 0), to: null }
-    case '7d':    return { preset, from: Date.now() - 7  * MS_PER_DAY, to: null }
-    case '30d':   return { preset, from: Date.now() - 30 * MS_PER_DAY, to: null }
-    case 'all':   return { preset, from: null, to: null }
-    case 'custom':return { preset, from: null, to: null }   // caller fills in
+    case 'today':
+      return { preset, from: new Date().setHours(0, 0, 0, 0), to: null }
+    case '7d':
+      return { preset, from: Date.now() - 7 * MS_PER_DAY, to: null }
+    case '30d':
+      return { preset, from: Date.now() - 30 * MS_PER_DAY, to: null }
+    case 'all':
+      return { preset, from: null, to: null }
+    case 'custom':
+      return { preset, from: null, to: null } // caller fills in
   }
 }
 
-async function refreshAll(get: () => UsageState, set: (p: Partial<UsageState>) => void): Promise<void> {
+async function refreshAll(
+  get: () => UsageState,
+  set: (p: Partial<UsageState>) => void,
+): Promise<void> {
   const filter = rangeToFilter(get().range)
   const [byProvider, byRole, byDay, byModel, byTuple, recent] = await Promise.all([
     usageAggregate(filter, 'Provider'),
@@ -62,11 +85,18 @@ async function refreshAll(get: () => UsageState, set: (p: Partial<UsageState>) =
   ])
   const tasks = recent.length
   const tokens = recent.reduce((s, r) => s + r.prompt_tokens + r.completion_tokens, 0)
-  const ftSorted = recent.map((r) => r.first_token_ms).filter((v): v is number => v != null).sort((a, b) => a - b)
-  const totSorted = recent.map((r) => r.total_ms).filter((v): v is number => v != null).sort((a, b) => a - b)
+  const ftSorted = recent
+    .map((r) => r.first_token_ms)
+    .filter((v): v is number => v != null)
+    .sort((a, b) => a - b)
+  const totSorted = recent
+    .map((r) => r.total_ms)
+    .filter((v): v is number => v != null)
+    .sort((a, b) => a - b)
   set({
     headline: {
-      tokens, tasks,
+      tokens,
+      tasks,
       p50_first_token: ftSorted[Math.floor(ftSorted.length / 2)] ?? null,
       p50_total: totSorted[Math.floor(totSorted.length / 2)] ?? null,
     },
@@ -82,16 +112,29 @@ async function refreshAll(get: () => UsageState, set: (p: Partial<UsageState>) =
 export const useUsageStore = createStoreWithHMR(import.meta.hot, 'usage', () =>
   create<UsageState>((set, get) => ({
     range: defaultRange(),
-    setRange: (r) => { set({ range: r }); void refreshAll(get, set) },
+    setRange: (r) => {
+      set({ range: r })
+      void refreshAll(get, set)
+    },
 
-    headline: null, spendByProvider: null, spendByRole: null, spendByDay: null, latencyByModel: null, breakdown: null, tasks: null,
+    headline: null,
+    spendByProvider: null,
+    spendByRole: null,
+    spendByDay: null,
+    latencyByModel: null,
+    breakdown: null,
+    tasks: null,
 
     refresh: () => refreshAll(get, set),
 
     start: () => {
       void refreshAll(get, set)
-      const promise = listen<UsageRecord>('usage:appended', () => { void refreshAll(get, set) })
-      return () => { void promise.then((unlisten) => unlisten()) }
+      const promise = listen<UsageRecord>('usage:appended', () => {
+        void refreshAll(get, set)
+      })
+      return () => {
+        void promise.then((unlisten) => unlisten())
+      }
     },
   })),
 )

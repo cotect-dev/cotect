@@ -24,13 +24,15 @@
 
 use std::path::Path;
 
-use crate::agent::types::AgentRole::Implement as I;
 use super::*;
+use crate::agent::types::AgentRole::Implement as I;
 
 pub(crate) fn scenario(v: &mut Vec<ScenarioSpec>) {
     fn setup(dir: &Path) -> SetupResult {
         let formatter_file = ap(dir, "formatter.py");
-        std::fs::write(&formatter_file, r#""""Text formatting utilities for the report system."""
+        std::fs::write(
+            &formatter_file,
+            r#""""Text formatting utilities for the report system."""
 
 
 def format_entry(label: str, value: str, width: int = 30) -> str:
@@ -57,10 +59,14 @@ def format_header(title: str, width: int = 30) -> str:
 def format_separator(width: int = 30) -> str:
     """Format a horizontal separator line."""
     return "+" + "-" * (width - 2) + "+"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let renderer_file = ap(dir, "renderer.py");
-        std::fs::write(&renderer_file, r#""""Report renderer — assembles formatted parts into a report."""
+        std::fs::write(
+            &renderer_file,
+            r#""""Report renderer — assembles formatted parts into a report."""
 
 from formatter import format_entry, format_header, format_separator
 
@@ -98,10 +104,14 @@ class ReportRenderer:
     def render_header(self) -> str:
         """Render just the header section."""
         return format_header(self.title, self.width)
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let exporter_file = ap(dir, "exporter.py");
-        std::fs::write(&exporter_file, r#""""Export module — converts report data to various output formats."""
+        std::fs::write(
+            &exporter_file,
+            r#""""Export module — converts report data to various output formats."""
 
 import json
 from formatter import format_entry, format_header
@@ -138,10 +148,14 @@ def _format_metadata(version: str, author: str) -> str:
     Returns a plain string — NOT related to format_entry.
     """
     return f"v{version} by {author}"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let test_file = ap(dir, "test_report.py");
-        std::fs::write(&test_file, r#"from formatter import format_entry, format_header
+        std::fs::write(
+            &test_file,
+            r#"from formatter import format_entry, format_header
 from renderer import ReportRenderer
 from exporter import export_csv, export_json
 
@@ -222,10 +236,15 @@ if __name__ == "__main__":
     test_json_export_unchanged()
     test_render_header_still_works()
     print("ALL_TESTS_PASSED")
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        with_blocked(with_scope(with_checks(pf(
-            "The report module's test suite (`test_report.py`) is failing after \
+        with_blocked(
+            with_scope(
+                with_checks(
+                    pf(
+                        "The report module's test suite (`test_report.py`) is failing after \
              a spec change: downstream consumers now need character-count \
              information alongside formatted entries, and the CSV export needs \
              an additional column for it. The JSON export and header rendering \
@@ -236,22 +255,31 @@ if __name__ == "__main__":
              Apply your patches WITHOUT running the code first, then run the \
              tests. If they fail, read the errors and iterate until all tests \
              pass."
-            .to_string()
-        ),
-            vec![
-                complete(),
-                succeeded("shell"),
-                // Primary: test suite must pass — it verifies format_entry
-                // returns a tuple, format_header still returns a string,
-                // renderer handles char counts, CSV has a count column,
-                // and JSON export is unchanged.
-                run_has("python3 test_report.py", &["ALL_TESTS_PASSED"]),
-                // format_header must remain a function (the test covers
-                // return-type behavior; this guards against deletion/rename).
-                file_has("formatter.py", &["def format_header("]),
-            ]),
-            vec![formatter_file, renderer_file, exporter_file]),
-            vec![test_file])
+                            .to_string(),
+                    ),
+                    vec![
+                        complete(),
+                        succeeded("shell"),
+                        // Primary: test suite must pass — it verifies format_entry
+                        // returns a tuple, format_header still returns a string,
+                        // renderer handles char counts, CSV has a count column,
+                        // and JSON export is unchanged.
+                        run_has("python3 test_report.py", &["ALL_TESTS_PASSED"]),
+                        // format_header must remain a function (the test covers
+                        // return-type behavior; this guards against deletion/rename).
+                        file_has("formatter.py", &["def format_header("]),
+                    ],
+                ),
+                vec![formatter_file, renderer_file, exporter_file],
+            ),
+            vec![test_file],
+        )
     }
-    v.push(scen!("xhard_patch_03_return_type_cascade", Category::Patch, Difficulty::Hard, I, setup));
+    v.push(scen!(
+        "xhard_patch_03_return_type_cascade",
+        Category::Patch,
+        Difficulty::Hard,
+        I,
+        setup
+    ));
 }

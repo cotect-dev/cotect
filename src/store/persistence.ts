@@ -167,20 +167,26 @@ function startCrossWindowSync() {
   const platform = getPlatform()
   const windowId = platform.windows.getWindowId()
 
-  const unlistenGlobal = platform.syncedState.listen('persist:global', ({ state, source }: { state: unknown; source: string }) => {
-    if (source === windowId || !state || typeof state !== 'object') return
-    globalCache = { ...(state as Record<string, unknown>) }
-    hydrateFromCache('global')
-  })
+  const unlistenGlobal = platform.syncedState.listen(
+    'persist:global',
+    ({ state, source }: { state: unknown; source: string }) => {
+      if (source === windowId || !state || typeof state !== 'object') return
+      globalCache = { ...(state as Record<string, unknown>) }
+      hydrateFromCache('global')
+    },
+  )
   unlisteners.push(unlistenGlobal)
 
   if (currentProjectId) {
     const ns = `persist:project:${currentProjectId}`
-    const unlistenProject = platform.syncedState.listen(ns, ({ state, source }: { state: unknown; source: string }) => {
-      if (source === windowId || !state || typeof state !== 'object') return
-      projectCache = { ...(state as Record<string, unknown>) }
-      hydrateFromCache('project')
-    })
+    const unlistenProject = platform.syncedState.listen(
+      ns,
+      ({ state, source }: { state: unknown; source: string }) => {
+        if (source === windowId || !state || typeof state !== 'object') return
+        projectCache = { ...(state as Record<string, unknown>) }
+        hydrateFromCache('project')
+      },
+    )
     unlisteners.push(unlistenProject)
   }
 }
@@ -270,11 +276,15 @@ export async function reloadStoreFromBackend(storeName: string): Promise<void> {
 
   const [globalData, projectData] = await Promise.all([
     platform.syncedState.get('persist:global'),
-    currentProjectId ? platform.syncedState.get(`persist:project:${currentProjectId}`) : Promise.resolve(null),
+    currentProjectId
+      ? platform.syncedState.get(`persist:project:${currentProjectId}`)
+      : Promise.resolve(null),
   ])
 
-  const gData = globalData && typeof globalData === 'object' ? globalData as Record<string, unknown> : {}
-  const pData = projectData && typeof projectData === 'object' ? projectData as Record<string, unknown> : {}
+  const gData =
+    globalData && typeof globalData === 'object' ? (globalData as Record<string, unknown>) : {}
+  const pData =
+    projectData && typeof projectData === 'object' ? (projectData as Record<string, unknown>) : {}
 
   const patch: Record<string, unknown> = {}
   for (const [field, config] of Object.entries(entry.fields)) {

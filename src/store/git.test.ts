@@ -1,7 +1,19 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
-import { useGitStore, sortedFiles, branchLabel, startGitWatcher, stopGitWatcher, buildGitSyncPayload, applyGitSyncPayload, type GitStatus, type GitLogEntry, type GitBranch, type GitSyncPayload } from './git'
+import {
+  useGitStore,
+  sortedFiles,
+  branchLabel,
+  startGitWatcher,
+  stopGitWatcher,
+  buildGitSyncPayload,
+  applyGitSyncPayload,
+  type GitStatus,
+  type GitLogEntry,
+  type GitBranch,
+  type GitSyncPayload,
+} from './git'
 
 // Tauri APIs are auto-mocked via setup.ts. Cast for type-safe assertions.
 const mockInvoke = invoke as Mock
@@ -52,8 +64,23 @@ describe('useGitStore', () => {
   })
 
   describe('refresh', () => {
-    const mockStatus: GitStatus = { files: [{ path: 'a.ts', status: 'M', insertions: 5, deletions: 2 }], total_insertions: 5, total_deletions: 2 }
-    const mockLog: GitLogEntry[] = [{ hash: 'abc1234', message: 'init', body: '', author: 'dev', timestamp: 1000, insertions: 10, deletions: 0, files: [] }]
+    const mockStatus: GitStatus = {
+      files: [{ path: 'a.ts', status: 'M', insertions: 5, deletions: 2 }],
+      total_insertions: 5,
+      total_deletions: 2,
+    }
+    const mockLog: GitLogEntry[] = [
+      {
+        hash: 'abc1234',
+        message: 'init',
+        body: '',
+        author: 'dev',
+        timestamp: 1000,
+        insertions: 10,
+        deletions: 0,
+        files: [],
+      },
+    ]
     const mockBranch: GitBranch = { kind: 'branch', name: 'main' }
     const mockBranches: string[] = ['main', 'feat/x']
     const mockTimestamp = 1234567890
@@ -128,22 +155,26 @@ describe('useGitStore', () => {
 
       await useGitStore.getState().refresh()
 
-      expect(mockEmit).toHaveBeenCalledWith('git-sync', expect.objectContaining({
-        initialized: true,
-        isGitRepo: true,
-        gitError: null,
-        status: mockStatus,
-        log: mockLog,
-        branch: mockBranch,
-        branches: mockBranches,
-        lastCommitTimestamp: mockTimestamp,
-      }))
+      expect(mockEmit).toHaveBeenCalledWith(
+        'git-sync',
+        expect.objectContaining({
+          initialized: true,
+          isGitRepo: true,
+          gitError: null,
+          status: mockStatus,
+          log: mockLog,
+          branch: mockBranch,
+          branches: mockBranches,
+          lastCommitTimestamp: mockTimestamp,
+        }),
+      )
     })
 
     it('handles GIT_NOT_FOUND error', async () => {
       useGitStore.setState({ repoPath: '/repo' })
       mockInvoke.mockImplementation((cmd: string) => {
-        if (cmd === 'git_status') return Promise.reject(new Error('GIT_NOT_FOUND: git is not installed'))
+        if (cmd === 'git_status')
+          return Promise.reject(new Error('GIT_NOT_FOUND: git is not installed'))
         return Promise.resolve(null)
       })
 
@@ -159,7 +190,8 @@ describe('useGitStore', () => {
     it('handles NOT_A_REPO error', async () => {
       useGitStore.setState({ repoPath: '/repo' })
       mockInvoke.mockImplementation((cmd: string) => {
-        if (cmd === 'git_status') return Promise.reject(new Error('NOT_A_REPO: not a git repository'))
+        if (cmd === 'git_status')
+          return Promise.reject(new Error('NOT_A_REPO: not a git repository'))
         return Promise.resolve(null)
       })
 
@@ -181,10 +213,13 @@ describe('useGitStore', () => {
 
       await useGitStore.getState().refresh()
 
-      expect(mockEmit).toHaveBeenCalledWith('git-sync', expect.objectContaining({
-        isGitRepo: false,
-        gitError: 'GIT_NOT_FOUND',
-      }))
+      expect(mockEmit).toHaveBeenCalledWith(
+        'git-sync',
+        expect.objectContaining({
+          isGitRepo: false,
+          gitError: 'GIT_NOT_FOUND',
+        }),
+      )
     })
 
     it('handles unknown git_status error without treating it as success', async () => {
@@ -245,7 +280,7 @@ describe('useGitStore', () => {
       expect(s.isGitRepo).toBe(true)
       expect(s.gitError).toBe('PARTIAL_FAILURE')
       expect(s.status).toEqual(mockStatus)
-      expect(s.log).toBeNull()  // failed
+      expect(s.log).toBeNull() // failed
       expect(s.branch).toEqual(mockBranch)
       expect(s.lastCommitTimestamp).toBe(mockTimestamp)
     })
@@ -288,10 +323,26 @@ describe('startGitWatcher / stopGitWatcher', () => {
     expect(mockListen).toHaveBeenCalledWith('fs-changed', expect.any(Function))
 
     // watch_path calls for main window
-    expect(mockInvoke).toHaveBeenCalledWith('watch_path', { path: '/repo/.git', id: 'git', recursive: false })
-    expect(mockInvoke).toHaveBeenCalledWith('watch_path', { path: '/repo', id: 'source', recursive: false })
-    expect(mockInvoke).toHaveBeenCalledWith('watch_path', { path: '/repo/src', id: 'source-src', recursive: true })
-    expect(mockInvoke).toHaveBeenCalledWith('watch_path', { path: '/repo/tauri/src', id: 'source-rs', recursive: true })
+    expect(mockInvoke).toHaveBeenCalledWith('watch_path', {
+      path: '/repo/.git',
+      id: 'git',
+      recursive: false,
+    })
+    expect(mockInvoke).toHaveBeenCalledWith('watch_path', {
+      path: '/repo',
+      id: 'source',
+      recursive: false,
+    })
+    expect(mockInvoke).toHaveBeenCalledWith('watch_path', {
+      path: '/repo/src',
+      id: 'source-src',
+      recursive: true,
+    })
+    expect(mockInvoke).toHaveBeenCalledWith('watch_path', {
+      path: '/repo/tauri/src',
+      id: 'source-rs',
+      recursive: true,
+    })
   })
 
   it('does not set up file watchers for non-main window', () => {
@@ -359,8 +410,23 @@ describe('sortedFiles selector', () => {
 })
 
 describe('buildGitSyncPayload / applyGitSyncPayload', () => {
-  const sliceStatus: GitStatus = { files: [{ path: 'a.ts', status: 'M', insertions: 1, deletions: 0 }], total_insertions: 1, total_deletions: 0 }
-  const sliceLog: GitLogEntry[] = [{ hash: 'deadbee', message: 'msg', body: '', author: 'me', timestamp: 42, insertions: 0, deletions: 0, files: [] }]
+  const sliceStatus: GitStatus = {
+    files: [{ path: 'a.ts', status: 'M', insertions: 1, deletions: 0 }],
+    total_insertions: 1,
+    total_deletions: 0,
+  }
+  const sliceLog: GitLogEntry[] = [
+    {
+      hash: 'deadbee',
+      message: 'msg',
+      body: '',
+      author: 'me',
+      timestamp: 42,
+      insertions: 0,
+      deletions: 0,
+      files: [],
+    },
+  ]
   const sliceBranch: GitBranch = { kind: 'branch', name: 'main' }
   const slice = {
     initialized: true,

@@ -73,7 +73,10 @@ pub(crate) fn normalise_shell_arguments(arguments: &str) -> String {
     // Output redirects — strip in place. Conservative list; we only
     // handle the very common forms.
     let redirect_patterns = [
-        " 2>&1", " 2>/dev/null", " >/dev/null", " &>/dev/null",
+        " 2>&1",
+        " 2>/dev/null",
+        " >/dev/null",
+        " &>/dev/null",
         " 1>&2",
     ];
     for pat in &redirect_patterns {
@@ -155,8 +158,13 @@ pub(crate) fn is_thinking_in_shell(tool_name: &str, arguments: &str) -> bool {
             // The preamble line itself may contain the opening quote; if
             // everything after the -c/-e flag is whitespace or a quote, the
             // line is noise.
-            let after = line.split(" -c ").nth(1).unwrap_or("")
-                .split(" -e ").next().unwrap_or("");
+            let after = line
+                .split(" -c ")
+                .nth(1)
+                .unwrap_or("")
+                .split(" -e ")
+                .next()
+                .unwrap_or("");
             let payload = after.trim_matches(|c: char| c == '"' || c == '\'' || c.is_whitespace());
             if payload.is_empty() {
                 noise_lines += 1;
@@ -607,29 +615,54 @@ mod tests {
             r##"{"command":"python3 -c \"# check: is this valid UTF-8?\n# or latin-1?\n# need to decide\""}"##,
         );
         let c = d.check();
-        assert!(c.is_some(), "3 consecutive comment-only shell commands must trip the alarm");
+        assert!(
+            c.is_some(),
+            "3 consecutive comment-only shell commands must trip the alarm"
+        );
         assert!(d.last_alarm_is_thinking_in_shell());
     }
 
     #[test]
     fn test_real_shell_action_resets_thinking_streak() {
         let mut d = DoomLoopDetector::new(3);
-        d.record("shell", r##"{"command":"python3 -c \"# thinking comment\""}"##);
+        d.record(
+            "shell",
+            r##"{"command":"python3 -c \"# thinking comment\""}"##,
+        );
         d.record("shell", r##"{"command":"python3 -c \"# more thinking\""}"##);
         // A real action resets the thinking-in-shell streak.
         d.record("shell", r##"{"command":"python3 test_pipeline.py"}"##);
-        d.record("shell", r##"{"command":"python3 -c \"# back to thinking\""}"##);
+        d.record(
+            "shell",
+            r##"{"command":"python3 -c \"# back to thinking\""}"##,
+        );
         // Streak should be 1 now (only the last one), not 3.
-        assert_eq!(d.check(), None, "real action must reset the thinking-in-shell streak");
+        assert_eq!(
+            d.check(),
+            None,
+            "real action must reset the thinking-in-shell streak"
+        );
         assert!(!d.last_alarm_is_thinking_in_shell());
     }
 
     #[test]
     fn test_regular_shell_commands_are_not_thinking() {
-        assert!(!is_thinking_in_shell("shell", r##"{"command":"python3 test.py"}"##));
-        assert!(!is_thinking_in_shell("shell", r##"{"command":"cargo test --release"}"##));
-        assert!(!is_thinking_in_shell("shell", r##"{"command":"go test ./..."}"##));
-        assert!(!is_thinking_in_shell("shell", r##"{"command":"ls -la && cat foo.txt"}"##));
+        assert!(!is_thinking_in_shell(
+            "shell",
+            r##"{"command":"python3 test.py"}"##
+        ));
+        assert!(!is_thinking_in_shell(
+            "shell",
+            r##"{"command":"cargo test --release"}"##
+        ));
+        assert!(!is_thinking_in_shell(
+            "shell",
+            r##"{"command":"go test ./..."}"##
+        ));
+        assert!(!is_thinking_in_shell(
+            "shell",
+            r##"{"command":"ls -la && cat foo.txt"}"##
+        ));
     }
 
     #[test]
@@ -653,18 +686,9 @@ mod tests {
         // bash cosmetics must hash to the same coarse signature so the
         // doom detector flags the stall on the third call.
         let mut d = DoomLoopDetector::new(3);
-        d.record(
-            "shell",
-            r##"{"command":"python3 test_x.py"}"##,
-        );
-        d.record(
-            "shell",
-            r##"{"command":"python3 test_x.py 2>&1"}"##,
-        );
-        d.record(
-            "shell",
-            r##"{"command":"python3 test_x.py 2>&1 || true"}"##,
-        );
+        d.record("shell", r##"{"command":"python3 test_x.py"}"##);
+        d.record("shell", r##"{"command":"python3 test_x.py 2>&1"}"##);
+        d.record("shell", r##"{"command":"python3 test_x.py 2>&1 || true"}"##);
         assert!(
             d.check().is_some(),
             "shell reruns differing only in redirects/fallthroughs must trip the alarm",
@@ -677,14 +701,8 @@ mod tests {
         // for "see the exit code without re-reading the docs"; they
         // must not protect duplicate calls from the coarse detector.
         let mut d = DoomLoopDetector::new(3);
-        d.record(
-            "shell",
-            r##"{"command":"cargo build"}"##,
-        );
-        d.record(
-            "shell",
-            r##"{"command":"cargo build; echo \"EXIT: $?\""}"##,
-        );
+        d.record("shell", r##"{"command":"cargo build"}"##);
+        d.record("shell", r##"{"command":"cargo build; echo \"EXIT: $?\""}"##);
         d.record(
             "shell",
             r##"{"command":"cargo build; echo \"---EXIT: $?\""}"##,
@@ -708,9 +726,7 @@ mod tests {
 
     #[test]
     fn test_normalise_shell_arguments_strips_redirects() {
-        let n = normalise_shell_arguments(
-            r##"{"command":"python3 test.py 2>&1"}"##,
-        );
+        let n = normalise_shell_arguments(r##"{"command":"python3 test.py 2>&1"}"##);
         // Redirect dropped; command preserved.
         assert!(n.contains("python3 test.py"));
         assert!(!n.contains("2>&1"));
@@ -718,18 +734,14 @@ mod tests {
 
     #[test]
     fn test_normalise_shell_arguments_strips_trailing_or_true() {
-        let n = normalise_shell_arguments(
-            r##"{"command":"npm test || true"}"##,
-        );
+        let n = normalise_shell_arguments(r##"{"command":"npm test || true"}"##);
         assert!(n.contains("npm test"));
         assert!(!n.contains("|| true"));
     }
 
     #[test]
     fn test_normalise_shell_arguments_strips_chained_noise() {
-        let n = normalise_shell_arguments(
-            r##"{"command":"go test 2>&1 || true"}"##,
-        );
+        let n = normalise_shell_arguments(r##"{"command":"go test 2>&1 || true"}"##);
         assert!(n.contains("go test"));
         assert!(!n.contains("2>&1"));
         assert!(!n.contains("|| true"));
@@ -737,9 +749,7 @@ mod tests {
 
     #[test]
     fn test_normalise_shell_arguments_passes_clean_command_through() {
-        let n = normalise_shell_arguments(
-            r##"{"command":"ls -la"}"##,
-        );
+        let n = normalise_shell_arguments(r##"{"command":"ls -la"}"##);
         assert_eq!(n, "ls -la");
     }
 

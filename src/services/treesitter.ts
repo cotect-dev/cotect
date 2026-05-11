@@ -37,7 +37,9 @@ const WASM_MAP: Record<LanguageId, string> = {
   rust: 'tree-sitter-rust.wasm',
 }
 
-async function loadLanguageForFile(filename: string): Promise<{ language: Language; id: LanguageId } | null> {
+async function loadLanguageForFile(
+  filename: string,
+): Promise<{ language: Language; id: LanguageId } | null> {
   const config = getConfigForFile(filename)
   if (!config) return null
 
@@ -77,7 +79,12 @@ export interface ImportWithBindings {
 
 function readStringLiteral(node: TSNode | null): string | null {
   if (!node) return null
-  if (node.type !== 'string' && node.type !== 'interpreted_string_literal' && node.type !== 'string_literal') return null
+  if (
+    node.type !== 'string' &&
+    node.type !== 'interpreted_string_literal' &&
+    node.type !== 'string_literal'
+  )
+    return null
   const raw = node.text
   if (raw.length < 2) return null
   const quote = raw[0]
@@ -267,11 +274,12 @@ function collectRustImportsWithLines(rootNode: TSNode): ImportWithLine[] {
     const node = stack.pop()!
 
     if (node.type === 'use_declaration') {
-      const arg = node.namedChildren.find((c) =>
-        c.type === 'scoped_identifier' ||
-        c.type === 'use_as_clause' ||
-        c.type === 'scoped_use_list' ||
-        c.type === 'identifier'
+      const arg = node.namedChildren.find(
+        (c) =>
+          c.type === 'scoped_identifier' ||
+          c.type === 'use_as_clause' ||
+          c.type === 'scoped_use_list' ||
+          c.type === 'identifier',
       )
       if (arg) results.push({ specifier: arg.text, line: node.startPosition.row + 1 })
     }
@@ -316,7 +324,10 @@ export async function parseImports(filename: string, source: string): Promise<st
  * import/export statement. Used by the canvas to position reference nodes
  * at the source-code line where the dependency appears.
  */
-export async function parseImportsWithLines(filename: string, source: string): Promise<ImportWithLine[]> {
+export async function parseImportsWithLines(
+  filename: string,
+  source: string,
+): Promise<ImportWithLine[]> {
   const loaded = await loadLanguageForFile(filename)
   if (!loaded) return []
 
@@ -342,7 +353,10 @@ export async function parseImportsWithLines(filename: string, source: string): P
  * import statement (e.g. `import { foo, bar } from ...` → names: ['foo','bar']).
  * Currently JS/TS only; other languages return empty names arrays.
  */
-export async function parseImportsWithBindings(filename: string, source: string): Promise<ImportWithBindings[]> {
+export async function parseImportsWithBindings(
+  filename: string,
+  source: string,
+): Promise<ImportWithBindings[]> {
   const loaded = await loadLanguageForFile(filename)
   if (!loaded) return []
 

@@ -6,17 +6,17 @@
 //! harness primitives.
 
 mod extra_hard_bugfix;
-mod extra_hard_refactor;
-mod extra_hard_patch;
-mod extra_hard_implement;
-mod extra_hard_testing;
 mod extra_hard_cross_file;
+mod extra_hard_implement;
+mod extra_hard_patch;
+mod extra_hard_refactor;
+mod extra_hard_testing;
 
 use std::path::Path;
 
+use super::{Category, Check, Difficulty, ScenarioSpec, SetupResult};
 #[allow(unused_imports)]
 use crate::agent::types::AgentRole;
-use super::{Category, Check, Difficulty, ScenarioSpec, SetupResult};
 
 // Shared shorthand builders used by every category module
 
@@ -44,7 +44,6 @@ pub(crate) fn with_blocked(mut s: SetupResult, files: Vec<String>) -> SetupResul
     s.blocked_files = files;
     s
 }
-
 
 #[allow(dead_code)]
 pub(crate) fn oc(needle: &str) -> Check {
@@ -122,13 +121,21 @@ pub(crate) fn run_ok_t(cmd: &str, timeout: u64) -> Check {
 /// Run a command in the temp dir; pass if exit == 0 AND output contains all needles.
 #[allow(dead_code)]
 pub(crate) fn run_has(cmd: &str, needles: &[&str]) -> Check {
-    Check::RunOutputContains(cmd.into(), 30, needles.iter().map(|s| s.to_string()).collect())
+    Check::RunOutputContains(
+        cmd.into(),
+        30,
+        needles.iter().map(|s| s.to_string()).collect(),
+    )
 }
 
 /// Run a command in the temp dir; pass if exit == 0 AND output does NOT contain any needle.
 #[allow(dead_code)]
 pub(crate) fn run_lacks(cmd: &str, needles: &[&str]) -> Check {
-    Check::RunOutputLacks(cmd.into(), 30, needles.iter().map(|s| s.to_string()).collect())
+    Check::RunOutputLacks(
+        cmd.into(),
+        30,
+        needles.iter().map(|s| s.to_string()).collect(),
+    )
 }
 
 /// Assert that the edited file differs from a reference snapshot by at most

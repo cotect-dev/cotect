@@ -65,19 +65,22 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
         role,
       }
 
-      agentService.startTask(request).then(() => {
-        set((s) => ({
-          tasks: s.tasks.map((t) => (t.id === id ? { ...t, status: 'running' as const } : t)),
-        }))
-      }).catch((err) => {
-        taskListeners.get(id)?.()
-        taskListeners.delete(id)
-        set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === id ? { ...t, status: 'errored' as const, error: String(err) } : t,
-          ),
-        }))
-      })
+      agentService
+        .startTask(request)
+        .then(() => {
+          set((s) => ({
+            tasks: s.tasks.map((t) => (t.id === id ? { ...t, status: 'running' as const } : t)),
+          }))
+        })
+        .catch((err) => {
+          taskListeners.get(id)?.()
+          taskListeners.delete(id)
+          set((s) => ({
+            tasks: s.tasks.map((t) =>
+              t.id === id ? { ...t, status: 'errored' as const, error: String(err) } : t,
+            ),
+          }))
+        })
 
       const unlisten = agentService.listenToTask(id, (event) => {
         handleTaskEvent(id, event)

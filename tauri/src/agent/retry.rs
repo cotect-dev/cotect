@@ -33,13 +33,23 @@ where
 
 fn is_retryable(error: &anyhow::Error) -> bool {
     let msg = format!("{error:?}").to_lowercase();
-    msg.contains("status: 5") || msg.contains("status code: 5") || msg.contains("http 5") ||
-    msg.contains("500") || msg.contains("502") || msg.contains("503") || msg.contains("504") ||
-    msg.contains("429") || msg.contains("too many requests") || msg.contains("rate limit") ||
-    msg.contains("connection refused") || msg.contains("connection reset") ||
-    msg.contains("connection closed") || msg.contains("connection") ||
-    msg.contains("timed out") || msg.contains("timeout") ||
-    msg.contains("retryable")
+    msg.contains("status: 5")
+        || msg.contains("status code: 5")
+        || msg.contains("http 5")
+        || msg.contains("500")
+        || msg.contains("502")
+        || msg.contains("503")
+        || msg.contains("504")
+        || msg.contains("429")
+        || msg.contains("too many requests")
+        || msg.contains("rate limit")
+        || msg.contains("connection refused")
+        || msg.contains("connection reset")
+        || msg.contains("connection closed")
+        || msg.contains("connection")
+        || msg.contains("timed out")
+        || msg.contains("timeout")
+        || msg.contains("retryable")
 }
 
 #[cfg(test)]
@@ -153,10 +163,7 @@ mod tests {
             "retryable error occurred",
         ] {
             let err = anyhow::anyhow!("{}", msg);
-            assert!(
-                is_retryable(&err),
-                "Should be retryable: {msg}"
-            );
+            assert!(is_retryable(&err), "Should be retryable: {msg}");
         }
     }
 
@@ -169,10 +176,7 @@ mod tests {
             "bad request: malformed JSON",
         ] {
             let err = anyhow::anyhow!("{}", msg);
-            assert!(
-                !is_retryable(&err),
-                "Should NOT be retryable: {msg}"
-            );
+            assert!(!is_retryable(&err), "Should NOT be retryable: {msg}");
         }
     }
 

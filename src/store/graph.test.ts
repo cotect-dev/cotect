@@ -11,6 +11,7 @@ function makeNode(id: string, inDeg: number, outDeg: number): GraphFileNode {
     inDegree: inDeg,
     outDegree: outDeg,
     score: inDeg + outDeg,
+    isTestFile: id.includes('.test.') || id.includes('.spec.'),
   }
 }
 
