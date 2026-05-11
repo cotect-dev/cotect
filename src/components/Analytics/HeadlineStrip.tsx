@@ -13,7 +13,7 @@ export default function HeadlineStrip() {
   const h = useUsageStore((s) => s.headline)
   if (!h) return null
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 gap-3">
       <Stat label="Total tokens" value={h.tokens.toLocaleString()} />
       <Stat label="Tasks" value={h.tasks.toString()} />
       <Stat label="p50 first token" value={h.p50_first_token != null ? `${h.p50_first_token}ms` : '—'} />

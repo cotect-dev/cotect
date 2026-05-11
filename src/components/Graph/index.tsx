@@ -7,11 +7,13 @@ import {
   BaseEdge,
   Handle,
   Position,
+  useReactFlow,
   type Node,
   type Edge,
   type EdgeProps,
   type NodeMouseHandler,
   type NodeProps,
+  type Viewport as RFViewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { FileText, FileCode, FlaskConical, Image } from 'lucide-react'
@@ -27,20 +29,11 @@ const proOptions = { hideAttribution: true }
 // Constants
 // ---------------------------------------------------------------------------
 
-const NODE_MIN_WIDTH = 100
-const NODE_H_PAD = 28   // horizontal padding inside the node (4px border + 10px padding each side + slack)
-const NODE_HEIGHT = 36
+const NODE_WIDTH = 180    // fixed width — matches Canvas file nodes
+const NODE_HEIGHT = 56    // matches Canvas NODE_HEIGHT
 const NODE_GAP = 20      // gap between adjacent nodes (top/bottom rows)
 const SIDE_GAP = 100     // horizontal space between selected node edge and side column edge
 const STACK_V_GAP = 12   // vertical gap between vertically stacked nodes
-
-const LANGUAGE_BORDER: Record<string, string> = {
-  typescript: '#3b82f6',
-  javascript: '#3b82f6',
-  python: '#22c55e',
-  go: '#f97316',
-  rust: '#ef4444',
-}
 
 // Edge colors — IDE convention: green = outgoing (this file uses),
 // purple/violet = incoming (used by others)
@@ -82,10 +75,8 @@ function measureTextWidth(label: string, fontSize: string, fontWeight: string): 
   return el.getBoundingClientRect().width
 }
 
-const NODE_ICON_SPACE = 20 // 14px icon + 6px gap
-function measureNodeWidth(label: string, isSelected: boolean): number {
-  const textW = measureTextWidth(label, '11px', isSelected ? '600' : '500')
-  return Math.max(NODE_MIN_WIDTH, Math.ceil(textW + NODE_H_PAD + NODE_ICON_SPACE))
+function measureNodeWidth(_label: string, _isSelected: boolean): number {
+  return NODE_WIDTH
 }
 
 /** Minimum background width needed to fit the folder label without clipping. */
@@ -187,62 +178,37 @@ const edgeTypes = { nearTarget: NearTargetEdge }
 interface GraphNodeData {
   folder: string
   filename: string
-  borderColor: string
   isSelected: boolean
   isTestFile: boolean
   isParseable: boolean
   isImage: boolean
   isSibling: boolean
-  nodeWidth: number
   [key: string]: unknown
 }
-
-const handleStyle = { opacity: 0, width: 6, height: 6 } as const
 
 const GraphNodeComponent = memo(({ data }: NodeProps<Node<GraphNodeData>>) => {
   const d = data as GraphNodeData
   const Icon = d.isTestFile ? FlaskConical : d.isImage ? Image : d.isParseable ? FileCode : FileText
-  const iconColor = d.isTestFile ? '#ca8a04' : d.isImage ? '#34d399' : d.isParseable ? '#60a5fa' : '#9ca3af'
-  const borderStyle = d.isTestFile ? 'dashed' : 'solid'
-  const borderColor = d.isSelected ? '#fff' : d.isTestFile ? 'rgba(161,98,7,0.4)' : d.borderColor
+  const iconColor = d.isTestFile ? 'text-yellow-600' : d.isImage ? 'text-emerald-400' : d.isParseable ? 'text-blue-400' : 'text-muted-foreground'
+  const borderClass = d.isTestFile ? 'border-yellow-700/40 border-dashed' : 'border-border'
+  const focusRing = d.isSelected ? 'ring-2 ring-primary/40 border-primary/60' : ''
 
   return (
     <div
-      style={{
-        padding: '4px 10px',
-        borderRadius: 6,
-        border: `2px ${borderStyle} ${borderColor}`,
-        background: d.isSelected ? 'rgba(59,130,246,0.15)' : 'var(--color-card)',
-        width: d.nodeWidth,
-        height: NODE_HEIGHT,
-        boxSizing: 'border-box',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        opacity: d.isTestFile ? 0.6 : d.isSibling ? 0.45 : 1,
-      }}
+      className={`bg-background border rounded-lg px-3 py-2 w-[180px] max-w-[180px] cursor-pointer hover:border-primary/50 hover:bg-muted/50 ${borderClass} ${focusRing} ${d.isTestFile ? 'opacity-60' : d.isSibling ? 'opacity-45' : ''}`}
     >
-      <Handle type="source" position={Position.Top} id="s-top" style={handleStyle} />
-      <Handle type="source" position={Position.Right} id="s-right" style={handleStyle} />
-      <Handle type="source" position={Position.Bottom} id="s-bottom" style={handleStyle} />
-      <Handle type="source" position={Position.Left} id="s-left" style={handleStyle} />
-      <Handle type="target" position={Position.Top} id="t-top" style={handleStyle} />
-      <Handle type="target" position={Position.Right} id="t-right" style={handleStyle} />
-      <Handle type="target" position={Position.Bottom} id="t-bottom" style={handleStyle} />
-      <Handle type="target" position={Position.Left} id="t-left" style={handleStyle} />
+      <Handle type="source" position={Position.Top} id="s-top" className="opacity-0" />
+      <Handle type="source" position={Position.Right} id="s-right" className="opacity-0" />
+      <Handle type="source" position={Position.Bottom} id="s-bottom" className="opacity-0" />
+      <Handle type="source" position={Position.Left} id="s-left" className="opacity-0" />
+      <Handle type="target" position={Position.Top} id="t-top" className="opacity-0" />
+      <Handle type="target" position={Position.Right} id="t-right" className="opacity-0" />
+      <Handle type="target" position={Position.Bottom} id="t-bottom" className="opacity-0" />
+      <Handle type="target" position={Position.Left} id="t-left" className="opacity-0" />
 
-      <Icon style={{ width: 14, height: 14, flexShrink: 0, color: iconColor }} />
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: d.isSelected ? 600 : 500,
-          color: 'var(--color-foreground)',
-          whiteSpace: 'nowrap',
-          lineHeight: '16px',
-        }}
-      >
-        {d.filename}
+      <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+        <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />
+        <span className="text-sm font-medium text-foreground truncate min-w-0">{d.filename}</span>
       </div>
     </div>
   )
@@ -401,7 +367,7 @@ function layoutFolderRow(
   nodeWidths: Map<string, number>,
   positions: Map<string, { x: number; y: number }>,
 ): void {
-  const w = (id: string) => nodeWidths.get(id) ?? NODE_MIN_WIDTH
+  const w = (id: string) => nodeWidths.get(id) ?? NODE_WIDTH
 
   const byFolder = new Map<string, EgoNode[]>()
   for (const en of row) {
@@ -470,7 +436,7 @@ function layeredLayout(
   const positions = new Map<string, { x: number; y: number }>()
   if (egoNodes.length === 0) return { positions, turnYUp: -60, turnYDown: 60 }
 
-  const w = (id: string) => nodeWidths.get(id) ?? NODE_MIN_WIDTH
+  const w = (id: string) => nodeWidths.get(id) ?? NODE_WIDTH
   const centerNode = egoNodes.find((en) => en.node.id === centerId)
   if (!centerNode) return { positions, turnYUp: -60, turnYDown: 60 }
 
@@ -642,7 +608,7 @@ function buildFolderBackgrounds(
     if (!pos) continue
     const folder = en.node.folder || '.'
     const k = key(en.depth, folder)
-    const nw = nodeWidths.get(en.node.id) ?? NODE_MIN_WIDTH
+    const nw = nodeWidths.get(en.node.id) ?? NODE_WIDTH
     if (!groups.has(k)) groups.set(k, { folder, items: [] })
     groups.get(k)!.items.push({ pos, w: nw })
   }
@@ -709,8 +675,7 @@ function buildGraphData(
 
   const rfNodes: Node[] = egoNodes.map((en) => {
     const pos = positions.get(en.node.id) ?? { x: 0, y: 0 }
-    const nw = nodeWidths.get(en.node.id) ?? NODE_MIN_WIDTH
-    const borderColor = LANGUAGE_BORDER[en.node.language] ?? '#888'
+    const nw = nodeWidths.get(en.node.id) ?? NODE_WIDTH
     return {
       id: en.node.id,
       type: 'graphNode',
@@ -718,13 +683,11 @@ function buildGraphData(
       data: {
         folder: en.node.folder,
         filename: en.node.label,
-        borderColor,
         isSelected: en.node.id === selectedId,
         isTestFile: en.node.isTestFile,
         isParseable: getConfigForFile(en.node.id) !== null,
         isImage: isImageFile(en.node.label),
         isSibling: en.relation === 'sibling',
-        nodeWidth: nw,
       } satisfies GraphNodeData,
     }
   })
@@ -865,6 +828,18 @@ function GraphFlow() {
     [egoNodes, egoEdges, layoutMeta, nodeWidths, selectedNodeId],
   )
 
+  const reactFlow = useReactFlow()
+
+  // Translate wheel into viewport pan (same as Canvas / view 1)
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.stopPropagation()
+    const viewport = reactFlow.getViewport()
+    void reactFlow.setViewport(
+      { x: viewport.x - e.deltaX, y: viewport.y - e.deltaY, zoom: viewport.zoom },
+      { duration: 0 },
+    )
+  }, [reactFlow])
+
   const focusFileByPath = useCanvasStore((s) => s.focusFileByPath)
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
     if (node.type === 'folderBg') return
@@ -892,30 +867,35 @@ function GraphFlow() {
   return (
     <div className="absolute inset-0">
       {scanState === 'ready' && egoNodes.length > 0 && (
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          colorMode="dark"
-          proOptions={proOptions}
-          nodesDraggable={true}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          onNodeClick={onNodeClick}
-          minZoom={0.05}
-          maxZoom={2}
-          fitView
-          fitViewOptions={{ padding: 0.25 }}
-        >
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={24}
-            size={2}
-            color="var(--color-foreground)"
-            style={{ opacity: 0.1 }}
-          />
-        </ReactFlow>
+        <div className="absolute inset-0" onWheel={handleWheel}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            colorMode="dark"
+            proOptions={proOptions}
+            nodesDraggable={true}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            onNodeClick={onNodeClick}
+            zoomOnScroll={false}
+            zoomOnDoubleClick={false}
+            zoomOnPinch={false}
+            minZoom={1}
+            maxZoom={1}
+            fitView
+            fitViewOptions={{ padding: 0.25 }}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={24}
+              size={2}
+              color="var(--color-foreground)"
+              style={{ opacity: 0.1 }}
+            />
+          </ReactFlow>
+        </div>
       )}
 
       {showOverlay && (

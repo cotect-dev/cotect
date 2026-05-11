@@ -3,7 +3,6 @@ import { useUsageStore } from '@/store/usage'
 import DateRangePicker from '@/components/Analytics/DateRangePicker'
 import HeadlineStrip from '@/components/Analytics/HeadlineStrip'
 import SpendChart from '@/components/Analytics/SpendChart'
-import LatencyChart from '@/components/Analytics/LatencyChart'
 import BreakdownTable from '@/components/Analytics/BreakdownTable'
 import TaskList from '@/components/Analytics/TaskList'
 
@@ -19,9 +18,10 @@ export default function Analytics() {
           <DateRangePicker />
         </div>
         <div className="flex flex-col gap-8">
-          <HeadlineStrip />
-          <SpendChart />
-          <LatencyChart />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            <HeadlineStrip />
+            <SpendChart />
+          </div>
           <BreakdownTable />
           <TaskList />
         </div>
