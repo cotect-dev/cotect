@@ -330,60 +330,127 @@ async function resolveFileImportRefs(
   }
 
   // --- imported-by (files that import this file) ---
-  const importers = allEdges
+  const directImporters = allEdges
     .filter((e) => e.target === repoRel && e.source !== repoRel)
     .filter((e) => !isTestFile(e.source.split('/').pop() || e.source))
     .map((e) => e.source)
 
-  if (importers.length > 0) {
-    // Find where to anchor the imported-by group:
-    //  1. First local export (export without `from`) — normal files.
-    //  2. First export of any kind (including re-exports) — barrel files.
-    //  3. Line after the last import ref.
+  if (directImporters.length > 0) {
+    // Build export name → line number map for per-export anchoring.
     const sourceLines = source.split('\n')
-    let anchorLine = refs.length > 0 ? refs[refs.length - 1].line + 1 : 1
-    let found = false
+    const exportMap = new Map<string, number>()
     let firstExportLine: number | null = null
     for (let li = 0; li < sourceLines.length; li++) {
       const trimmed = sourceLines[li].trimStart()
-      if (trimmed.startsWith('export ')) {
-        if (firstExportLine === null) firstExportLine = li + 1
-        if (!trimmed.includes(' from ')) {
-          anchorLine = li + 1
-          found = true
-          break
-        }
-      }
+      if (!trimmed.startsWith('export ')) continue
+      if (firstExportLine === null) firstExportLine = li + 1
+      if (trimmed.includes(' from ')) continue // skip re-exports
+      const m = trimmed.match(
+        /^export\s+(?:declare\s+)?(?:default\s+)?(?:type|interface|const|let|var|function|async\s+function|class|enum|abstract\s+class)\s+(\w+)/,
+      )
+      if (m) exportMap.set(m[1], li + 1)
     }
-    // Barrel files: all exports have `from`. Use the first export line.
-    if (!found && firstExportLine !== null) anchorLine = firstExportLine
 
-    // Resolve imported binding names by parsing each importer's source.
+    // Fallback anchor for importers whose names don't match any export.
+    let fallbackAnchor = refs.length > 0 ? refs[refs.length - 1].line + 1 : 1
+    if (exportMap.size > 0) {
+      fallbackAnchor = Math.min(...exportMap.values())
+    } else if (firstExportLine !== null) {
+      // Barrel files: all exports have `from`. Use the first export line.
+      fallbackAnchor = firstExportLine
+    }
+
+    // Resolve imported binding names for each direct importer.
+    // Merges ALL matching entries (a file may have multiple import/export
+    // statements from the same source — e.g. barrel files).
     const platform = getPlatform()
-    const importerBindings = await Promise.all(
-      importers.map(async (imp): Promise<{ imp: string; names: string[] }> => {
+    const directBindings = await Promise.all(
+      directImporters.map(async (imp): Promise<{ imp: string; names: string[] }> => {
         try {
           const absPath = joinPath(repoPath, imp)
           const impSource = await platform.fs.readFile(absPath)
           const impConfig = getConfigForFile(imp)
           if (!impConfig) return { imp, names: [] }
           const bindings = await parseImportsWithBindings(imp, impSource)
-          // Find the import entry that resolves to our file
+          const names: string[] = []
           for (const b of bindings) {
             const resolved = resolveImport(b.specifier, imp, knownFiles, impConfig.id)
-            if (resolved === repoRel) return { imp, names: b.names }
+            if (resolved === repoRel) names.push(...b.names)
           }
-          return { imp, names: [] }
+          return { imp, names }
         } catch {
           return { imp, names: [] }
         }
       }),
     )
 
-    for (const { imp, names } of importerBindings) {
+    // Resolve transitive importers through barrel re-exporters.
+    // When a direct importer re-exports names from this file, consumers
+    // of that re-exporter that import matching names are included.
+    const exportedNames = new Set(exportMap.keys())
+    const directImporterSet = new Set(directImporters)
+    const transitiveBindings: { imp: string; names: string[] }[] = []
+
+    for (const { imp: middleFile, names: middleNames } of directBindings) {
+      const reExported = middleNames.filter((n) => exportedNames.has(n))
+      if (reExported.length === 0) continue
+      const reExportSet = new Set(reExported)
+
+      const consumers = allEdges
+        .filter(
+          (e) =>
+            e.target === middleFile &&
+            e.source !== repoRel &&
+            !directImporterSet.has(e.source),
+        )
+        .filter((e) => !isTestFile(e.source.split('/').pop() || e.source))
+        .map((e) => e.source)
+
+      if (consumers.length === 0) continue
+
+      const resolved = await Promise.all(
+        consumers.map(async (consumer): Promise<{ imp: string; names: string[] } | null> => {
+          try {
+            const absPath = joinPath(repoPath, consumer)
+            const src = await platform.fs.readFile(absPath)
+            const cfg = getConfigForFile(consumer)
+            if (!cfg) return null
+            const bindings = await parseImportsWithBindings(consumer, src)
+            const matchedNames: string[] = []
+            for (const b of bindings) {
+              const res = resolveImport(b.specifier, consumer, knownFiles, cfg.id)
+              if (res === middleFile) {
+                matchedNames.push(...b.names.filter((n) => reExportSet.has(n)))
+              }
+            }
+            return matchedNames.length > 0 ? { imp: consumer, names: matchedNames } : null
+          } catch {
+            return null
+          }
+        }),
+      )
+
+      for (const r of resolved) if (r) transitiveBindings.push(r)
+    }
+
+    // Combine direct and transitive, then add refs with per-export anchoring.
+    const allBindings = [...directBindings, ...transitiveBindings]
+
+    for (const { imp, names } of allBindings) {
       if (seen.has(imp)) continue
       seen.add(imp)
       const label = imp.split('/').pop() || imp
+
+      // Anchor at the export line of the first matching imported name.
+      let anchorLine = fallbackAnchor
+      for (const name of names) {
+        const exportLine = exportMap.get(name)
+        if (exportLine !== undefined) {
+          anchorLine = exportLine
+          break
+        }
+      }
+
       refs.push({
         resolvedPath: imp, label,
         line: anchorLine, visualLine: toVisual(anchorLine),

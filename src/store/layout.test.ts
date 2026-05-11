@@ -13,7 +13,7 @@ describe('layout store - pure functions', () => {
   describe('getPanelLabel', () => {
     it('returns label for known panel', () => {
       expect(getPanelLabel('changes')).toBe('Changes')
-      expect(getPanelLabel('chat')).toBe('Chat')
+      expect(getPanelLabel('tasks')).toBe('Tasks')
       expect(getPanelLabel('console')).toBe('Console')
       expect(getPanelLabel('history')).toBe('History')
     })
@@ -26,7 +26,7 @@ describe('layout store - pure functions', () => {
   describe('getEffectivePosition', () => {
     it('returns default position in main window', () => {
       expect(getEffectivePosition('changes', false)).toBe('left')
-      expect(getEffectivePosition('chat', false)).toBe('right')
+      expect(getEffectivePosition('tasks', false)).toBe('right')
       expect(getEffectivePosition('console', false)).toBe('bottom')
     })
 
@@ -36,7 +36,7 @@ describe('layout store - pure functions', () => {
 
     it('returns default for non-bottom panels in child window', () => {
       expect(getEffectivePosition('changes', true)).toBe('left')
-      expect(getEffectivePosition('chat', true)).toBe('right')
+      expect(getEffectivePosition('tasks', true)).toBe('right')
     })
 
     it('returns left for unknown panel', () => {
@@ -59,16 +59,16 @@ describe('layout store - state management', () => {
 
   describe('addPanel', () => {
     it('adds a panel to the specified position', () => {
-      useLayoutStore.getState().addPanel('chat', 'right')
+      useLayoutStore.getState().addPanel('tasks', 'right')
       const { panels, sizes } = useLayoutStore.getState()
-      expect(panels.right).toEqual([['chat']])
+      expect(panels.right).toEqual([['tasks']])
       expect(sizes.right).toEqual([1])
     })
 
     it('does not add duplicate panel', () => {
-      useLayoutStore.getState().addPanel('chat', 'right')
-      useLayoutStore.getState().addPanel('chat', 'left')
-      expect(useLayoutStore.getState().panels.right).toEqual([['chat']])
+      useLayoutStore.getState().addPanel('tasks', 'right')
+      useLayoutStore.getState().addPanel('tasks', 'left')
+      expect(useLayoutStore.getState().panels.right).toEqual([['tasks']])
       expect(useLayoutStore.getState().panels.left).toEqual([])
     })
 
@@ -86,25 +86,25 @@ describe('layout store - state management', () => {
 
   describe('removePanel', () => {
     it('removes a panel', () => {
-      useLayoutStore.getState().addPanel('chat', 'right')
-      useLayoutStore.getState().removePanel('chat')
+      useLayoutStore.getState().addPanel('tasks', 'right')
+      useLayoutStore.getState().removePanel('tasks')
       expect(useLayoutStore.getState().panels.right).toEqual([])
     })
 
     it('does nothing for nonexistent panel', () => {
-      useLayoutStore.getState().addPanel('chat', 'right')
+      useLayoutStore.getState().addPanel('tasks', 'right')
       useLayoutStore.getState().removePanel('nonexistent')
-      expect(useLayoutStore.getState().panels.right).toEqual([['chat']])
+      expect(useLayoutStore.getState().panels.right).toEqual([['tasks']])
     })
   })
 
   describe('movePanel', () => {
     it('moves a panel from one position to another', () => {
-      useLayoutStore.getState().addPanel('chat', 'right')
-      useLayoutStore.getState().movePanel('chat', 'left', 0)
+      useLayoutStore.getState().addPanel('tasks', 'right')
+      useLayoutStore.getState().movePanel('tasks', 'left', 0)
       const { panels } = useLayoutStore.getState()
       expect(panels.right).toEqual([])
-      expect(panels.left).toEqual([['chat']])
+      expect(panels.left).toEqual([['tasks']])
     })
   })
 
@@ -119,10 +119,10 @@ describe('layout store - state management', () => {
     })
 
     it('does nothing when moving to same panel', () => {
-      useLayoutStore.getState().addPanel('chat', 'right')
-      useLayoutStore.getState().movePanelToTab('chat', 'chat')
+      useLayoutStore.getState().addPanel('tasks', 'right')
+      useLayoutStore.getState().movePanelToTab('tasks', 'tasks')
       const { panels } = useLayoutStore.getState()
-      expect(panels.right).toEqual([['chat']])
+      expect(panels.right).toEqual([['tasks']])
     })
   })
 
@@ -164,13 +164,13 @@ describe('layout store - state management', () => {
 
   describe('setCrossWindowDrag', () => {
     it('sets cross window drag data', () => {
-      const drag = { panelId: 'chat', panelIds: ['chat'], position: 'right' as PanelPosition, insertIndex: 0, neighborIndex: 0 }
+      const drag = { panelId: 'tasks', panelIds: ['tasks'], position: 'right' as PanelPosition, insertIndex: 0, neighborIndex: 0 }
       useLayoutStore.getState().setCrossWindowDrag(drag)
       expect(useLayoutStore.getState().crossWindowDrag).toEqual(drag)
     })
 
     it('clears cross window drag', () => {
-      useLayoutStore.getState().setCrossWindowDrag({ panelId: 'chat', panelIds: ['chat'], position: 'right' as PanelPosition, insertIndex: 0, neighborIndex: 0 })
+      useLayoutStore.getState().setCrossWindowDrag({ panelId: 'tasks', panelIds: ['tasks'], position: 'right' as PanelPosition, insertIndex: 0, neighborIndex: 0 })
       useLayoutStore.getState().setCrossWindowDrag(null)
       expect(useLayoutStore.getState().crossWindowDrag).toBeNull()
     })
@@ -179,19 +179,19 @@ describe('layout store - state management', () => {
   describe('getSerializableLayout / loadLayoutIntoStore', () => {
     it('round-trips layout state', () => {
       useLayoutStore.getState().addPanel('changes', 'left')
-      useLayoutStore.getState().addPanel('chat', 'right')
+      useLayoutStore.getState().addPanel('tasks', 'right')
       useLayoutStore.getState().setActiveTab('changes', 0)
 
       const serialized = getSerializableLayout()
       expect(serialized.panels.left).toEqual([['changes']])
-      expect(serialized.panels.right).toEqual([['chat']])
+      expect(serialized.panels.right).toEqual([['tasks']])
 
       useLayoutStore.setState({ panels: { left: [], right: [], bottom: [] }, sizes: { left: [], right: [], bottom: [] }, activeTab: {}, zoneSizes: { ...DEFAULT_ZONE_SIZES } })
       loadLayoutIntoStore(serialized)
 
       const restored = useLayoutStore.getState()
       expect(restored.panels.left).toEqual([['changes']])
-      expect(restored.panels.right).toEqual([['chat']])
+      expect(restored.panels.right).toEqual([['tasks']])
       expect(restored.activeTab['changes']).toBe(0)
     })
   })

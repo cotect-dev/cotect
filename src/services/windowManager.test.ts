@@ -69,7 +69,7 @@ describe('windowManager', () => {
 
   describe('layout persistence', () => {
     const layout: PersistedLayout = {
-      panels: { left: [['browser']], right: [['chat']], bottom: [['console']] } as Record<string, string[][]>,
+      panels: { left: [['browser']], right: [['tasks']], bottom: [['console']] } as Record<string, string[][]>,
       sizes: { left: [1], right: [1], bottom: [1] } as Record<string, number[]>,
       activeTab: { browser: 0 },
     }

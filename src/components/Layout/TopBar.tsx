@@ -39,7 +39,6 @@ interface TopBarProps {
 
 const PANEL_GROUPS = [
   { group: 'git' as const, label: 'Git' },
-  { group: 'tools' as const, label: 'Tools' },
   { group: 'agent' as const, label: 'Agent' },
 ] as const
 

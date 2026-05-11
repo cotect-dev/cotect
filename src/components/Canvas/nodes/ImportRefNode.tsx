@@ -67,11 +67,14 @@ export default memo(function ImportRefNode({ data }: NodeProps<ImportRefNode>) {
       className="flex items-center gap-0.5"
       style={{ height: REF_HEIGHT }}
     >
-      {/* Leading connector line — extends left via negative margin to
-         bridge the REF_GAP (16 px) between code node and annotation. */}
+      {/* Leading connector with line number — extends left via negative
+         margin to bridge the REF_GAP (16 px) between code node and annotation. */}
       {data.showConnector
-        ? <div className={`h-px shrink-0 transition-colors ${lineColor}`}
-            style={{ width: 28, marginLeft: -16 }} />
+        ? <div className="flex items-center shrink-0" style={{ width: 28, marginLeft: -16 }}>
+            <div className={`h-px flex-1 transition-colors ${lineColor}`} />
+            <span className="text-[9px] text-muted-foreground/40 font-mono leading-none px-px">{data.line}</span>
+            <div className={`h-px flex-1 transition-colors ${lineColor}`} />
+          </div>
         : <div className="w-3 shrink-0" />
       }
       {data.items.map((item, idx) => (
