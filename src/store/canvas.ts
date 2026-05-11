@@ -440,22 +440,35 @@ async function resolveFileImportRefs(
       seen.add(imp)
       const label = imp.split('/').pop() || imp
 
-      // Anchor at the export line of the first matching imported name.
-      let anchorLine = fallbackAnchor
+      // Group imported names by their export line so each distinct export
+      // gets its own annotation (e.g. importing both ProbeInput on line 1
+      // and Probed on line 12 produces two refs, not one).
+      const byLine = new Map<number, string[]>()
       for (const name of names) {
         const exportLine = exportMap.get(name)
         if (exportLine !== undefined) {
-          anchorLine = exportLine
-          break
+          if (!byLine.has(exportLine)) byLine.set(exportLine, [])
+          byLine.get(exportLine)!.push(name)
         }
       }
 
-      refs.push({
-        resolvedPath: imp, label,
-        line: anchorLine, visualLine: toVisual(anchorLine),
-        kind: 'imported-by',
-        importedNames: names.length > 0 ? names : undefined,
-      })
+      if (byLine.size > 0) {
+        for (const [anchorLine, lineNames] of byLine) {
+          refs.push({
+            resolvedPath: imp, label,
+            line: anchorLine, visualLine: toVisual(anchorLine),
+            kind: 'imported-by',
+            importedNames: lineNames,
+          })
+        }
+      } else {
+        refs.push({
+          resolvedPath: imp, label,
+          line: fallbackAnchor, visualLine: toVisual(fallbackAnchor),
+          kind: 'imported-by',
+          importedNames: names.length > 0 ? names : undefined,
+        })
+      }
     }
   }
 
