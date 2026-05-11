@@ -31,9 +31,9 @@ const proOptions = { hideAttribution: true }
 
 const NODE_WIDTH = 180    // fixed width — matches Canvas file nodes
 const NODE_HEIGHT = 56    // matches Canvas NODE_HEIGHT
-const NODE_GAP = 20      // gap between adjacent nodes (top/bottom rows)
+const NODE_GAP = 4       // gap between adjacent nodes (top/bottom rows)
 const SIDE_GAP = 100     // horizontal space between selected node edge and side column edge
-const STACK_V_GAP = 12   // vertical gap between vertically stacked nodes
+const STACK_V_GAP = 2    // vertical gap between vertically stacked nodes
 
 // Edge colors — IDE convention: green = outgoing (this file uses),
 // purple/violet = incoming (used by others)
@@ -82,7 +82,7 @@ function measureNodeWidth(_label: string, _isSelected: boolean): number {
 /** Minimum background width needed to fit the folder label without clipping. */
 const FOLDER_LABEL_PAD = 24 // 12px left + 12px right inside the background
 function measureFolderLabelWidth(label: string): number {
-  const textW = measureTextWidth(label, '10px', '500')
+  const textW = measureTextWidth(label, '12px', '600')
   return Math.ceil(textW + FOLDER_LABEL_PAD)
 }
 
@@ -245,10 +245,10 @@ const FolderBgComponent = memo(({ data }: NodeProps<Node<FolderBgData>>) => {
           position: 'absolute',
           top: 8,
           left: 12,
-          fontSize: 10,
-          fontWeight: 500,
+          fontSize: 12,
+          fontWeight: 600,
           color: 'var(--color-muted-foreground)',
-          opacity: 0.6,
+          opacity: 0.85,
           whiteSpace: 'nowrap',
           lineHeight: '14px',
         }}
@@ -356,10 +356,10 @@ function directNeighbors(
 // by folder.
 // ---------------------------------------------------------------------------
 
-const MIN_ROW_SPACING = 120 // minimum center-to-row distance
-const ROW_GAP = 60          // minimum visual gap between folder backgrounds
-const FOLDER_GROUP_GAP = 60
-const SIBLING_GAP = 40      // extra gap before siblings in the center row
+const MIN_ROW_SPACING = 60  // minimum center-to-row distance
+const ROW_GAP = 30          // minimum visual gap between folder backgrounds
+const FOLDER_GROUP_GAP = 15
+const SIBLING_GAP = 8       // extra gap before siblings in the center row
 
 function layoutFolderRow(
   row: EgoNode[],
