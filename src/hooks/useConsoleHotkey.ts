@@ -16,10 +16,6 @@ const TOGGLE_CONSOLE = defineBinding({
   matches: (e) => e.key === 'F12',
 })
 
-// F12 toggles the Console panel in the current window. The panel docks into
-// the bottom zone (or 'right' as fallback in child windows that don't render
-// a bottom zone) and behaves like any other panel — drag, resize, tab.
-// DEV-only: in production builds the listener is never attached.
 export function useConsoleHotkey() {
   useEffect(() => {
     if (!DEV) return

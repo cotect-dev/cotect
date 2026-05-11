@@ -10,10 +10,8 @@ pub fn get(c: &Conn, key: &str) -> Result<Option<Value>> {
     let row: Option<String> = c
         .query_row("SELECT value FROM kv WHERE key = ?1", [key], |r| r.get(0))
         .ok();
-    match row {
-        Some(s) => Ok(Some(serde_json::from_str(&s)?)),
-        None => Ok(None),
-    }
+    row.map(|s| serde_json::from_str(&s).map_err(Into::into))
+        .transpose()
 }
 
 pub fn set(c: &Conn, key: &str, value: &Value) -> Result<()> {

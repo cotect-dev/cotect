@@ -5,6 +5,8 @@ import type { PersistedLayout } from '@/types/layout'
 
 export type { PersistedLayout } from '@/types/layout'
 
+const PERSIST_DEBOUNCE_MS = 300
+
 export interface PersistedGeometry {
   x: number
   y: number
@@ -103,7 +105,7 @@ export async function startGeometryPersistence(windowId: string): Promise<void> 
       persist().catch((err) => {
         console.warn('[windowManager] geometry persist failed:', err)
       })
-    }, 300)
+    }, PERSIST_DEBOUNCE_MS)
   }
 
   persist().catch((err) => {
@@ -145,7 +147,7 @@ export function startSessionPersistence(): void {
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       saveSession({ rootPath: state.rootPath })
-    }, 300)
+    }, PERSIST_DEBOUNCE_MS)
   })
 }
 

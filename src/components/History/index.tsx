@@ -4,6 +4,8 @@ import { invoke } from '@tauri-apps/api/core'
 import RelativeTime from '@/components/RelativeTime'
 import NoGitRepo from '@/components/NoGitRepo'
 
+const LOG_PAGE_SIZE = 50
+
 const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -54,7 +56,6 @@ export default function History() {
   const isGitRepo = useGitStore((s) => s.isGitRepo)
   const log = useGitStore((s) => s.log)
   const repoPath = useGitStore((s) => s.repoPath)
-  // Only store *extra* commits loaded via infinite scroll — the base comes from the store.
   const [extraCommits, setExtraCommits] = useState<GitLogEntry[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(true)
@@ -67,7 +68,7 @@ export default function History() {
   if (log !== baseLog) {
     setBaseLog(log)
     setExtraCommits([])
-    setHasMore(!!log && log.length >= 50)
+    setHasMore(!!log && log.length >= LOG_PAGE_SIZE)
   }
 
   const allCommits = useMemo(
@@ -82,10 +83,10 @@ export default function History() {
       const currentTotal = (useGitStore.getState().log?.length ?? 0) + extraCommits.length
       const more = await invoke<GitLogEntry[]>('git_log', {
         repoPath,
-        limit: 50,
+        limit: LOG_PAGE_SIZE,
         skip: currentTotal,
       })
-      if (more.length < 50) setHasMore(false)
+      if (more.length < LOG_PAGE_SIZE) setHasMore(false)
       setExtraCommits((prev) => [...prev, ...more])
     } catch {
       setHasMore(false)

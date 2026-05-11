@@ -15,7 +15,6 @@ import { getPlatform } from '@/services/platform'
 import { useWindowBounds } from '@/hooks/useWindowBounds'
 import { computeInsertIndex as computeInsertIndexMath } from '@/lib/panelDropMath'
 
-// px from the top of each panel area that count as "header zone".
 const TAB_INTO_HEIGHT = 32
 
 export interface DragState {

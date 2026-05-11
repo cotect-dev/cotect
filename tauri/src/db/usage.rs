@@ -157,11 +157,11 @@ fn p50_for_bucket(c: &Conn, f: &UsageFilter, group_by: GroupBy, bucket: &str) ->
 
     let mut stmt = c.prepare(&sql)?;
     let p_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| &**b).collect();
-    let mut times: Vec<i64> = stmt
+    let times: Vec<i64> = stmt
         .query_map(rusqlite::params_from_iter(p_refs.iter().copied()), |r| r.get::<_, i64>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     if times.is_empty() { return Ok(None); }
-    times.sort_unstable();
+    // Already sorted by the query's ORDER BY total_ms ASC.
     // Lower-middle median: for [500, 600] -> 500; for [a,b,c] -> b.
     Ok(Some(times[(times.len() - 1) / 2]))
 }

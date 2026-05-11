@@ -67,12 +67,10 @@ function resolvePython(
   fromRel: string,
   knownFiles: Set<string>,
 ): string | null {
-  // Count leading dots for relative imports
   let dots = 0
   while (dots < specifier.length && specifier[dots] === '.') dots++
 
   if (dots > 0) {
-    // Relative import
     const rest = specifier.slice(dots)
     const fromDir = dirname(fromRel)
     const fromSegments = fromDir ? fromDir.split('/') : []
@@ -86,18 +84,15 @@ function resolvePython(
     const moduleParts = rest ? rest.split('.') : []
     const searchPath = [...base, ...moduleParts].join('/')
 
-    // Try as direct file
     const pyCandidate = searchPath + '.py'
     if (knownFiles.has(pyCandidate) && pyCandidate !== fromRel) return pyCandidate
 
-    // Try as package
     const initCandidate = searchPath + '/__init__.py'
     if (knownFiles.has(initCandidate) && initCandidate !== fromRel) return initCandidate
 
     return null
   }
 
-  // Absolute import — convert dots to slashes
   const asPath = specifier.replace(/\./g, '/')
 
   const pyCandidate = asPath + '.py'
@@ -125,7 +120,6 @@ function resolveGo(
   if (firstSegment.includes('.')) return null // github.com/foo/bar
   if (firstSlash < 0) return null // stdlib single-word like "fmt"
 
-  // Check if any known file lives under this package directory
   const prefix = specifier + '/'
   for (const f of knownFiles) {
     if (f.startsWith(prefix) && f.endsWith('.go')) return f
@@ -183,11 +177,9 @@ function resolveRust(
     return null
   }
 
-  // Try as direct file
   const rsCandidate = basePath + '.rs'
   if (knownFiles.has(rsCandidate) && rsCandidate !== fromRel) return rsCandidate
 
-  // Try as module directory
   const modRsCandidate = basePath + '/mod.rs'
   if (knownFiles.has(modRsCandidate)) return modRsCandidate
 

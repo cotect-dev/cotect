@@ -37,6 +37,7 @@ const VIEW_ANALYTICS = defineBinding({
 })
 
 const proOptions = { hideAttribution: true }
+const bgStyle = { opacity: 0.1 }
 
 // Matches anchorViewport(0, 0): column 0 at MARGIN before any effect runs.
 const defaultViewport: RFViewport = { x: CANVAS_MARGIN, y: CANVAS_MARGIN, zoom: 1 }
@@ -55,11 +56,9 @@ function CanvasFlow() {
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
   const depthChainLength = useCanvasStore((s) => s.depthChain.length)
 
-  // Lazy init from the DOM: when CanvasFlow remounts after a view switch
-  // the Layout (and its left panel) is already mounted, so seeding to the
-  // real width keeps `prevPanelWidth` in sync from the first paint and the
-  // panel-resize effect below stays a no-op until the panel actually changes.
-  // (Starting at 0 made the first effect run shift the viewport by −panelW.)
+  // Seed from the DOM so `prevPanelWidth` is in sync from the first paint —
+  // starting at 0 made the first panel-resize effect shift the viewport by
+  // −panelW.
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
     const el = typeof document !== 'undefined'
       ? document.querySelector('[data-zone="left"]') as HTMLElement | null
@@ -79,11 +78,8 @@ function CanvasFlow() {
     return () => observer.disconnect()
   }, [])
 
-  // initRoot resets columns / currentColumnIndex / focusedNodeId, so we
-  // must NOT re-run it on every CanvasFlow mount — switching views (1↔2↔3)
-  // would otherwise drop the user's selection and bounce them back to the
-  // root column on return. Skip if the store is already initialized for
-  // this rootPath; only re-init when the project actually changes.
+  // Skip if already initialized for this rootPath — view switches remount
+  // CanvasFlow, and re-running initRoot would reset the user's selection.
   useEffect(() => {
     if (!rootPath) return
     const state = useCanvasStore.getState()
@@ -92,15 +88,11 @@ function CanvasFlow() {
   }, [rootPath])
 
   const prevPanelWidth = useRef(leftPanelWidth)
-  // Ref so deferred callbacks always read the latest panel width.
   const leftPanelWidthRef = useRef(leftPanelWidth)
   useEffect(() => {
     leftPanelWidthRef.current = leftPanelWidth
   }, [leftPanelWidth])
 
-  // Read panel width from the DOM: useLayoutEffect runs after layout commit,
-  // so getBoundingClientRect returns a real value even before the
-  // ResizeObserver has fired on first mount.
   const readPanelW = useCallback(() => {
     const panelEl = document.querySelector('[data-zone="left"]')
     return panelEl ? panelEl.getBoundingClientRect().width : leftPanelWidthRef.current
@@ -118,7 +110,7 @@ function CanvasFlow() {
     ? { x: focusedNode.position.x, y: focusedNode.position.y }
     : null
 
-  // Save viewport to the store on unmount so view switches preserve position.
+  // Persist viewport on unmount so view switches preserve position.
   useEffect(() => {
     return () => {
       const vp = reactFlow.getViewport()
@@ -126,10 +118,8 @@ function CanvasFlow() {
     }
   }, [reactFlow])
 
-  // Anchor on column change: place the new current column at panelW + MARGIN,
-  // then clamp to keep the focused node in view. Animated for a smooth slide
-  // — but the first run restores a saved viewport (from a view switch) when
-  // available, or snaps to the computed anchor if this is a fresh session.
+  // On column change, anchor the viewport at panelW + MARGIN and clamp to
+  // the focused node. First run restores a saved viewport from a view switch.
   const isFirstAnchorRef = useRef(true)
   useLayoutEffect(() => {
     const panelW = readPanelW()
@@ -139,7 +129,6 @@ function CanvasFlow() {
     const isFirst = isFirstAnchorRef.current
     isFirstAnchorRef.current = false
 
-    // On remount after a view switch, restore the exact viewport the user had.
     if (isFirst) {
       const saved = useCanvasStore.getState().savedViewport
       if (saved) {
@@ -192,13 +181,10 @@ function CanvasFlow() {
 
   useCanvasKeyboard(containerRef)
 
-  // Auto-focus container on mount so keyboard navigation works immediately.
   useEffect(() => {
     containerRef.current?.focus()
   }, [])
 
-  // Translate vertical wheel into viewport pan, or forward to the preview
-  // code node's scroller when a file is focused.
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.stopPropagation()
 
@@ -229,8 +215,6 @@ function CanvasFlow() {
     )
   }, [reactFlow])
 
-  // Keep store cameraY in sync with every viewport movement so
-  // flattenAndRender's preview-column math sees the live camera.
   const handleViewportChange = useCallback((vp: RFViewport) => {
     notifyCanvasScrolled()
     if (useCanvasStore.getState().cameraY !== vp.y) {
@@ -238,8 +222,6 @@ function CanvasFlow() {
     }
   }, [])
 
-  // Report container height so flattenAndRender knows where the visible
-  // area starts for the preview column.
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -254,48 +236,46 @@ function CanvasFlow() {
   }, [setViewportHeight])
 
   return (
-    <>
-      <div
-        ref={containerRef}
-        className="absolute inset-0 outline-none"
-        tabIndex={-1}
-        data-canvas-container
-        onWheel={handleWheel}
+    <div
+      ref={containerRef}
+      className="absolute inset-0 outline-none"
+      tabIndex={-1}
+      data-canvas-container
+      onWheel={handleWheel}
+    >
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        nodeTypes={nodeTypes}
+        defaultViewport={defaultViewport}
+        colorMode="dark"
+        proOptions={proOptions}
+        zoomOnScroll={false}
+        zoomOnDoubleClick={false}
+        zoomOnPinch={false}
+        panOnDrag={false}
+        panOnScroll={false}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        nodesFocusable={false}
+        edgesFocusable={false}
+        disableKeyboardA11y={true}
+        minZoom={1}
+        maxZoom={1}
+        onViewportChange={handleViewportChange}
       >
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={nodeTypes}
-          defaultViewport={defaultViewport}
-          colorMode="dark"
-          proOptions={proOptions}
-          zoomOnScroll={false}
-          zoomOnDoubleClick={false}
-          zoomOnPinch={false}
-          panOnDrag={false}
-          panOnScroll={false}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          nodesFocusable={false}
-          edgesFocusable={false}
-          disableKeyboardA11y={true}
-          minZoom={1}
-          maxZoom={1}
-          onViewportChange={handleViewportChange}
-        >
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={24}
-            size={2}
-            color="var(--color-foreground)"
-            style={{ opacity: 0.1 }}
-          />
-        </ReactFlow>
-      </div>
-    </>
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={24}
+          size={2}
+          color="var(--color-foreground)"
+          style={bgStyle}
+        />
+      </ReactFlow>
+    </div>
   )
 }
 
@@ -304,8 +284,6 @@ function ViewSwitcher() {
   const setViewMode = useViewStore((s) => s.setViewMode)
   const insets = useCanvasInsets()
 
-  // Bound at the document level so 1/2/3 work no matter which view is up
-  // (the Canvas-scoped keyboard hook only mounts inside the files view).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const active = document.activeElement as HTMLElement | null
@@ -326,18 +304,9 @@ function ViewSwitcher() {
     return () => document.removeEventListener('keydown', handler)
   }, [setViewMode])
 
-  // All three views share the same workspace context (root path, git status,
-  // selected file via canvas store, LLM config, etc.) — they're presented as
-  // alternative lenses on the same project. TopBar + side panels render
-  // unconditionally (panels stay where the user put them across view
-  // switches); only the canvas-area content swaps.
-  //
-  // Positioning: Graph / Settings span the full window minus the TopBar.
-  // They sit *under* the panel overlay (same way the files-view canvas
-  // does), so panels visually cover the edges but the content is centered
-  // on the window itself. Using `insets.left/right` here re-centered within
-  // the gap between panels and drifted right whenever the two side panels
-  // had different widths (or only one was open).
+  // Graph / Settings sit under the panel overlay (z-10) — using
+  // insets.left/right here would re-center within the gap and drift when
+  // side panels have asymmetric widths.
   const contentStyle = {
     top: insets.top,
     left: 0,
@@ -345,29 +314,21 @@ function ViewSwitcher() {
     bottom: 0,
   } as const
 
-  // Inactive views are kept mounted but hidden so they preserve scroll
-  // position, viewport state, and internal component state across switches.
-  // `opacity: 0` (not `display: none`) keeps layout measurements valid —
-  // ReactFlow needs a sized container. Unlike `visibility: hidden`, children
-  // cannot override a parent's opacity, so the view is reliably invisible.
+  // Inactive views stay mounted (opacity 0, zIndex -1) to preserve scroll /
+  // viewport state. opacity 0 (not display:none) keeps layout measurements
+  // valid for ReactFlow; children cannot override a parent's opacity.
   const active = (view: typeof viewMode) => viewMode === view
   const insetStyle = (view: typeof viewMode) => ({
     ...contentStyle,
-    // Files view fills the entire window (behind the z-10 panel overlay);
-    // other views start below the TopBar so their content isn't hidden under it.
     top: view === 'files' ? 0 : insets.top,
     paddingLeft: view === 'files' ? 0 : insets.left,
     paddingRight: view === 'files' ? 0 : insets.right,
-    // Inactive views: opacity 0 hides them (children can't override), and
-    // zIndex -1 pushes them behind everything so no events leak through
-    // (children CAN override pointer-events, but can't escape z-order).
     opacity: active(view) ? 1 : 0,
     zIndex: active(view) ? 0 : -1,
   })
 
   return (
     <>
-      {/* Files view — always mounted inside its own ReactFlowProvider */}
       <div className="absolute inset-0" style={insetStyle('files')}>
         <ReactFlowProvider>
           <CanvasFlow />
@@ -386,19 +347,12 @@ function ViewSwitcher() {
         <Analytics />
       </div>
 
-      {/* Panels and TopBar always render, regardless of view — the
-        * workspace shell stays consistent so Changes / History /
-        * Tasks remain available alongside any view. pointer-events-none on
-        * the wrapper lets the underlying view receive interactions
-        * everywhere panels and TopBar don't cover. */}
       <div className="absolute inset-0 pointer-events-none z-10">
         <Layout />
       </div>
 
-      {/* Breadcrumbs sit above the Layout overlay (z-20 > z-10) so they're
-        * never hidden behind the TopBar. Rendered outside view wrappers
-        * because opacity on those creates a stacking context that would
-        * trap any child z-index. Visible for files and graph views. */}
+      {/* Rendered outside view wrappers because opacity creates a stacking
+        * context that would trap the z-index. */}
       {(viewMode === 'files' || viewMode === 'graph') && (
         <Breadcrumbs />
       )}

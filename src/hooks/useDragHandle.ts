@@ -43,15 +43,11 @@ export interface DragHandleResult {
 export function useDragHandle(opts: DragHandleOptions): DragHandleResult {
   const ref = useRef<HTMLElement | null>(null)
 
-  // Latest options stay in a ref so the mousedown callback's identity is
-  // stable — callers can recreate closures freely without re-binding the
-  // JSX prop. Updated in a layout effect (no ref writes during render).
   const optsRef = useRef(opts)
   useLayoutEffect(() => {
     optsRef.current = opts
   })
 
-  // Non-null when a drag is in flight; the unmount effect runs it.
   const cleanupRef = useRef<(() => void) | null>(null)
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -104,7 +100,6 @@ export function useDragHandle(opts: DragHandleOptions): DragHandleResult {
     cleanupRef.current = cleanup
   }, [])
 
-  // Tear down listeners on unmount mid-drag so we don't leak global state.
   useEffect(() => {
     return () => {
       cleanupRef.current?.()

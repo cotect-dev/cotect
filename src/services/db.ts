@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
 
-// Mirrors Rust db::providers::Provider
 export interface Provider {
   id: string
   label: string
@@ -55,24 +54,20 @@ export interface AggregateRow {
   p50_total_ms: number | null
 }
 
-// kv
 export const kvGet = (key: string) => invoke<unknown>('kv_get', { key })
 export const kvSet = (key: string, value: unknown) => invoke<void>('kv_set', { key, value })
 export const kvDelete = (key: string) => invoke<void>('kv_delete', { key })
 export const kvGetPrefix = (prefix: string) => invoke<Record<string, unknown>>('kv_get_prefix', { prefix })
 
-// providers
 export const providersList = () => invoke<Provider[]>('providers_list')
 export const providersUpsert = (provider: Provider) => invoke<void>('providers_upsert', { provider })
 export const providersRemove = (id: string) => invoke<void>('providers_remove', { id })
 export const assignmentGet = () => invoke<ActiveAssignment>('assignment_get')
 export const assignmentSet = (assignment: ActiveAssignment) => invoke<void>('assignment_set', { assignment })
 
-// repos (Project Map scaffold)
 export const dbRepoUpsert = (rootPath: string) => invoke<number>('db_repo_upsert', { rootPath })
 export const dbRepoGet = (rootPath: string) => invoke<{ id: number; root_path: string } | null>('db_repo_get', { rootPath })
 
-// usage
 export const usageRecord = (record: UsageRecord) => invoke<void>('usage_record', { record })
 export const usageQuery = (filter: UsageFilter) => invoke<UsageRecord[]>('usage_query', { filter })
 export const usageAggregate = (filter: UsageFilter, groupBy: GroupBy) => invoke<AggregateRow[]>('usage_aggregate', { filter, groupBy })

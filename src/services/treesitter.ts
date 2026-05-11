@@ -93,7 +93,6 @@ function collectImportClauseNames(node: TSNode, names: string[]): void {
   for (let i = 0; i < node.namedChildCount; i++) {
     const child = node.namedChild(i)!
     if (child.type === 'identifier') {
-      // Default import: `import Foo from ...`
       names.push(child.text)
     } else if (child.type === 'named_imports') {
       for (let j = 0; j < child.namedChildCount; j++) {
@@ -347,8 +346,6 @@ export async function parseImportsWithBindings(filename: string, source: string)
   const loaded = await loadLanguageForFile(filename)
   if (!loaded) return []
 
-  // Only JS/TS has a dedicated binding extractor; others fall through to
-  // the line-only extractor with empty names arrays.
   if (loaded.id !== 'typescript' && loaded.id !== 'javascript') {
     const lines = await parseImportsWithLines(filename, source)
     return lines.map((l) => ({ ...l, names: [] }))

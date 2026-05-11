@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import type { Provider, ActiveAssignment } from '@/services/db'
 import type { DetectedView } from './types'
 
+const MAX_VISIBLE_MODELS = 50
+
 type Role = 'implement' | 'research' | 'plan'
 
 function rolesAssignedToModel(a: ActiveAssignment | null, providerId: string, modelId: string): Role[] {
@@ -38,7 +40,7 @@ export default function ModelTable({
           <div className="grid grid-cols-[1fr_64px_64px_64px_72px] gap-0 bg-muted/40 px-2.5 py-1 text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
             <div>Model</div><div>Family</div><div>Format</div><div>Ctx</div><div>Roles</div>
           </div>
-          {filtered.slice(0, 50).map((m) => {
+          {filtered.slice(0, MAX_VISIBLE_MODELS).map((m) => {
             const roles = rolesAssignedToModel(assignment, provider.id, m.id)
             const fmt = detected.format_per_model[m.id]
             return (
@@ -55,9 +57,9 @@ export default function ModelTable({
               </div>
             )
           })}
-          {filtered.length > 50 && (
+          {filtered.length > MAX_VISIBLE_MODELS && (
             <div className="px-2.5 py-1 border-t border-border text-[10px] text-muted-foreground text-center">
-              …and {filtered.length - 50} more — search to filter
+              …and {filtered.length - MAX_VISIBLE_MODELS} more — search to filter
             </div>
           )}
         </div>

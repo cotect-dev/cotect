@@ -13,7 +13,6 @@ import {
   type EdgeProps,
   type NodeMouseHandler,
   type NodeProps,
-  type Viewport as RFViewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { FileText, FileCode, FlaskConical, Image } from 'lucide-react'
@@ -25,33 +24,22 @@ import type { GraphFileNode, GraphFileEdge } from '@/store/graph'
 
 const proOptions = { hideAttribution: true }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const NODE_WIDTH = 180    // fixed width — matches Canvas file nodes
 const NODE_HEIGHT = 56    // matches Canvas NODE_HEIGHT
 const NODE_GAP = 4       // gap between adjacent nodes (top/bottom rows)
 const SIDE_GAP = 100     // horizontal space between selected node edge and side column edge
 const STACK_V_GAP = 2    // vertical gap between vertically stacked nodes
 
-// Edge colors — IDE convention: green = outgoing (this file uses),
-// purple/violet = incoming (used by others)
 const EDGE_COLOR_DEPENDENCY = '#4ade80'  // green — "this file imports"
 const EDGE_COLOR_DEPENDENT  = '#a78bfa'  // violet — "imported by"
 
-// Folder background
 const FOLDER_BG = 'rgba(46, 50, 56, 0.6)'
 const FOLDER_BORDER = 'rgba(148, 163, 184, 0.15)'
 const FOLDER_PAD = 16
 const FOLDER_LABEL_H = 22
 
-// ---------------------------------------------------------------------------
-// Measure text width using an offscreen canvas
-// ---------------------------------------------------------------------------
-
-// Measure text using a hidden DOM element so we inherit the real rendered font
-// (Geist Variable) rather than guessing in a canvas context.
+// Hidden DOM element inherits the real rendered font rather than guessing
+// in an offscreen canvas context.
 let _measureEl: HTMLSpanElement | null = null
 function getMeasureEl(): HTMLSpanElement {
   if (!_measureEl) {
@@ -59,7 +47,6 @@ function getMeasureEl(): HTMLSpanElement {
     el.style.cssText =
       'position:absolute;visibility:hidden;height:auto;width:auto;white-space:nowrap;' +
       'font-size:11px;line-height:16px;pointer-events:none;'
-    // Inherit font-family from the document body
     el.style.fontFamily = 'inherit'
     document.body.appendChild(el)
     _measureEl = el
@@ -75,33 +62,21 @@ function measureTextWidth(label: string, fontSize: string, fontWeight: string): 
   return el.getBoundingClientRect().width
 }
 
-function measureNodeWidth(_label: string, _isSelected: boolean): number {
-  return NODE_WIDTH
-}
-
-/** Minimum background width needed to fit the folder label without clipping. */
-const FOLDER_LABEL_PAD = 24 // 12px left + 12px right inside the background
+const FOLDER_LABEL_PAD = 24
 function measureFolderLabelWidth(label: string): number {
   const textW = measureTextWidth(label, '12px', '600')
   return Math.ceil(textW + FOLDER_LABEL_PAD)
 }
 
-/** Pre-compute widths for all ego nodes. Returns a map of nodeId → pixel width. */
 function computeNodeWidths(
   egoNodes: EgoNode[],
-  selectedId: string,
 ): Map<string, number> {
   const widths = new Map<string, number>()
   for (const en of egoNodes) {
-    widths.set(en.node.id, measureNodeWidth(en.node.label, en.node.id === selectedId))
+    widths.set(en.node.id, NODE_WIDTH)
   }
   return widths
 }
-
-// ---------------------------------------------------------------------------
-// Custom edge: routes vertically from source, turns horizontally just before
-// the target node, then enters the target.
-// ---------------------------------------------------------------------------
 
 const STEP_OFFSET = 20
 const CORNER_R = 8
@@ -171,10 +146,6 @@ function NearTargetEdge(props: EdgeProps) {
 
 const edgeTypes = { nearTarget: NearTargetEdge }
 
-// ---------------------------------------------------------------------------
-// Custom node: auto-sized to fit filename
-// ---------------------------------------------------------------------------
-
 interface GraphNodeData {
   folder: string
   filename: string
@@ -214,10 +185,6 @@ const GraphNodeComponent = memo(({ data }: NodeProps<Node<GraphNodeData>>) => {
   )
 })
 GraphNodeComponent.displayName = 'GraphNode'
-
-// ---------------------------------------------------------------------------
-// Folder background node (non-interactive group label)
-// ---------------------------------------------------------------------------
 
 interface FolderBgData {
   folderLabel: string
@@ -262,10 +229,6 @@ FolderBgComponent.displayName = 'FolderBg'
 
 const nodeTypes = { graphNode: GraphNodeComponent, folderBg: FolderBgComponent }
 
-// ---------------------------------------------------------------------------
-// Direct neighbors + same-folder siblings
-// ---------------------------------------------------------------------------
-
 type EgoRelation = 'import' | 'self' | 'imported-by' | 'sibling'
 
 interface EgoNode {
@@ -299,7 +262,6 @@ function directNeighbors(
     return n && (showTests || !n.isTestFile)
   }
 
-  // Find direct imports and imported-by
   const imports = new Set<string>()
   const importedBy = new Set<string>()
 
@@ -317,7 +279,6 @@ function directNeighbors(
   const result: EgoNode[] = []
   result.push({ node: startNode, depth: 0, relation: 'self' })
 
-  // Same-folder → center row (depth 0), different-folder → top/bottom
   for (const id of imports) {
     const n = nodeMap.get(id)!
     const sameFolder = (n.folder || '.') === centerFolder
@@ -330,7 +291,6 @@ function directNeighbors(
     result.push({ node: n, depth: sameFolder ? 0 : 1, relation: 'imported-by' })
   }
 
-  // Same-folder siblings (no import relationship) — standalone nodes
   for (const n of allNodes) {
     if (n.id === startId) continue
     if ((n.folder || '.') !== centerFolder) continue
@@ -339,7 +299,6 @@ function directNeighbors(
     result.push({ node: n, depth: 0, relation: 'sibling' })
   }
 
-  // Only include edges connected to the selected file and between visible nodes
   const visibleIds = new Set(result.map((en) => en.node.id))
   const edges = allEdges.filter((e) =>
     (e.source === startId || e.target === startId) &&
@@ -349,20 +308,11 @@ function directNeighbors(
   return { nodes: result, edges }
 }
 
-// ---------------------------------------------------------------------------
-// Layered layout.
-// Center row: selected file + same-folder nodes (imports left, imported-by
-// right, siblings at the edges). Top/bottom: different-folder nodes grouped
-// by folder.
-// ---------------------------------------------------------------------------
-
 const MIN_ROW_SPACING = 60  // minimum center-to-row distance
 const ROW_GAP = 30          // minimum visual gap between folder backgrounds
 const FOLDER_GROUP_GAP = 15
 const SIBLING_GAP = 8       // extra gap before siblings in the center row
 
-// Y-step between sub-rows when a folder row wraps into multiple visual rows.
-// = folder-bg height (NODE_HEIGHT + 2*FOLDER_PAD + FOLDER_LABEL_H) + ROW_GAP
 const SUB_ROW_STEP = NODE_HEIGHT + 2 * FOLDER_PAD + FOLDER_LABEL_H + ROW_GAP
 
 type FolderGroupInfo = { nodes: EgoNode[]; nodesW: number; bgW: number }
@@ -463,7 +413,6 @@ function layoutFolderRow(
 ): void {
   const w = (id: string) => nodeWidths.get(id) ?? NODE_WIDTH
 
-  // ---- Group nodes by folder ----
   const byFolder = new Map<string, EgoNode[]>()
   for (const en of row) {
     const folder = en.node.folder || '.'
@@ -477,7 +426,6 @@ function layoutFolderRow(
     group.sort((a, b) => a.node.id.localeCompare(b.node.id))
   }
 
-  // ---- Compute effective widths for each folder group ----
   const groupInfos: FolderGroupInfo[] = []
   for (const [folder, group] of folderGroups) {
     let nodesW = 0
@@ -491,11 +439,6 @@ function layoutFolderRow(
     groupInfos.push({ nodes: group, nodesW, bgW })
   }
 
-  // ---- Find the optimal number of visual rows ----
-  // Try 1..min(count, 5) rows, pick the aspect ratio closest to a
-  // pleasant wide rectangle (TARGET_ASPECT ≈ 3:1).  A wider target
-  // favors fewer rows, avoiding unnecessary vertical stacking that
-  // forces edges to thread through intermediate sub-rows.
   const TARGET_ASPECT = 3.0
   const singleBgH = NODE_HEIGHT + 2 * FOLDER_PAD + FOLDER_LABEL_H
   const maxRows = Math.min(groupInfos.length, 5)
@@ -517,11 +460,8 @@ function layoutFolderRow(
     }
   }
 
-  // ---- Reorder sub-rows: widest last ----
-  // The last sub-row is centered (no trunk avoidance needed) while earlier
-  // sub-rows are split left/right.  Putting the widest sub-row last lets
-  // it benefit from clean centered placement instead of being awkwardly
-  // split, and the narrower rows are easier to partition around the trunk.
+  // Widest sub-row goes last: it gets clean centered placement while
+  // narrower rows are easier to partition around the trunk.
   if (bestLayout.length > 1) {
     let widestIdx = 0
     let widestW = -1
@@ -535,11 +475,8 @@ function layoutFolderRow(
     }
   }
 
-  // ---- Position nodes within each visual sub-row ----
-  // When there are multiple sub-rows, edges from the selected node travel
-  // vertically at x=0 and pass through intermediate sub-rows.  Non-last
-  // sub-rows are split into left/right halves straddling x=0 (balanced by
-  // total width) so no folder background covers the trunk line.
+  // Non-last sub-rows split left/right around x=0 so folder backgrounds
+  // don't cover the vertical trunk line.
   const lastSubRowIdx = bestLayout.length - 1
   const TRUNK_HALF_GAP = FOLDER_GROUP_GAP / 2
 
@@ -604,10 +541,8 @@ function layoutFolderRow(
       placeGroups(leftGroups, -TRUNK_HALF_GAP - leftW, subRowY)
       placeGroups(rightGroups, TRUNK_HALF_GAP, subRowY)
     } else if (needAvoidance && subRow.length === 1) {
-      // Single group: place entirely to the right of the trunk
       placeGroups(subRow, TRUNK_HALF_GAP, subRowY)
     } else {
-      // Centered (single sub-row or last sub-row)
       placeGroups(subRow, -totalW / 2, subRowY)
     }
   }
@@ -631,11 +566,9 @@ function layeredLayout(
 
   const selectedName = centerNode.node.label
 
-  // === Center row (depth 0): vertical columns left/right of selected ===
   positions.set(centerId, { x: 0, y: 0 })
   const sw = w(centerId)
 
-  // Same-folder imports → left column, right-aligned, vertically centered
   const sameImports = egoNodes
     .filter((en) => en.depth === 0 && en.relation === 'import')
     .sort((a, b) => {
@@ -645,7 +578,6 @@ function layeredLayout(
       return a.node.label.localeCompare(b.node.label)
     })
 
-  // Right edge of left column: fixed distance from selected's left edge
   const leftRightEdge = -(sw / 2 + SIDE_GAP)
 
   if (sameImports.length > 0) {
@@ -654,7 +586,6 @@ function layeredLayout(
     for (let i = 0; i < sameImports.length; i++) {
       const en = sameImports[i]
       const nw = w(en.node.id)
-      // Right-align: right edge of every node sits at leftRightEdge
       positions.set(en.node.id, {
         x: leftRightEdge - nw / 2,
         y: startY + i * (NODE_HEIGHT + STACK_V_GAP),
@@ -662,7 +593,6 @@ function layeredLayout(
     }
   }
 
-  // Same-folder imported-by → right column, left-aligned, vertically centered
   const sameImportedBy = egoNodes
     .filter((en) => en.depth === 0 && en.relation === 'imported-by')
     .sort((a, b) => {
@@ -672,7 +602,6 @@ function layeredLayout(
       return a.node.label.localeCompare(b.node.label)
     })
 
-  // Left edge of right column: fixed distance from selected's right edge
   const rightLeftEdge = sw / 2 + SIDE_GAP
 
   if (sameImportedBy.length > 0) {
@@ -681,7 +610,6 @@ function layeredLayout(
     for (let i = 0; i < sameImportedBy.length; i++) {
       const en = sameImportedBy[i]
       const nw = w(en.node.id)
-      // Left-align: left edge of every node sits at rightLeftEdge
       positions.set(en.node.id, {
         x: rightLeftEdge + nw / 2,
         y: startY + i * (NODE_HEIGHT + STACK_V_GAP),
@@ -689,13 +617,11 @@ function layeredLayout(
     }
   }
 
-  // Siblings → split across left and right columns to equalise heights
   const siblings = egoNodes
     .filter((en) => en.depth === 0 && en.relation === 'sibling')
     .sort((a, b) => a.node.label.localeCompare(b.node.label))
 
   if (siblings.length > 0) {
-    // Decide how many go on each side to balance total column heights
     const leftBaseCount = sameImports.length
     const rightBaseCount = sameImportedBy.length
     const idealLeftSibs = Math.round(
@@ -706,7 +632,6 @@ function layeredLayout(
     const leftSibs = siblings.slice(0, leftSibCount)
     const rightSibs = siblings.slice(leftSibCount)
 
-    // Left siblings: below same-folder imports, right-aligned
     if (leftSibs.length > 0) {
       let sibStartY: number
       if (sameImports.length > 0) {
@@ -727,7 +652,6 @@ function layeredLayout(
       }
     }
 
-    // Right siblings: below same-folder imported-by, left-aligned
     if (rightSibs.length > 0) {
       let sibStartY: number
       if (sameImportedBy.length > 0) {
@@ -749,7 +673,6 @@ function layeredLayout(
     }
   }
 
-  // === Compute center row extent for dynamic top/bottom placement ===
   let centerMinY = 0
   let centerMaxY = 0
   for (const en of egoNodes) {
@@ -761,23 +684,18 @@ function layeredLayout(
     }
   }
 
-  // Center background edges (with padding + label)
   const centerBgTop = centerMinY - FOLDER_PAD - FOLDER_LABEL_H
   const centerBgBottom = centerMaxY + FOLDER_PAD
 
-  // Ensure top/bottom rows don't overlap center background.
-  // Top row: its bg bottom = topRowY + NODE_HEIGHT/2 + FOLDER_PAD must be above centerBgTop - ROW_GAP
   const topRowY = Math.min(
     -MIN_ROW_SPACING,
     centerBgTop - ROW_GAP - NODE_HEIGHT / 2 - FOLDER_PAD,
   )
-  // Bottom row: its bg top = bottomRowY - NODE_HEIGHT/2 - FOLDER_PAD - FOLDER_LABEL_H must be below centerBgBottom + ROW_GAP
   const bottomRowY = Math.max(
     MIN_ROW_SPACING,
     centerBgBottom + ROW_GAP + NODE_HEIGHT / 2 + FOLDER_PAD + FOLDER_LABEL_H,
   )
 
-  // === Top (depth -1) and bottom (depth 1) rows: folder-grouped layout ===
   const topRow = egoNodes.filter((en) => en.depth === -1)
   if (topRow.length > 0) layoutFolderRow(topRow, topRowY, nodeWidths, positions, -1)
 
@@ -786,10 +704,6 @@ function layeredLayout(
 
   return { positions }
 }
-
-// ---------------------------------------------------------------------------
-// Pick handle pair
-// ---------------------------------------------------------------------------
 
 function pickHandles(
   srcPos: { x: number; y: number },
@@ -808,10 +722,6 @@ function pickHandles(
     ? { sourceHandle: 's-right', targetHandle: 't-left' }
     : { sourceHandle: 's-left', targetHandle: 't-right' }
 }
-
-// ---------------------------------------------------------------------------
-// Build folder background nodes
-// ---------------------------------------------------------------------------
 
 function buildFolderBackgrounds(
   egoNodes: EgoNode[],
@@ -843,14 +753,12 @@ function buildFolderBackgrounds(
       maxY = Math.max(maxY, pos.y + NODE_HEIGHT / 2)
     }
 
-    // Background width: must fit the nodes (with padding) and the label
     const nodesSpan = maxX - minX
     const folderLabel = folder === '.' ? '(root)' : folder
     const labelW = measureFolderLabelWidth(folderLabel)
     const bgW = Math.max(labelW, nodesSpan + FOLDER_PAD * 2)
     const height = maxY - minY + FOLDER_PAD * 2 + FOLDER_LABEL_H
 
-    // Center the background around the nodes' center
     const nodesCenterX = (minX + maxX) / 2
     const bgX = nodesCenterX - bgW / 2
 
@@ -876,10 +784,6 @@ function buildFolderBackgrounds(
 
   return bgNodes
 }
-
-// ---------------------------------------------------------------------------
-// Build ReactFlow nodes + edges
-// ---------------------------------------------------------------------------
 
 function buildGraphData(
   egoNodes: EgoNode[],
@@ -910,7 +814,6 @@ function buildGraphData(
     }
   })
 
-  // IDs of same-folder center-row nodes (depth 0, not self) — force side handles
   const centerRowIds = new Set(
     egoNodes
       .filter((en) => en.depth === 0 && en.relation !== 'self')
@@ -921,7 +824,6 @@ function buildGraphData(
     const srcPos = positions.get(e.source) ?? { x: 0, y: 0 }
     const tgtPos = positions.get(e.target) ?? { x: 0, y: 0 }
 
-    // Force left/right handles for center-row (same-folder) edges
     const otherId = e.source === selectedId ? e.target : e.source
     let handles: { sourceHandle: string; targetHandle: string }
     if (centerRowIds.has(otherId)) {
@@ -940,9 +842,7 @@ function buildGraphData(
       stroke = EDGE_COLOR_DEPENDENT
     }
 
-    // For cross-folder (vertical) edges, compute turnY per-edge so it sits
-    // in the gap directly above/below the target's sub-row.  This prevents
-    // edges to farther sub-rows from routing their horizontal segment through
+    // Per-edge turnY prevents horizontal segments from routing through
     // a closer sub-row's nodes.
     const isCrossFolder = !centerRowIds.has(otherId)
     let edgeData: { turnY?: number } | undefined
@@ -951,9 +851,7 @@ function buildGraphData(
       const otherDepth = egoNodes.find((en) => en.node.id === otherId)?.depth ?? 0
       if (otherPos) {
         const edgeTurnY = otherDepth < 0
-          // Top row: turn in the gap just below the target's folder background
           ? otherPos.y + NODE_HEIGHT / 2 + FOLDER_PAD + ROW_GAP / 2
-          // Bottom row: turn in the gap just above the target's folder background
           : otherPos.y - NODE_HEIGHT / 2 - FOLDER_PAD - FOLDER_LABEL_H - ROW_GAP / 2
         edgeData = { turnY: edgeTurnY }
       }
@@ -979,10 +877,6 @@ function buildGraphData(
   return { nodes: [...folderBgNodes, ...rfNodes], edges: rfEdges }
 }
 
-// ---------------------------------------------------------------------------
-// Derive selected graph node from canvas focus
-// ---------------------------------------------------------------------------
-
 function useCanvasFocusedFilePath(rootPath: string | null): string | null {
   const focusedNodeId = useCanvasStore((s) => s.focusedNodeId)
   const canvasNodes = useCanvasStore((s) => s.nodes)
@@ -998,10 +892,6 @@ function useCanvasFocusedFilePath(rootPath: string | null): string | null {
     return toRepoRelative(absPath, rootPath)
   }, [focusedNodeId, canvasNodes, rootPath])
 }
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 
 function GraphFlow() {
   const rootPath = useBrowserStore((s) => s.rootPath)
@@ -1039,10 +929,9 @@ function GraphFlow() {
     return { egoNodes: result.nodes, egoEdges: result.edges }
   }, [selectedNodeId, allNodes, allEdges, showTests])
 
-  // Pre-compute widths so layout and rendering use the same values
   const nodeWidths = useMemo(
-    () => computeNodeWidths(egoNodes, selectedNodeId ?? ''),
-    [egoNodes, selectedNodeId],
+    () => computeNodeWidths(egoNodes),
+    [egoNodes],
   )
 
   const layoutMeta = useMemo(
@@ -1057,7 +946,6 @@ function GraphFlow() {
 
   const reactFlow = useReactFlow()
 
-  // Translate wheel into viewport pan (same as Canvas / view 1)
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.stopPropagation()
     const viewport = reactFlow.getViewport()

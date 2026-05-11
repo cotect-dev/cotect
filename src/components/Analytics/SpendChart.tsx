@@ -9,8 +9,6 @@ import {
 } from 'recharts'
 import { useUsageStore } from '@/store/usage'
 
-/* ── custom tooltip ─────────────────────────────────────── */
-
 interface TipPayload {
   value: number
   payload: { date: string; tokens: number }
@@ -39,8 +37,6 @@ function ChartTooltip({
   )
 }
 
-/* ── format bucket string into a short date label ───────── */
-
 function formatDate(bucket: string): string {
   // bucket is e.g. "day:2026-05-11" or just "2026-05-11"
   const raw = bucket.replace(/^day:/, '')
@@ -48,8 +44,6 @@ function formatDate(bucket: string): string {
   if (isNaN(d.getTime())) return raw
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
-
-/* ── chart ──────────────────────────────────────────────── */
 
 export default function SpendChart() {
   const byDay = useUsageStore((s) => s.spendByDay) ?? []

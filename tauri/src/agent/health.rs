@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub enum HealthState {
     Healthy,
     Degraded,
@@ -8,6 +9,7 @@ pub enum HealthState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct HealthCache {
     pub state: HealthState,
     pub consecutive_failures: u32,
@@ -29,6 +31,7 @@ impl Default for HealthCache {
 }
 
 impl HealthCache {
+    #[allow(dead_code)]
     pub fn record_success(&mut self, now_ms: i64, first_token_ms: Option<i64>) {
         self.consecutive_failures = 0;
         self.state = HealthState::Healthy;
@@ -42,6 +45,7 @@ impl HealthCache {
         }
     }
 
+    #[allow(dead_code)]
     pub fn record_failure(&mut self, error: String) {
         self.consecutive_failures += 1;
         self.last_error = Some(error);
