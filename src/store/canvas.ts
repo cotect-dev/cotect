@@ -336,17 +336,27 @@ async function resolveFileImportRefs(
     .map((e) => e.source)
 
   if (importers.length > 0) {
-    // Find where the first export statement is in this file to anchor
-    // the imported-by group. Fall back to line after last import.
+    // Find where to anchor the imported-by group:
+    //  1. First local export (export without `from`) — normal files.
+    //  2. First export of any kind (including re-exports) — barrel files.
+    //  3. Line after the last import ref.
     const sourceLines = source.split('\n')
-    let anchorLine = refs.length > 0 ? refs[refs.length - 1].line + 2 : 1
+    let anchorLine = refs.length > 0 ? refs[refs.length - 1].line + 1 : 1
+    let found = false
+    let firstExportLine: number | null = null
     for (let li = 0; li < sourceLines.length; li++) {
       const trimmed = sourceLines[li].trimStart()
-      if (trimmed.startsWith('export ') && !trimmed.includes(' from ')) {
-        anchorLine = li + 1
-        break
+      if (trimmed.startsWith('export ')) {
+        if (firstExportLine === null) firstExportLine = li + 1
+        if (!trimmed.includes(' from ')) {
+          anchorLine = li + 1
+          found = true
+          break
+        }
       }
     }
+    // Barrel files: all exports have `from`. Use the first export line.
+    if (!found && firstExportLine !== null) anchorLine = firstExportLine
 
     // Resolve imported binding names by parsing each importer's source.
     const platform = getPlatform()
@@ -1039,126 +1049,6 @@ function flattenAndRender(
 
     for (const edge of col.edges) {
       allEdges.push({ ...edge })
-    }
-
-    // Position import ref nodes to the right of the code editor.
-    //
-    // Each visual line becomes ONE ReactFlow node whose component
-    // renders all its pills as a flex row — no fixed-width columns.
-    //
-    //  1. Import refs are pinned to their source line (immovable).
-    //  2. Imported-by refs fill empty lines downward from the anchor.
-    //     Available vertical space is measured, then items are divided
-    //     evenly across "wrap columns" so each row has the same count
-    //     (±1). Items that wrap share a line with earlier items and
-    //     the flex row handles spacing naturally.
-    if (isPreviewCol && col.kind === 'file' && col.importRefs && col.importRefs.length > 0) {
-      const codeNode = positioned[0]
-      if (codeNode) {
-        const { codeNodeWidth } = get()
-        const codeX = codeNode.position.x
-        const codeY = codeNode.position.y
-
-        const HEADER_HEIGHT = 33
-        const LINE_HEIGHT = 18
-        const CM_PAD_TOP = 4
-        const REF_GAP = 16
-
-        const refX0 = codeX + codeNodeWidth + REF_GAP
-
-        const importRefs = col.importRefs.filter((r) => r.kind === 'import')
-        const importedByRefs = col.importRefs.filter((r) => r.kind === 'imported-by')
-
-        // lineItems: visualLine → ordered list of pill data for that line.
-        const lineItems = new Map<number, Array<{ ref: ImportRef; isFirstIB: boolean }>>()
-        const addToLine = (vl: number, ref: ImportRef, isFirstIB: boolean) => {
-          if (!lineItems.has(vl)) lineItems.set(vl, [])
-          lineItems.get(vl)!.push({ ref, isFirstIB })
-        }
-
-        // Pin import refs to their source lines.
-        for (const ref of importRefs) {
-          addToLine(ref.visualLine, ref, false)
-        }
-
-        // Imported-by: measure available vertical space, then distribute.
-        if (importedByRefs.length > 0) {
-          const anchorVl = importedByRefs[0].visualLine
-          const count = importedByRefs.length
-
-          // Count consecutive empty lines from anchor.
-          let maxRows = 0
-          let probe = anchorVl
-          while (maxRows < count) {
-            const occupants = lineItems.get(probe)
-            if (occupants && occupants.length > 0) break
-            maxRows++
-            probe++
-          }
-          if (maxRows < 1) maxRows = 1
-
-          // Balance into equal-height columns.
-          const numCols = Math.ceil(count / maxRows)
-          const rowsPerCol = Math.ceil(count / numCols)
-
-          // Fill column-major so wrapped items land on the same rows.
-          for (let ri = 0; ri < count; ri++) {
-            const row_idx = ri % rowsPerCol
-            const vl = anchorVl + row_idx
-            addToLine(vl, importedByRefs[ri], ri === 0)
-          }
-        }
-
-        // Emit one ReactFlow node per occupied visual line.
-        // Each node contains all pills for that line as a flex row.
-        const sortedLines = [...lineItems.keys()].sort((a, b) => a - b)
-
-        // Track whether we've seen the first imported-by line (for
-        // the connector line — only the very first ib row shows it).
-        let firstIBLineEmitted = false
-
-        for (const vl of sortedLines) {
-          const entries = lineItems.get(vl)!
-          const refY = codeY + HEADER_HEIGHT + CM_PAD_TOP + (vl - 1) * LINE_HEIGHT
-
-          const items = entries.map(({ ref }) => ({
-            label: ref.label,
-            resolvedPath: ref.resolvedPath,
-            kind: ref.kind,
-            importedNames: ref.importedNames,
-          }))
-
-          // Show connector on import lines (always) and only the
-          // first visual line that contains imported-by items.
-          const hasIB = entries.some((e) => e.ref.kind === 'imported-by')
-          const hasImport = entries.some((e) => e.ref.kind === 'import')
-          let showConnector: boolean
-          if (hasImport && !hasIB) {
-            showConnector = true
-          } else if (hasIB && !firstIBLineEmitted) {
-            showConnector = true
-            firstIBLineEmitted = true
-          } else {
-            showConnector = false
-          }
-
-          // Stable id from the visual line (unique within a preview column).
-          const nodeId = `importRefLine:${vl}`
-
-          allNodes.push({
-            id: nodeId,
-            type: 'importRef',
-            position: { x: refX0, y: refY },
-            data: {
-              items,
-              line: vl,
-              showConnector,
-              __columnIndex: i,
-              __isCurrent: true,
-            },
-          } as AppNode)
-        }
-      }
     }
   }
 

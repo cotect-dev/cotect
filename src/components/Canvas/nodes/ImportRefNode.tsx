@@ -17,9 +17,9 @@ function isTestFile(name: string): boolean {
  * Height must exactly match the pinned CodeMirror line-height (18px) so that
  * ref nodes stay aligned 1:1 with source lines without cumulative drift.
  */
-const REF_HEIGHT = 18
+export const REF_HEIGHT = 18
 
-function Pill({ item }: { item: ImportRefItem }) {
+export function Pill({ item }: { item: ImportRefItem }) {
   const parseable = getConfigForFile(item.label) !== null
   const isTest = isTestFile(item.label)
   const isImg = isImageFile(item.label)
@@ -38,10 +38,6 @@ function Pill({ item }: { item: ImportRefItem }) {
     ? 'border-violet-500/30 group-hover/ref:border-violet-400/50'
     : 'border-green-500/30 group-hover/ref:border-green-400/50'
 
-  const importedNames = isImportedBy && item.importedNames && item.importedNames.length > 0
-    ? item.importedNames.join(', ')
-    : null
-
   const handleClick = useCallback(() => {
     void useCanvasStore.getState().focusFileByPath(item.resolvedPath)
   }, [item.resolvedPath])
@@ -57,11 +53,6 @@ function Pill({ item }: { item: ImportRefItem }) {
       <span className="text-[10px] leading-none text-foreground/55 hover:text-foreground/80 truncate whitespace-nowrap transition-colors max-w-[120px]">
         {item.label}
       </span>
-      {importedNames && (
-        <span className="text-[9px] leading-none text-violet-400/50 truncate whitespace-nowrap transition-colors max-w-[100px]">
-          {importedNames}
-        </span>
-      )}
     </div>
   )
 }
@@ -76,9 +67,11 @@ export default memo(function ImportRefNode({ data }: NodeProps<ImportRefNode>) {
       className="flex items-center gap-0.5"
       style={{ height: REF_HEIGHT }}
     >
-      {/* Leading connector line */}
+      {/* Leading connector line — extends left via negative margin to
+         bridge the REF_GAP (16 px) between code node and annotation. */}
       {data.showConnector
-        ? <div className={`w-3 h-px shrink-0 transition-colors ${lineColor}`} />
+        ? <div className={`h-px shrink-0 transition-colors ${lineColor}`}
+            style={{ width: 28, marginLeft: -16 }} />
         : <div className="w-3 shrink-0" />
       }
       {data.items.map((item, idx) => (

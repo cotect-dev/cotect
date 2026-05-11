@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useDragHandle } from '@/hooks/useDragHandle'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
@@ -14,10 +14,11 @@ import { css } from '@codemirror/lang-css'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { unifiedMergeView } from '@codemirror/merge'
 import { getPlatform } from '@/services/platform'
-import type { CodeNode } from '@/types/nodes'
+import type { CodeNode, ImportRefItem } from '@/types/nodes'
 import { getNodeFlags, nodeFocusRing } from './nodeUtils'
 import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'
-import { useCanvasStore } from '@/store/canvas'
+import { useCanvasStore, type ImportRef } from '@/store/canvas'
+import { Pill, REF_HEIGHT } from './ImportRefNode'
 import { useGitStore } from '@/store/git'
 import { samePath, toRepoRelative } from '@/lib/repoPath'
 
@@ -32,6 +33,86 @@ function getLanguageExt(filePath: string) {
 const MIN_CODE_NODE_WIDTH = 280
 // Editor grows until window.innerHeight - this, then scrolls internally.
 const CODE_NODE_HEIGHT_RESERVED = 120
+const CM_PAD_TOP = 4 // CodeMirror .cm-content padding-top
+const REF_GAP = 16 // Space between code right edge and annotation pills
+
+// ---------------------------------------------------------------------------
+// Annotation layout — distributes import refs across source lines.
+// Keyed by source line number so CodeNode can query CodeMirror for the
+// actual pixel position of each line (accounts for line wrapping).
+// ---------------------------------------------------------------------------
+
+interface RefLine {
+  items: ImportRefItem[]
+  showConnector: boolean
+}
+
+function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
+  const imports = refs.filter((r) => r.kind === 'import')
+  const importedBy = refs.filter((r) => r.kind === 'imported-by')
+
+  const lineEntries = new Map<number, ImportRef[]>()
+  const add = (line: number, ref: ImportRef) => {
+    if (!lineEntries.has(line)) lineEntries.set(line, [])
+    lineEntries.get(line)!.push(ref)
+  }
+
+  // Pin import refs to their source lines.
+  for (const ref of imports) add(ref.line, ref)
+
+  // Imported-by: fill source lines downward from anchor. Import refs
+  // on the same line are fine (they coexist as pills), so only treat a
+  // line as blocked if it already has an imported-by ref from an earlier
+  // distribution pass — this lets barrel files (every line is an import)
+  // still stack vertically.
+  if (importedBy.length > 0) {
+    const anchorLine = importedBy[0].line
+    const count = importedBy.length
+    let maxRows = 0
+    let probe = anchorLine
+    while (maxRows < count) {
+      const occupants = lineEntries.get(probe)
+      if (occupants && occupants.some((r) => r.kind === 'imported-by')) break
+      maxRows++
+      probe++
+    }
+    if (maxRows < 1) maxRows = 1
+    const numCols = Math.ceil(count / maxRows)
+    const rowsPerCol = Math.ceil(count / numCols)
+    for (let ri = 0; ri < count; ri++) {
+      const line = anchorLine + (ri % rowsPerCol)
+      add(line, importedBy[ri])
+    }
+  }
+
+  // Build output with connector logic.
+  const result = new Map<number, RefLine>()
+  let firstIBLineEmitted = false
+
+  for (const [line, entries] of lineEntries) {
+    const items: ImportRefItem[] = entries.map((ref) => ({
+      label: ref.label,
+      resolvedPath: ref.resolvedPath,
+      kind: ref.kind,
+    }))
+    const hasIB = entries.some((e) => e.kind === 'imported-by')
+    const hasImport = entries.some((e) => e.kind === 'import')
+    let showConnector: boolean
+    if (hasImport) {
+      // Import lines always get a connector (even if they also carry IB pills).
+      showConnector = true
+      if (hasIB) firstIBLineEmitted = true
+    } else if (hasIB && !firstIBLineEmitted) {
+      showConnector = true
+      firstIBLineEmitted = true
+    } else {
+      showConnector = false
+    }
+    result.set(line, { items, showConnector })
+  }
+
+  return result
+}
 
 /**
  * Returns an empty array when there is no HEAD content, so reconfiguring
@@ -76,6 +157,21 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const storeWidth = useCanvasStore((s) => s.codeNodeWidth)
   const setCodeNodeWidth = useCanvasStore((s) => s.setCodeNodeWidth)
   const [nodeWidth, setNodeWidth] = useState<number>(storeWidth)
+  const [editorHeight, setEditorHeight] = useState(0)
+  const refOverlayRef = useRef<HTMLDivElement>(null)
+  const [geometryVer, setGeometryVer] = useState(0)
+  const [linePositions, setLinePositions] = useState<Map<number, number>>(new Map())
+
+  // Import ref annotations: subscribe to the preview column's resolved refs.
+  const importRefs = useCanvasStore((s) => {
+    const previewIdx = s.currentColumnIndex + 1
+    const col = s.columns[previewIdx]
+    return col?.kind === 'file' ? col.importRefs : undefined
+  })
+  const refLineLayout = useMemo(() => {
+    if (!importRefs || importRefs.length === 0) return null
+    return computeRefLineLayout(importRefs)
+  }, [importRefs])
 
   // Git-aware inline diff: if the file is dirty, mount unifiedMergeView
   // comparing working tree vs HEAD.
@@ -198,12 +294,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         initialMergeExt,
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            setDirty(true)
-          }
-          if (update.focusChanged) {
-            setEditorFocused(update.view.hasFocus)
-          }
+          if (update.docChanged) setDirty(true)
+          if (update.focusChanged) setEditorFocused(update.view.hasFocus)
+          if (update.geometryChanged) setGeometryVer((v) => v + 1)
         }),
         keymap.of([
           {
@@ -276,18 +369,29 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       ],
     })
 
-    viewRef.current = new EditorView({
-      state,
-      parent: editorRef.current,
-    })
-    registerEditorView(viewRef.current)
+    const view = new EditorView({ state, parent: editorRef.current })
+    viewRef.current = view
+    registerEditorView(view)
+    setGeometryVer((v) => v + 1)
+
+    // Scroll + resize tracking for the annotation overlay.
+    const scrollDOM = view.scrollDOM
+    const handleEditorScroll = () => {
+      if (refOverlayRef.current) {
+        refOverlayRef.current.style.transform = `translateY(${-scrollDOM.scrollTop}px)`
+      }
+    }
+    scrollDOM.addEventListener('scroll', handleEditorScroll, { passive: true })
+    const ro = new ResizeObserver(() => setEditorHeight(scrollDOM.clientHeight))
+    ro.observe(scrollDOM)
+    setEditorHeight(scrollDOM.clientHeight)
 
     return () => {
-      if (viewRef.current) {
-        unregisterEditorView(viewRef.current)
-        viewRef.current.destroy()
-        viewRef.current = null
-      }
+      scrollDOM.removeEventListener('scroll', handleEditorScroll)
+      ro.disconnect()
+      unregisterEditorView(view)
+      view.destroy()
+      viewRef.current = null
     }
   }, [data.code, data.filePath, data.startLine]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -302,6 +406,48 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       ),
     })
   }, [headContent, handleChunkAction])
+
+  // Compute actual pixel positions for annotation lines from CodeMirror's
+  // layout, accounting for line wrapping and merge-view decorations.
+  // Lines beyond the document are stacked at REF_HEIGHT intervals below
+  // the last line so they never overlap.
+  useLayoutEffect(() => {
+    const view = viewRef.current
+    if (!view || !refLineLayout || refLineLayout.size === 0) {
+      setLinePositions(new Map())
+      return
+    }
+    const positions = new Map<number, number>()
+    const maxLine = view.state.doc.lines
+    // Pre-compute the bottom edge of the last document line so we can
+    // stack beyond-file annotations below it.
+    const lastBlock = view.lineBlockAt(view.state.doc.line(maxLine).from)
+    const beyondTop = lastBlock.top + lastBlock.height
+
+    for (const line of refLineLayout.keys()) {
+      if (line >= 1 && line <= maxLine) {
+        try {
+          positions.set(line, view.lineBlockAt(view.state.doc.line(line).from).top)
+        } catch { /* line out of range */ }
+      } else if (line > maxLine) {
+        positions.set(line, beyondTop + (line - maxLine - 1) * REF_HEIGHT)
+      }
+    }
+    setLinePositions(positions)
+  }, [refLineLayout, geometryVer]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The overlay must be tall enough to show annotations that extend past the
+  // visible editor area (e.g. many imported-by refs beyond the last line).
+  const overlayHeight = useMemo(() => {
+    if (!refLineLayout || refLineLayout.size === 0) return editorHeight
+    let maxBottom = 0
+    for (const [line] of refLineLayout) {
+      const top = linePositions.get(line)
+      const posTop = CM_PAD_TOP + (top ?? (line - 1) * REF_HEIGHT)
+      maxBottom = Math.max(maxBottom, posTop + REF_HEIGHT)
+    }
+    return Math.max(editorHeight, maxBottom)
+  }, [refLineLayout, editorHeight, linePositions])
 
   const lineCount = data.endLine - data.startLine + 1
   const displayPath = toRepoRelative(data.filePath, repoPath)
@@ -343,10 +489,48 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         </div>
       </div>
 
-      <div
-        ref={editorRef}
-        className="nowheel"
-      />
+      <div className="relative">
+        <div
+          ref={editorRef}
+          className="nowheel"
+        />
+        {/* Import ref annotations — scroll-synchronized with the editor */}
+        {refLineLayout && editorHeight > 0 && (
+          <div
+            className="absolute top-0 pointer-events-none"
+            style={{ left: '100%', height: overlayHeight, width: 999, overflow: 'hidden' }}
+          >
+            <div ref={refOverlayRef}>
+              {[...refLineLayout.entries()]
+                .sort(([a], [b]) => a - b)
+                .map(([line, layout]) => {
+                  const lineColor = layout.items[0]?.kind === 'imported-by'
+                    ? 'bg-violet-400/20'
+                    : 'bg-green-400/20'
+                  const top = linePositions.get(line)
+                  return (
+                    <div
+                      key={line}
+                      className="absolute flex items-center gap-0.5"
+                      style={{
+                        top: CM_PAD_TOP + (top ?? (line - 1) * REF_HEIGHT),
+                        height: REF_HEIGHT,
+                      }}
+                    >
+                      {layout.showConnector
+                        ? <div className={`h-px shrink-0 ${lineColor}`} style={{ width: REF_GAP + 12 }} />
+                        : <div className="shrink-0" style={{ width: REF_GAP + 12 }} />
+                      }
+                      {layout.items.map((item, idx) => (
+                        <Pill key={`${item.kind}:${item.resolvedPath}:${idx}`} item={item} />
+                      ))}
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div
         ref={resizeRef}
