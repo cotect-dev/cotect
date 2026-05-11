@@ -1,18 +1,8 @@
-/**
- * Single owner of the abs-path ↔ repo-relative-path mapping. All helpers
- * are pure and tolerate the no-op cases (empty repoPath, already-absolute
- * input, repoPath with a trailing slash) so callers don't need to special-case.
- */
-
 function stripTrailingSlash(path: string): string {
   if (path.length > 1 && path.endsWith('/')) return path.slice(0, -1)
   return path
 }
 
-/**
- * If the input is already repo-relative (does not start with `repoPath + '/'`)
- * it is returned unchanged — this also covers the empty-repoPath case.
- */
 export function toRepoRelative(absOrRel: string, repoPath: string): string {
   if (!repoPath) return absOrRel
   const root = stripTrailingSlash(repoPath)
@@ -21,7 +11,6 @@ export function toRepoRelative(absOrRel: string, repoPath: string): string {
   return absOrRel
 }
 
-/** Inputs that already look absolute (leading `/`) are returned unchanged. */
 export function toAbsolute(repoRelative: string, repoPath: string): string {
   if (repoRelative.startsWith('/')) return repoRelative
   const root = stripTrailingSlash(repoPath)
@@ -36,10 +25,6 @@ export function joinPath(parent: string, child: string): string {
   return `${left}/${right}`
 }
 
-/**
- * Avoids the suffix-match trap: a naive `absPath.endsWith('/' + statusEntryPath)`
- * would match `repo/src/foo.ts` against status entry `foo.ts`.
- */
 export function samePath(absOrRel: string, statusEntryPath: string, repoPath: string): boolean {
   return toRepoRelative(absOrRel, repoPath) === statusEntryPath
 }
