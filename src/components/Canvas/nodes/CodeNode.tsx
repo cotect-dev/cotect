@@ -60,34 +60,44 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
   // Pin import refs to their source lines.
   for (const ref of imports) add(ref.line, ref)
 
-  // Imported-by: fill source lines downward from anchor. Import refs
-  // on the same line are fine (they coexist as pills), so only treat a
-  // line as blocked if it already has an imported-by ref from an earlier
-  // distribution pass — this lets barrel files (every line is an import)
-  // still stack vertically.
+  // Imported-by: group refs by their anchor line (per-export) and spread
+  // each group downward. A line is only blocked by imported-by refs from
+  // a *different* group, so groups don't collide.
+  const ibAnchorLines = new Set<number>()
   if (importedBy.length > 0) {
-    const anchorLine = importedBy[0].line
-    const count = importedBy.length
-    let maxRows = 0
-    let probe = anchorLine
-    while (maxRows < count) {
-      const occupants = lineEntries.get(probe)
-      if (occupants && occupants.some((r) => r.kind === 'imported-by')) break
-      maxRows++
-      probe++
+    const ibByLine = new Map<number, ImportRef[]>()
+    for (const ref of importedBy) {
+      if (!ibByLine.has(ref.line)) ibByLine.set(ref.line, [])
+      ibByLine.get(ref.line)!.push(ref)
     }
-    if (maxRows < 1) maxRows = 1
-    const numCols = Math.ceil(count / maxRows)
-    const rowsPerCol = Math.ceil(count / numCols)
-    for (let ri = 0; ri < count; ri++) {
-      const line = anchorLine + (ri % rowsPerCol)
-      add(line, importedBy[ri])
+
+    // Process groups in line order so earlier groups fill first.
+    const sortedAnchors = [...ibByLine.keys()].sort((a, b) => a - b)
+    for (const anchorLine of sortedAnchors) {
+      ibAnchorLines.add(anchorLine)
+      const group = ibByLine.get(anchorLine)!
+      const count = group.length
+      let maxRows = 0
+      let probe = anchorLine
+      while (maxRows < count) {
+        const occupants = lineEntries.get(probe)
+        if (occupants && occupants.some((r) => r.kind === 'imported-by')) break
+        maxRows++
+        probe++
+      }
+      if (maxRows < 1) maxRows = 1
+      const numCols = Math.ceil(count / maxRows)
+      const rowsPerCol = Math.ceil(count / numCols)
+      for (let ri = 0; ri < count; ri++) {
+        const line = anchorLine + (ri % rowsPerCol)
+        add(line, group[ri])
+      }
     }
   }
 
   // Build output with connector logic.
+  // Every import line and every imported-by group anchor gets a connector.
   const result = new Map<number, RefLine>()
-  let firstIBLineEmitted = false
 
   for (const [line, entries] of lineEntries) {
     const items: ImportRefItem[] = entries.map((ref) => ({
@@ -97,17 +107,7 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
     }))
     const hasIB = entries.some((e) => e.kind === 'imported-by')
     const hasImport = entries.some((e) => e.kind === 'import')
-    let showConnector: boolean
-    if (hasImport) {
-      // Import lines always get a connector (even if they also carry IB pills).
-      showConnector = true
-      if (hasIB) firstIBLineEmitted = true
-    } else if (hasIB && !firstIBLineEmitted) {
-      showConnector = true
-      firstIBLineEmitted = true
-    } else {
-      showConnector = false
-    }
+    const showConnector = hasImport || (hasIB && ibAnchorLines.has(line))
     result.set(line, { items, showConnector })
   }
 
@@ -498,7 +498,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         {refLineLayout && editorHeight > 0 && (
           <div
             className="absolute top-0 pointer-events-none"
-            style={{ left: '100%', height: overlayHeight, width: 999, overflow: 'hidden' }}
+            style={{ left: `calc(100% + ${REF_GAP / 4}px)`, height: overlayHeight, width: 999, overflow: 'hidden' }}
           >
             <div ref={refOverlayRef}>
               {[...refLineLayout.entries()]
@@ -518,7 +518,11 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
                       }}
                     >
                       {layout.showConnector
-                        ? <div className={`h-px shrink-0 ${lineColor}`} style={{ width: REF_GAP + 12 }} />
+                        ? <div className="flex items-center shrink-0" style={{ width: REF_GAP + 12 }}>
+                            <div className={`h-px flex-1 ${lineColor}`} />
+                            <span className="text-[9px] text-muted-foreground/40 font-mono leading-none px-px">{line}</span>
+                            <div className={`h-px flex-1 ${lineColor}`} />
+                          </div>
                         : <div className="shrink-0" style={{ width: REF_GAP + 12 }} />
                       }
                       {layout.items.map((item, idx) => (

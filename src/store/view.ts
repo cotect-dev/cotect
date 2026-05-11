@@ -8,7 +8,7 @@ import { createStoreWithHMR } from '@/lib/hmr'
  *  - `settings`  : LLM provider configuration
  *  - `analytics` : usage / spend / latency dashboard
  *
- * Layout panels (Changes/History/Chat/etc.) are only overlaid on the `files`
+ * Layout panels (Changes/History/Tasks/etc.) are only overlaid on the `files`
  * view; the other three are full-bleed.
  */
 export type ViewMode = 'files' | 'graph' | 'settings' | 'analytics'

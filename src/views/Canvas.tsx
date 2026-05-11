@@ -387,7 +387,7 @@ function ViewSwitcher() {
       </div>
 
       {/* Panels and TopBar always render, regardless of view — the
-        * workspace shell stays consistent so Changes / History / Chat /
+        * workspace shell stays consistent so Changes / History /
         * Tasks remain available alongside any view. pointer-events-none on
         * the wrapper lets the underlying view receive interactions
         * everywhere panels and TopBar don't cover. */}
