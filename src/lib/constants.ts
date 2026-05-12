@@ -54,6 +54,11 @@ const IMAGE_EXTENSIONS = new Set([
   '.avif',
 ])
 
+export function isMarkdownFile(name: string): boolean {
+  const ext = name.slice(name.lastIndexOf('.')).toLowerCase()
+  return ext === '.md' || ext === '.mdx'
+}
+
 export function isImageFile(name: string): boolean {
   const ext = name.slice(name.lastIndexOf('.')).toLowerCase()
   return IMAGE_EXTENSIONS.has(ext)
