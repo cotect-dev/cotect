@@ -1,4 +1,14 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useDragHandle } from '@/hooks/useDragHandle'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
@@ -37,6 +47,7 @@ import { css } from '@codemirror/lang-css'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { unifiedMergeView } from '@codemirror/merge'
 import { getPlatform } from '@/services/platform'
+import { isMarkdownFile } from '@/lib/constants'
 import type { CodeNode, ImportRefItem } from '@/types/nodes'
 import { getNodeFlags, nodeFocusRing } from './nodeUtils'
 import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'
@@ -44,6 +55,8 @@ import { useCanvasStore, type ImportRef } from '@/store/canvas'
 import { Pill, REF_HEIGHT } from './ImportRefNode'
 import { useGitStore } from '@/store/git'
 import { samePath, toRepoRelative } from '@/lib/repoPath'
+
+const MarkdownPreview = lazy(() => import('./MarkdownPreview'))
 
 function getLanguageExt(filePath: string) {
   if (/\.(tsx?)$/.test(filePath)) return javascript({ typescript: true, jsx: true })
@@ -166,6 +179,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
+  const isMd = isMarkdownFile(data.filePath)
+  const [mdPreview, setMdPreview] = useState(isMd)
+  const [mdContent, setMdContent] = useState(data.code)
   const storeWidth = useCanvasStore((s) => s.codeNodeWidth)
   const setCodeNodeWidth = useCanvasStore((s) => s.setCodeNodeWidth)
   const [nodeWidth, setNodeWidth] = useState<number>(storeWidth)
@@ -214,6 +230,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       cancelled = true
     }
   }, [gitEntry, isNewFile, data.filePath, repoPath, loadHeadContent])
+
+  useEffect(() => {
+    setMdContent(data.code)
+  }, [data.code])
 
   useEffect(() => {
     setNodeWidth(storeWidth)
@@ -466,6 +486,24 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {isMd && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!mdPreview && viewRef.current) {
+                  setMdContent(viewRef.current.state.doc.toString())
+                }
+                setMdPreview((v) => !v)
+              }}
+              className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition-colors ${
+                mdPreview
+                  ? 'bg-primary/20 text-primary'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {mdPreview ? 'preview' : 'source'}
+            </button>
+          )}
           {isNewFile && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-900/40 text-green-400 font-mono">
               new
@@ -488,8 +526,30 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       </div>
 
       <div className="relative">
-        <div ref={editorRef} className="nowheel" />
-        {refLineLayout && editorHeight > 0 && (
+        <div
+          ref={editorRef}
+          className="nowheel"
+          style={{ display: mdPreview ? 'none' : undefined }}
+        />
+        {mdPreview && (
+          <Suspense
+            fallback={
+              <div
+                className="px-4 py-3 text-xs text-muted-foreground"
+                style={{ maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)` }}
+              >
+                Loading…
+              </div>
+            }
+          >
+            <MarkdownPreview
+              content={mdContent}
+              filePath={data.filePath}
+              maxHeight={`calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`}
+            />
+          </Suspense>
+        )}
+        {!mdPreview && refLineLayout && editorHeight > 0 && (
           <div
             className="absolute top-0 pointer-events-none"
             style={{
