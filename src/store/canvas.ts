@@ -1216,49 +1216,34 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
   const { rightFocusMemory } = get()
   const edgeStyle = { stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1.5 }
 
+  const findNodeByPath = (col: Column, path: string): string | null => {
+    const match = col.nodes.find((n) => {
+      if (n.type === 'folder' || n.type === 'file') return n.data.path === path
+      return false
+    })
+    return match?.id ?? null
+  }
+
+  const resolveColumnFocus = (colIndex: number): string | null => {
+    const col = columns[colIndex]
+    if (!col || col.nodes.length === 0) return null
+    if (colIndex === currentColumnIndex) return focusedNodeId
+    if (col.kind === 'file') return col.nodes[0]?.id ?? null
+    const remembered = rightFocusMemory[col.path]
+    if (remembered && col.nodes.some((n) => n.id === remembered)) return remembered
+    return findNodeByPath(col, columns[colIndex + 1]?.path ?? '') ?? col.nodes[0]?.id ?? null
+  }
+
   for (let i = 0; i < columns.length - 1; i++) {
-    const col = columns[i]
-    const nextCol = columns[i + 1]
-    const firstNextNode = nextCol.nodes[0]
-    if (!firstNextNode) continue
-
-    let sourceId: string | null = null
-    if (i === currentColumnIndex) {
-      if (focusedNodeId) {
-        const focusedNode = col.nodes.find((n) => n.id === focusedNodeId)
-        if (focusedNode) {
-          const focusedPath =
-            focusedNode.type === 'folder' || focusedNode.type === 'file'
-              ? focusedNode.data.path
-              : undefined
-          if (focusedPath === nextCol.path) {
-            sourceId = focusedNodeId
-          }
-        }
-      }
-    } else {
-      sourceId = rightFocusMemory[col.path] ?? null
-      if (sourceId && !col.nodes.some((n) => n.id === sourceId)) {
-        sourceId = null
-      }
-    }
-
-    if (!sourceId) {
-      const parentPath = nextCol.path
-      const match = col.nodes.find((n) => {
-        if (n.type === 'folder' || n.type === 'file') return n.data.path === parentPath
-        return false
-      })
-      sourceId = match?.id ?? null
-    }
-
-    if (!sourceId) continue
+    const sourceId = resolveColumnFocus(i)
+    const targetId = resolveColumnFocus(i + 1)
+    if (!sourceId || !targetId) continue
 
     allEdges.push({
-      id: `edge:col${i}->${firstNextNode.id}`,
+      id: `edge:col${i}:${sourceId}->${targetId}`,
       source: sourceId,
       sourceHandle: 'right',
-      target: firstNextNode.id,
+      target: targetId,
       targetHandle: 'left',
       type: 'smoothstep',
       animated: true,
