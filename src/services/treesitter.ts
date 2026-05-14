@@ -1,11 +1,3 @@
-/**
- * Lazy web-tree-sitter loader and multi-language import extractor used by the
- * Graph view. Parser/Language WASMs are fetched once and cached for the
- * lifetime of the page.
- *
- * Supported languages: JS/TS, Python, Go, Rust.
- * Each gets a dedicated AST-walker that returns raw import specifier strings.
- */
 import { Parser, Language } from 'web-tree-sitter'
 import { getConfigForFile, type LanguageId } from '@/services/treesitter-queries'
 
@@ -60,19 +52,13 @@ function releaseParser(parser: Parser): void {
   parserPool.push(parser)
 }
 
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
 export interface ImportWithLine {
   specifier: string
-  /** 1-based line number where the import/export statement begins. */
   line: number
 }
 
 export interface ImportWithBindings {
   specifier: string
-  /** Named bindings imported from this specifier. Empty for side-effect imports / require(). */
   names: string[]
   line: number
 }
@@ -91,10 +77,6 @@ function readStringLiteral(node: TSNode | null): string | null {
   if (quote !== '"' && quote !== "'" && quote !== '`') return null
   return raw.slice(1, -1)
 }
-
-// ---------------------------------------------------------------------------
-// JS/TS binding extraction helpers
-// ---------------------------------------------------------------------------
 
 function collectImportClauseNames(node: TSNode, names: string[]): void {
   for (let i = 0; i < node.namedChildCount; i++) {
@@ -168,10 +150,6 @@ function collectJsTsImportsWithBindings(rootNode: TSNode): ImportWithBindings[] 
   return results
 }
 
-// ---------------------------------------------------------------------------
-// JS/TS extractor
-// ---------------------------------------------------------------------------
-
 function collectJsTsImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   const results: ImportWithLine[] = []
   const stack: TSNode[] = [rootNode]
@@ -200,10 +178,6 @@ function collectJsTsImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   }
   return results
 }
-
-// ---------------------------------------------------------------------------
-// Python extractor
-// ---------------------------------------------------------------------------
 
 function collectPythonImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   const results: ImportWithLine[] = []
@@ -239,10 +213,6 @@ function collectPythonImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   return results
 }
 
-// ---------------------------------------------------------------------------
-// Go extractor
-// ---------------------------------------------------------------------------
-
 function collectGoImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   const results: ImportWithLine[] = []
   const stack: TSNode[] = [rootNode]
@@ -262,10 +232,6 @@ function collectGoImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   }
   return results
 }
-
-// ---------------------------------------------------------------------------
-// Rust extractor
-// ---------------------------------------------------------------------------
 
 function collectRustImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   const results: ImportWithLine[] = []
@@ -297,10 +263,6 @@ function collectRustImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   return results
 }
 
-// ---------------------------------------------------------------------------
-// Dispatcher
-// ---------------------------------------------------------------------------
-
 const EXTRACTORS: Record<LanguageId, (root: TSNode) => ImportWithLine[]> = {
   typescript: collectJsTsImportsWithLines,
   javascript: collectJsTsImportsWithLines,
@@ -309,21 +271,11 @@ const EXTRACTORS: Record<LanguageId, (root: TSNode) => ImportWithLine[]> = {
   rust: collectRustImportsWithLines,
 }
 
-/**
- * Parse `source` as the language implied by `filename`'s extension and return
- * the literal import specifiers found inside. Returns `[]` for unsupported
- * languages or parse failures.
- */
 export async function parseImports(filename: string, source: string): Promise<string[]> {
   const results = await parseImportsWithLines(filename, source)
   return results.map((r) => r.specifier)
 }
 
-/**
- * Like `parseImports` but also returns the 1-based line number of each
- * import/export statement. Used by the canvas to position reference nodes
- * at the source-code line where the dependency appears.
- */
 export async function parseImportsWithLines(
   filename: string,
   source: string,
@@ -348,11 +300,6 @@ export async function parseImportsWithLines(
   }
 }
 
-/**
- * Like `parseImportsWithLines` but also extracts the named bindings from each
- * import statement (e.g. `import { foo, bar } from ...` → names: ['foo','bar']).
- * Currently JS/TS only; other languages return empty names arrays.
- */
 export async function parseImportsWithBindings(
   filename: string,
   source: string,

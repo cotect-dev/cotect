@@ -55,7 +55,7 @@ function defaultRange(): DateRange {
   return { preset: '7d', from: Date.now() - 7 * MS_PER_DAY, to: null }
 }
 
-function presetToRange(preset: RangePreset): DateRange {
+export function presetToRange(preset: RangePreset): DateRange {
   switch (preset) {
     case 'today':
       return { preset, from: new Date().setHours(0, 0, 0, 0), to: null }
@@ -75,7 +75,7 @@ async function refreshAll(
   set: (p: Partial<UsageState>) => void,
 ): Promise<void> {
   const filter = rangeToFilter(get().range)
-  const [byProvider, byRole, byDay, byModel, byTuple, recent] = await Promise.all([
+  const [byProvider, byRole, byDay, byModel, byProviderDay, recent] = await Promise.all([
     usageAggregate(filter, 'Provider'),
     usageAggregate(filter, 'Role'),
     usageAggregate(filter, 'Day'),
@@ -104,7 +104,7 @@ async function refreshAll(
     spendByRole: byRole,
     spendByDay: byDay,
     latencyByModel: byModel,
-    breakdown: byTuple,
+    breakdown: byProviderDay,
     tasks: recent,
   })
 }
@@ -138,5 +138,3 @@ export const useUsageStore = createStoreWithHMR(import.meta.hot, 'usage', () =>
     },
   })),
 )
-
-export { presetToRange }

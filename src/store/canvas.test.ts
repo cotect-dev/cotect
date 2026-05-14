@@ -4,7 +4,6 @@ import {
   NODE_HEIGHT,
   NODE_H_GAP,
   NODE_V_GAP_SMALL,
-  CANVAS_PAD_Y,
   CANVAS_MARGIN,
 } from '@/lib/constants'
 
@@ -36,7 +35,7 @@ function resetStore() {
     hiddenNodeIds: new Set(),
     rightFocusMemory: {},
     viewportHeight: 0,
-    cameraY: CANVAS_PAD_Y,
+    cameraY: CANVAS_MARGIN,
   })
 }
 
@@ -1143,7 +1142,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: 'n0',
       hiddenNodeIds: new Set(),
       viewportHeight: 800,
-      cameraY: CANVAS_PAD_Y, // fresh column
+      cameraY: CANVAS_MARGIN, // fresh column
     })
 
     // Trigger flattenAndRender
@@ -1169,7 +1168,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: 'n-19',
       hiddenNodeIds: new Set(),
       viewportHeight: viewportH,
-      cameraY: CANVAS_PAD_Y, // fresh column
+      cameraY: CANVAS_MARGIN, // fresh column
     })
 
     useCanvasStore.getState().toggleHideNode()
@@ -1182,7 +1181,7 @@ describe('flattenAndRender', () => {
     const focusedY = 19 * (NODE_HEIGHT + NODE_V_GAP_SMALL)
     // Camera clamps: newCameraY = viewportH - CANVAS_MARGIN - focusedY - NODE_HEIGHT
     const expectedCameraY = viewportH - CANVAS_MARGIN - focusedY - NODE_HEIGHT
-    const expectedPreviewY = Math.max(0, -expectedCameraY + CANVAS_PAD_Y)
+    const expectedPreviewY = Math.max(0, -expectedCameraY + CANVAS_MARGIN)
 
     expect(prev0.position.y).toBe(expectedPreviewY)
     expect(prev0.position.y).toBeGreaterThan(0)
@@ -1198,7 +1197,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: 'n-19',
       hiddenNodeIds: new Set(),
       viewportHeight: 0, // not yet measured
-      cameraY: CANVAS_PAD_Y,
+      cameraY: CANVAS_MARGIN,
     })
 
     useCanvasStore.getState().toggleHideNode()
@@ -1218,7 +1217,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: 'n1', // focus on n1 so toggling hide puts n1 in hidden
       hiddenNodeIds: new Set(),
       viewportHeight: 200,
-      cameraY: CANVAS_PAD_Y,
+      cameraY: CANVAS_MARGIN,
     })
 
     useCanvasStore.getState().toggleHideNode()
@@ -1245,7 +1244,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: `n-${count - 1}`,
       hiddenNodeIds: new Set(),
       viewportHeight: viewportH,
-      cameraY: CANVAS_PAD_Y,
+      cameraY: CANVAS_MARGIN,
     })
 
     // Run flattenAndRender to establish the cameraY at the bottom
@@ -1289,7 +1288,7 @@ describe('flattenAndRender', () => {
       focusedNodeId: `n-${count - 1}`,
       hiddenNodeIds: new Set(),
       viewportHeight: viewportH,
-      cameraY: CANVAS_PAD_Y,
+      cameraY: CANVAS_MARGIN,
     })
 
     useCanvasStore.getState().toggleHideNode()

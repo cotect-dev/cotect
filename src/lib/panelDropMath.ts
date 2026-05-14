@@ -1,12 +1,5 @@
-/**
- * Pure pointer-driven drop-zone math shared between the in-window dnd-kit
- * drag (`usePanelDrag`) and the cross-window overlay (`CrossWindowDropOverlay`).
- */
-
 export const EDGE_THRESHOLD = 0.25
-/** y above this fraction of viewport drops into the bottom zone. */
 export const BOTTOM_EDGE_THRESHOLD = 0.75
-/** Split point used in panel-mode (left/right halves only). */
 export const PANEL_SPLIT = 0.5
 
 export type DropPosition = 'left' | 'right' | 'bottom'
@@ -23,16 +16,6 @@ export interface DropZoneInfo {
   isVertical: boolean
 }
 
-/**
- * Bisect-on-mid against pointer position. Caller filters the dragged panel
- * out of `sizes` first when it lives in this zone.
- *
- * - `insertIndex`: position the new panel will occupy.
- * - `neighborIndex`: nearest existing panel; resize math uses it to pick
- *   which neighbor donates the space.
- *
- * Empty `sizes` yields `{0, 0}`.
- */
 export function computeInsertIndex(
   zone: DropZoneInfo,
   sizes: number[],
@@ -63,10 +46,6 @@ export function computeInsertIndex(
   return { insertIndex: sizes.length, neighborIndex: sizes.length - 1 }
 }
 
-/**
- * `mode: 'panel'` only ever returns 'left' or 'right' (split at PANEL_SPLIT).
- * `mode: 'main'` may return null when the pointer is in the dead zone.
- */
 export function detectDropZone(
   x: number,
   y: number,

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { PersistedLayout } from '@/types/layout'
 
 const storage = new Map<string, unknown>()
 
@@ -64,7 +65,6 @@ import {
   loadSession,
   getChildWindowIds,
   restoreGeometryOnMonitor,
-  type PersistedLayout,
   type PersistedGeometry,
   type PersistedSession,
 } from './windowManager'

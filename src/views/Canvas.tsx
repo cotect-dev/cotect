@@ -23,9 +23,6 @@ import { anchorViewport, clampToFocus, type Viewport } from '@/lib/canvasCamera'
 import { notifyCanvasScrolled } from '@/components/Canvas/nodes/codeNodeRegistry'
 import { defineBinding } from '@/lib/keybindings'
 
-// View-mode chords match the original `e.key === '1'/'2'/'3'` checks, which
-// fire regardless of modifier state. A custom matcher preserves that exactly
-// (the stricter `matchChord` helper would require no modifiers held).
 const VIEW_FILES = defineBinding({
   id: 'canvas.view.files',
   label: 'View: Files',
@@ -134,7 +131,6 @@ function CanvasFlow() {
     ? { x: focusedNode.position.x, y: focusedNode.position.y }
     : null
 
-  // Persist viewport on unmount so view switches preserve position.
   useEffect(() => {
     return () => {
       const vp = reactFlow.getViewport()

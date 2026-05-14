@@ -110,32 +110,19 @@ export default function TopBar({ onResetZoneSizes }: TopBarProps) {
       <MenubarMenu>
         <MenubarTrigger>File</MenubarTrigger>
         <MenubarContent>
-          <MenubarItem disabled>New</MenubarItem>
           <MenubarItem onClick={handleOpenFolder}>Open Folder...</MenubarItem>
-          <MenubarSeparator />
-          <MenubarItem disabled>Save</MenubarItem>
-          <MenubarItem disabled>Save As...</MenubarItem>
           <MenubarSeparator />
           <MenubarItem onClick={() => platform.windows.close()}>Exit</MenubarItem>
         </MenubarContent>
       </MenubarMenu>
-      <MenubarMenu>
-        <MenubarTrigger>Edit</MenubarTrigger>
-        <MenubarContent>
-          <MenubarItem disabled>Undo</MenubarItem>
-          <MenubarItem disabled>Redo</MenubarItem>
-          <MenubarSeparator />
-          <MenubarItem disabled>Cut</MenubarItem>
-          <MenubarItem disabled>Copy</MenubarItem>
-          <MenubarItem disabled>Paste</MenubarItem>
-          {DEV && (
-            <>
-              <MenubarSeparator />
-              <MenubarItem onClick={() => setTestError(true)}>Trigger Test Error</MenubarItem>
-            </>
-          )}
-        </MenubarContent>
-      </MenubarMenu>
+      {DEV && (
+        <MenubarMenu>
+          <MenubarTrigger>Debug</MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onClick={() => setTestError(true)}>Trigger Test Error</MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+      )}
       <MenubarMenu>
         <MenubarTrigger>View</MenubarTrigger>
         <MenubarContent>

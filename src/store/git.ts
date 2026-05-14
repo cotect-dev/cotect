@@ -26,8 +26,6 @@ export interface GitLogFile {
 export interface GitLogEntry {
   hash: string
   message: string
-  /** Commit body (everything after the subject line). Empty string when the
-   * commit has no body. Internal newlines are preserved. */
   body: string
   author: string
   timestamp: number
@@ -71,13 +69,8 @@ interface GitState {
   branch: GitBranch | null
   branches: string[]
   lastCommitTimestamp: number | null
-  /**
-   * Map of repo-relative path → HEAD content. Lazily populated by
-   * loadHeadContent; invalidated (replaced) when HEAD SHA changes.
-   */
   headContent: { sha: string; files: Record<string, string> }
   loadHeadContent: (repoRelativePath: string) => Promise<string | null>
-  /** Hybrid timestamps (unix seconds) per repo-relative dirty file path. */
   fileTimes: Record<string, number>
   sortMode: 'path' | 'recent' | 'oldest'
   setSortMode: (mode: 'path' | 'recent' | 'oldest') => void
@@ -223,8 +216,6 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () =>
         const currentHeadContent = get().headContent
         const nextHeadContent =
           currentHeadContent.sha === headSha ? currentHeadContent : { sha: headSha, files: {} }
-        // Update locally first for snappy UI, but defer the cross-window
-        // broadcast until fileTimes is ready so children don't see a stale snapshot.
         set({ ...newState, headContent: nextHeadContent, loading: false })
 
         const broadcastWithTimes = (fileTimes: Record<string, number>) => {
@@ -325,10 +316,6 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () =>
   })),
 )
 
-/**
- * - 'path': original order (tree building happens in the view layer).
- * - 'recent'/'oldest': by fileTimes; missing timestamps land last in original order.
- */
 export function sortedFiles(
   state: Pick<GitState, 'status' | 'fileTimes' | 'sortMode'>,
 ): GitFileStatus[] {
@@ -351,10 +338,7 @@ export function sortedFiles(
     return state.sortMode === 'recent' ? b.time - a.time : a.time - b.time
   }
 
-  return withTime
-    .slice()
-    .sort(cmp)
-    .map((entry) => entry.file)
+  return withTime.sort(cmp).map((entry) => entry.file)
 }
 
 let windowId = ''
@@ -374,8 +358,6 @@ export interface GitSyncPayload {
   sortMode: 'path' | 'recent' | 'oldest'
 }
 
-// Pick<GitState, ...> intentionally pins each field so adding to GitState
-// without updating here fails typecheck — the drift these helpers catch.
 type GitSyncStateSlice = Pick<
   GitState,
   | 'initialized'

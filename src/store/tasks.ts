@@ -69,7 +69,7 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
         .startTask(request)
         .then(() => {
           set((s) => ({
-            tasks: s.tasks.map((t) => (t.id === id ? { ...t, status: 'running' as const } : t)),
+            tasks: s.tasks.map((t) => (t.id === id ? { ...t, status: 'running' } : t)),
           }))
         })
         .catch((err) => {
@@ -77,7 +77,7 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
           taskListeners.delete(id)
           set((s) => ({
             tasks: s.tasks.map((t) =>
-              t.id === id ? { ...t, status: 'errored' as const, error: String(err) } : t,
+              t.id === id ? { ...t, status: 'errored', error: String(err) } : t,
             ),
           }))
         })
@@ -90,7 +90,6 @@ export const useTasksStore = createStoreWithHMR(import.meta.hot, 'tasks', () =>
     },
 
     abortTask: (id) => {
-      // Rust side responds with an 'interrupted' event.
       agentService.abortTask(id).catch(console.error)
     },
 
@@ -195,13 +194,13 @@ function handleTaskEvent(taskId: string, event: TaskEvent) {
 
     case 'complete':
       detachListener(taskId)
-      updateTask(taskId, () => ({ status: 'completed' as const, completedAt: Date.now() }))
+      updateTask(taskId, () => ({ status: 'completed', completedAt: Date.now() }))
       break
 
     case 'interrupted':
       detachListener(taskId)
       updateTask(taskId, () => ({
-        status: 'interrupted' as const,
+        status: 'interrupted',
         error: event.reason,
         completedAt: Date.now(),
       }))

@@ -23,7 +23,7 @@ import {
   rectangularSelection,
   crosshairCursor,
 } from '@codemirror/view'
-import { EditorState, Compartment, type Extension } from '@codemirror/state'
+import { EditorState, Compartment } from '@codemirror/state'
 import {
   defaultKeymap,
   history,
@@ -41,11 +41,17 @@ import {
   acceptCompletion,
 } from '@codemirror/autocomplete'
 import { indentOnInput, bracketMatching, foldGutter, foldKeymap } from '@codemirror/language'
-import { javascript } from '@codemirror/lang-javascript'
-import { json } from '@codemirror/lang-json'
-import { css } from '@codemirror/lang-css'
-import { oneDark } from '@codemirror/theme-one-dark'
-import { unifiedMergeView } from '@codemirror/merge'
+import { indentationMarkers } from '@replit/codemirror-indentation-markers'
+import { vscodeDark } from './cmThemeVSCode'
+import { getLanguageExt } from './cmLanguages'
+import {
+  rainbowBrackets,
+  buildMergeExtension,
+  buildMinimapGutters,
+  createMinimapConfig,
+  MINIMAP_WIDTH,
+} from './cmPlugins'
+import { showMinimap } from '@replit/codemirror-minimap'
 import { getPlatform } from '@/services/platform'
 import { isMarkdownFile } from '@/lib/constants'
 import type { CodeNode, ImportRefItem } from '@/types/nodes'
@@ -58,18 +64,10 @@ import { samePath, toRepoRelative } from '@/lib/repoPath'
 
 const MarkdownPreview = lazy(() => import('./MarkdownPreview'))
 
-function getLanguageExt(filePath: string) {
-  if (/\.(tsx?)$/.test(filePath)) return javascript({ typescript: true, jsx: true })
-  if (/\.(jsx?)$/.test(filePath)) return javascript({ jsx: true })
-  if (/\.json$/.test(filePath)) return json()
-  if (/\.css$/.test(filePath)) return css()
-  return javascript({ typescript: true })
-}
-
 const MIN_CODE_NODE_WIDTH = 280
 const CODE_NODE_HEIGHT_RESERVED = 120
-const CM_PAD_TOP = 4 // CodeMirror .cm-content padding-top
-const REF_GAP = 16 // Space between code right edge and annotation pills
+const CM_PAD_TOP = 4
+const REF_GAP = 16
 
 interface RefLine {
   items: ImportRefItem[]
@@ -88,9 +86,6 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
 
   for (const ref of imports) add(ref.line, ref)
 
-  // Imported-by: group refs by their anchor line (per-export) and spread
-  // each group downward. A line is only blocked by imported-by refs from
-  // a *different* group, so groups don't collide.
   const ibAnchorLines = new Set<number>()
   if (importedBy.length > 0) {
     const ibByLine = new Map<number, ImportRef[]>()
@@ -123,7 +118,6 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
   }
 
   const result = new Map<number, RefLine>()
-
   for (const [line, entries] of lineEntries) {
     const items: ImportRefItem[] = entries.map((ref) => ({
       label: ref.label,
@@ -139,42 +133,11 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
   return result
 }
 
-/**
- * Returns an empty array when there is no HEAD content, so reconfiguring
- * with this cleanly removes the diff highlighting.
- *
- * onChunkAction fires after CodeMirror's default accept/reject transaction
- * has already mutated the doc — caller persists it so git picks it up.
- */
-function buildMergeExtension(
-  head: string | null,
-  onChunkAction: (type: 'accept' | 'reject') => void,
-): Extension {
-  if (head === null) return []
-  return unifiedMergeView({
-    original: head,
-    mergeControls: (type, action) => {
-      const btn = document.createElement('button')
-      btn.type = 'button'
-      btn.textContent = type === 'accept' ? '✓ accept' : '✕ reject'
-      btn.className =
-        'cm-merge-stub-btn text-[10px] font-mono px-1.5 py-0.5 mx-0.5 rounded ' +
-        (type === 'accept'
-          ? 'bg-green-900/40 text-green-400 hover:bg-green-900/60'
-          : 'bg-red-900/40 text-red-400 hover:bg-red-900/60')
-      btn.addEventListener('click', (e) => {
-        action(e)
-        onChunkAction(type)
-      })
-      return btn
-    },
-  })
-}
-
 export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const mergeCompartmentRef = useRef<Compartment>(new Compartment())
+  const minimapCompartmentRef = useRef<Compartment>(new Compartment())
   const flags = getNodeFlags(data)
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -261,6 +224,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       const newContent = view.state.doc.toString()
       await platform.fs.writeFile(data.filePath, newContent)
       setDirty(false)
+      void useGitStore.getState().refresh()
       return true
     } catch (err) {
       console.error('Failed to save:', err)
@@ -285,12 +249,13 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       viewRef.current = null
     }
 
-    // Fresh compartment per editor instance — compartments are tied to an
-    // EditorState and not reusable across destroyed views.
     mergeCompartmentRef.current = new Compartment()
+    minimapCompartmentRef.current = new Compartment()
     const initialMergeExt = mergeCompartmentRef.current.of(
       buildMergeExtension(headContent, handleChunkAction),
     )
+
+    const langExt = getLanguageExt(data.filePath)
 
     const state = EditorState.create({
       doc: data.code,
@@ -311,9 +276,22 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         rectangularSelection(),
         crosshairCursor(),
         highlightSelectionMatches(),
-        getLanguageExt(data.filePath),
-        oneDark,
+        ...(langExt ? [langExt] : []),
+        indentationMarkers({
+          highlightActiveBlock: true,
+          hideFirstIndent: false,
+          thickness: 1,
+          colors: {
+            light: 'rgba(255,255,255,0.08)',
+            dark: 'rgba(255,255,255,0.08)',
+            activeLight: 'rgba(255,255,255,0.16)',
+            activeDark: 'rgba(255,255,255,0.16)',
+          },
+        }),
+        rainbowBrackets,
+        vscodeDark,
         initialMergeExt,
+        minimapCompartmentRef.current.of(showMinimap.of(createMinimapConfig())),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) setDirty(true)
@@ -357,6 +335,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           '.cm-scroller': {
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
             overflowY: 'auto',
+            scrollbarWidth: 'none',
+            '&::-webkit-scrollbar': { display: 'none' },
           },
           '.cm-gutters': {
             backgroundColor: 'transparent',
@@ -364,13 +344,30 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           },
           '.cm-content': {
             padding: '4px 0',
+            paddingRight: `${MINIMAP_WIDTH + 4}px`,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-all',
             lineHeight: '18px',
           },
-          // Override @codemirror/merge defaults: drop the faux-underline on
-          // changedText, and use a luminance gap (red darker than green) so
-          // red-green colorblind users can distinguish the two.
+          '.cm-cursor': {
+            borderLeftColor: '#aeafad',
+            borderLeftWidth: '2px',
+            animation: 'cm-blink-smooth 1s ease-in-out infinite',
+          },
+          '@keyframes cm-blink-smooth': {
+            '0%, 100%': { opacity: '1' },
+            '50%': { opacity: '0' },
+          },
+          '.cm-minimap-gutter': {
+            backgroundColor: '#1e1e1e',
+            borderLeft: '1px solid rgba(255,255,255,0.06)',
+            zIndex: '2',
+          },
+          '.cm-minimap-overlay': {
+            backgroundColor: 'rgba(255,255,255,0.07) !important',
+            border: '1px solid rgba(255,255,255,0.12)',
+            opacity: '1 !important',
+          },
           '&.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText, .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText':
             {
               background: 'none',
@@ -427,10 +424,17 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         buildMergeExtension(headContent, handleChunkAction),
       ),
     })
+    requestAnimationFrame(() => {
+      if (!viewRef.current) return
+      const gutters = buildMinimapGutters(viewRef.current)
+      viewRef.current.dispatch({
+        effects: minimapCompartmentRef.current.reconfigure(
+          showMinimap.of(createMinimapConfig([gutters])),
+        ),
+      })
+    })
   }, [headContent, handleChunkAction])
 
-  // Lines beyond document end are stacked at REF_HEIGHT intervals below
-  // the last line to avoid overlap.
   useLayoutEffect(() => {
     const view = viewRef.current
     if (!view || !refLineLayout || refLineLayout.size === 0) {

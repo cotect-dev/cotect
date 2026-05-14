@@ -42,7 +42,7 @@ export default memo(function FileNode({ id, data }: NodeProps<FileNode>) {
       iconClassName={iconColor}
       label={data.label}
       borderClassName={border}
-      className={`${opacity} ${isTest ? 'opacity-60' : ''}`}
+      className={opacity}
       focused={flags.isFocused}
       onClick={handleClick}
       onDoubleClick={canNavigate ? handleDoubleClick : undefined}

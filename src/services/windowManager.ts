@@ -3,8 +3,6 @@ import { useBrowserStore } from '@/store/browser'
 import type { WindowMonitorInfo, MonitorInfo } from '@/services/platform/types'
 import type { PersistedLayout } from '@/types/layout'
 
-export type { PersistedLayout } from '@/types/layout'
-
 const PERSIST_DEBOUNCE_MS = 300
 
 export interface PersistedGeometry {
@@ -22,7 +20,6 @@ export interface PersistedSession {
 
 export async function getChildWindowIds(): Promise<string[]> {
   const platform = getPlatform()
-  // Falls back to scanning layout keys for first run / migration.
   const ids = await platform.storage.get<string[]>('wm-children')
   if (ids) return ids
 
