@@ -338,6 +338,16 @@ pub async fn git_show_file(repo_path: String, file_path: String) -> Result<Strin
     run_git(&repo_path, &["show", &spec]).await
 }
 
+#[tauri::command]
+pub async fn git_show_commit_file(
+    repo_path: String,
+    hash: String,
+    file_path: String,
+) -> Result<String, String> {
+    let spec = format!("{hash}:{file_path}");
+    run_git(&repo_path, &["show", &spec]).await
+}
+
 /// Parse the output of `git log --name-only --format='@%ct' -- <paths>`.
 /// Output format (newest-first):
 ///

@@ -1,5 +1,6 @@
 import { memo, useState, useCallback, useRef, useMemo } from 'react'
 import { useGitStore, type GitLogEntry } from '@/store/git'
+import { useCanvasStore } from '@/store'
 import { invoke } from '@tauri-apps/api/core'
 import RelativeTime from '@/components/RelativeTime'
 import NoGitRepo from '@/components/NoGitRepo'
@@ -8,6 +9,14 @@ const LOG_PAGE_SIZE = 50
 
 const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry }) {
   const [expanded, setExpanded] = useState(false)
+
+  const handleFileClick = useCallback(
+    (e: React.MouseEvent, filePath: string) => {
+      e.stopPropagation()
+      void useCanvasStore.getState().showCommitDiff(commit.hash, filePath)
+    },
+    [commit.hash],
+  )
 
   return (
     <div
@@ -47,7 +56,11 @@ const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry 
       {expanded && commit.files.length > 0 && (
         <div className="mt-1.5 pl-2 border-l border-border/30 text-[10px] font-mono text-muted-foreground/70">
           {commit.files.map((f) => (
-            <div key={f.path} className="flex items-center justify-between py-px">
+            <div
+              key={f.path}
+              className="flex items-center justify-between py-px hover:bg-primary/10 hover:text-foreground rounded px-1 -mx-1 cursor-pointer"
+              onClick={(e) => handleFileClick(e, f.path)}
+            >
               <span className="truncate">{f.path}</span>
               <div className="flex items-center gap-1 shrink-0 ml-2">
                 {f.insertions > 0 && <span className="text-green-500">+{f.insertions}</span>}

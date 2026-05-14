@@ -9,6 +9,7 @@ import {
   applyEdgeChanges,
   addEdge,
 } from '@xyflow/react'
+import { invoke } from '@tauri-apps/api/core'
 import { getPlatform } from '@/services/platform'
 import {
   HIDDEN_DIRECTORIES,
@@ -98,6 +99,7 @@ export type CanvasState = {
   updatePreview: () => Promise<void>
   focusFileByPath: (repoRelativePath: string) => Promise<void>
   navigateBack: () => Promise<void>
+  showCommitDiff: (commitHash: string, filePath: string) => Promise<void>
 }
 
 async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
@@ -703,15 +705,75 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           const { fileHistory } = get()
           if (fileHistory.length === 0) return
           const prev = fileHistory[fileHistory.length - 1]
-          // Pop the entry before navigating — focusFileByPath would otherwise
-          // push the current file back onto the stack, creating a ping-pong.
           set({ fileHistory: fileHistory.slice(0, -1) })
-          // Temporarily clear lastOpenedFile so focusFileByPath doesn't push it.
           const saved = get().lastOpenedFile
           set({ lastOpenedFile: null })
           await get().focusFileByPath(prev)
-          // If focusFileByPath didn't set lastOpenedFile (e.g. file gone), restore.
           if (get().lastOpenedFile === null) set({ lastOpenedFile: saved })
+        },
+
+        showCommitDiff: async (commitHash, filePath) => {
+          const { columns } = get()
+          const rootCol = columns[0]
+          if (!rootCol) return
+          const repoPath = rootCol.path
+
+          let afterContent: string
+          try {
+            afterContent = await invoke<string>('git_show_commit_file', {
+              repoPath,
+              hash: commitHash,
+              filePath,
+            })
+          } catch {
+            return
+          }
+
+          let beforeContent = ''
+          try {
+            beforeContent = await invoke<string>('git_show_commit_file', {
+              repoPath,
+              hash: `${commitHash}~1`,
+              filePath,
+            })
+          } catch {
+            /* file didn't exist in parent commit */
+          }
+
+          const fileName = filePath.split('/').pop() || filePath
+          const lineCount = afterContent.split('\n').length
+          const codeNode: AppNode = {
+            id: `code:${repoPath}/${filePath}:${commitHash}`,
+            type: 'codeNode',
+            position: { x: 0, y: 0 },
+            data: {
+              label: fileName,
+              filePath: joinPath(repoPath, filePath),
+              code: afterContent,
+              startLine: 1,
+              endLine: lineCount,
+              headOverride: beforeContent,
+              readOnly: true,
+              commitHash: commitHash,
+            },
+          }
+
+          const previewCol: Column = {
+            path: joinPath(repoPath, filePath),
+            kind: 'file',
+            nodes: [codeNode],
+            edges: [],
+          }
+
+          const newColumns = [...columns.slice(0, 1), previewCol]
+          set({
+            columns: newColumns,
+            currentColumnIndex: 0,
+            focusedNodeId: null,
+            cameraY: CANVAS_MARGIN,
+          })
+
+          flattenAndRender(get, set)
         },
 
         navigateRight: async () => {

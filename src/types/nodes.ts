@@ -38,6 +38,9 @@ export interface CodeNodeData extends NodeDisplayFlags, Record<string, unknown> 
   code: string
   startLine: number
   endLine: number
+  headOverride?: string | null
+  readOnly?: boolean
+  commitHash?: string
 }
 
 export interface ImportRefItem {
