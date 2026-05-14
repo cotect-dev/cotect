@@ -2,17 +2,21 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { create } from 'zustand'
 
 // Mock platform
+const mockStorageGet = vi.fn().mockResolvedValue(null)
+const mockStorageSetSync = vi.fn()
 const mockSyncedSet = vi.fn()
-const mockSyncedGet = vi.fn().mockResolvedValue(null)
 const mockSyncedListen = vi.fn().mockReturnValue(() => {})
 const mockGetWindowId = vi.fn().mockReturnValue('test-window')
 
 vi.mock('@/services/platform', () => ({
   getPlatform: () => ({
     windows: { getWindowId: mockGetWindowId },
+    storage: {
+      get: mockStorageGet,
+      setSync: mockStorageSetSync,
+    },
     syncedState: {
       set: mockSyncedSet,
-      get: mockSyncedGet,
       listen: mockSyncedListen,
     },
   }),
@@ -37,7 +41,7 @@ describe('persistence', () => {
     vi.clearAllMocks()
     vi.useFakeTimers()
     _testReset()
-    mockSyncedGet.mockResolvedValue(null)
+    mockStorageGet.mockResolvedValue(null)
   })
 
   afterEach(() => {
@@ -65,8 +69,8 @@ describe('persistence', () => {
 
   describe('initPersistence', () => {
     it('loads saved global state and hydrates the store', async () => {
-      mockSyncedGet.mockImplementation((name: string) => {
-        if (name === 'persist:global') return Promise.resolve({ 'mystore.width': 500 })
+      mockStorageGet.mockImplementation((key: string) => {
+        if (key === 'persist:global') return Promise.resolve({ 'mystore.width': 500 })
         return Promise.resolve(null)
       })
 
@@ -84,8 +88,8 @@ describe('persistence', () => {
     })
 
     it('loads saved project state and hydrates the store', async () => {
-      mockSyncedGet.mockImplementation((name: string) => {
-        if (name === 'persist:project:test-project-abc12345') {
+      mockStorageGet.mockImplementation((key: string) => {
+        if (key === 'persist:project:test-project-abc12345') {
           return Promise.resolve({ 'mystore.items': ['a', 'b'] })
         }
         return Promise.resolve(null)
@@ -105,8 +109,8 @@ describe('persistence', () => {
     })
 
     it('uses deserialize function when provided', async () => {
-      mockSyncedGet.mockImplementation((name: string) => {
-        if (name === 'persist:project:test-project-abc12345') {
+      mockStorageGet.mockImplementation((key: string) => {
+        if (key === 'persist:project:test-project-abc12345') {
           return Promise.resolve({ 'mystore.ids': ['x', 'y'] })
         }
         return Promise.resolve(null)
@@ -145,20 +149,17 @@ describe('persistence', () => {
       )
 
       await initPersistence('test-project-abc12345')
-      mockSyncedSet.mockClear()
+      mockStorageSetSync.mockClear()
 
       store.setState({ width: 500 })
 
-      // Not written yet (debounced)
-      expect(mockSyncedSet).not.toHaveBeenCalled()
+      expect(mockStorageSetSync).not.toHaveBeenCalled()
 
-      // Advance past debounce
       vi.advanceTimersByTime(150)
 
-      expect(mockSyncedSet).toHaveBeenCalledWith(
+      expect(mockStorageSetSync).toHaveBeenCalledWith(
         'persist:global',
         expect.objectContaining({ 'mystore.width': 500 }),
-        'test-window',
       )
     })
 
@@ -172,14 +173,35 @@ describe('persistence', () => {
       )
 
       await initPersistence('test-project-abc12345')
-      mockSyncedSet.mockClear()
+      mockStorageSetSync.mockClear()
 
       store.setState({ hidden: ['node-1'] })
       vi.advanceTimersByTime(150)
 
-      expect(mockSyncedSet).toHaveBeenCalledWith(
+      expect(mockStorageSetSync).toHaveBeenCalledWith(
         'persist:project:test-project-abc12345',
         expect.objectContaining({ 'mystore.hidden': ['node-1'] }),
+      )
+    })
+
+    it('broadcasts changes via syncedState for cross-window sync', async () => {
+      const store = create(
+        withPersistence<{ width: number }>(() => ({ width: 300 }), {
+          name: 'mystore',
+          fields: { width: { scope: 'global' } },
+          debounce: 100,
+        }),
+      )
+
+      await initPersistence('test-project-abc12345')
+      mockSyncedSet.mockClear()
+
+      store.setState({ width: 500 })
+      vi.advanceTimersByTime(150)
+
+      expect(mockSyncedSet).toHaveBeenCalledWith(
+        'persist:global',
+        expect.objectContaining({ 'mystore.width': 500 }),
         'test-window',
       )
     })
@@ -194,15 +216,14 @@ describe('persistence', () => {
       )
 
       await initPersistence('test-project-abc12345')
-      mockSyncedSet.mockClear()
+      mockStorageSetSync.mockClear()
 
       store.setState({ ids: new Set(['x', 'y']) })
       vi.advanceTimersByTime(150)
 
-      expect(mockSyncedSet).toHaveBeenCalledWith(
+      expect(mockStorageSetSync).toHaveBeenCalledWith(
         'persist:global',
         expect.objectContaining({ 'mystore.ids': expect.arrayContaining(['x', 'y']) }),
-        'test-window',
       )
     })
 
@@ -222,15 +243,14 @@ describe('persistence', () => {
       )
 
       await initPersistence('test-project-abc12345')
-      mockSyncedSet.mockClear()
+      mockStorageSetSync.mockClear()
 
       store.setState({ ids: new Set(['a', 'b']) })
       vi.advanceTimersByTime(150)
 
-      expect(mockSyncedSet).toHaveBeenCalledWith(
+      expect(mockStorageSetSync).toHaveBeenCalledWith(
         'persist:global',
         expect.objectContaining({ 'mystore.ids': expect.arrayContaining(['a', 'b']) }),
-        'test-window',
       )
     })
   })
@@ -246,15 +266,14 @@ describe('persistence', () => {
       )
 
       await initPersistence('test-project-abc12345')
-      mockSyncedSet.mockClear()
+      mockStorageSetSync.mockClear()
 
       store.setState({ val: 42 })
       flushPendingWrites()
 
-      expect(mockSyncedSet).toHaveBeenCalledWith(
+      expect(mockStorageSetSync).toHaveBeenCalledWith(
         'persist:global',
         expect.objectContaining({ 'mystore.val': 42 }),
-        'test-window',
       )
     })
   })
@@ -271,8 +290,8 @@ describe('persistence', () => {
 
       await initPersistence('project-a')
 
-      mockSyncedGet.mockImplementation((name: string) => {
-        if (name === 'persist:project:project-b') {
+      mockStorageGet.mockImplementation((key: string) => {
+        if (key === 'persist:project:project-b') {
           return Promise.resolve({ 'mystore.items': ['from-b'] })
         }
         return Promise.resolve(null)
@@ -295,7 +314,7 @@ describe('persistence', () => {
       await initPersistence('project-a')
       store.setState({ items: ['modified'] })
 
-      mockSyncedGet.mockResolvedValue(null)
+      mockStorageGet.mockResolvedValue(null)
 
       await switchProject('project-b')
 

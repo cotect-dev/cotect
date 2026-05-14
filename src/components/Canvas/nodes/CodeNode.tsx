@@ -123,12 +123,48 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
   return result
 }
 
+function CodeNodeSkeleton({ lineCount, startLine }: { lineCount: number; startLine: number }) {
+  const visibleLines = Math.min(lineCount, 40)
+  return (
+    <div
+      className="overflow-hidden"
+      style={{
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        fontSize: '12px',
+        lineHeight: '18px',
+      }}
+    >
+      {Array.from({ length: visibleLines }, (_, i) => {
+        const lineNum = startLine + i
+        const widthPercent = 20 + ((lineNum * 7) % 60)
+        return (
+          <div key={i} className="flex" style={{ height: 18 }}>
+            <span
+              className="text-right shrink-0 select-none text-muted-foreground/30"
+              style={{ width: 40, paddingRight: 8, fontSize: '12px' }}
+            >
+              {lineNum}
+            </span>
+            <div
+              className="rounded bg-foreground/[0.04]"
+              style={{ width: `${widthPercent}%`, height: 10, marginTop: 4 }}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const mergeCompartmentRef = useRef<Compartment>(new Compartment())
   const minimapCompartmentRef = useRef<Compartment>(new Compartment())
+  const scrollHandlerRef = useRef<{ scrollDOM: HTMLElement; handler: () => void } | null>(null)
+  const resizeObRef = useRef<ResizeObserver | null>(null)
   const flags = getNodeFlags(data)
+  const [editorReady, setEditorReady] = useState(false)
   const [editorFocused, setEditorFocused] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -138,6 +174,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [mdContent, setMdContent] = useState(data.code)
   const storeWidth = useCanvasStore((s) => s.codeNodeWidth)
   const setCodeNodeWidth = useCanvasStore((s) => s.setCodeNodeWidth)
+  const setPreviewReady = useCanvasStore((s) => s.setPreviewReady)
   const [nodeWidth, setNodeWidth] = useState<number>(storeWidth)
   const [editorHeight, setEditorHeight] = useState(0)
   const refOverlayRef = useRef<HTMLDivElement>(null)
@@ -255,172 +292,191 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       viewRef.current = null
     }
 
-    mergeCompartmentRef.current = new Compartment()
-    minimapCompartmentRef.current = new Compartment()
-    const initialMergeExt = mergeCompartmentRef.current.of(
-      buildMergeExtension(headContent, handleChunkAction, isReadOnly),
-    )
+    setEditorReady(false)
 
-    const langExt = getLanguageExt(data.filePath)
+    const container = editorRef.current
+    const rafId = requestAnimationFrame(() => {
+      if (!container.isConnected) return
 
-    const state = EditorState.create({
-      doc: data.code,
-      extensions: [
-        lineNumbers({
-          formatNumber: (n) => String(n + data.startLine - 1),
-        }),
-        highlightActiveLine(),
-        highlightSpecialChars(),
-        history(),
-        foldGutter(),
-        drawSelection(),
-        dropCursor(),
-        indentOnInput(),
-        bracketMatching(),
-        closeBrackets(),
-        autocompletion(),
-        rectangularSelection(),
-        crosshairCursor(),
-        highlightSelectionMatches(),
-        ...(langExt ? [langExt] : []),
-        indentationMarkers({
-          highlightActiveBlock: true,
-          hideFirstIndent: false,
-          thickness: 1,
-          colors: {
-            light: 'rgba(255,255,255,0.08)',
-            dark: 'rgba(255,255,255,0.08)',
-            activeLight: 'rgba(255,255,255,0.16)',
-            activeDark: 'rgba(255,255,255,0.16)',
-          },
-        }),
-        rainbowBrackets,
-        vscodeDark,
-        ...(isReadOnly ? [EditorState.readOnly.of(true)] : []),
-        initialMergeExt,
-        minimapCompartmentRef.current.of(showMinimap.of(createMinimapConfig())),
-        EditorView.lineWrapping,
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged) setDirty(true)
-          if (update.focusChanged) setEditorFocused(update.view.hasFocus)
-          if (update.geometryChanged) setGeometryVer((v) => v + 1)
-        }),
-        keymap.of([
-          {
-            key: 'Mod-s',
-            run: () => {
-              void saveToFile()
-              return true
+      mergeCompartmentRef.current = new Compartment()
+      minimapCompartmentRef.current = new Compartment()
+      const initialMergeExt = mergeCompartmentRef.current.of(
+        buildMergeExtension(headContent, handleChunkAction, isReadOnly),
+      )
+
+      const langExt = getLanguageExt(data.filePath)
+
+      const state = EditorState.create({
+        doc: data.code,
+        extensions: [
+          lineNumbers({
+            formatNumber: (n) => String(n + data.startLine - 1),
+          }),
+          highlightActiveLine(),
+          highlightSpecialChars(),
+          history(),
+          foldGutter(),
+          drawSelection(),
+          dropCursor(),
+          indentOnInput(),
+          bracketMatching(),
+          closeBrackets(),
+          autocompletion(),
+          rectangularSelection(),
+          crosshairCursor(),
+          highlightSelectionMatches(),
+          ...(langExt ? [langExt] : []),
+          indentationMarkers({
+            highlightActiveBlock: true,
+            hideFirstIndent: false,
+            thickness: 1,
+            colors: {
+              light: 'rgba(255,255,255,0.08)',
+              dark: 'rgba(255,255,255,0.08)',
+              activeLight: 'rgba(255,255,255,0.16)',
+              activeDark: 'rgba(255,255,255,0.16)',
             },
-          },
-          {
-            key: 'Escape',
-            run: (view) => {
-              view.contentDOM.blur()
-              const container = document.querySelector(
-                '[data-canvas-container]',
-              ) as HTMLElement | null
-              container?.focus()
-              return true
-            },
-          },
-          { key: 'Mod-d', run: copyLineDown },
-          { key: 'Mod-Shift-k', run: deleteLine },
-          { key: 'Mod-/', run: toggleComment },
-          { key: 'Tab', run: acceptCompletion },
-          indentWithTab,
-          ...closeBracketsKeymap,
-          ...defaultKeymap,
-          ...historyKeymap,
-          ...foldKeymap,
-        ]),
-        EditorView.theme({
-          '&': {
-            fontSize: '12px',
-            maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`,
-          },
-          '.cm-scroller': {
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            overflowY: 'auto',
-            overscrollBehavior: 'contain',
-            scrollbarWidth: 'none',
-            '&::-webkit-scrollbar': { display: 'none' },
-          },
-          '.cm-gutters': {
-            backgroundColor: 'transparent',
-            borderRight: '1px solid rgba(255,255,255,0.06)',
-          },
-          '.cm-content': {
-            padding: '4px 0',
-            paddingRight: `${MINIMAP_WIDTH + 4}px`,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-            lineHeight: '18px',
-          },
-          '.cm-cursor': {
-            borderLeftColor: '#aeafad',
-            borderLeftWidth: '2px',
-            animation: 'cm-blink-smooth 1s ease-in-out infinite',
-          },
-          '@keyframes cm-blink-smooth': {
-            '0%, 100%': { opacity: '1' },
-            '50%': { opacity: '0' },
-          },
-          '.cm-minimap-gutter': {
-            backgroundColor: '#1e1e1e',
-            borderLeft: '1px solid rgba(255,255,255,0.06)',
-            zIndex: '2',
-          },
-          '.cm-minimap-overlay': {
-            backgroundColor: 'rgba(255,255,255,0.07) !important',
-            border: '1px solid rgba(255,255,255,0.12)',
-            opacity: '1 !important',
-          },
-          '&.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText, .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText':
+          }),
+          rainbowBrackets,
+          vscodeDark,
+          ...(isReadOnly ? [EditorState.readOnly.of(true)] : []),
+          initialMergeExt,
+          minimapCompartmentRef.current.of(showMinimap.of(createMinimapConfig())),
+          EditorView.lineWrapping,
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) setDirty(true)
+            if (update.focusChanged) setEditorFocused(update.view.hasFocus)
+            if (update.geometryChanged) setGeometryVer((v) => v + 1)
+          }),
+          keymap.of([
             {
-              background: 'none',
+              key: 'Mod-s',
+              run: () => {
+                void saveToFile()
+                return true
+              },
             },
-          '&.cm-merge-a .cm-changedLine, .cm-deletedChunk': {
-            backgroundColor: 'rgba(220, 60, 50, 0.22)',
-          },
-          '&.cm-merge-b .cm-changedLine, .cm-inlineChangedLine': {
-            backgroundColor: 'rgba(80, 200, 100, 0.22)',
-          },
-          '&.cm-merge-a .cm-changedLineGutter, .cm-deletedLineGutter': {
-            background: '#dc2626',
-          },
-          '&.cm-merge-b .cm-changedLineGutter': {
-            background: '#22c55e',
-          },
-          '&.cm-focused': {
-            outline: 'none',
-          },
-        }),
-      ],
+            {
+              key: 'Escape',
+              run: (view) => {
+                view.contentDOM.blur()
+                const container = document.querySelector(
+                  '[data-canvas-container]',
+                ) as HTMLElement | null
+                container?.focus()
+                return true
+              },
+            },
+            { key: 'Mod-d', run: copyLineDown },
+            { key: 'Mod-Shift-k', run: deleteLine },
+            { key: 'Mod-/', run: toggleComment },
+            { key: 'Tab', run: acceptCompletion },
+            indentWithTab,
+            ...closeBracketsKeymap,
+            ...defaultKeymap,
+            ...historyKeymap,
+            ...foldKeymap,
+          ]),
+          EditorView.theme({
+            '&': {
+              fontSize: '12px',
+              maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`,
+            },
+            '.cm-scroller': {
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+              overflowY: 'auto',
+              overscrollBehavior: 'contain',
+              scrollbarWidth: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
+            },
+            '.cm-gutters': {
+              backgroundColor: 'transparent',
+              borderRight: '1px solid rgba(255,255,255,0.06)',
+            },
+            '.cm-content': {
+              padding: '4px 0',
+              paddingRight: `${MINIMAP_WIDTH + 4}px`,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              lineHeight: '18px',
+            },
+            '.cm-cursor': {
+              borderLeftColor: '#aeafad',
+              borderLeftWidth: '2px',
+              animation: 'cm-blink-smooth 1s ease-in-out infinite',
+            },
+            '@keyframes cm-blink-smooth': {
+              '0%, 100%': { opacity: '1' },
+              '50%': { opacity: '0' },
+            },
+            '.cm-minimap-gutter': {
+              backgroundColor: '#1e1e1e',
+              borderLeft: '1px solid rgba(255,255,255,0.06)',
+              zIndex: '2',
+            },
+            '.cm-minimap-overlay': {
+              backgroundColor: 'rgba(255,255,255,0.07) !important',
+              border: '1px solid rgba(255,255,255,0.12)',
+              opacity: '1 !important',
+            },
+            '&.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText, .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText':
+              {
+                background: 'none',
+              },
+            '&.cm-merge-a .cm-changedLine, .cm-deletedChunk': {
+              backgroundColor: 'rgba(220, 60, 50, 0.22)',
+            },
+            '&.cm-merge-b .cm-changedLine, .cm-inlineChangedLine': {
+              backgroundColor: 'rgba(80, 200, 100, 0.22)',
+            },
+            '&.cm-merge-a .cm-changedLineGutter, .cm-deletedLineGutter': {
+              background: '#dc2626',
+            },
+            '&.cm-merge-b .cm-changedLineGutter': {
+              background: '#22c55e',
+            },
+            '&.cm-focused': {
+              outline: 'none',
+            },
+          }),
+        ],
+      })
+
+      const view = new EditorView({ state, parent: container })
+      viewRef.current = view
+      registerEditorView(view)
+      setEditorReady(true)
+      setPreviewReady(true)
+      setGeometryVer((v) => v + 1)
+
+      const scrollDOM = view.scrollDOM
+      const handleEditorScroll = () => {
+        if (refOverlayRef.current) {
+          refOverlayRef.current.style.transform = `translateY(${-scrollDOM.scrollTop}px)`
+        }
+      }
+      scrollDOM.addEventListener('scroll', handleEditorScroll, { passive: true })
+      scrollHandlerRef.current = { scrollDOM, handler: handleEditorScroll }
+      const ro = new ResizeObserver(() => setEditorHeight(scrollDOM.clientHeight))
+      ro.observe(scrollDOM)
+      resizeObRef.current = ro
+      setEditorHeight(scrollDOM.clientHeight)
     })
 
-    const view = new EditorView({ state, parent: editorRef.current })
-    viewRef.current = view
-    registerEditorView(view)
-    setGeometryVer((v) => v + 1)
-
-    const scrollDOM = view.scrollDOM
-    const handleEditorScroll = () => {
-      if (refOverlayRef.current) {
-        refOverlayRef.current.style.transform = `translateY(${-scrollDOM.scrollTop}px)`
-      }
-    }
-    scrollDOM.addEventListener('scroll', handleEditorScroll, { passive: true })
-    const ro = new ResizeObserver(() => setEditorHeight(scrollDOM.clientHeight))
-    ro.observe(scrollDOM)
-    setEditorHeight(scrollDOM.clientHeight)
-
     return () => {
-      scrollDOM.removeEventListener('scroll', handleEditorScroll)
-      ro.disconnect()
-      unregisterEditorView(view)
-      view.destroy()
-      viewRef.current = null
+      cancelAnimationFrame(rafId)
+      resizeObRef.current?.disconnect()
+      resizeObRef.current = null
+      const sh = scrollHandlerRef.current
+      if (sh) {
+        sh.scrollDOM.removeEventListener('scroll', sh.handler)
+        scrollHandlerRef.current = null
+      }
+      if (viewRef.current) {
+        unregisterEditorView(viewRef.current)
+        viewRef.current.destroy()
+        viewRef.current = null
+      }
     }
   }, [data.code, data.filePath, data.startLine]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -546,10 +602,13 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       </div>
 
       <div className="relative overflow-hidden">
+        {!editorReady && !mdPreview && (
+          <CodeNodeSkeleton lineCount={lineCount} startLine={data.startLine} />
+        )}
         <div
           ref={editorRef}
           className="nowheel"
-          style={{ display: mdPreview ? 'none' : undefined }}
+          style={{ display: mdPreview || !editorReady ? 'none' : undefined }}
         />
         {mdPreview && (
           <MarkdownPreview
