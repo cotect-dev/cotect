@@ -341,6 +341,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           '.cm-scroller': {
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
             overflowY: 'auto',
+            overscrollBehavior: 'contain',
             scrollbarWidth: 'none',
             '&::-webkit-scrollbar': { display: 'none' },
           },
