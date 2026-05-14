@@ -133,7 +133,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const isMd = isMarkdownFile(data.filePath)
-  const [mdPreview, setMdPreview] = useState(isMd)
+  const [mdPreview, setMdPreview] = useState(
+    () => isMd && localStorage.getItem('cotect:md-preview') === 'true',
+  )
   const [mdContent, setMdContent] = useState(data.code)
   const storeWidth = useCanvasStore((s) => s.codeNodeWidth)
   const setCodeNodeWidth = useCanvasStore((s) => s.setCodeNodeWidth)
@@ -504,7 +506,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
                 if (!mdPreview && viewRef.current) {
                   setMdContent(viewRef.current.state.doc.toString())
                 }
-                setMdPreview((v) => !v)
+                setMdPreview((v) => {
+                  localStorage.setItem('cotect:md-preview', String(!v))
+                  return !v
+                })
               }}
               className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition-colors ${
                 mdPreview
