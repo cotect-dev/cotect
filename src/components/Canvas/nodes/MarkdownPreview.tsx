@@ -119,7 +119,7 @@ export default memo(function MarkdownPreview({
         prose-th:text-foreground prose-th:border-border prose-th:px-2 prose-th:py-1
         prose-td:text-foreground/80 prose-td:border-border prose-td:px-2 prose-td:py-1
         prose-img:rounded-md prose-img:max-w-full"
-      style={{ maxHeight }}
+      style={{ maxHeight, overscrollBehavior: 'contain' }}
     >
       <Markdown remarkPlugins={PLUGINS} components={components}>
         {content}
