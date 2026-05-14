@@ -1210,5 +1210,22 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
     }
   }
 
+  if (focusedNodeId && currentColumnIndex + 1 < columns.length) {
+    const previewCol = columns[currentColumnIndex + 1]
+    const targetNode = previewCol.nodes[0]
+    if (targetNode) {
+      allEdges.push({
+        id: `edge:${focusedNodeId}->${targetNode.id}`,
+        source: focusedNodeId,
+        sourceHandle: 'right',
+        target: targetNode.id,
+        targetHandle: 'left',
+        type: 'smoothstep',
+        animated: true,
+        style: { stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1.5 },
+      })
+    }
+  }
+
   set({ nodes: allNodes, edges: allEdges })
 }
