@@ -86,6 +86,7 @@ export type CanvasState = {
   lastOpenedFile: string | null
   fileHistory: string[]
   savedViewport: { x: number; y: number } | null
+  mdPreviewEnabled: boolean
 
   setViewportHeight: (h: number) => void
   setFocus: (nodeId: string | null) => void
@@ -535,6 +536,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         viewportHeight: 0,
         cameraY: CANVAS_MARGIN,
         savedViewport: null,
+        mdPreviewEnabled: false,
 
         onNodesChange: (changes) => {
           set({ nodes: applyNodeChanges(changes, get().nodes) })
@@ -1021,6 +1023,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         name: 'canvas',
         fields: {
           codeNodeWidth: { scope: 'global' },
+          mdPreviewEnabled: { scope: 'global' },
           lastOpenedFile: { scope: 'project' },
           hiddenNodeIds: {
             scope: 'project',
@@ -1221,7 +1224,18 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
 
     let sourceId: string | null = null
     if (i === currentColumnIndex) {
-      sourceId = focusedNodeId
+      if (focusedNodeId) {
+        const focusedNode = col.nodes.find((n) => n.id === focusedNodeId)
+        if (focusedNode) {
+          const focusedPath =
+            focusedNode.type === 'folder' || focusedNode.type === 'file'
+              ? focusedNode.data.path
+              : undefined
+          if (focusedPath === nextCol.path) {
+            sourceId = focusedNodeId
+          }
+        }
+      }
     } else {
       sourceId = rightFocusMemory[col.path] ?? null
       if (sourceId && !col.nodes.some((n) => n.id === sourceId)) {
