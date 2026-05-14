@@ -3,8 +3,6 @@ import type { PersistedLayout } from '@/types/layout'
 export const MIN_SIDE_ZONE = 120
 export const MIN_BOTTOM_ZONE = 80
 
-// Floor for either side of a sibling resize. Smaller than MIN_SIDE_ZONE
-// on purpose — collapses against a neighbor, not the window edge.
 export const MIN_SIBLING_PANEL = 40
 
 export const NODE_WIDTH = 180
@@ -13,12 +11,7 @@ export const NODE_H_GAP = 32
 export const NODE_V_GAP = 16
 export const NODE_V_GAP_SMALL = 4
 
-// Padding from the edges of the canvas visible area. CANVAS_PAD_Y must equal
-// CANVAS_MARGIN — the column-switch effect places the viewport at PAD_Y, while
-// the focused-node visibility clamp uses MARGIN; if they differ, the next
-// focus change re-triggers a Y shift of (MARGIN − PAD_Y) pixels.
 export const CANVAS_MARGIN = 60
-export const CANVAS_PAD_Y = CANVAS_MARGIN
 
 export const IMAGE_PREVIEW_MAX_BYTES = 5 * 1024 * 1024 // 5 MB
 
@@ -38,7 +31,6 @@ export const HIDDEN_DIRECTORIES = new Set([
   '.nuxt',
   '.idea',
   '.vscode',
-  '.DS_Store',
   '__MACOSX',
 ])
 

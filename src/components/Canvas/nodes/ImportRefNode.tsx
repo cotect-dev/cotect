@@ -4,14 +4,8 @@ import { FileCode, FileText, FlaskConical, Image } from 'lucide-react'
 import type { ImportRefNode, ImportRefItem } from '@/types/nodes'
 import { getConfigForFile } from '@/services/treesitter-queries'
 import { isImageFile } from '@/lib/constants'
+import { isTestFile } from '@/lib/fileClassification'
 import { useCanvasStore } from '@/store/canvas'
-
-function isTestFile(name: string): boolean {
-  const lower = name.toLowerCase()
-  if (/\.(test|spec)\.\w+$/.test(lower)) return true
-  if (/[_-]test\.\w+$/.test(lower)) return true
-  return false
-}
 
 /**
  * Height must exactly match the pinned CodeMirror line-height (18px) so that

@@ -5,10 +5,6 @@ import { defineBinding } from '@/lib/keybindings'
 
 const FOCUS_GUARD_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 
-// Canvas navigation chords: each fires regardless of modifier state (the
-// original implementation matched against `e.key.toLowerCase()` without any
-// modifier check), so we use custom `matches` closures rather than the
-// stricter `matchChord` helper to preserve exact behavior.
 const keyIs = (key: string) => (e: KeyboardEvent) => e.key.toLowerCase() === key
 
 const FOCUS_UP_W = defineBinding({

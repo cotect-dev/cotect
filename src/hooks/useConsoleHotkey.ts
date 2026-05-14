@@ -4,9 +4,6 @@ import { getPlatform } from '@/services/platform'
 import { DEV } from '@/lib/env'
 import { defineBinding } from '@/lib/keybindings'
 
-// F12 toggles regardless of modifier state (the original `e.key !== 'F12'`
-// check matched any modifier combo); use a custom matcher rather than the
-// stricter `matchChord` helper so behavior is preserved exactly.
 const TOGGLE_CONSOLE = defineBinding({
   id: 'dev.console.toggle',
   label: 'Toggle Console',

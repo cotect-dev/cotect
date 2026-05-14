@@ -17,12 +17,13 @@ import {
   NODE_H_GAP,
   NODE_V_GAP,
   NODE_V_GAP_SMALL,
-  CANVAS_PAD_Y,
+  CANVAS_MARGIN,
   isImageFile,
   getImageMimeType,
   IMAGE_PREVIEW_MAX_BYTES,
 } from '@/lib/constants'
 import { clampY } from '@/lib/canvasCamera'
+import { isTestFile } from '@/lib/fileClassification'
 import { joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
 import { withPersistence } from '@/store/persistence'
@@ -31,15 +32,6 @@ import { parseImportsWithLines, parseImportsWithBindings } from '@/services/tree
 import { resolveImport } from '@/services/importResolver'
 import { getConfigForFile } from '@/services/treesitter-queries'
 import { useGraphStore } from '@/store/graph'
-
-function isTestFile(name: string): boolean {
-  const lower = name.toLowerCase()
-  if (/\.(test|spec)\.\w+$/.test(lower)) return true
-  if (/[_-]test\.\w+$/.test(lower)) return true
-  if (/^tests?\.\w+$/.test(lower)) return true
-  if (/^(jest|vitest|karma|cypress|playwright)[.-]/.test(lower)) return true
-  return false
-}
 
 export type ImportRefKind = 'import' | 'imported-by'
 
@@ -87,30 +79,11 @@ export type CanvasState = {
   hiddenNodeIds: Set<string>
   codeNodeWidth: number
 
-  // Memory of the last focused node per column path, recorded when navigating
-  // left out of a column. On subsequent navigateRight into the same path we
-  // restore that focus instead of landing on the first node. Entries persist
-  // until initRoot — a 2L+2R round trip uses each entry exactly once and
-  // leaves the user at the position they started from.
   rightFocusMemory: Record<string, string>
-
   viewportHeight: number
-
-  // Kept in sync with pan-to-focus clamping so flattenAndRender can position
-  // the preview column without waiting for the actual viewport animation.
   cameraY: number
-
-  // Repo-relative path of the last file opened in the preview column.
-  // Persisted per-project so the canvas restores the same file on relaunch.
   lastOpenedFile: string | null
-
-  // Navigation history: stack of repo-relative file paths visited via
-  // focusFileByPath (annotation clicks, graph jumps, etc.). navigateBack
-  // pops the most recent entry and restores it.
   fileHistory: string[]
-
-  // Viewport position saved by CanvasFlow before it unmounts (view switch).
-  // Restored on remount so the user's scroll position doesn't jump.
   savedViewport: { x: number; y: number } | null
 
   setViewportHeight: (h: number) => void
@@ -134,7 +107,6 @@ async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
     (e) => !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.')),
   )
 
-  // Sort: folders first, then regular files, then test files — alphabetical within each group.
   const folders = entries.filter((e) => e.isDirectory).sort((a, b) => a.name.localeCompare(b.name))
   const regularFiles = entries
     .filter((e) => !e.isDirectory && !isTestFile(e.name))
@@ -154,7 +126,7 @@ async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
         )
         childCountMap.set(folder.path, visible.length)
       } catch {
-        // Ignore unreadable directories
+        /* unreadable directory */
       }
     }),
   )
@@ -230,12 +202,12 @@ async function buildImageNode(filePath: string): Promise<AppNode | null> {
 
   const mime = getImageMimeType(fileName)
 
-  let binary = ''
-  const len = bytes.length
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i])
+  const CHUNK = 8192
+  const chunks: string[] = []
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)))
   }
-  const base64 = btoa(binary)
+  const base64 = btoa(chunks.join(''))
   const dataUrl = `data:${mime};base64,${base64}`
 
   return {
@@ -261,10 +233,8 @@ function computeVisualLineMap(headContent: string, workingContent: string): numb
   const n = a.length
   const m = b.length
 
-  // For very large files, skip the DP and return identity (no offset).
   if (n > 2000 || m > 2000) return b.map((_, i) => i)
 
-  // LCS via standard DP.
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
@@ -272,7 +242,6 @@ function computeVisualLineMap(headContent: string, workingContent: string): numb
     }
   }
 
-  // Backtrack to identify which lines are matched (in the LCS).
   const headMatched = new Array(n).fill(false)
   const workMatched = new Array(m).fill(false)
   let i = n,
@@ -290,14 +259,11 @@ function computeVisualLineMap(headContent: string, workingContent: string): numb
     }
   }
 
-  // Walk both sequences in order: for each working line, count how many
-  // unmatched HEAD lines (deleted chunks) the merge view inserts above it.
   const visualMap: number[] = new Array(m)
   let hi = 0
   let deletedAbove = 0
   for (let wi = 0; wi < m; wi++) {
     if (workMatched[wi]) {
-      // Advance HEAD past unmatched (deleted) lines up to the matching line.
       while (hi < n && !headMatched[hi]) {
         deletedAbove++
         hi++
@@ -309,15 +275,6 @@ function computeVisualLineMap(headContent: string, workingContent: string): numb
   return visualMap
 }
 
-/**
- * Resolve import references for a code node, returning positioned refs
- * with their source line numbers. Uses the graph store's scanned file set
- * for resolution; returns empty if the graph hasn't been scanned yet.
- *
- * Also finds "imported-by" refs — files that depend on this file — using
- * the graph store's edge data, and computes visual-line offsets when the
- * file has an active inline diff.
- */
 async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promise<ImportRef[]> {
   if (codeNode.type !== 'codeNode') return []
 
@@ -335,7 +292,6 @@ async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promi
   const knownFiles = new Set(allNodes.map((n) => n.id))
   const source = codeNode.data.code
 
-  // --- visual-line map for diff-aware positioning ---
   let vmap: number[] | null = null
   const gitEntry = gitState.status?.files.find((f) => f.path === repoRel)
   if (gitEntry && gitEntry.status !== 'A' && gitEntry.status !== 'U') {
@@ -351,7 +307,6 @@ async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promi
     return idx >= 0 && idx < vmap.length ? vmap[idx] + 1 : srcLine
   }
 
-  // --- outgoing imports (files this file imports) ---
   const importLines = await parseImportsWithLines(repoRel, source)
   const refs: ImportRef[] = []
   const seen = new Set<string>()
@@ -371,14 +326,12 @@ async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promi
     })
   }
 
-  // --- imported-by (files that import this file) ---
   const directImporters = allEdges
     .filter((e) => e.target === repoRel && e.source !== repoRel)
     .filter((e) => !isTestFile(e.source.split('/').pop() || e.source))
     .map((e) => e.source)
 
   if (directImporters.length > 0) {
-    // Build export name → line number map for per-export anchoring.
     const sourceLines = source.split('\n')
     const exportMap = new Map<string, number>()
     let firstExportLine: number | null = null
@@ -393,18 +346,13 @@ async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promi
       if (m) exportMap.set(m[1], li + 1)
     }
 
-    // Fallback anchor for importers whose names don't match any export.
     let fallbackAnchor = refs.length > 0 ? refs[refs.length - 1].line + 1 : 1
     if (exportMap.size > 0) {
       fallbackAnchor = Math.min(...exportMap.values())
     } else if (firstExportLine !== null) {
-      // Barrel files: all exports have `from`. Use the first export line.
       fallbackAnchor = firstExportLine
     }
 
-    // Resolve imported binding names for each direct importer.
-    // Merges ALL matching entries (a file may have multiple import/export
-    // statements from the same source — e.g. barrel files).
     const platform = getPlatform()
     const directBindings = await Promise.all(
       directImporters.map(async (imp): Promise<{ imp: string; names: string[] }> => {
@@ -426,9 +374,6 @@ async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promi
       }),
     )
 
-    // Resolve transitive importers through barrel re-exporters.
-    // When a direct importer re-exports names from this file, consumers
-    // of that re-exporter that import matching names are included.
     const exportedNames = new Set(exportMap.keys())
     const directImporterSet = new Set(directImporters)
     const transitiveBindings: { imp: string; names: string[] }[] = []
@@ -473,7 +418,6 @@ async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promi
       for (const r of resolved) if (r) transitiveBindings.push(r)
     }
 
-    // Combine direct and transitive, then add refs with per-export anchoring.
     const allBindings = [...directBindings, ...transitiveBindings]
 
     for (const { imp, names } of allBindings) {
@@ -481,9 +425,6 @@ async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promi
       seen.add(imp)
       const label = imp.split('/').pop() || imp
 
-      // Group imported names by their export line so each distinct export
-      // gets its own annotation (e.g. importing both ProbeInput on line 1
-      // and Probed on line 12 produces two refs, not one).
       const byLine = new Map<number, string[]>()
       for (const name of names) {
         const exportLine = exportMap.get(name)
@@ -590,7 +531,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         lastOpenedFile: null,
         fileHistory: [],
         viewportHeight: 0,
-        cameraY: CANVAS_PAD_Y,
+        cameraY: CANVAS_MARGIN,
         savedViewport: null,
 
         onNodesChange: (changes) => {
@@ -612,8 +553,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
         setFocus: (nodeId) => {
           set({ focusedNodeId: nodeId })
-          // Synchronously update node data (__isFocused flags) so the focus highlight
-          // appears immediately, before the async preview loads.
           flattenAndRender(get, set)
           void get().updatePreview()
         },
@@ -631,7 +570,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
           let nextId = findVerticalNeighbor(nodes, focusedNodeId, direction)
 
-          // Wrap around to the opposite end of the column if no neighbor in direction.
           if (!nextId) {
             const focused = nodes.find((n) => n.id === focusedNodeId)
             if (focused) {
@@ -679,22 +617,19 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
               depthChain: [rootPath],
               focusedNodeId:
                 (dirNodes.find((n) => !get().hiddenNodeIds.has(n.id)) ?? dirNodes[0])?.id ?? null,
-              cameraY: CANVAS_PAD_Y,
+              cameraY: CANVAS_MARGIN,
               rightFocusMemory: {},
               fileHistory: [],
             })
 
             flattenAndRender(get, set)
 
-            // Restore the last opened file if persisted, otherwise show default preview.
             if (lastOpenedFile) {
               void get().focusFileByPath(lastOpenedFile)
             } else {
               void get().updatePreview()
             }
 
-            // Trigger graph scan in background so import refs are available
-            // when the user focuses a code file.
             const graphState = useGraphStore.getState()
             if (graphState.scanState === 'idle') {
               void graphState.scan(rootPath)
@@ -713,7 +648,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           const segments = repoRelativePath.split('/').filter(Boolean)
           if (segments.length === 0) return
 
-          // Push the current file onto the history stack before jumping.
           const nextHistory =
             lastOpenedFile && lastOpenedFile !== repoRelativePath
               ? [...fileHistory, lastOpenedFile]
@@ -754,7 +688,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
               currentColumnIndex: newColumns.length - 1,
               depthChain: newColumns.map((c) => c.path),
               focusedNodeId: hasFile ? fileNodeId : null,
-              cameraY: CANVAS_PAD_Y,
+              cameraY: CANVAS_MARGIN,
               fileHistory: nextHistory,
             })
 
@@ -809,7 +743,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
               currentColumnIndex: currentColumnIndex + 1,
               depthChain: newChain,
               focusedNodeId: pickFocus(previewCol.nodes),
-              cameraY: CANVAS_PAD_Y,
+              cameraY: CANVAS_MARGIN,
             })
 
             flattenAndRender(get, set)
@@ -830,7 +764,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
               currentColumnIndex: currentColumnIndex + 1,
               depthChain: newChain,
               focusedNodeId: pickFocus(dirNodes),
-              cameraY: CANVAS_PAD_Y,
+              cameraY: CANVAS_MARGIN,
             })
 
             flattenAndRender(get, set)
@@ -870,7 +804,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           set({
             currentColumnIndex: newIndex,
             focusedNodeId: restoreFocusId || (parentCol?.nodes[0]?.id ?? null),
-            cameraY: CANVAS_PAD_Y,
+            cameraY: CANVAS_MARGIN,
             rightFocusMemory: nextMemory,
           })
 
@@ -922,7 +856,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
             columns: targetColumns,
             currentColumnIndex: targetIndex,
             focusedNodeId: restored,
-            cameraY: CANVAS_PAD_Y,
+            cameraY: CANVAS_MARGIN,
             rightFocusMemory: nextMemory,
           })
 
@@ -1181,7 +1115,7 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
   const newCameraY = clampY(cameraY, focusedNodeY, viewportHeight)
   if (newCameraY !== cameraY) set({ cameraY: newCameraY })
 
-  const previewYStart = Math.max(0, -newCameraY + CANVAS_PAD_Y)
+  const previewYStart = Math.max(0, -newCameraY + CANVAS_MARGIN)
 
   for (let i = 0; i < columns.length; i++) {
     const col = columns[i]

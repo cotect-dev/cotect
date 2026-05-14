@@ -18,13 +18,8 @@ function normalizePath(segments: string[]): string {
   return stack.join('/')
 }
 
-// ---------------------------------------------------------------------------
-// JS/TS
-// ---------------------------------------------------------------------------
-
 const JS_RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
 
-/** Try a resolved path against knownFiles with extension probing and /index fallback. */
 function probeJsTsPath(resolved: string, fromRel: string, knownFiles: Set<string>): string | null {
   for (const ext of JS_RESOLVE_EXTENSIONS) {
     const candidate = resolved + ext
@@ -53,10 +48,6 @@ function resolveJsTs(specifier: string, fromRel: string, knownFiles: Set<string>
 
   return probeJsTsPath(resolved, fromRel, knownFiles)
 }
-
-// ---------------------------------------------------------------------------
-// Python
-// ---------------------------------------------------------------------------
 
 function resolvePython(specifier: string, fromRel: string, knownFiles: Set<string>): string | null {
   let dots = 0
@@ -96,10 +87,6 @@ function resolvePython(specifier: string, fromRel: string, knownFiles: Set<strin
   return null
 }
 
-// ---------------------------------------------------------------------------
-// Go
-// ---------------------------------------------------------------------------
-
 function resolveGo(specifier: string, _fromRel: string, knownFiles: Set<string>): string | null {
   // External imports contain a domain (has a dot in the first segment)
   // or are stdlib (single word like "fmt", "net/http")
@@ -115,10 +102,6 @@ function resolveGo(specifier: string, _fromRel: string, knownFiles: Set<string>)
 
   return null
 }
-
-// ---------------------------------------------------------------------------
-// Rust
-// ---------------------------------------------------------------------------
 
 function resolveRust(specifier: string, fromRel: string, knownFiles: Set<string>): string | null {
   if (specifier.startsWith('mod::')) {
@@ -170,10 +153,6 @@ function resolveRust(specifier: string, fromRel: string, knownFiles: Set<string>
   return null
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 const RESOLVERS: Record<
   LanguageId,
   (spec: string, from: string, known: Set<string>) => string | null
@@ -185,10 +164,6 @@ const RESOLVERS: Record<
   rust: resolveRust,
 }
 
-/**
- * Resolve an import specifier to a repo-relative file path.
- * Returns null for external/unresolvable imports and self-imports.
- */
 export function resolveImport(
   specifier: string,
   fromRel: string,

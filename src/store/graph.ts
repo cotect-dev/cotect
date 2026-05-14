@@ -5,6 +5,7 @@ import { HIDDEN_DIRECTORIES } from '@/lib/constants'
 import { toRepoRelative } from '@/lib/repoPath'
 import { parseImports } from '@/services/treesitter'
 import { resolveImport } from '@/services/importResolver'
+import { isTestFile } from '@/lib/fileClassification'
 import {
   PARSEABLE_EXTENSIONS,
   getConfigForFile,
@@ -45,7 +46,6 @@ interface GraphState {
   scan: (rootPath: string) => Promise<void>
 }
 
-/** Compute inDegree, outDegree, score for every node based on edges. */
 export function scoreNodes(nodes: GraphFileNode[], edges: GraphFileEdge[]): GraphFileNode[] {
   const inDeg = new Map<string, number>()
   const outDeg = new Map<string, number>()
@@ -84,15 +84,6 @@ function getFilename(path: string): string {
 function getDirname(path: string): string {
   const slash = path.lastIndexOf('/')
   return slash >= 0 ? path.slice(0, slash) : ''
-}
-
-function isTestFile(name: string): boolean {
-  const lower = name.toLowerCase()
-  if (/\.(test|spec)\.\w+$/.test(lower)) return true
-  if (/[_-]test\.\w+$/.test(lower)) return true
-  if (/^tests?\.\w+$/.test(lower)) return true
-  if (/^(jest|vitest|karma|cypress|playwright)[.-]/.test(lower)) return true
-  return false
 }
 
 async function collectParseableFiles(

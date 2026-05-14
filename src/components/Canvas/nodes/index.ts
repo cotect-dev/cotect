@@ -5,9 +5,6 @@ import CodeNode from './CodeNode'
 import ImageNode from './ImageNode'
 import ImportRefNode from './ImportRefNode'
 
-export { getNodeFlags, getNodeOpacity } from './nodeUtils'
-export type { ResolvedNodeFlags } from './nodeUtils'
-
 export const nodeTypes: NodeTypes = {
   folder: FolderNode,
   file: FileNode,
