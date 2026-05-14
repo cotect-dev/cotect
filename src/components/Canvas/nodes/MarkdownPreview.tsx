@@ -142,7 +142,17 @@ export default memo(function MarkdownPreview({
   return (
     <div className={PROSE_CLASSES} style={{ maxHeight, overscrollBehavior: 'contain' }}>
       {isPending || !rendered ? (
-        <div className="text-xs text-muted-foreground animate-pulse">Rendering preview…</div>
+        <div className="space-y-3 animate-pulse">
+          <div className="h-5 w-2/3 rounded bg-muted" />
+          <div className="h-3 w-full rounded bg-muted" />
+          <div className="h-3 w-5/6 rounded bg-muted" />
+          <div className="h-3 w-4/6 rounded bg-muted" />
+          <div className="h-8" />
+          <div className="h-4 w-1/2 rounded bg-muted" />
+          <div className="h-3 w-full rounded bg-muted" />
+          <div className="h-3 w-3/4 rounded bg-muted" />
+          <div className="h-3 w-5/6 rounded bg-muted" />
+        </div>
       ) : (
         rendered
       )}

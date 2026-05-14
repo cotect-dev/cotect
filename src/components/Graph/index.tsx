@@ -218,12 +218,12 @@ function buildGraphData(
     }
 
     return {
-      id: `${e.source}->${e.target}`,
-      source: e.source,
-      target: e.target,
+      id: `${e.target}->${e.source}`,
+      source: e.target,
+      target: e.source,
       type: 'nearTarget',
-      sourceHandle: handles.sourceHandle,
-      targetHandle: handles.targetHandle,
+      sourceHandle: handles.targetHandle.replace('t-', 's-'),
+      targetHandle: handles.sourceHandle.replace('s-', 't-'),
       data: edgeData,
       zIndex: -2,
       animated: true,
