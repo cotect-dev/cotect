@@ -103,8 +103,12 @@ export const rainbowBrackets = ViewPlugin.fromClass(
 export function buildMergeExtension(
   head: string | null,
   onChunkAction: (type: 'accept' | 'reject') => void,
+  readOnly = false,
 ): Extension {
   if (head === null) return []
+  if (readOnly) {
+    return unifiedMergeView({ original: head, mergeControls: false })
+  }
   return unifiedMergeView({
     original: head,
     mergeControls: (type, action) => {
