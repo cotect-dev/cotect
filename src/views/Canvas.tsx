@@ -3,8 +3,10 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  BaseEdge,
   Background,
   BackgroundVariant,
+  type EdgeProps,
   type Viewport as RFViewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -58,6 +60,14 @@ const VIEW_ANALYTICS = defineBinding({
 
 const proOptions = { hideAttribution: true }
 const bgStyle = { opacity: 0.1 }
+
+function ColumnEdge({ sourceX, sourceY, targetX, targetY, style }: EdgeProps) {
+  const midX = (sourceX + targetX) / 2
+  const path = `M${sourceX},${sourceY} L${midX},${sourceY} L${midX},${targetY} L${targetX},${targetY}`
+  return <BaseEdge path={path} style={style} />
+}
+
+const edgeTypes = { column: ColumnEdge }
 
 // Matches anchorViewport(0, 0): column 0 at MARGIN before any effect runs.
 const defaultViewport: RFViewport = { x: CANVAS_MARGIN, y: CANVAS_MARGIN, zoom: 1 }
@@ -269,6 +279,7 @@ function CanvasFlow() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         defaultViewport={defaultViewport}
         colorMode="dark"
         proOptions={proOptions}

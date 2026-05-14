@@ -1245,7 +1245,7 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
       sourceHandle: 'right',
       target: targetId,
       targetHandle: 'left',
-      type: 'smoothstep',
+      type: 'column',
       animated: true,
       style: edgeStyle,
     })
