@@ -28,10 +28,17 @@ let globalCache: Record<string, unknown> = {}
 let projectCache: Record<string, unknown> = {}
 let initialized = false
 let unlisteners: (() => void)[] = []
+let readyResolve: (() => void) | null = null
+let readyPromise: Promise<void> | null = null
 
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const pendingGlobal: Record<string, unknown> = {}
 const pendingProject: Record<string, unknown> = {}
+
+function storageKey(scope: 'global' | 'project'): string {
+  if (scope === 'global') return 'persist:global'
+  return `persist:project:${currentProjectId}`
+}
 
 export function withPersistence<T>(
   creator: StateCreator<T, [], []>,
@@ -40,7 +47,6 @@ export function withPersistence<T>(
   return (set, get, api) => {
     const initialState = creator(set, get, api)
 
-    // Defaults applied on project switch when no saved state exists.
     const defaults: Record<string, unknown> = {}
     for (const [field] of Object.entries(options.fields)) {
       defaults[field] = (initialState as Record<string, unknown>)[field]
@@ -57,11 +63,6 @@ export function withPersistence<T>(
 
     return initialState
   }
-}
-
-function getNamespace(scope: 'global' | 'project'): string {
-  if (scope === 'global') return 'persist:global'
-  return `persist:project:${currentProjectId}`
 }
 
 function serializeField(config: PersistFieldConfig, value: unknown): unknown {
@@ -102,9 +103,12 @@ function flushScope(scope: 'global' | 'project') {
   }
 
   const platform = getPlatform()
+  const key = storageKey(scope)
+  const data = { ...cache }
+  platform.storage.setSync(key, data)
+
   const windowId = platform.windows.getWindowId()
-  const namespace = getNamespace(scope)
-  platform.syncedState.set(namespace, { ...cache }, windowId)
+  platform.syncedState.set(key, data, windowId)
 }
 
 function startStoreSubscriptions() {
@@ -211,23 +215,35 @@ function hydrateFromCache(scope: 'global' | 'project') {
   }
 }
 
+export function preparePersistence(): void {
+  if (!readyPromise) {
+    readyPromise = new Promise<void>((resolve) => {
+      readyResolve = resolve
+    })
+  }
+}
+
 export async function initPersistence(projectId: string): Promise<void> {
+  preparePersistence()
+
   currentProjectId = projectId
   const platform = getPlatform()
 
   const [globalData, projectData] = await Promise.all([
-    platform.syncedState.get('persist:global'),
-    platform.syncedState.get(`persist:project:${projectId}`),
+    platform.storage.get<Record<string, unknown>>(storageKey('global')),
+    platform.storage.get<Record<string, unknown>>(storageKey('project')),
   ])
 
-  hydrateStores(
-    globalData as Record<string, unknown> | null,
-    projectData as Record<string, unknown> | null,
-  )
+  hydrateStores(globalData, projectData)
 
   startStoreSubscriptions()
   startCrossWindowSync()
   initialized = true
+  readyResolve?.()
+}
+
+export function waitForPersistence(): Promise<void> {
+  return readyPromise ?? Promise.resolve()
 }
 
 export async function switchProject(newProjectId: string): Promise<void> {
@@ -241,9 +257,8 @@ export async function switchProject(newProjectId: string): Promise<void> {
   currentProjectId = newProjectId
 
   const platform = getPlatform()
-  const projectData = await platform.syncedState.get(`persist:project:${newProjectId}`)
+  const projectData = await platform.storage.get<Record<string, unknown>>(storageKey('project'))
 
-  // Reset project-scoped fields to defaults before applying saved state.
   for (const entry of registeredStores) {
     const patch: Record<string, unknown> = {}
     for (const [field, config] of Object.entries(entry.fields)) {
@@ -275,16 +290,14 @@ export async function reloadStoreFromBackend(storeName: string): Promise<void> {
   if (!entry) return
 
   const [globalData, projectData] = await Promise.all([
-    platform.syncedState.get('persist:global'),
+    platform.storage.get<Record<string, unknown>>(storageKey('global')),
     currentProjectId
-      ? platform.syncedState.get(`persist:project:${currentProjectId}`)
+      ? platform.storage.get<Record<string, unknown>>(storageKey('project'))
       : Promise.resolve(null),
   ])
 
-  const gData =
-    globalData && typeof globalData === 'object' ? (globalData as Record<string, unknown>) : {}
-  const pData =
-    projectData && typeof projectData === 'object' ? (projectData as Record<string, unknown>) : {}
+  const gData = globalData && typeof globalData === 'object' ? globalData : {}
+  const pData = projectData && typeof projectData === 'object' ? projectData : {}
 
   const patch: Record<string, unknown> = {}
   for (const [field, config] of Object.entries(entry.fields)) {
@@ -303,6 +316,11 @@ export async function reloadStoreFromBackend(storeName: string): Promise<void> {
 export function flushPendingWrites(): void {
   flushScope('global')
   flushScope('project')
+}
+
+function resetReadyPromise() {
+  readyResolve = null
+  readyPromise = null
 }
 
 export function stopPersistence(): void {
@@ -324,6 +342,7 @@ export function stopPersistence(): void {
   }
 
   initialized = false
+  resetReadyPromise()
 }
 
 /** Reset all module state. Only for tests. */

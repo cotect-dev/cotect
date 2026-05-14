@@ -27,7 +27,7 @@ import { clampY } from '@/lib/canvasCamera'
 import { isTestFile } from '@/lib/fileClassification'
 import { joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
-import { withPersistence } from '@/store/persistence'
+import { withPersistence, waitForPersistence } from '@/store/persistence'
 import { useGitStore } from '@/store/git'
 import { parseImportsWithLines, parseImportsWithBindings } from '@/services/treesitter'
 import { resolveImport } from '@/services/importResolver'
@@ -87,6 +87,7 @@ export type CanvasState = {
   fileHistory: string[]
   savedViewport: { x: number; y: number } | null
   mdPreviewEnabled: boolean
+  previewReady: boolean
 
   setViewportHeight: (h: number) => void
   setFocus: (nodeId: string | null) => void
@@ -97,6 +98,7 @@ export type CanvasState = {
   initRoot: (rootPath: string) => Promise<void>
   toggleHideNode: () => void
   setCodeNodeWidth: (width: number) => void
+  setPreviewReady: (ready: boolean) => void
   updatePreview: () => Promise<void>
   focusFileByPath: (repoRelativePath: string) => Promise<void>
   navigateBack: () => Promise<void>
@@ -537,6 +539,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         cameraY: CANVAS_MARGIN,
         savedViewport: null,
         mdPreviewEnabled: false,
+        previewReady: true,
 
         onNodesChange: (changes) => {
           set({ nodes: applyNodeChanges(changes, get().nodes) })
@@ -604,7 +607,10 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
         initRoot: async (rootPath: string) => {
           try {
-            const dirNodes = await buildDirectoryNodes(rootPath)
+            const [dirNodes] = await Promise.all([
+              buildDirectoryNodes(rootPath),
+              waitForPersistence(),
+            ])
 
             const rootColumn: Column = {
               path: rootPath,
@@ -947,6 +953,11 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           flattenAndRender(get, set)
         },
 
+        setPreviewReady: (ready: boolean) => {
+          set({ previewReady: ready })
+          flattenAndRender(get, set)
+        },
+
         /**
          * Load a preview column for the focused node into columns[currentColumnIndex + 1].
          * Gives immediate feedback when moving focus with W/S — the right column
@@ -1005,7 +1016,12 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
             if (previewCol) {
               const newColumns = [...columns.slice(0, currentColumnIndex + 1), previewCol]
-              set({ columns: newColumns })
+              const hasCodeNode =
+                previewCol.kind === 'file' && previewCol.nodes.some((n) => n.type === 'codeNode')
+              set({
+                columns: newColumns,
+                previewReady: !hasCodeNode,
+              })
             } else {
               const trimmed = columns.slice(0, currentColumnIndex + 1)
               if (trimmed.length !== columns.length) {
@@ -1234,10 +1250,14 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
     return findNodeByPath(col, columns[colIndex + 1]?.path ?? '') ?? col.nodes[0]?.id ?? null
   }
 
+  const { previewReady } = get()
+
   for (let i = 0; i < columns.length - 1; i++) {
     const sourceId = resolveColumnFocus(i)
     const targetId = resolveColumnFocus(i + 1)
     if (!sourceId || !targetId) continue
+
+    if (i === currentColumnIndex && !previewReady) continue
 
     allEdges.push({
       id: `edge:col${i}:${sourceId}->${targetId}`,

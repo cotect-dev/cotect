@@ -18,6 +18,7 @@ import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } fr
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
 import {
   initPersistence,
+  preparePersistence,
   stopPersistence,
   flushPendingWrites,
   switchProject,
@@ -118,6 +119,7 @@ export function useWindowLifecycle() {
 
         if (session?.rootPath) {
           try {
+            preparePersistence()
             useBrowserStore.getState().openRoot(session.rootPath)
             if (cancelled) return
           } catch (err) {
