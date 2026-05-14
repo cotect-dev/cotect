@@ -1210,21 +1210,46 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
     }
   }
 
-  if (focusedNodeId && currentColumnIndex + 1 < columns.length) {
-    const previewCol = columns[currentColumnIndex + 1]
-    const targetNode = previewCol.nodes[0]
-    if (targetNode) {
-      allEdges.push({
-        id: `edge:${focusedNodeId}->${targetNode.id}`,
-        source: focusedNodeId,
-        sourceHandle: 'right',
-        target: targetNode.id,
-        targetHandle: 'left',
-        type: 'smoothstep',
-        animated: true,
-        style: { stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1.5 },
-      })
+  const { rightFocusMemory } = get()
+  const edgeStyle = { stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1.5 }
+
+  for (let i = 0; i < columns.length - 1; i++) {
+    const col = columns[i]
+    const nextCol = columns[i + 1]
+    const firstNextNode = nextCol.nodes[0]
+    if (!firstNextNode) continue
+
+    let sourceId: string | null = null
+    if (i === currentColumnIndex) {
+      sourceId = focusedNodeId
+    } else {
+      sourceId = rightFocusMemory[col.path] ?? null
+      if (sourceId && !col.nodes.some((n) => n.id === sourceId)) {
+        sourceId = null
+      }
     }
+
+    if (!sourceId) {
+      const parentPath = nextCol.path
+      const match = col.nodes.find((n) => {
+        if (n.type === 'folder' || n.type === 'file') return n.data.path === parentPath
+        return false
+      })
+      sourceId = match?.id ?? null
+    }
+
+    if (!sourceId) continue
+
+    allEdges.push({
+      id: `edge:col${i}->${firstNextNode.id}`,
+      source: sourceId,
+      sourceHandle: 'right',
+      target: firstNextNode.id,
+      targetHandle: 'left',
+      type: 'smoothstep',
+      animated: true,
+      style: edgeStyle,
+    })
   }
 
   set({ nodes: allNodes, edges: allEdges })

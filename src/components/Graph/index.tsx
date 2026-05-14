@@ -226,6 +226,7 @@ function buildGraphData(
       targetHandle: handles.targetHandle,
       data: edgeData,
       zIndex: -2,
+      animated: true,
       style: { stroke, strokeWidth: 2, strokeOpacity: 0.45 },
     }
   })
