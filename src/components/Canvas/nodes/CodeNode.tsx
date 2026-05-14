@@ -1,14 +1,4 @@
-import {
-  Suspense,
-  lazy,
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useDragHandle } from '@/hooks/useDragHandle'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
@@ -62,7 +52,7 @@ import { Pill, REF_HEIGHT } from './ImportRefNode'
 import { useGitStore } from '@/store/git'
 import { samePath, toRepoRelative } from '@/lib/repoPath'
 
-const MarkdownPreview = lazy(() => import('./MarkdownPreview'))
+import MarkdownPreview from './MarkdownPreview'
 
 const MIN_CODE_NODE_WIDTH = 280
 const CODE_NODE_HEIGHT_RESERVED = 120
@@ -163,19 +153,26 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     return computeRefLineLayout(importRefs)
   }, [importRefs])
 
+  const hasHeadOverride = data.headOverride !== undefined
+  const isReadOnly = data.readOnly === true
+
   const gitStatus = useGitStore((s) => s.status)
   const repoPath = useGitStore((s) => s.repoPath)
   const loadHeadContent = useGitStore((s) => s.loadHeadContent)
 
   const gitEntry = useMemo(() => {
-    if (!gitStatus) return null
+    if (hasHeadOverride || !gitStatus) return null
     return gitStatus.files.find((f) => samePath(data.filePath, f.path, repoPath)) ?? null
-  }, [gitStatus, data.filePath, repoPath])
+  }, [hasHeadOverride, gitStatus, data.filePath, repoPath])
 
   const isNewFile = gitEntry?.status === 'A' || gitEntry?.status === 'U'
   const [headContent, setHeadContent] = useState<string | null>(null)
 
   useEffect(() => {
+    if (hasHeadOverride) {
+      setHeadContent(data.headOverride ?? null)
+      return
+    }
     let cancelled = false
     if (!gitEntry) {
       setHeadContent(null)
@@ -192,7 +189,15 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     return () => {
       cancelled = true
     }
-  }, [gitEntry, isNewFile, data.filePath, repoPath, loadHeadContent])
+  }, [
+    hasHeadOverride,
+    data.headOverride,
+    gitEntry,
+    isNewFile,
+    data.filePath,
+    repoPath,
+    loadHeadContent,
+  ])
 
   useEffect(() => {
     setMdContent(data.code)
@@ -252,7 +257,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     mergeCompartmentRef.current = new Compartment()
     minimapCompartmentRef.current = new Compartment()
     const initialMergeExt = mergeCompartmentRef.current.of(
-      buildMergeExtension(headContent, handleChunkAction),
+      buildMergeExtension(headContent, handleChunkAction, isReadOnly),
     )
 
     const langExt = getLanguageExt(data.filePath)
@@ -290,6 +295,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         }),
         rainbowBrackets,
         vscodeDark,
+        ...(isReadOnly ? [EditorState.readOnly.of(true)] : []),
         initialMergeExt,
         minimapCompartmentRef.current.of(showMinimap.of(createMinimapConfig())),
         EditorView.lineWrapping,
@@ -421,7 +427,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     if (!view) return
     view.dispatch({
       effects: mergeCompartmentRef.current.reconfigure(
-        buildMergeExtension(headContent, handleChunkAction),
+        buildMergeExtension(headContent, handleChunkAction, isReadOnly),
       ),
     })
     requestAnimationFrame(() => {
@@ -433,7 +439,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         ),
       })
     })
-  }, [headContent, handleChunkAction])
+  }, [headContent, handleChunkAction, isReadOnly])
 
   useLayoutEffect(() => {
     const view = viewRef.current
@@ -508,17 +514,22 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
               {mdPreview ? 'preview' : 'source'}
             </button>
           )}
-          {isNewFile && (
+          {data.commitHash && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-400 font-mono">
+              {data.commitHash.slice(0, 7)}
+            </span>
+          )}
+          {isNewFile && !isReadOnly && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-900/40 text-green-400 font-mono">
               new
             </span>
           )}
-          {dirty && (
+          {dirty && !isReadOnly && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-800/40 text-yellow-400 font-mono">
               {saving ? 'saving...' : 'modified'}
             </span>
           )}
-          {editorFocused && (
+          {editorFocused && !isReadOnly && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary font-mono">
               editing
             </span>
@@ -536,22 +547,11 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           style={{ display: mdPreview ? 'none' : undefined }}
         />
         {mdPreview && (
-          <Suspense
-            fallback={
-              <div
-                className="px-4 py-3 text-xs text-muted-foreground"
-                style={{ maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)` }}
-              >
-                Loading…
-              </div>
-            }
-          >
-            <MarkdownPreview
-              content={mdContent}
-              filePath={data.filePath}
-              maxHeight={`calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`}
-            />
-          </Suspense>
+          <MarkdownPreview
+            content={mdContent}
+            filePath={data.filePath}
+            maxHeight={`calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`}
+          />
         )}
         {!mdPreview && refLineLayout && editorHeight > 0 && (
           <div
