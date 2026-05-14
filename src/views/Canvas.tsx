@@ -210,21 +210,18 @@ function CanvasFlow() {
       e.stopPropagation()
 
       const store = useCanvasStore.getState()
-      const focusedId = store.focusedNodeId
-      if (focusedId) {
-        const focused = store.nodes.find((n) => n.id === focusedId)
-        if (focused?.type === 'file') {
-          const previewCol = store.columns[store.currentColumnIndex + 1]
-          if (previewCol?.kind === 'file' && previewCol.nodes[0]) {
-            const previewEl = containerRef.current?.querySelector(
-              `[data-id="${CSS.escape(previewCol.nodes[0].id)}"]`,
-            )
-            const scroller = previewEl?.querySelector('.cm-scroller') as HTMLElement | null
-            if (scroller) {
-              scroller.scrollTop += e.deltaY
-              scroller.scrollLeft += e.deltaX
-              return
-            }
+      const previewCol = store.columns[store.currentColumnIndex + 1]
+      if (previewCol?.kind === 'file' && previewCol.nodes[0]) {
+        const focusedId = store.focusedNodeId
+        if (!focusedId || store.nodes.find((n) => n.id === focusedId)?.type === 'file') {
+          const previewEl = containerRef.current?.querySelector(
+            `[data-id="${CSS.escape(previewCol.nodes[0].id)}"]`,
+          )
+          const scroller = previewEl?.querySelector('.cm-scroller') as HTMLElement | null
+          if (scroller) {
+            scroller.scrollTop += e.deltaY
+            scroller.scrollLeft += e.deltaX
+            return
           }
         }
       }
