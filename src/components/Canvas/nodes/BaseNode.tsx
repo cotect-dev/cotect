@@ -46,7 +46,9 @@ export default memo(function BaseNode({
       </div>
       {children}
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
+      <Handle type="source" id="right" position={Position.Right} className="opacity-0" />
       <Handle type="target" position={Position.Top} className="opacity-0" />
+      <Handle type="target" id="left" position={Position.Left} className="opacity-0" />
     </div>
   )
 })

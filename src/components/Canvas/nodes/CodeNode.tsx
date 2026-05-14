@@ -541,7 +541,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         </div>
       </div>
 
-      <div className="relative">
+      <div className="relative overflow-hidden">
         <div
           ref={editorRef}
           className="nowheel"
@@ -622,7 +622,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       </div>
 
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
+      <Handle type="source" id="right" position={Position.Right} className="opacity-0" />
       <Handle type="target" position={Position.Top} className="opacity-0" />
+      <Handle type="target" id="left" position={Position.Left} className="opacity-0" />
     </div>
   )
 })
