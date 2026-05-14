@@ -134,8 +134,8 @@
 }
 
 .react-flow__edge.animated path {
-  stroke-dasharray: 6 4;
-  animation: edge-flow 3.2s linear infinite;
+  stroke-dasharray: 6 4 !important;
+  animation: edge-flow 3.2s linear infinite !important;
 }
 
 @keyframes edge-flow {
