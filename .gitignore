@@ -65,5 +65,8 @@ eval_runs/
 # Git worktrees
 .worktrees/
 
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
 # Top-level scratch / eval result dumps
 /*.txt
