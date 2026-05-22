@@ -603,12 +603,14 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
       <div className="relative overflow-hidden">
         {!editorReady && !mdPreview && (
-          <CodeNodeSkeleton lineCount={lineCount} startLine={data.startLine} />
+          <div className="absolute inset-0 z-10 bg-background">
+            <CodeNodeSkeleton lineCount={lineCount} startLine={data.startLine} />
+          </div>
         )}
         <div
           ref={editorRef}
           className="nowheel"
-          style={{ display: mdPreview || !editorReady ? 'none' : undefined }}
+          style={{ display: mdPreview ? 'none' : undefined }}
         />
         {mdPreview && (
           <MarkdownPreview
