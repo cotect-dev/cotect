@@ -205,6 +205,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
   const isNewFile = gitEntry?.status === 'A' || gitEntry?.status === 'U'
   const [headContent, setHeadContent] = useState<string | null>(null)
+  const headContentRef = useRef<string | null>(null)
+  headContentRef.current = headContent
 
   useEffect(() => {
     if (hasHeadOverride) {
@@ -301,7 +303,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       mergeCompartmentRef.current = new Compartment()
       minimapCompartmentRef.current = new Compartment()
       const initialMergeExt = mergeCompartmentRef.current.of(
-        buildMergeExtension(headContent, handleChunkAction, isReadOnly),
+        buildMergeExtension(headContentRef.current, handleChunkAction, isReadOnly),
       )
 
       const langExt = getLanguageExt(data.filePath)
