@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { anchorViewport, clampToFocus, clampY } from './canvasCamera'
-import { CANVAS_MARGIN, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP } from './constants'
+import { CANVAS_MARGIN, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP } from './canvasGeometry'
 
 const STEP = NODE_WIDTH + NODE_H_GAP
 

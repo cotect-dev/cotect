@@ -43,7 +43,7 @@ import {
 } from './cmPlugins'
 import { showMinimap } from '@replit/codemirror-minimap'
 import { getPlatform } from '@/services/platform'
-import { isMarkdownFile } from '@/lib/constants'
+import { isMarkdownFile } from '@/lib/fileClassification'
 import type { CodeNode, ImportRefItem } from '@/types/nodes'
 import { getNodeFlags, nodeFocusRing } from './nodeUtils'
 import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'

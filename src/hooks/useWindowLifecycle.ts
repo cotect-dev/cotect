@@ -15,7 +15,7 @@ import {
 import { useBrowserStore } from '@/store/browser'
 import { useGitStore, startGitWatcher, stopGitWatcher } from '@/store/git'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
-import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
+import { DEFAULT_MAIN_LAYOUT } from '@/lib/layoutDefaults'
 import {
   initPersistence,
   preparePersistence,
@@ -125,7 +125,7 @@ export function useWindowLifecycle() {
             console.error('Failed to restore session root:', err)
           }
         }
-        startSessionPersistence()
+        startSessionPersistence(useBrowserStore.subscribe)
 
         const rootPath = session?.rootPath || useBrowserStore.getState().rootPath
         if (rootPath) {

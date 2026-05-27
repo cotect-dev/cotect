@@ -23,7 +23,7 @@ import {
 import { useBrowserStore } from '@/store'
 import { getPlatform } from '@/services/platform'
 import { saveLayout } from '@/services/windowManager'
-import { DEFAULT_MAIN_LAYOUT } from '@/lib/constants'
+import { DEFAULT_MAIN_LAYOUT } from '@/lib/layoutDefaults'
 import { useGitStore, branchLabel } from '@/store/git'
 import { useViewStore, type ViewMode } from '@/store/view'
 import RelativeTime from '@/components/RelativeTime'

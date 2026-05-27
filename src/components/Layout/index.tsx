@@ -9,7 +9,7 @@ import { usePanelDrag } from './usePanelDrag'
 import { DEFAULT_ZONE_SIZES, getPanelLabel, useLayoutStore } from '@/store/layout'
 import CrossWindowDropOverlay from './CrossWindowDropOverlay'
 import { PanelHostProvider } from './PanelHost'
-import { MIN_SIDE_ZONE, MIN_BOTTOM_ZONE } from '@/lib/constants'
+import { MIN_SIDE_ZONE, MIN_BOTTOM_ZONE } from '@/lib/layoutDefaults'
 
 interface LayoutProps {
   mode?: 'main' | 'panel'

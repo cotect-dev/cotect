@@ -1,4 +1,4 @@
-import { CANVAS_MARGIN, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP } from './constants'
+import { CANVAS_MARGIN, NODE_WIDTH, NODE_HEIGHT, NODE_H_GAP } from './canvasGeometry'
 
 export interface Viewport {
   x: number

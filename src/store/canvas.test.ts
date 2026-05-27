@@ -5,7 +5,7 @@ import {
   NODE_H_GAP,
   NODE_V_GAP_SMALL,
   CANVAS_MARGIN,
-} from '@/lib/constants'
+} from '@/lib/canvasGeometry'
 
 const mockReadDirectory = vi.fn()
 const mockReadFile = vi.fn()

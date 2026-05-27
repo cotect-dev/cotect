@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -15,11 +15,12 @@ import Layout from '@/components/Layout'
 import { nodeTypes } from '@/components/Canvas/nodes'
 import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
 import WindowShell from '@/components/WindowShell'
-import Graph from '@/components/Graph'
-import Settings from '@/components/Settings'
+
+const Graph = lazy(() => import('@/components/Graph'))
+const Settings = lazy(() => import('@/components/Settings'))
 import { useCanvasKeyboard } from '@/hooks/useCanvasKeyboard'
 import { useCanvasInsets } from '@/hooks/useCanvasInsets'
-import { CANVAS_MARGIN } from '@/lib/constants'
+import { CANVAS_MARGIN } from '@/lib/canvasGeometry'
 import { anchorViewport, clampToFocus, type Viewport } from '@/lib/canvasCamera'
 import { notifyCanvasScrolled } from '@/components/Canvas/nodes/codeNodeRegistry'
 import { defineBinding } from '@/lib/keybindings'
@@ -354,11 +355,15 @@ function ViewSwitcher() {
       </div>
 
       <div className="absolute" style={insetStyle('graph')}>
-        <Graph />
+        <Suspense>
+          <Graph />
+        </Suspense>
       </div>
 
       <div className="absolute" style={insetStyle('settings')}>
-        <Settings />
+        <Suspense>
+          <Settings />
+        </Suspense>
       </div>
 
       <div className="absolute inset-0 pointer-events-none z-10">
