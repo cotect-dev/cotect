@@ -6,7 +6,6 @@ export const PANEL_CONTENT: Record<string, ComponentType | LazyExoticComponent<C
   console: lazy(() => import('@/components/Console')),
   changes: lazy(() => import('@/components/Changes')),
   history: lazy(() => import('@/components/History')),
-  tasks: lazy(() => import('@/components/Tasks')),
 }
 
 export const PANEL_IDS = Object.keys(PANEL_CONTENT)

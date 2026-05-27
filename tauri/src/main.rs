@@ -1,6 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod agent;
 mod cleanup;
 mod commands;
 mod db;
@@ -47,7 +46,6 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .manage(watcher::WatcherState::new())
         .manage(synced_state::SyncedStateStore::new())
-        .manage(Arc::new(agent::AgentState::new()))
         .invoke_handler(tauri::generate_handler![
             commands::read_directory,
             commands::read_file_content,
@@ -76,24 +74,12 @@ fn main() {
             synced_state::set_synced_state,
             synced_state::get_synced_state,
             synced_state::clear_synced_state,
-            agent::commands::agent_start_task,
-            agent::commands::agent_abort,
-            agent::commands::probe_provider,
             db::commands::kv_get,
             db::commands::kv_set,
             db::commands::kv_delete,
             db::commands::kv_get_prefix,
-            db::commands::providers_list,
-            db::commands::providers_upsert,
-            db::commands::providers_remove,
-            db::commands::assignment_get,
-            db::commands::assignment_set,
             db::commands::db_repo_upsert,
             db::commands::db_repo_get,
-            db::commands::usage_record,
-            db::commands::usage_query,
-            db::commands::usage_aggregate,
-            db::commands::usage_purge,
         ])
         .setup(|app| {
             let app_dir = app.path().app_data_dir()?;

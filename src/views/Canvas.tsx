@@ -17,7 +17,6 @@ import Breadcrumbs from '@/components/Canvas/Breadcrumbs'
 import WindowShell from '@/components/WindowShell'
 import Graph from '@/components/Graph'
 import Settings from '@/components/Settings'
-import Analytics from '@/views/Analytics'
 import { useCanvasKeyboard } from '@/hooks/useCanvasKeyboard'
 import { useCanvasInsets } from '@/hooks/useCanvasInsets'
 import { CANVAS_MARGIN } from '@/lib/constants'
@@ -49,15 +48,6 @@ const VIEW_SETTINGS = defineBinding({
   chord: '3',
   matches: (e) => e.key === '3',
 })
-const VIEW_ANALYTICS = defineBinding({
-  id: 'canvas.view.analytics',
-  label: 'View: Analytics',
-  scope: 'global',
-  group: 'Canvas',
-  chord: '4',
-  matches: (e) => e.key === '4',
-})
-
 const proOptions = { hideAttribution: true }
 const bgStyle = { opacity: 0.1 }
 
@@ -337,9 +327,6 @@ function ViewSwitcher() {
       } else if (VIEW_SETTINGS.matches(e)) {
         e.preventDefault()
         setViewMode('settings')
-      } else if (VIEW_ANALYTICS.matches(e)) {
-        e.preventDefault()
-        setViewMode('analytics')
       }
     }
     document.addEventListener('keydown', handler)
@@ -383,10 +370,6 @@ function ViewSwitcher() {
 
       <div className="absolute" style={insetStyle('settings')}>
         <Settings />
-      </div>
-
-      <div className="absolute" style={insetStyle('analytics')}>
-        <Analytics />
       </div>
 
       <div className="absolute inset-0 pointer-events-none z-10">

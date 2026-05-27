@@ -23,7 +23,6 @@ import {
   flushPendingWrites,
   switchProject,
 } from '@/store/persistence'
-import { useTasksStore } from '@/store/tasks'
 import { computeProjectId } from '@/lib/projectId'
 
 export function useWindowLifecycle() {
@@ -138,7 +137,6 @@ export function useWindowLifecycle() {
           const gitState = useGitStore.getState()
           if (state.rootPath && state.rootPath !== gitState.repoPath) {
             gitState.setRepoPath(state.rootPath)
-            useTasksStore.getState().clearAll()
             stopGitWatcher()
             startGitWatcher(state.rootPath, windowId)
             computeProjectId(state.rootPath)
