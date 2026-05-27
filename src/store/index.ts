@@ -1,4 +1,5 @@
 export { useBrowserStore } from './browser'
 export { useCanvasStore } from './canvas'
 export { useGraphStore } from './graph'
+export { useHealthStore } from './health'
 export { useViewStore } from './view'
