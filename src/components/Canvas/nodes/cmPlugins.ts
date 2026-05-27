@@ -1,7 +1,9 @@
 import { EditorView, ViewPlugin, Decoration, type DecorationSet } from '@codemirror/view'
 import { RangeSetBuilder, type Extension } from '@codemirror/state'
 import { syntaxTree } from '@codemirror/language'
-import { unifiedMergeView, getChunks } from '@codemirror/merge'
+import { unifiedMergeView, getChunks, acceptChunk, rejectChunk } from '@codemirror/merge'
+
+export { getChunks, acceptChunk, rejectChunk }
 
 const RAINBOW_COLORS = ['#ffd700', '#da70d6', '#179fff']
 
@@ -99,65 +101,7 @@ export const rainbowBrackets = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 )
 
-export function buildMergeExtension(
-  head: string | null,
-  onChunkAction: (type: 'accept' | 'reject') => void,
-  readOnly = false,
-): Extension {
+export function buildMergeExtension(head: string | null): Extension {
   if (head === null) return []
-  if (readOnly) {
-    return unifiedMergeView({ original: head, mergeControls: false })
-  }
-  return unifiedMergeView({
-    original: head,
-    mergeControls: (type, action) => {
-      const btn = document.createElement('button')
-      btn.type = 'button'
-      btn.textContent = type === 'accept' ? '✓ accept' : '✕ reject'
-      btn.className =
-        'cm-merge-stub-btn text-[10px] font-mono px-1.5 py-0.5 mx-0.5 rounded ' +
-        (type === 'accept'
-          ? 'bg-green-900/40 text-green-400 hover:bg-green-900/60'
-          : 'bg-red-900/40 text-red-400 hover:bg-red-900/60')
-      btn.addEventListener('click', (e) => {
-        action(e)
-        onChunkAction(type)
-      })
-      return btn
-    },
-  })
-}
-
-export function buildMinimapGutters(view: EditorView): Record<number, string> {
-  const result = getChunks(view.state)
-  if (!result || result.chunks.length === 0) return {}
-  const gutters: Record<number, string> = {}
-  const doc = view.state.doc
-  for (const chunk of result.chunks) {
-    if (chunk.fromB < chunk.toB) {
-      const startLine = doc.lineAt(chunk.fromB).number
-      const endLine = doc.lineAt(Math.min(chunk.toB - 1, doc.length)).number
-      for (let l = startLine; l <= endLine; l++) gutters[l] = 'rgba(80,200,100,0.7)'
-    }
-    if (chunk.fromA < chunk.toA && !(chunk.fromB < chunk.toB)) {
-      const line = doc.lineAt(Math.min(chunk.fromB, doc.length)).number
-      gutters[line] = 'rgba(220,60,50,0.7)'
-    }
-  }
-  return gutters
-}
-
-export const MINIMAP_WIDTH = 60
-
-export function createMinimapConfig(gutters: Record<number, string>[] = [{}]) {
-  return {
-    create: () => {
-      const dom = document.createElement('div')
-      dom.style.cssText = `width:${MINIMAP_WIDTH}px;`
-      return { dom }
-    },
-    displayText: 'blocks' as const,
-    showOverlay: 'always' as const,
-    gutters,
-  }
+  return unifiedMergeView({ original: head, mergeControls: false })
 }

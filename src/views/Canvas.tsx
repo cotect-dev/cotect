@@ -18,6 +18,7 @@ import WindowShell from '@/components/WindowShell'
 
 const Graph = lazy(() => import('@/components/Graph'))
 const Settings = lazy(() => import('@/components/Settings'))
+const Health = lazy(() => import('@/components/Health'))
 import { useCanvasKeyboard } from '@/hooks/useCanvasKeyboard'
 import { useCanvasInsets } from '@/hooks/useCanvasInsets'
 import { CANVAS_MARGIN } from '@/lib/canvasGeometry'
@@ -48,6 +49,14 @@ const VIEW_SETTINGS = defineBinding({
   group: 'Canvas',
   chord: '3',
   matches: (e) => e.key === '3',
+})
+const VIEW_HEALTH = defineBinding({
+  id: 'canvas.view.health',
+  label: 'View: Health',
+  scope: 'global',
+  group: 'Canvas',
+  chord: '4',
+  matches: (e) => e.key === '4',
 })
 const proOptions = { hideAttribution: true }
 const bgStyle = { opacity: 0.1 }
@@ -321,6 +330,9 @@ function ViewSwitcher() {
       } else if (VIEW_SETTINGS.matches(e)) {
         e.preventDefault()
         setViewMode('settings')
+      } else if (VIEW_HEALTH.matches(e)) {
+        e.preventDefault()
+        setViewMode('health')
       }
     }
     document.addEventListener('keydown', handler)
@@ -363,6 +375,12 @@ function ViewSwitcher() {
       <div className="absolute" style={insetStyle('settings')}>
         <Suspense>
           <Settings />
+        </Suspense>
+      </div>
+
+      <div className="absolute" style={insetStyle('health')}>
+        <Suspense>
+          <Health />
         </Suspense>
       </div>
 

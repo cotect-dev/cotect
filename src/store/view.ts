@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createStoreWithHMR } from '@/lib/hmr'
 
-export type ViewMode = 'files' | 'graph' | 'settings'
+export type ViewMode = 'files' | 'graph' | 'settings' | 'health'
 
 interface ViewState {
   viewMode: ViewMode

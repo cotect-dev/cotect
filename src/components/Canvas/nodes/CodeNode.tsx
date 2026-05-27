@@ -37,11 +37,10 @@ import { getLanguageExt } from './cmLanguages'
 import {
   rainbowBrackets,
   buildMergeExtension,
-  buildMinimapGutters,
-  createMinimapConfig,
-  MINIMAP_WIDTH,
+  getChunks,
+  acceptChunk,
+  rejectChunk,
 } from './cmPlugins'
-import { showMinimap } from '@replit/codemirror-minimap'
 import { getPlatform } from '@/services/platform'
 import { isMarkdownFile } from '@/lib/fileClassification'
 import type { CodeNode, ImportRefItem } from '@/types/nodes'
@@ -160,7 +159,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const mergeCompartmentRef = useRef<Compartment>(new Compartment())
-  const minimapCompartmentRef = useRef<Compartment>(new Compartment())
   const scrollHandlerRef = useRef<{ scrollDOM: HTMLElement; handler: () => void } | null>(null)
   const resizeObRef = useRef<ResizeObserver | null>(null)
   const flags = getNodeFlags(data)
@@ -180,6 +178,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const refOverlayRef = useRef<HTMLDivElement>(null)
   const [geometryVer, setGeometryVer] = useState(0)
   const [linePositions, setLinePositions] = useState<Map<number, number>>(new Map())
+  const [minimapStripes, setMinimapStripes] = useState<
+    { startFrac: number; endFrac: number; color: string; fromPos: number }[]
+  >([])
 
   const importRefs = useCanvasStore((s) => {
     const previewIdx = s.currentColumnIndex + 1
@@ -279,8 +280,21 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
   }, [data.filePath])
 
-  const handleChunkAction = useCallback(
-    (_type: 'accept' | 'reject') => {
+  const handleAcceptChunk = useCallback(
+    (pos: number) => {
+      const view = viewRef.current
+      if (!view) return
+      acceptChunk(view, pos)
+      void saveToFile()
+    },
+    [saveToFile],
+  )
+
+  const handleRejectChunk = useCallback(
+    (pos: number) => {
+      const view = viewRef.current
+      if (!view) return
+      rejectChunk(view, pos)
       void saveToFile()
     },
     [saveToFile],
@@ -301,9 +315,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       if (!container.isConnected) return
 
       mergeCompartmentRef.current = new Compartment()
-      minimapCompartmentRef.current = new Compartment()
       const initialMergeExt = mergeCompartmentRef.current.of(
-        buildMergeExtension(headContentRef.current, handleChunkAction, isReadOnly),
+        buildMergeExtension(headContentRef.current),
       )
 
       const langExt = getLanguageExt(data.filePath)
@@ -343,7 +356,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           vscodeDark,
           ...(isReadOnly ? [EditorState.readOnly.of(true)] : []),
           initialMergeExt,
-          minimapCompartmentRef.current.of(showMinimap.of(createMinimapConfig())),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) setDirty(true)
@@ -397,7 +409,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             },
             '.cm-content': {
               padding: '4px 0',
-              paddingRight: `${MINIMAP_WIDTH + 4}px`,
+              paddingRight: '26px',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-all',
               lineHeight: '18px',
@@ -411,16 +423,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
               '0%, 100%': { opacity: '1' },
               '50%': { opacity: '0' },
             },
-            '.cm-minimap-gutter': {
-              backgroundColor: '#1e1e1e',
-              borderLeft: '1px solid rgba(255,255,255,0.06)',
-              zIndex: '2',
-            },
-            '.cm-minimap-overlay': {
-              backgroundColor: 'rgba(255,255,255,0.07) !important',
-              border: '1px solid rgba(255,255,255,0.12)',
-              opacity: '1 !important',
-            },
             '&.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText, .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText':
               {
                 background: 'none',
@@ -432,10 +434,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
               backgroundColor: 'rgba(80, 200, 100, 0.22)',
             },
             '&.cm-merge-a .cm-changedLineGutter, .cm-deletedLineGutter': {
-              background: '#dc2626',
+              background: 'transparent',
             },
             '&.cm-merge-b .cm-changedLineGutter': {
-              background: '#22c55e',
+              background: 'transparent',
             },
             '&.cm-focused': {
               outline: 'none',
@@ -453,9 +455,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
       const scrollDOM = view.scrollDOM
       const handleEditorScroll = () => {
-        if (refOverlayRef.current) {
-          refOverlayRef.current.style.transform = `translateY(${-scrollDOM.scrollTop}px)`
-        }
+        const ty = `translateY(${-scrollDOM.scrollTop}px)`
+        if (refOverlayRef.current) refOverlayRef.current.style.transform = ty
       }
       scrollDOM.addEventListener('scroll', handleEditorScroll, { passive: true })
       scrollHandlerRef.current = { scrollDOM, handler: handleEditorScroll }
@@ -486,20 +487,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     const view = viewRef.current
     if (!view) return
     view.dispatch({
-      effects: mergeCompartmentRef.current.reconfigure(
-        buildMergeExtension(headContent, handleChunkAction, isReadOnly),
-      ),
+      effects: mergeCompartmentRef.current.reconfigure(buildMergeExtension(headContent)),
     })
-    requestAnimationFrame(() => {
-      if (!viewRef.current) return
-      const gutters = buildMinimapGutters(viewRef.current)
-      viewRef.current.dispatch({
-        effects: minimapCompartmentRef.current.reconfigure(
-          showMinimap.of(createMinimapConfig([gutters])),
-        ),
-      })
-    })
-  }, [headContent, handleChunkAction, isReadOnly])
+  }, [headContent])
 
   useLayoutEffect(() => {
     const view = viewRef.current
@@ -525,6 +515,40 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
     setLinePositions(positions)
   }, [refLineLayout, geometryVer])
+
+  useLayoutEffect(() => {
+    const view = viewRef.current
+    if (!view) {
+      setMinimapStripes([])
+      return
+    }
+    const result = getChunks(view.state)
+    if (!result || result.chunks.length === 0) {
+      setMinimapStripes([])
+      return
+    }
+    const totalLines = view.state.doc.lines
+    if (totalLines === 0) {
+      setMinimapStripes([])
+      return
+    }
+    const stripes = result.chunks.map((chunk) => {
+      const startLine = view.state.doc.lineAt(Math.min(chunk.fromB, view.state.doc.length)).number
+      const endLine = view.state.doc.lineAt(
+        Math.min(Math.max(chunk.toB - 1, chunk.fromB), view.state.doc.length),
+      ).number
+      const isDelete = chunk.fromB === chunk.toB
+      const isInsert = chunk.fromA === chunk.toA
+      const color = isDelete ? '#dc2626' : isInsert ? '#22c55e' : '#3b82f6'
+      return {
+        startFrac: (startLine - 1) / totalLines,
+        endFrac: Math.min(endLine / totalLines, 1),
+        color,
+        fromPos: chunk.fromB,
+      }
+    })
+    setMinimapStripes(stripes)
+  }, [geometryVer, headContent])
 
   const overlayHeight = useMemo(() => {
     if (!refLineLayout || refLineLayout.size === 0) return editorHeight
@@ -664,6 +688,57 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
                     </div>
                   )
                 })}
+            </div>
+          </div>
+        )}
+        {!mdPreview && !isReadOnly && minimapStripes.length > 0 && editorHeight > 0 && (
+          <div
+            className="absolute top-0 right-0 bottom-0 pointer-events-auto"
+            style={{ width: 22, zIndex: 5 }}
+          >
+            <div
+              className="relative h-full"
+              style={{
+                background: 'rgba(0,0,0,0.25)',
+                borderLeft: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              {minimapStripes.map((stripe, i) => {
+                const minH = 4
+                const top = stripe.startFrac * 100
+                const height = Math.max(
+                  (stripe.endFrac - stripe.startFrac) * 100,
+                  (minH / editorHeight) * 100,
+                )
+                return (
+                  <div
+                    key={i}
+                    className="absolute left-0 right-0 group/stripe"
+                    style={{ top: `${top}%`, height: `${height}%`, minHeight: minH }}
+                  >
+                    <div
+                      className="absolute inset-0 rounded-sm opacity-70 group-hover/stripe:opacity-100 transition-opacity"
+                      style={{ backgroundColor: stripe.color }}
+                    />
+                    <div className="absolute -left-[34px] top-1/2 -translate-y-1/2 hidden group-hover/stripe:flex gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptChunk(stripe.fromPos)}
+                        className="h-4 w-4 flex items-center justify-center rounded text-[9px] font-mono cursor-pointer bg-green-900/80 text-green-400 hover:bg-green-800"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRejectChunk(stripe.fromPos)}
+                        className="h-4 w-4 flex items-center justify-center rounded text-[9px] font-mono cursor-pointer bg-red-900/80 text-red-400 hover:bg-red-800"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
