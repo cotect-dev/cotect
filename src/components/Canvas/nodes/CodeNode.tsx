@@ -159,12 +159,17 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const mergeCompartmentRef = useRef<Compartment>(new Compartment())
+  const wrapCompartmentRef = useRef<Compartment>(new Compartment())
   const scrollHandlerRef = useRef<{ scrollDOM: HTMLElement; handler: () => void } | null>(null)
   const resizeObRef = useRef<ResizeObserver | null>(null)
   const flags = getNodeFlags(data)
   const [editorReady, setEditorReady] = useState(false)
   const [editorFocused, setEditorFocused] = useState(false)
+  const [lineWrap, setLineWrap] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const dirtyRef = useRef(false)
+  dirtyRef.current = dirty
+  const saveToFileRef = useRef<() => Promise<boolean>>(() => Promise.resolve(false))
   const [saving, setSaving] = useState(false)
   const isMd = isMarkdownFile(data.filePath)
   const mdPreviewEnabled = useCanvasStore((s) => s.mdPreviewEnabled)
@@ -177,6 +182,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [editorHeight, setEditorHeight] = useState(0)
   const refOverlayRef = useRef<HTMLDivElement>(null)
   const [geometryVer, setGeometryVer] = useState(0)
+  const [pinnedStripe, setPinnedStripe] = useState<number | null>(null)
   const [linePositions, setLinePositions] = useState<Map<number, number>>(new Map())
   const [minimapStripes, setMinimapStripes] = useState<
     { startFrac: number; endFrac: number; color: string; fromPos: number }[]
@@ -279,6 +285,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       setSaving(false)
     }
   }, [data.filePath])
+  saveToFileRef.current = saveToFile
 
   const handleAcceptChunk = useCallback(
     (pos: number) => {
@@ -300,6 +307,32 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     [saveToFile],
   )
 
+  // Auto-save: periodic (every 5 seconds if dirty)
+  useEffect(() => {
+    if (isReadOnly) return
+    const id = setInterval(() => {
+      if (dirtyRef.current) void saveToFile()
+    }, 5000)
+    return () => clearInterval(id)
+  }, [isReadOnly, saveToFile])
+
+  // Auto-save: on window focus loss and before close
+  useEffect(() => {
+    if (isReadOnly) return
+    const onVisibilityChange = () => {
+      if (document.hidden && dirtyRef.current) void saveToFile()
+    }
+    const onBeforeUnload = () => {
+      if (dirtyRef.current) void saveToFile()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('beforeunload', onBeforeUnload)
+    }
+  }, [isReadOnly, saveToFile])
+
   useEffect(() => {
     if (!editorRef.current) return
 
@@ -315,9 +348,11 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       if (!container.isConnected) return
 
       mergeCompartmentRef.current = new Compartment()
+      wrapCompartmentRef.current = new Compartment()
       const initialMergeExt = mergeCompartmentRef.current.of(
         buildMergeExtension(headContentRef.current),
       )
+      const initialWrapExt = wrapCompartmentRef.current.of([])
 
       const langExt = getLanguageExt(data.filePath)
 
@@ -356,10 +391,13 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           vscodeDark,
           ...(isReadOnly ? [EditorState.readOnly.of(true)] : []),
           initialMergeExt,
-          EditorView.lineWrapping,
+          initialWrapExt,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) setDirty(true)
-            if (update.focusChanged) setEditorFocused(update.view.hasFocus)
+            if (update.focusChanged) {
+              setEditorFocused(update.view.hasFocus)
+              if (!update.view.hasFocus && dirtyRef.current) void saveToFileRef.current()
+            }
             if (update.geometryChanged) setGeometryVer((v) => v + 1)
           }),
           keymap.of([
@@ -491,6 +529,14 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     })
   }, [headContent])
 
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    view.dispatch({
+      effects: wrapCompartmentRef.current.reconfigure(lineWrap ? EditorView.lineWrapping : []),
+    })
+  }, [lineWrap])
+
   useLayoutEffect(() => {
     const view = viewRef.current
     if (!view || !refLineLayout || refLineLayout.size === 0) {
@@ -621,29 +667,106 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
               editing
             </span>
           )}
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
-            {lineCount}L
-          </span>
+          <button
+            type="button"
+            onClick={() => setLineWrap((v) => !v)}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition-colors ${
+              lineWrap
+                ? 'bg-primary/20 text-primary'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
+            }`}
+            title={lineWrap ? 'Disable line wrapping' : 'Enable line wrapping'}
+          >
+            {lineCount}L{lineWrap ? '↩' : ''}
+          </button>
         </div>
       </div>
 
-      <div className="relative overflow-hidden">
-        {!editorReady && !mdPreview && (
-          <div className="absolute inset-0 z-10 bg-background">
-            <CodeNodeSkeleton lineCount={lineCount} startLine={data.startLine} />
-          </div>
-        )}
-        <div
-          ref={editorRef}
-          className="nowheel"
-          style={{ display: mdPreview ? 'none' : undefined }}
-        />
-        {mdPreview && (
-          <MarkdownPreview
-            content={mdContent}
-            filePath={data.filePath}
-            maxHeight={`calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`}
+      <div className="relative flex">
+        <div className="relative overflow-hidden flex-1 min-w-0">
+          {!editorReady && !mdPreview && (
+            <div className="absolute inset-0 z-10 bg-background">
+              <CodeNodeSkeleton lineCount={lineCount} startLine={data.startLine} />
+            </div>
+          )}
+          <div
+            ref={editorRef}
+            className="nowheel"
+            style={{ display: mdPreview ? 'none' : undefined }}
           />
+          {mdPreview && (
+            <MarkdownPreview
+              content={mdContent}
+              filePath={data.filePath}
+              maxHeight={`calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`}
+            />
+          )}
+        </div>
+        {!mdPreview && !isReadOnly && minimapStripes.length > 0 && editorHeight > 0 && (
+          <div className="relative shrink-0 pointer-events-auto z-10" style={{ width: 22 }}>
+            <div
+              className="relative h-full"
+              style={{
+                background: 'rgba(0,0,0,0.25)',
+                borderLeft: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              {minimapStripes.map((stripe, i) => {
+                const minH = 4
+                const top = stripe.startFrac * 100
+                const height = Math.max(
+                  (stripe.endFrac - stripe.startFrac) * 100,
+                  (minH / editorHeight) * 100,
+                )
+                const isPinned = pinnedStripe === i
+                return (
+                  <div
+                    key={i}
+                    className="absolute right-0 group/stripe"
+                    style={{ top: `${top}%`, height: `${height}%`, minHeight: minH, left: -38 }}
+                  >
+                    <div
+                      className={`absolute top-0 bottom-0 right-0 transition-opacity cursor-pointer ${isPinned ? 'opacity-100' : 'opacity-70 group-hover/stripe:opacity-100'}`}
+                      style={{ width: 22, backgroundColor: stripe.color }}
+                      onClick={() => {
+                        const view = viewRef.current
+                        if (view) {
+                          view.dispatch({
+                            effects: EditorView.scrollIntoView(stripe.fromPos, { y: 'center' }),
+                          })
+                        }
+                        setPinnedStripe(isPinned ? null : i)
+                      }}
+                    />
+                    <div
+                      className={`absolute left-0 top-1/2 -translate-y-1/2 ${isPinned ? 'flex' : 'hidden group-hover/stripe:flex'} gap-0.5`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleAcceptChunk(stripe.fromPos)
+                          setPinnedStripe(null)
+                        }}
+                        className="h-4 w-4 flex items-center justify-center rounded text-[9px] font-mono cursor-pointer bg-green-900/80 text-green-400 hover:bg-green-800"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleRejectChunk(stripe.fromPos)
+                          setPinnedStripe(null)
+                        }}
+                        className="h-4 w-4 flex items-center justify-center rounded text-[9px] font-mono cursor-pointer bg-red-900/80 text-red-400 hover:bg-red-800"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         )}
         {!mdPreview && refLineLayout && editorHeight > 0 && (
           <div
@@ -688,57 +811,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
                     </div>
                   )
                 })}
-            </div>
-          </div>
-        )}
-        {!mdPreview && !isReadOnly && minimapStripes.length > 0 && editorHeight > 0 && (
-          <div
-            className="absolute top-0 right-0 bottom-0 pointer-events-auto"
-            style={{ width: 22, zIndex: 5 }}
-          >
-            <div
-              className="relative h-full"
-              style={{
-                background: 'rgba(0,0,0,0.25)',
-                borderLeft: '1px solid rgba(255,255,255,0.06)',
-              }}
-            >
-              {minimapStripes.map((stripe, i) => {
-                const minH = 4
-                const top = stripe.startFrac * 100
-                const height = Math.max(
-                  (stripe.endFrac - stripe.startFrac) * 100,
-                  (minH / editorHeight) * 100,
-                )
-                return (
-                  <div
-                    key={i}
-                    className="absolute left-0 right-0 group/stripe"
-                    style={{ top: `${top}%`, height: `${height}%`, minHeight: minH }}
-                  >
-                    <div
-                      className="absolute inset-0 rounded-sm opacity-70 group-hover/stripe:opacity-100 transition-opacity"
-                      style={{ backgroundColor: stripe.color }}
-                    />
-                    <div className="absolute -left-[34px] top-1/2 -translate-y-1/2 hidden group-hover/stripe:flex gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleAcceptChunk(stripe.fromPos)}
-                        className="h-4 w-4 flex items-center justify-center rounded text-[9px] font-mono cursor-pointer bg-green-900/80 text-green-400 hover:bg-green-800"
-                      >
-                        ✓
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRejectChunk(stripe.fromPos)}
-                        className="h-4 w-4 flex items-center justify-center rounded text-[9px] font-mono cursor-pointer bg-red-900/80 text-red-400 hover:bg-red-800"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
             </div>
           </div>
         )}
