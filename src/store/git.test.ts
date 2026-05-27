@@ -15,7 +15,6 @@ import {
   type GitSyncPayload,
 } from './git'
 
-// Tauri APIs are auto-mocked via setup.ts. Cast for type-safe assertions.
 const mockInvoke = invoke as Mock
 const mockEmit = (emit as Mock).mockReturnValue(Promise.resolve())
 const mockListen = listen as Mock
@@ -102,7 +101,6 @@ describe('useGitStore', () => {
       mockInvoke.mockResolvedValue(null)
 
       const promise = useGitStore.getState().refresh()
-      // loading is set synchronously before awaits
       expect(useGitStore.getState().loading).toBe(true)
       await promise
       expect(useGitStore.getState().loading).toBe(false)
@@ -250,7 +248,6 @@ describe('useGitStore', () => {
       })
 
       await useGitStore.getState().refresh()
-      // Wait a tick for the deferred fileTimes computation to settle.
       await new Promise((r) => setTimeout(r, 0))
 
       const syncEmits = mockEmit.mock.calls.filter(([name]) => name === 'git-sync')
@@ -299,7 +296,6 @@ describe('useGitStore', () => {
       await useGitStore.getState().initRepo()
 
       expect(mockInvoke).toHaveBeenCalledWith('git_init', { repoPath: '/repo' })
-      // refresh calls 4 more invokes
       expect(mockInvoke).toHaveBeenCalledWith('git_status', { repoPath: '/repo' })
     })
   })
@@ -310,7 +306,6 @@ describe('startGitWatcher / stopGitWatcher', () => {
     resetStore()
     vi.clearAllMocks()
     stopGitWatcher()
-    // Default: listen resolves with a cleanup fn
     mockListen.mockResolvedValue(vi.fn())
   })
 
@@ -318,11 +313,9 @@ describe('startGitWatcher / stopGitWatcher', () => {
     mockInvoke.mockResolvedValue(undefined)
     startGitWatcher('/repo', 'main')
 
-    // listen for git-sync (all windows) + fs-changed (main only)
     expect(mockListen).toHaveBeenCalledWith('git-sync', expect.any(Function))
     expect(mockListen).toHaveBeenCalledWith('fs-changed', expect.any(Function))
 
-    // watch_path calls for main window
     expect(mockInvoke).toHaveBeenCalledWith('watch_path', {
       path: '/repo/.git',
       id: 'git',
@@ -349,7 +342,6 @@ describe('startGitWatcher / stopGitWatcher', () => {
     mockInvoke.mockResolvedValue(undefined)
     startGitWatcher('/repo', 'child-1')
 
-    // listen for git-sync only
     expect(mockListen).toHaveBeenCalledWith('git-sync', expect.any(Function))
     expect(mockListen).not.toHaveBeenCalledWith('fs-changed', expect.any(Function))
     expect(mockInvoke).not.toHaveBeenCalledWith('watch_path', expect.anything())

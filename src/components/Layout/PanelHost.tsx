@@ -11,12 +11,6 @@ import {
 import { createPortal } from 'react-dom'
 import { PANEL_CONTENT, PANEL_IDS } from './panelContent'
 
-/**
- * Renders each panel component once into a stable, long-lived DOM container.
- * `PanelSlot` reparents those containers into the active DropZone slot
- * without unmounting the React tree, so dragging a panel between zones
- * preserves its state, streaming connections, scroll position, etc.
- */
 interface PanelHostCtx {
   getNode: (id: string) => HTMLDivElement | null
 }
@@ -27,10 +21,6 @@ function usePanelHost() {
   return useContext(PanelHostContext)
 }
 
-/**
- * Stable DOM portal targets created outside the React lifecycle. `PanelSlot`
- * moves them around the DOM without affecting React's reconciliation.
- */
 function createPanelContainers(): Record<string, HTMLDivElement> {
   const containers: Record<string, HTMLDivElement> = {}
   for (const id of PANEL_IDS) {
@@ -45,8 +35,6 @@ function createPanelContainers(): Record<string, HTMLDivElement> {
 }
 
 export function PanelHostProvider({ children }: { children: ReactNode }) {
-  // Lazy useState ensures createPanelContainers runs exactly once per
-  // provider mount and is legal to read during render (refs are not).
   const [containers] = useState(createPanelContainers)
 
   useEffect(() => {
@@ -88,10 +76,6 @@ function PanelFallback() {
   )
 }
 
-/**
- * Reparents a panel's stable container into its mount point. On unmount /
- * id change the container is returned to body (hidden) so it survives.
- */
 export function PanelSlot({ id, visible }: { id: string; visible: boolean }) {
   const { getNode } = usePanelHost()
   const mountRef = useRef<HTMLDivElement>(null)
@@ -105,7 +89,6 @@ export function PanelSlot({ id, visible }: { id: string; visible: boolean }) {
     wrapper.style.display = 'block'
 
     return () => {
-      // Return to body hidden — the React portal keeps the component alive.
       wrapper.style.display = 'none'
       if (wrapper.parentNode === mount) {
         document.body.appendChild(wrapper)

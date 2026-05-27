@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
-
-// Make emit return a resolved Promise so broadcastGitState's .catch() works
 ;(emit as Mock).mockReturnValue(Promise.resolve())
 
 let mockWindowId = 'main'
@@ -90,7 +88,6 @@ describe('useWindowLifecycle — git initialization on session restore', () => {
     useBrowserStore.setState({ rootPath: '' })
     stopGitWatcher()
 
-    // Default: invoke returns null (used by git refresh)
     mockInvoke.mockResolvedValue(null)
   })
 

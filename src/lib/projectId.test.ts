@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 
-// Mock tauri invoke - must be before import
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }))

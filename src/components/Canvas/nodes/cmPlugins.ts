@@ -2,7 +2,6 @@ import { EditorView, ViewPlugin, Decoration, type DecorationSet } from '@codemir
 import { RangeSetBuilder, type Extension } from '@codemirror/state'
 import { syntaxTree } from '@codemirror/language'
 import { unifiedMergeView, getChunks } from '@codemirror/merge'
-import { showMinimap } from '@replit/codemirror-minimap'
 
 const RAINBOW_COLORS = ['#ffd700', '#da70d6', '#179fff']
 
@@ -161,8 +160,4 @@ export function createMinimapConfig(gutters: Record<number, string>[] = [{}]) {
     showOverlay: 'always' as const,
     gutters,
   }
-}
-
-export function createMinimapExtension(gutters: Record<number, string>[] = [{}]) {
-  return showMinimap.of(createMinimapConfig(gutters))
 }

@@ -37,9 +37,7 @@ import { useGraphStore } from '@/store/graph'
 export type ImportRefKind = 'import' | 'imported-by'
 
 export interface ImportRef {
-  /** Repo-relative path of the resolved import target. */
   resolvedPath: string
-  /** Display filename. */
   label: string
   /** 1-based source line number of the import/export statement. */
   line: number
@@ -49,7 +47,6 @@ export interface ImportRef {
    */
   visualLine: number
   kind: ImportRefKind
-  /** Names imported from this file (for imported-by refs), e.g. ['useStore', 'getData']. */
   importedNames?: string[]
 }
 
@@ -58,7 +55,6 @@ export interface Column {
   kind: 'directory' | 'file'
   nodes: AppNode[]
   edges: Edge[]
-  /** Resolved import references for file preview columns. */
   importRefs?: ImportRef[]
 }
 
@@ -195,7 +191,6 @@ async function buildHeadFallbackNode(filePath: string): Promise<AppNode | null> 
   }
 }
 
-/** Returns null if the image exceeds IMAGE_PREVIEW_MAX_BYTES. */
 async function buildImageNode(filePath: string): Promise<AppNode | null> {
   const platform = getPlatform()
   const bytes = await platform.fs.readBinaryFile(filePath)
@@ -466,11 +461,6 @@ async function resolveFileImportRefs(filePath: string, codeNode: AppNode): Promi
   return refs
 }
 
-/**
- * Position nodes within a column. Larger gap at folder/file type boundaries.
- * Returns `yById` so callers can look up an arbitrary node's Y (e.g. the
- * focused-node camera-clamp pre-pass) without re-walking the gap rule.
- */
 function positionColumnNodes(
   nodes: AppNode[],
   xOffset: number,
@@ -791,7 +781,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           const node = nodes.find((n) => n.id === focusedNodeId)
           if (!node) return
 
-          // Only folders can be navigated into — files are previewed in-place.
           if (node.type !== 'folder') return
 
           const nodeTargetPath = node.data.path
@@ -804,7 +793,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
             return newColNodes[0]?.id ?? null
           }
 
-          // Promote an existing preview column if it matches; otherwise load fresh.
           const previewCol = columns[currentColumnIndex + 1]
           if (previewCol && previewCol.path === nodeTargetPath) {
             const newChain = [...depthChain.slice(0, currentColumnIndex + 1), nodeTargetPath]
@@ -858,7 +846,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
               ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
               : rightFocusMemory
 
-          // Restore focus in the parent column to the item that led to current.
           const currentColPath = leavingCol?.path
           const parentCol = columns[newIndex]
           let restoreFocusId: string | null = null
@@ -887,16 +874,14 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           if (targetIndex === currentColumnIndex) return
           if (targetIndex < 0 || targetIndex >= depthChain.length) return
 
-          // Remember the focused node in the column we're leaving.
           const leavingCol = columns[currentColumnIndex]
           const nextMemory =
             leavingCol && focusedNodeId
               ? { ...rightFocusMemory, [leavingCol.path]: focusedNodeId }
               : rightFocusMemory
 
-          // If columns exist up to the target we can jump directly; otherwise
-          // we rebuild them from depthChain paths (columns may have been trimmed
-          // by updatePreview after a previous navigateLeft).
+          // Columns may have been trimmed by updatePreview after a previous
+          // navigateLeft, so rebuild from depthChain if needed.
           let targetColumns = columns
           if (targetIndex >= columns.length) {
             const rebuilt = [...columns]
@@ -911,7 +896,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
               }
             }
             targetColumns = rebuilt
-            // Bail if we couldn't rebuild far enough.
             if (targetIndex >= targetColumns.length) return
           }
 
@@ -958,11 +942,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           flattenAndRender(get, set)
         },
 
-        /**
-         * Load a preview column for the focused node into columns[currentColumnIndex + 1].
-         * Gives immediate feedback when moving focus with W/S — the right column
-         * shows what pressing D would navigate into.
-         */
         updatePreview: async () => {
           const { focusedNodeId, columns, currentColumnIndex } = get()
           if (!focusedNodeId) {
@@ -998,7 +977,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
                   contentNode = imageNode ?? (await buildFileNode(path))
                 } else {
                   contentNode = await buildFileNode(path)
-                  // Resolve import references with line positions
                   importRefs = await resolveFileImportRefs(path, contentNode)
                 }
               } catch {
@@ -1011,7 +989,6 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
               }
             }
 
-            // Bail out if focus changed during the async load.
             if (get().focusedNodeId !== focusedNodeId) return
 
             if (previewCol) {
@@ -1031,7 +1008,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
 
             flattenAndRender(get, set)
           } catch {
-            // Silently ignore preview errors
+            /* ignored */
           }
         },
       }),
@@ -1085,7 +1062,6 @@ useGitStore.subscribe((state) => {
     return
   }
 
-  // Symmetric difference: paths added or removed since the previous tick.
   const changed: string[] = []
   for (const p of next) if (!prevStatusPaths.has(p)) changed.push(p)
   for (const p of prevStatusPaths) if (!next.has(p)) changed.push(p)
@@ -1118,11 +1094,6 @@ useGraphStore.subscribe((state) => {
   }
 })
 
-/**
- * Rebuild any open directory column whose path is in `affected`. No-ops the
- * setState when the resulting node id set matches what's already cached, so
- * incidental status churn (staging, commit) doesn't trigger pointless renders.
- */
 async function refreshDirectoryColumns(affected: Set<string>): Promise<void> {
   const { columns } = useCanvasStore.getState()
   const updates = await Promise.all(
@@ -1161,12 +1132,6 @@ async function refreshDirectoryColumns(affected: Set<string>): Promise<void> {
   )
 }
 
-/**
- * Flatten all columns into positioned nodes/edges and update the store for
- * ReactFlow. All columns are rendered so the user can pan freely with Space
- * to see the full navigation history; the Canvas view handles viewport
- * positioning so the current column appears right after the left panel.
- */
 function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasState>) => void) {
   const { columns, currentColumnIndex } = get()
   if (columns.length === 0) {

@@ -78,8 +78,6 @@ fn main() {
             db::commands::kv_set,
             db::commands::kv_delete,
             db::commands::kv_get_prefix,
-            db::commands::db_repo_upsert,
-            db::commands::db_repo_get,
         ])
         .setup(|app| {
             let app_dir = app.path().app_data_dir()?;

@@ -16,13 +16,8 @@ export default defineConfig({
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
           'vendor-reactflow': ['@xyflow/react'],
-          'vendor-ui': ['@base-ui/react', 'lucide-react', '@dnd-kit/core', '@dnd-kit/utilities'],
-          'vendor-tauri': [
-            '@tauri-apps/api',
-            '@tauri-apps/plugin-store',
-            '@tauri-apps/plugin-dialog',
-            '@tauri-apps/plugin-fs',
-          ],
+          'vendor-ui': ['@base-ui/react', 'lucide-react', '@dnd-kit/core'],
+          'vendor-tauri': ['@tauri-apps/api', '@tauri-apps/plugin-dialog', '@tauri-apps/plugin-fs'],
           // CodeMirror is statically imported by CodeNode (which is now a
           // static node type) — put it in its own vendor chunk so the
           // browser modulepreloads it in parallel with the main bundle
@@ -33,7 +28,6 @@ export default defineConfig({
             '@codemirror/lang-javascript',
             '@codemirror/lang-json',
             '@codemirror/lang-css',
-            '@codemirror/theme-one-dark',
           ],
         },
       },
@@ -52,15 +46,17 @@ export default defineConfig({
   clearScreen: false,
   server: {
     watch: {
-      ignored: ['**/tauri/**', '**/docs/**', '**/node_modules/**', '**/.git/**', '**/.superpowers/**', '**/dist/**', '**/overview.md', '**/README.md'],
+      ignored: [
+        '**/tauri/**',
+        '**/docs/**',
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/.superpowers/**',
+        '**/dist/**',
+        '**/overview.md',
+        '**/README.md',
+      ],
     },
     strictPort: true,
-    proxy: {
-      '/llm': {
-        target: 'http://server:1234',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/llm/, ''),
-      },
-    },
   },
 })

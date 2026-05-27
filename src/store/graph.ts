@@ -12,7 +12,6 @@ import {
   type LanguageId,
 } from '@/services/treesitter-queries'
 
-export const DEFAULT_HUB_COUNT = 30
 const MAX_FILES = 500
 
 export interface GraphFileNode {
@@ -39,14 +38,11 @@ interface GraphState {
   errorMessage: string | null
   allNodes: GraphFileNode[]
   allEdges: GraphFileEdge[]
-  selectedNodeId: string | null
-  truncated: boolean
 
-  setSelectedNodeId: (id: string | null) => void
   scan: (rootPath: string) => Promise<void>
 }
 
-export function scoreNodes(nodes: GraphFileNode[], edges: GraphFileEdge[]): GraphFileNode[] {
+function scoreNodes(nodes: GraphFileNode[], edges: GraphFileEdge[]): GraphFileNode[] {
   const inDeg = new Map<string, number>()
   const outDeg = new Map<string, number>()
   for (const e of edges) {
@@ -58,15 +54,6 @@ export function scoreNodes(nodes: GraphFileNode[], edges: GraphFileEdge[]): Grap
     const outd = outDeg.get(n.id) ?? 0
     return { ...n, inDegree: ind, outDegree: outd, score: ind + outd }
   })
-}
-
-/** Pick which node IDs to render: top hubs or all. */
-export function computeVisibleNodeIds(nodes: GraphFileNode[], showAll: boolean): Set<string> {
-  if (showAll || nodes.length <= DEFAULT_HUB_COUNT) {
-    return new Set(nodes.map((n) => n.id))
-  }
-  const sorted = [...nodes].sort((a, b) => b.score - a.score)
-  return new Set(sorted.slice(0, DEFAULT_HUB_COUNT).map((n) => n.id))
 }
 
 function getExtension(path: string): string {
@@ -127,10 +114,6 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () =>
     errorMessage: null,
     allNodes: [],
     allEdges: [],
-    selectedNodeId: null,
-    truncated: false,
-
-    setSelectedNodeId: (id) => set({ selectedNodeId: id }),
 
     scan: async (rootPath: string) => {
       set({ scanState: 'scanning', scannedCount: 0, errorMessage: null })
@@ -140,7 +123,6 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () =>
         const absFiles = await collectParseableFiles(rootPath, budget, (count) => {
           set({ scannedCount: count })
         })
-        const truncated = absFiles.length >= MAX_FILES
         const relFiles = absFiles.map((p) => toRepoRelative(p, rootPath))
         const knownFiles = new Set(relFiles)
 
@@ -191,21 +173,10 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () =>
 
         const scoredNodes = scoreNodes(rawNodes, edges)
 
-        // Auto-select the most connected file as the initial focus
-        let topNodeId: string | null = null
-        if (scoredNodes.length > 0) {
-          topNodeId = scoredNodes.reduce(
-            (best, n) => (n.score > best.score ? n : best),
-            scoredNodes[0],
-          ).id
-        }
-
         set({
           scanState: 'ready',
           allNodes: scoredNodes,
           allEdges: edges,
-          selectedNodeId: topNodeId,
-          truncated,
         })
       } catch (err) {
         set({

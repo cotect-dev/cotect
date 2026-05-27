@@ -17,13 +17,13 @@ describe('useKvField', () => {
 
   it('returns default until kv_get resolves', async () => {
     vi.mocked(kvGet).mockResolvedValue(null)
-    const { result } = renderHook(() => useKvField<number>('agent.max_turns', 25))
+    const { result } = renderHook(() => useKvField<number>('editor.tab_size', 25))
     expect(result.current[0]).toBe(25)
   })
 
   it('hydrates from kv_get', async () => {
     vi.mocked(kvGet).mockResolvedValue(42)
-    const { result } = renderHook(() => useKvField<number>('agent.max_turns', 25))
+    const { result } = renderHook(() => useKvField<number>('editor.tab_size', 25))
     await waitFor(() => expect(result.current[0]).toBe(42))
   })
 
