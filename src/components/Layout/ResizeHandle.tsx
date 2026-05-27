@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useDragHandle } from '@/hooks/useDragHandle'
-import { MIN_SIBLING_PANEL } from '@/lib/constants'
+import { MIN_SIBLING_PANEL } from '@/lib/layoutDefaults'
 
 interface BaseProps {
   orientation: 'horizontal' | 'vertical'

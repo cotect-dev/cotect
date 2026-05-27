@@ -10,7 +10,7 @@ import {
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getPlatform } from '@/services/platform'
-import { getImageMimeType, isImageFile } from '@/lib/constants'
+import { getImageMimeType, isImageFile } from '@/lib/fileClassification'
 
 const PLUGINS = [remarkGfm]
 

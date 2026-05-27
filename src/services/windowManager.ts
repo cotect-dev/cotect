@@ -1,5 +1,4 @@
 import { getPlatform } from '@/services/platform'
-import { useBrowserStore } from '@/store/browser'
 import type { WindowMonitorInfo, MonitorInfo } from '@/services/platform/types'
 import type { PersistedLayout } from '@/types/layout'
 
@@ -134,10 +133,12 @@ export function stopGeometryPersistence(): void {
 
 let sessionPersister: (() => void) | null = null
 
-export function startSessionPersistence(): void {
+export function startSessionPersistence(
+  subscribe: (listener: (state: { rootPath: string }) => void) => () => void,
+): void {
   sessionPersister?.()
   let timer: ReturnType<typeof setTimeout> | null = null
-  sessionPersister = useBrowserStore.subscribe((state) => {
+  sessionPersister = subscribe((state) => {
     if (!state.rootPath) return
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {

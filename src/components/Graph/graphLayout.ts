@@ -1,8 +1,8 @@
 import { Position } from '@xyflow/react'
 import type { GraphFileNode, GraphFileEdge } from '@/store/graph'
+import { NODE_WIDTH, NODE_HEIGHT } from '@/lib/canvasGeometry'
 
-export const NODE_WIDTH = 180
-export const NODE_HEIGHT = 56
+export { NODE_WIDTH, NODE_HEIGHT }
 const NODE_GAP = 4
 const SIDE_GAP = 100
 const STACK_V_GAP = 2

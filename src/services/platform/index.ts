@@ -11,6 +11,18 @@ export function getPlatform(): Platform {
   return _platform
 }
 
+export function getFS(): Platform['fs'] {
+  return getPlatform().fs
+}
+
+export function getWindows(): Platform['windows'] {
+  return getPlatform().windows
+}
+
+export function getStorage(): Platform['storage'] {
+  return getPlatform().storage
+}
+
 export async function initPlatform(): Promise<Platform> {
   if (_platform) return _platform
 

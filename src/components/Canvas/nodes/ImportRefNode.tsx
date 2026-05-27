@@ -3,7 +3,7 @@ import type { NodeProps } from '@xyflow/react'
 import { FileCode, FileText, FlaskConical, Image } from 'lucide-react'
 import type { ImportRefNode, ImportRefItem } from '@/types/nodes'
 import { getConfigForFile } from '@/services/treesitter-queries'
-import { isImageFile } from '@/lib/constants'
+import { isImageFile } from '@/lib/fileClassification'
 import { isTestFile } from '@/lib/fileClassification'
 import { useCanvasStore } from '@/store/canvas'
 

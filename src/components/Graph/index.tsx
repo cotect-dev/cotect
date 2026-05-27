@@ -19,7 +19,7 @@ import { FileText, FileCode, FlaskConical, Image } from 'lucide-react'
 import { useGraphStore, useBrowserStore, useCanvasStore } from '@/store'
 import { toRepoRelative } from '@/lib/repoPath'
 import { getConfigForFile } from '@/services/treesitter-queries'
-import { isImageFile } from '@/lib/constants'
+import { isImageFile } from '@/lib/fileClassification'
 import type { GraphFileEdge } from '@/store/graph'
 import {
   NODE_WIDTH,
