@@ -23,7 +23,6 @@ interface SiblingModeProps extends BaseProps {
 
 type ResizeHandleProps = TargetModeProps | SiblingModeProps
 
-/** Discriminated drag state captured at `onStart`. */
 type DragState =
   | {
       kind: 'target'

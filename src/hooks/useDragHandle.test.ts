@@ -2,13 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useDragHandle } from './useDragHandle'
 
-/**
- * Helpers — keep tests honest by mirroring the real DOM events the hook
- * listens for, rather than poking the hook's internals.
- */
 function makeMouseDown(opts: { clientX: number; clientY: number }) {
-  // React.MouseEvent is structural — we only need preventDefault,
-  // stopPropagation, and the two clientX/Y fields.
   const preventDefault = vi.fn()
   const stopPropagation = vi.fn()
   return {
@@ -24,7 +18,6 @@ function makeMouseDown(opts: { clientX: number; clientY: number }) {
 }
 
 function fireDocMouseEvent(type: 'mousemove' | 'mouseup', clientX: number, clientY: number) {
-  // jsdom's MouseEvent constructor accepts clientX/clientY in init dict.
   const ev = new MouseEvent(type, { clientX, clientY, bubbles: true })
   document.dispatchEvent(ev)
 }
@@ -69,7 +62,6 @@ describe('useDragHandle', () => {
     expect(onEnd).toHaveBeenCalledTimes(1)
     expect(onEnd.mock.calls[0][1]).toMatchObject({ startX: 0, startY: 0, deltaX: 12, deltaY: 9 })
 
-    // After mouseup, further document events should NOT reach onMove.
     onMove.mockClear()
     act(() => fireDocMouseEvent('mousemove', 50, 50))
     expect(onMove).not.toHaveBeenCalled()
@@ -99,7 +91,6 @@ describe('useDragHandle', () => {
 
   it('sets data-resizing on the handle ref during the drag and removes on mouseup', () => {
     const { result } = renderHook(() => useDragHandle({ onMove: vi.fn() }))
-    // Attach a real DOM element to the hook's ref so the attribute lands somewhere.
     const handle = document.createElement('div')
     document.body.appendChild(handle)
     ;(result.current.handleProps.ref as React.MutableRefObject<HTMLElement | null>).current = handle
@@ -130,7 +121,6 @@ describe('useDragHandle', () => {
 
     act(() => unmount())
 
-    // Cursor + userSelect restored, attribute removed, listeners detached.
     expect(document.body.style.cursor).toBe('')
     expect(document.body.style.userSelect).toBe('')
     expect(handle.hasAttribute('data-resizing')).toBe(false)
@@ -139,7 +129,6 @@ describe('useDragHandle', () => {
     act(() => fireDocMouseEvent('mousemove', 100, 100))
     expect(onMove).not.toHaveBeenCalled()
 
-    // onEnd should NOT have fired — unmount is not a successful drag-end.
     expect(onEnd).not.toHaveBeenCalled()
 
     document.body.removeChild(handle)

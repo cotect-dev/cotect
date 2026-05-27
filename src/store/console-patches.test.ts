@@ -33,12 +33,10 @@ describe('console monkey-patches and formatArgs', () => {
     it('handles circular references gracefully (falls back to String)', () => {
       const obj: Record<string, unknown> = { a: 1 }
       obj.self = obj
-      // Should not throw -- the catch branch in formatArgs handles this
       expect(() => console.log('circular:', obj)).not.toThrow()
       const entries = useConsoleStore.getState().entries
       const entry = entries.find((e) => e.message.includes('circular:'))
       expect(entry).toBeDefined()
-      // Circular objects can't be JSON-stringified, so formatArgs falls back to String()
       expect(entry!.message).toContain('[object Object]')
     })
 
@@ -47,7 +45,6 @@ describe('console monkey-patches and formatArgs', () => {
       const entries = useConsoleStore.getState().entries
       const entry = entries.find((e) => e.message.includes('values:'))
       expect(entry).toBeDefined()
-      // null → JSON.stringify(null) = "null", undefined → JSON.stringify(undefined) = undefined → String(undefined) = "undefined"
       expect(entry!.message).toContain('null')
       expect(entry!.message).toContain('undefined')
     })

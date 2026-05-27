@@ -7,10 +7,7 @@ import { isImageFile } from '@/lib/constants'
 import { isTestFile } from '@/lib/fileClassification'
 import { useCanvasStore } from '@/store/canvas'
 
-/**
- * Height must exactly match the pinned CodeMirror line-height (18px) so that
- * ref nodes stay aligned 1:1 with source lines without cumulative drift.
- */
+// Must match CodeMirror line-height (18px) to keep ref nodes aligned with source lines.
 export const REF_HEIGHT = 18
 
 export function Pill({ item }: { item: ImportRefItem }) {

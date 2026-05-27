@@ -28,7 +28,5 @@ interface RelativeTimeProps {
 export default memo(function RelativeTime({ timestamp, className }: RelativeTimeProps) {
   useSyncExternalStore(subscribe, getSnapshot)
   const text = formatRelativeTime(timestamp)
-  // Memo returns the same JSX reference when text/className are unchanged,
-  // letting React short-circuit reconciliation without touching the DOM.
   return useMemo(() => <span className={className}>{text}</span>, [text, className])
 })

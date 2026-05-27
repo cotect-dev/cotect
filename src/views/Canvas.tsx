@@ -59,7 +59,6 @@ function ColumnEdge({ sourceX, sourceY, targetX, targetY, style }: EdgeProps) {
 
 const edgeTypes = { column: ColumnEdge }
 
-// Matches anchorViewport(0, 0): column 0 at MARGIN before any effect runs.
 const defaultViewport: RFViewport = { x: CANVAS_MARGIN, y: CANVAS_MARGIN, zoom: 1 }
 
 function CanvasFlow() {
@@ -76,9 +75,7 @@ function CanvasFlow() {
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
   const depthChainLength = useCanvasStore((s) => s.depthChain.length)
 
-  // Seed from the DOM so `prevPanelWidth` is in sync from the first paint —
-  // starting at 0 made the first panel-resize effect shift the viewport by
-  // −panelW.
+  // Seed from DOM — starting at 0 would cause the first panel-resize to shift by −panelW.
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
     const el =
       typeof document !== 'undefined'
@@ -99,8 +96,7 @@ function CanvasFlow() {
     return () => observer.disconnect()
   }, [])
 
-  // Skip if already initialized for this rootPath — view switches remount
-  // CanvasFlow, and re-running initRoot would reset the user's selection.
+  // View switches remount CanvasFlow — skip if already initialized to avoid resetting selection.
   useEffect(() => {
     if (!rootPath) return
     const state = useCanvasStore.getState()
@@ -138,8 +134,7 @@ function CanvasFlow() {
     }
   }, [reactFlow])
 
-  // On column change, anchor the viewport at panelW + MARGIN and clamp to
-  // the focused node. First run restores a saved viewport from a view switch.
+  // First run restores a saved viewport from a view switch.
   const isFirstAnchorRef = useRef(true)
   useLayoutEffect(() => {
     const panelW = readPanelW()
@@ -165,8 +160,7 @@ function CanvasFlow() {
     void reactFlow.setViewport({ ...target, zoom: 1 }, { duration: isFirst ? 0 : 100 })
   }, [currentColumnIndex, depthChainLength]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Shift viewport on panel resize, then re-clamp so a panel grow that
-  // covers the focused node is auto-corrected.
+  // Re-clamp after panel resize so a growing panel doesn't cover the focused node.
   useEffect(() => {
     const delta = leftPanelWidth - prevPanelWidth.current
     prevPanelWidth.current = leftPanelWidth
@@ -179,8 +173,7 @@ function CanvasFlow() {
     void reactFlow.setViewport({ ...target, zoom: vp.zoom }, { duration: 0 })
   }, [leftPanelWidth]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Focus-only change: clamp the viewport to keep the new focus visible.
-  // Skipped on column changes (the anchor effect already ran with a clamp).
+  // Skipped on column changes — the anchor effect already clamped.
   const prevColumnIndexRef = useRef(currentColumnIndex)
   useEffect(() => {
     const columnChanged = prevColumnIndexRef.current !== currentColumnIndex
@@ -333,9 +326,7 @@ function ViewSwitcher() {
     return () => document.removeEventListener('keydown', handler)
   }, [setViewMode])
 
-  // Graph / Settings sit under the panel overlay (z-10) — using
-  // insets.left/right here would re-center within the gap and drift when
-  // side panels have asymmetric widths.
+  // Using insets here would drift when side panels have asymmetric widths.
   const contentStyle = {
     top: insets.top,
     left: 0,
@@ -343,9 +334,7 @@ function ViewSwitcher() {
     bottom: 0,
   } as const
 
-  // Inactive views stay mounted (opacity 0, zIndex -1) to preserve scroll /
-  // viewport state. opacity 0 (not display:none) keeps layout measurements
-  // valid for ReactFlow; children cannot override a parent's opacity.
+  // opacity 0 (not display:none) keeps ReactFlow layout measurements valid.
   const active = (view: typeof viewMode) => viewMode === view
   const insetStyle = (view: typeof viewMode) => ({
     ...contentStyle,

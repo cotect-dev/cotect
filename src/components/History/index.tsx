@@ -84,9 +84,7 @@ export default function History() {
   const [baseLog, setBaseLog] = useState(log)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Reset extra commits when the base log changes (new git refresh).
-  // Adjusting state during render is the React-documented pattern for
-  // resetting derived state — cheaper than a useEffect round-trip.
+  // Adjust state during render to reset derived state (avoids useEffect round-trip).
   if (log !== baseLog) {
     setBaseLog(log)
     setExtraCommits([])

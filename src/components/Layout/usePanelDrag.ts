@@ -19,14 +19,12 @@ const TAB_INTO_HEIGHT = 32
 
 export interface DragState {
   panelId: string
-  /** Set when dragging a whole group. */
   panelIds?: string[]
   isGroup: boolean
   fromPosition: PanelPosition
   overPosition: PanelPosition | null
   insertIndex: number
   neighborIndex: number
-  /** Non-null when hovering over a header to merge as tab. */
   tabIntoGroupKey: string | null
 }
 
@@ -73,8 +71,6 @@ export function usePanelDrag() {
       const zoneGroups = panels[position]
       const zoneSizes = useLayoutStore.getState().sizes[position]
 
-      // Drop the dragged panel from sizes; the cross-window overlay skips
-      // this step since the dragged panel isn't in its zones.
       const containsDragged = (group: string[]) =>
         isGroup ? group[0] === dragPanelId : group.includes(dragPanelId)
       const visibleSizes = zoneGroups

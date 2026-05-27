@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { create } from 'zustand'
 
-// Mock platform
 const mockStorageGet = vi.fn().mockResolvedValue(null)
 const mockStorageSetSync = vi.fn()
 const mockSyncedSet = vi.fn()
@@ -22,7 +21,6 @@ vi.mock('@/services/platform', () => ({
   }),
 }))
 
-// Mock projectId
 vi.mock('@/lib/projectId', () => ({
   computeProjectId: vi.fn().mockResolvedValue('test-project-abc12345'),
 }))

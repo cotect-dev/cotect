@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock BroadcastChannel with addEventListener/removeEventListener support
 class MockBroadcastChannel {
   static instances: MockBroadcastChannel[] = []
   name: string
@@ -27,7 +26,6 @@ class MockBroadcastChannel {
   }
 }
 
-// Install mock before import
 vi.stubGlobal('BroadcastChannel', MockBroadcastChannel)
 
 const store: Record<string, string> = {}

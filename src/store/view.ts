@@ -3,8 +3,6 @@ import { createStoreWithHMR } from '@/lib/hmr'
 
 export type ViewMode = 'files' | 'graph' | 'settings'
 
-export const VIEW_MODES: ViewMode[] = ['files', 'graph', 'settings']
-
 interface ViewState {
   viewMode: ViewMode
   setViewMode: (mode: ViewMode) => void

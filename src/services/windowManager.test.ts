@@ -73,7 +73,6 @@ describe('windowManager', () => {
   beforeEach(() => {
     storage.clear()
     vi.clearAllMocks()
-    // Re-bind storage mocks after clearAllMocks
     mockPlatform.storage.get.mockImplementation(async (key: string) => storage.get(key) ?? null)
     mockPlatform.storage.set.mockImplementation(async (key: string, value: unknown) => {
       storage.set(key, value)
@@ -116,9 +115,6 @@ describe('windowManager', () => {
 
     it('removes layout and associated data', () => {
       saveLayout('win-1', layout)
-      // Legacy `wm-zones-${id}` key is still cleaned up by removeLayout to
-      // garbage-collect entries written before zoneSizes was unified into
-      // PersistedLayout. Seed it directly to verify the cleanup path.
       mockPlatform.storage.setSync('wm-zones-win-1', { left: 200, right: 300, bottom: 150 })
       saveGeometry('win-1', { x: 0, y: 0, width: 800, height: 600, isMaximized: false })
 

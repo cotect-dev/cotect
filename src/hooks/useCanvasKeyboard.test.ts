@@ -169,7 +169,6 @@ describe('useCanvasKeyboard', () => {
     editable.setAttribute('tabindex', '0')
     container.appendChild(editable)
     editable.focus()
-    // Stub isContentEditable since jsdom doesn't implement it
     Object.defineProperty(editable, 'isContentEditable', { value: true })
 
     dispatchKey('w', editable)
@@ -293,7 +292,6 @@ describe('useCanvasKeyboard', () => {
       const ref = { current: container }
       renderHook(() => useCanvasKeyboard(ref))
 
-      // Move focus outside the canvas container.
       outsideButton.focus()
       expect(document.activeElement).toBe(outsideButton)
 

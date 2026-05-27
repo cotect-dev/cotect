@@ -128,7 +128,6 @@ describe('layout store - state management', () => {
       useLayoutStore.getState().addPanel('history', 'left')
       useLayoutStore.getState().resizePanels('left', 0, 0.7)
       const { sizes } = useLayoutStore.getState()
-      // sizes should sum to original total
       const total = sizes.left[0] + sizes.left[1]
       expect(total).toBeCloseTo(1, 5)
       expect(sizes.left[0]).toBeGreaterThan(sizes.left[1])
