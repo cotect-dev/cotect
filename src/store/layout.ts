@@ -12,14 +12,11 @@ export interface PanelDefinition {
   fallbackPosition?: PanelPosition
 }
 
-export type PanelGroup = 'git' | 'agent' | 'dev'
+export type PanelGroup = 'git' | 'dev'
 
 export const PANEL_DEFINITIONS: (PanelDefinition & { group: PanelGroup })[] = [
   { id: 'changes', label: 'Changes', defaultPosition: 'left', group: 'git' },
   { id: 'history', label: 'History', defaultPosition: 'left', group: 'git' },
-  { id: 'tasks', label: 'Tasks', defaultPosition: 'right', group: 'agent' },
-  // dev-group panels are toggled by hotkey, not the View menu (which lists only
-  // git/tools/agent groups). console is opened with F12 in DEV builds.
   {
     id: 'console',
     label: 'Console',

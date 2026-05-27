@@ -21,7 +21,6 @@ preloadChunk(import('@/components/Changes'), 'Changes')
 if (DEV) preloadChunk(import('@/components/Console'), 'Console')
 preloadChunk(import('@/components/Settings'), 'Settings')
 preloadChunk(import('@/components/History'), 'History')
-preloadChunk(import('@/components/Tasks'), 'Tasks')
 
 async function bootstrap() {
   await initPlatform()

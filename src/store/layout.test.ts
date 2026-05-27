@@ -13,7 +13,6 @@ describe('layout store - pure functions', () => {
   describe('getPanelLabel', () => {
     it('returns label for known panel', () => {
       expect(getPanelLabel('changes')).toBe('Changes')
-      expect(getPanelLabel('tasks')).toBe('Tasks')
       expect(getPanelLabel('console')).toBe('Console')
       expect(getPanelLabel('history')).toBe('History')
     })
@@ -26,7 +25,6 @@ describe('layout store - pure functions', () => {
   describe('getEffectivePosition', () => {
     it('returns default position in main window', () => {
       expect(getEffectivePosition('changes', false)).toBe('left')
-      expect(getEffectivePosition('tasks', false)).toBe('right')
       expect(getEffectivePosition('console', false)).toBe('bottom')
     })
 
@@ -36,7 +34,6 @@ describe('layout store - pure functions', () => {
 
     it('returns default for non-bottom panels in child window', () => {
       expect(getEffectivePosition('changes', true)).toBe('left')
-      expect(getEffectivePosition('tasks', true)).toBe('right')
     })
 
     it('returns left for unknown panel', () => {

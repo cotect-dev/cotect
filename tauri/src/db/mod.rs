@@ -7,9 +7,7 @@ pub type Conn = r2d2::PooledConnection<SqliteConnectionManager>;
 
 pub mod commands;
 pub mod kv;
-pub mod providers;
 pub mod repos;
-pub mod usage;
 
 pub struct Db {
     pool: Pool<SqliteConnectionManager>,
@@ -60,12 +58,9 @@ mod tests {
             .unwrap();
         assert_eq!(v, 1);
         for t in &[
-            "providers",
-            "active_assignment",
             "kv",
             "repos",
             "structure_notes",
-            "agent_usage",
         ] {
             let n: i32 = c
                 .query_row(

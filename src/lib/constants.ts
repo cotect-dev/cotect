@@ -82,7 +82,7 @@ export function getImageMimeType(name: string): string {
 }
 
 export const DEFAULT_MAIN_LAYOUT: PersistedLayout = {
-  panels: { left: [['changes']], right: [['tasks']], bottom: [] },
-  sizes: { left: [1], right: [1], bottom: [] },
+  panels: { left: [['changes']], right: [], bottom: [] },
+  sizes: { left: [1], right: [], bottom: [] },
   activeTab: {},
 }

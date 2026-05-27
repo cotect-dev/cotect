@@ -29,30 +29,19 @@ import { useViewStore, type ViewMode } from '@/store/view'
 import RelativeTime from '@/components/RelativeTime'
 import { DEV } from '@/lib/env'
 import { useState, useCallback, Fragment } from 'react'
-import {
-  GitBranch,
-  ChevronDown,
-  FolderTree,
-  Network,
-  Settings as SettingsIcon,
-  BarChart3,
-} from 'lucide-react'
+import { GitBranch, ChevronDown, FolderTree, Network, Settings as SettingsIcon } from 'lucide-react'
 
 const VIEW_BUTTONS: { mode: ViewMode; key: string; label: string; Icon: typeof FolderTree }[] = [
   { mode: 'files', key: '1', label: 'Files', Icon: FolderTree },
   { mode: 'graph', key: '2', label: 'Graph', Icon: Network },
   { mode: 'settings', key: '3', label: 'Settings', Icon: SettingsIcon },
-  { mode: 'analytics', key: '4', label: 'Analytics', Icon: BarChart3 },
 ]
 
 interface TopBarProps {
   onResetZoneSizes?: () => void
 }
 
-const PANEL_GROUPS = [
-  { group: 'git', label: 'Git' },
-  { group: 'agent', label: 'Agent' },
-] as const
+const PANEL_GROUPS = [{ group: 'git', label: 'Git' }] as const
 
 export default function TopBar({ onResetZoneSizes }: TopBarProps) {
   const [testError, setTestError] = useState(false)
