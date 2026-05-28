@@ -63,9 +63,34 @@ interface RefLine {
   showConnector: boolean
 }
 
-function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
-  const imports = refs.filter((r) => r.kind === 'import')
+function toItem(ref: ImportRef): ImportRefItem {
+  return {
+    label: ref.label,
+    resolvedPath: ref.resolvedPath,
+    kind: ref.kind,
+    targetLine: ref.targetLine,
+  }
+}
+
+function computeRefLineLayouts(refs: ImportRef[]): {
+  inlineImports: Map<number, ImportRefItem[]>
+  rightSide: Map<number, RefLine>
+} {
+  const inlineImports = new Map<number, ImportRefItem[]>()
+  for (const ref of refs.filter((r) => r.kind === 'import')) {
+    if (!inlineImports.has(ref.line)) inlineImports.set(ref.line, [])
+    inlineImports.get(ref.line)!.push(toItem(ref))
+  }
+
+  const rightSide = new Map<number, RefLine>()
   const importedBy = refs.filter((r) => r.kind === 'imported-by')
+  if (importedBy.length === 0) return { inlineImports, rightSide }
+
+  const ibByLine = new Map<number, ImportRef[]>()
+  for (const ref of importedBy) {
+    if (!ibByLine.has(ref.line)) ibByLine.set(ref.line, [])
+    ibByLine.get(ref.line)!.push(ref)
+  }
 
   const lineEntries = new Map<number, ImportRef[]>()
   const add = (line: number, ref: ImportRef) => {
@@ -73,53 +98,37 @@ function computeRefLineLayout(refs: ImportRef[]): Map<number, RefLine> {
     lineEntries.get(line)!.push(ref)
   }
 
-  for (const ref of imports) add(ref.line, ref)
-
   const ibAnchorLines = new Set<number>()
-  if (importedBy.length > 0) {
-    const ibByLine = new Map<number, ImportRef[]>()
-    for (const ref of importedBy) {
-      if (!ibByLine.has(ref.line)) ibByLine.set(ref.line, [])
-      ibByLine.get(ref.line)!.push(ref)
+  const sortedAnchors = [...ibByLine.keys()].sort((a, b) => a - b)
+  for (const anchorLine of sortedAnchors) {
+    ibAnchorLines.add(anchorLine)
+    const group = ibByLine.get(anchorLine)!
+    const count = group.length
+    let maxRows = 0
+    let probe = anchorLine
+    while (maxRows < count) {
+      const occupants = lineEntries.get(probe)
+      if (occupants && occupants.some((r) => r.kind === 'imported-by')) break
+      maxRows++
+      probe++
     }
-
-    const sortedAnchors = [...ibByLine.keys()].sort((a, b) => a - b)
-    for (const anchorLine of sortedAnchors) {
-      ibAnchorLines.add(anchorLine)
-      const group = ibByLine.get(anchorLine)!
-      const count = group.length
-      let maxRows = 0
-      let probe = anchorLine
-      while (maxRows < count) {
-        const occupants = lineEntries.get(probe)
-        if (occupants && occupants.some((r) => r.kind === 'imported-by')) break
-        maxRows++
-        probe++
-      }
-      if (maxRows < 1) maxRows = 1
-      const numCols = Math.ceil(count / maxRows)
-      const rowsPerCol = Math.ceil(count / numCols)
-      for (let ri = 0; ri < count; ri++) {
-        const line = anchorLine + (ri % rowsPerCol)
-        add(line, group[ri])
-      }
+    if (maxRows < 1) maxRows = 1
+    const numCols = Math.ceil(count / maxRows)
+    const rowsPerCol = Math.ceil(count / numCols)
+    for (let ri = 0; ri < count; ri++) {
+      const line = anchorLine + (ri % rowsPerCol)
+      add(line, group[ri])
     }
   }
 
-  const result = new Map<number, RefLine>()
   for (const [line, entries] of lineEntries) {
-    const items: ImportRefItem[] = entries.map((ref) => ({
-      label: ref.label,
-      resolvedPath: ref.resolvedPath,
-      kind: ref.kind,
-    }))
-    const hasIB = entries.some((e) => e.kind === 'imported-by')
-    const hasImport = entries.some((e) => e.kind === 'import')
-    const showConnector = hasImport || (hasIB && ibAnchorLines.has(line))
-    result.set(line, { items, showConnector })
+    rightSide.set(line, {
+      items: entries.map(toItem),
+      showConnector: ibAnchorLines.has(line),
+    })
   }
 
-  return result
+  return { inlineImports, rightSide }
 }
 
 function CodeNodeSkeleton({ lineCount, startLine }: { lineCount: number; startLine: number }) {
@@ -181,9 +190,16 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [nodeWidth, setNodeWidth] = useState<number>(storeWidth)
   const [editorHeight, setEditorHeight] = useState(0)
   const refOverlayRef = useRef<HTMLDivElement>(null)
+  const inlineOverlayRef = useRef<HTMLDivElement>(null)
   const [geometryVer, setGeometryVer] = useState(0)
   const [pinnedStripe, setPinnedStripe] = useState<number | null>(null)
   const [linePositions, setLinePositions] = useState<Map<number, number>>(new Map())
+  // Tracks the headContent value that linePositions was measured against. Pills
+  // wait until this matches the current headContent so they never render at
+  // pre-merge coordinates after the diff blocks are applied.
+  const [positionsHeadContent, setPositionsHeadContent] = useState<string | null | undefined>(
+    undefined,
+  )
   const [minimapStripes, setMinimapStripes] = useState<
     { startFrac: number; endFrac: number; color: string; fromPos: number }[]
   >([])
@@ -193,9 +209,15 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     const col = s.columns[previewIdx]
     return col?.kind === 'file' ? col.importRefs : undefined
   })
-  const refLineLayout = useMemo(() => {
-    if (!importRefs || importRefs.length === 0) return null
-    return computeRefLineLayout(importRefs)
+  const { inlineImports, rightSideLayout } = useMemo(() => {
+    if (!importRefs || importRefs.length === 0) {
+      return { inlineImports: null, rightSideLayout: null }
+    }
+    const { inlineImports: inline, rightSide } = computeRefLineLayouts(importRefs)
+    return {
+      inlineImports: inline.size > 0 ? inline : null,
+      rightSideLayout: rightSide.size > 0 ? rightSide : null,
+    }
   }, [importRefs])
 
   const hasHeadOverride = data.headOverride !== undefined
@@ -211,9 +233,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   }, [hasHeadOverride, gitStatus, data.filePath, repoPath])
 
   const isNewFile = gitEntry?.status === 'A' || gitEntry?.status === 'U'
-  const [headContent, setHeadContent] = useState<string | null>(null)
+  // `undefined` means "not yet determined"; we treat it as null for the merge
+  // extension but use it to gate pill rendering so they don't appear until the
+  // editor's diff blocks have been applied.
+  const [headContent, setHeadContent] = useState<string | null | undefined>(undefined)
   const headContentRef = useRef<string | null>(null)
-  headContentRef.current = headContent
+  headContentRef.current = headContent ?? null
 
   useEffect(() => {
     if (hasHeadOverride) {
@@ -495,6 +520,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       const handleEditorScroll = () => {
         const ty = `translateY(${-scrollDOM.scrollTop}px)`
         if (refOverlayRef.current) refOverlayRef.current.style.transform = ty
+        if (inlineOverlayRef.current) inlineOverlayRef.current.style.transform = ty
       }
       scrollDOM.addEventListener('scroll', handleEditorScroll, { passive: true })
       scrollHandlerRef.current = { scrollDOM, handler: handleEditorScroll }
@@ -521,7 +547,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
   }, [data.code, data.filePath, data.startLine]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (headContent === undefined) return
     const view = viewRef.current
     if (!view) return
     view.dispatch({
@@ -537,30 +564,74 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     })
   }, [lineWrap])
 
+  const pendingScroll = useCanvasStore((s) => s.pendingScroll)
+  useEffect(() => {
+    if (!editorReady || !pendingScroll) return
+    if (!samePath(data.filePath, pendingScroll.filePath, repoPath ?? '')) return
+    const view = viewRef.current
+    if (!view) return
+
+    const localLine = pendingScroll.line - data.startLine + 1
+    if (localLine < 1 || localLine > view.state.doc.lines) {
+      useCanvasStore.getState().setPendingScroll(null)
+      return
+    }
+    const linePos = view.state.doc.line(localLine).from
+    view.dispatch({
+      selection: { anchor: linePos },
+      effects: EditorView.scrollIntoView(linePos, { y: 'center' }),
+    })
+    view.focus()
+    useCanvasStore.getState().setPendingScroll(null)
+  }, [editorReady, pendingScroll, data.filePath, data.startLine, repoPath])
+
   useLayoutEffect(() => {
     const view = viewRef.current
-    if (!view || !refLineLayout || refLineLayout.size === 0) {
+    if (!view || (!rightSideLayout && !inlineImports)) {
       setLinePositions(new Map())
       return
     }
-    const positions = new Map<number, number>()
-    const maxLine = view.state.doc.lines
-    const lastBlock = view.lineBlockAt(view.state.doc.line(maxLine).from)
-    const beyondTop = lastBlock.top + lastBlock.height
-
-    for (const line of refLineLayout.keys()) {
-      if (line >= 1 && line <= maxLine) {
-        try {
-          positions.set(line, view.lineBlockAt(view.state.doc.line(line).from).top)
-        } catch {
-          /* line out of range */
+    // Use requestMeasure so we read line tops during CodeMirror's DOM-read
+    // phase, when heights are guaranteed measured (not still estimates from
+    // the initial HeightMap). Synchronous lineBlockAt right after `new
+    // EditorView` can return estimate-based tops that shift once CM does
+    // its first measure pass.
+    let cancelled = false
+    const headContentAtRequest = headContent
+    view.requestMeasure({
+      key: 'codeNode-linePositions',
+      read: (v) => {
+        const positions = new Map<number, number>()
+        const maxLine = v.state.doc.lines
+        const lastBlock = v.lineBlockAt(v.state.doc.line(maxLine).from)
+        const beyondTop = lastBlock.top + lastBlock.height
+        const allLines = new Set<number>([
+          ...(rightSideLayout?.keys() ?? []),
+          ...(inlineImports?.keys() ?? []),
+        ])
+        for (const line of allLines) {
+          if (line >= 1 && line <= maxLine) {
+            try {
+              positions.set(line, v.lineBlockAt(v.state.doc.line(line).from).top)
+            } catch {
+              /* line out of range */
+            }
+          } else if (line > maxLine) {
+            positions.set(line, beyondTop + (line - maxLine - 1) * REF_HEIGHT)
+          }
         }
-      } else if (line > maxLine) {
-        positions.set(line, beyondTop + (line - maxLine - 1) * REF_HEIGHT)
-      }
+        return positions
+      },
+      write: (positions) => {
+        if (cancelled) return
+        setLinePositions(positions)
+        setPositionsHeadContent(headContentAtRequest)
+      },
+    })
+    return () => {
+      cancelled = true
     }
-    setLinePositions(positions)
-  }, [refLineLayout, geometryVer])
+  }, [rightSideLayout, inlineImports, geometryVer, headContent])
 
   useLayoutEffect(() => {
     const view = viewRef.current
@@ -597,15 +668,25 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   }, [geometryVer, headContent])
 
   const overlayHeight = useMemo(() => {
-    if (!refLineLayout || refLineLayout.size === 0) return editorHeight
+    if (!rightSideLayout || rightSideLayout.size === 0) return editorHeight
     let maxBottom = 0
-    for (const [line] of refLineLayout) {
+    for (const [line] of rightSideLayout) {
       const top = linePositions.get(line)
       const posTop = CM_PAD_TOP + (top ?? (line - 1) * REF_HEIGHT)
       maxBottom = Math.max(maxBottom, posTop + REF_HEIGHT)
     }
     return Math.max(editorHeight, maxBottom)
-  }, [refLineLayout, editorHeight, linePositions])
+  }, [rightSideLayout, editorHeight, linePositions])
+
+  // Pills stay hidden until: the editor is mounted, the file's HEAD content
+  // has been resolved (so the merge view's deletion blocks are applied), and
+  // linePositions has been measured against that same headContent — so the
+  // tops we render against actually match the editor's current layout.
+  const pillsReady =
+    editorReady &&
+    headContent !== undefined &&
+    positionsHeadContent === headContent &&
+    linePositions.size > 0
 
   const lineCount = data.endLine - data.startLine + 1
   const displayPath = toRepoRelative(data.filePath, repoPath)
@@ -701,6 +782,29 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
               maxHeight={`calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`}
             />
           )}
+          {!mdPreview && inlineImports && pillsReady && (
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              <div ref={inlineOverlayRef} className="absolute inset-0">
+                {[...inlineImports.entries()].map(([line, items]) => {
+                  const top = linePositions.get(line)
+                  return (
+                    <div
+                      key={line}
+                      className="absolute right-1 flex items-center gap-0.5 justify-end"
+                      style={{
+                        top: CM_PAD_TOP + (top ?? (line - 1) * REF_HEIGHT),
+                        height: REF_HEIGHT,
+                      }}
+                    >
+                      {items.map((item, idx) => (
+                        <Pill key={`${item.kind}:${item.resolvedPath}:${idx}`} item={item} />
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
         {!mdPreview && !isReadOnly && minimapStripes.length > 0 && editorHeight > 0 && (
           <div className="relative shrink-0 pointer-events-auto z-10" style={{ width: 22 }}>
@@ -768,7 +872,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             </div>
           </div>
         )}
-        {!mdPreview && refLineLayout && editorHeight > 0 && (
+        {!mdPreview && rightSideLayout && pillsReady && (
           <div
             className="absolute top-0 pointer-events-none"
             style={{
@@ -779,11 +883,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             }}
           >
             <div ref={refOverlayRef}>
-              {[...refLineLayout.entries()]
+              {[...rightSideLayout.entries()]
                 .sort(([a], [b]) => a - b)
                 .map(([line, layout]) => {
-                  const lineColor =
-                    layout.items[0]?.kind === 'imported-by' ? 'bg-violet-400/20' : 'bg-green-400/20'
                   const top = linePositions.get(line)
                   return (
                     <div
@@ -796,11 +898,11 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
                     >
                       {layout.showConnector ? (
                         <div className="flex items-center shrink-0" style={{ width: REF_GAP + 12 }}>
-                          <div className={`h-px flex-1 ${lineColor}`} />
+                          <div className="h-px flex-1 bg-violet-400/20" />
                           <span className="text-[9px] text-muted-foreground/40 font-mono leading-none px-px">
                             {line}
                           </span>
-                          <div className={`h-px flex-1 ${lineColor}`} />
+                          <div className="h-px flex-1 bg-violet-400/20" />
                         </div>
                       ) : (
                         <div className="shrink-0" style={{ width: REF_GAP + 12 }} />
@@ -839,6 +941,13 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       <Handle type="source" id="right" position={Position.Right} className="opacity-0" />
       <Handle type="target" position={Position.Top} className="opacity-0" />
       <Handle type="target" id="left" position={Position.Left} className="opacity-0" />
+      <Handle
+        type="target"
+        id="title"
+        position={Position.Left}
+        style={{ top: 14 }}
+        className="opacity-0"
+      />
     </div>
   )
 })

@@ -8,7 +8,7 @@ import { joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
 import { useGitStore } from '@/store/git'
 import { useGraphStore } from '@/store/graph'
-import { parseImportsWithLines, parseImportsWithBindings } from '@/services/treesitter'
+import { parseImportsWithBindings } from '@/services/treesitter'
 import { resolveImport } from '@/services/importResolver'
 import { getConfigForFile } from '@/services/treesitter-queries'
 
@@ -21,6 +21,8 @@ export interface ImportRef {
   visualLine: number
   kind: ImportRefKind
   importedNames?: string[]
+  /** 1-based line in `resolvedPath` to scroll to when the user clicks the pill. */
+  targetLine?: number
 }
 
 export interface Column {
@@ -235,24 +237,50 @@ export async function resolveFileImportRefs(
     return idx >= 0 && idx < vmap.length ? vmap[idx] + 1 : srcLine
   }
 
-  const importLines = await parseImportsWithLines(repoRel, source)
+  const importBindings = await parseImportsWithBindings(repoRel, source)
   const refs: ImportRef[] = []
   const seen = new Set<string>()
-  for (const imp of importLines) {
+  const platform = getPlatform()
+
+  const importTargets: { resolved: string; names: string[]; line: number; label: string }[] = []
+  for (const imp of importBindings) {
     const resolved = resolveImport(imp.specifier, repoRel, knownFiles, config.id)
     if (!resolved || resolved === repoRel) continue
     if (seen.has(resolved)) continue
     const label = resolved.split('/').pop() || resolved
     if (isTestFile(label)) continue
     seen.add(resolved)
-    refs.push({
-      resolvedPath: resolved,
-      label,
-      line: imp.line,
-      visualLine: toVisual(imp.line),
-      kind: 'import',
-    })
+    importTargets.push({ resolved, names: imp.names, line: imp.line, label })
   }
+
+  const importTargetLines = await Promise.all(
+    importTargets.map(async ({ resolved, names }): Promise<number | undefined> => {
+      try {
+        const absPath = joinPath(repoPath, resolved)
+        const targetSource = await platform.fs.readFile(absPath)
+        const { exportMap: targetExports, firstExportLine: targetFirstExport } =
+          extractExportLines(targetSource)
+        for (const name of names) {
+          const line = targetExports.get(name)
+          if (line !== undefined) return line
+        }
+        return targetFirstExport ?? undefined
+      } catch {
+        return undefined
+      }
+    }),
+  )
+
+  importTargets.forEach((t, i) => {
+    refs.push({
+      resolvedPath: t.resolved,
+      label: t.label,
+      line: t.line,
+      visualLine: toVisual(t.line),
+      kind: 'import',
+      targetLine: importTargetLines[i],
+    })
+  })
 
   const directImporters = allEdges
     .filter((e) => e.target === repoRel && e.source !== repoRel)
@@ -260,19 +288,7 @@ export async function resolveFileImportRefs(
     .map((e) => e.source)
 
   if (directImporters.length > 0) {
-    const sourceLines = source.split('\n')
-    const exportMap = new Map<string, number>()
-    let firstExportLine: number | null = null
-    for (let li = 0; li < sourceLines.length; li++) {
-      const trimmed = sourceLines[li].trimStart()
-      if (!trimmed.startsWith('export ')) continue
-      if (firstExportLine === null) firstExportLine = li + 1
-      if (trimmed.includes(' from ')) continue
-      const m = trimmed.match(
-        /^export\s+(?:declare\s+)?(?:default\s+)?(?:type|interface|const|let|var|function|async\s+function|class|enum|abstract\s+class)\s+(\w+)/,
-      )
-      if (m) exportMap.set(m[1], li + 1)
-    }
+    const { exportMap, firstExportLine } = extractExportLines(source)
 
     let fallbackAnchor = refs.length > 0 ? refs[refs.length - 1].line + 1 : 1
     if (exportMap.size > 0) {
@@ -281,30 +297,34 @@ export async function resolveFileImportRefs(
       fallbackAnchor = firstExportLine
     }
 
-    const platform = getPlatform()
+    type ImporterBinding = { imp: string; names: string[]; importLine: number | undefined }
     const directBindings = await Promise.all(
-      directImporters.map(async (imp): Promise<{ imp: string; names: string[] }> => {
+      directImporters.map(async (imp): Promise<ImporterBinding> => {
         try {
           const absPath = joinPath(repoPath, imp)
           const impSource = await platform.fs.readFile(absPath)
           const impConfig = getConfigForFile(imp)
-          if (!impConfig) return { imp, names: [] }
+          if (!impConfig) return { imp, names: [], importLine: undefined }
           const bindings = await parseImportsWithBindings(imp, impSource)
           const names: string[] = []
+          let importLine: number | undefined
           for (const b of bindings) {
             const resolved = resolveImport(b.specifier, imp, knownFiles, impConfig.id)
-            if (resolved === repoRel) names.push(...b.names)
+            if (resolved === repoRel) {
+              names.push(...b.names)
+              if (importLine === undefined) importLine = b.line
+            }
           }
-          return { imp, names }
+          return { imp, names, importLine }
         } catch {
-          return { imp, names: [] }
+          return { imp, names: [], importLine: undefined }
         }
       }),
     )
 
     const exportedNames = new Set(exportMap.keys())
     const directImporterSet = new Set(directImporters)
-    const transitiveBindings: { imp: string; names: string[] }[] = []
+    const transitiveBindings: ImporterBinding[] = []
 
     for (const { imp: middleFile, names: middleNames } of directBindings) {
       const reExported = middleNames.filter((n) => exportedNames.has(n))
@@ -322,7 +342,7 @@ export async function resolveFileImportRefs(
       if (consumers.length === 0) continue
 
       const resolved = await Promise.all(
-        consumers.map(async (consumer): Promise<{ imp: string; names: string[] } | null> => {
+        consumers.map(async (consumer): Promise<ImporterBinding | null> => {
           try {
             const absPath = joinPath(repoPath, consumer)
             const src = await platform.fs.readFile(absPath)
@@ -330,13 +350,20 @@ export async function resolveFileImportRefs(
             if (!cfg) return null
             const bindings = await parseImportsWithBindings(consumer, src)
             const matchedNames: string[] = []
+            let importLine: number | undefined
             for (const b of bindings) {
               const res = resolveImport(b.specifier, consumer, knownFiles, cfg.id)
               if (res === middleFile) {
-                matchedNames.push(...b.names.filter((n) => reExportSet.has(n)))
+                const filtered = b.names.filter((n) => reExportSet.has(n))
+                if (filtered.length > 0) {
+                  matchedNames.push(...filtered)
+                  if (importLine === undefined) importLine = b.line
+                }
               }
             }
-            return matchedNames.length > 0 ? { imp: consumer, names: matchedNames } : null
+            return matchedNames.length > 0
+              ? { imp: consumer, names: matchedNames, importLine }
+              : null
           } catch {
             return null
           }
@@ -348,7 +375,7 @@ export async function resolveFileImportRefs(
 
     const allBindings = [...directBindings, ...transitiveBindings]
 
-    for (const { imp, names } of allBindings) {
+    for (const { imp, names, importLine } of allBindings) {
       if (seen.has(imp)) continue
       seen.add(imp)
       const label = imp.split('/').pop() || imp
@@ -371,6 +398,7 @@ export async function resolveFileImportRefs(
             visualLine: toVisual(anchorLine),
             kind: 'imported-by',
             importedNames: lineNames,
+            targetLine: importLine,
           })
         }
       } else {
@@ -381,12 +409,33 @@ export async function resolveFileImportRefs(
           visualLine: toVisual(fallbackAnchor),
           kind: 'imported-by',
           importedNames: names.length > 0 ? names : undefined,
+          targetLine: importLine,
         })
       }
     }
   }
 
   return refs
+}
+
+function extractExportLines(source: string): {
+  exportMap: Map<string, number>
+  firstExportLine: number | null
+} {
+  const exportMap = new Map<string, number>()
+  let firstExportLine: number | null = null
+  const lines = source.split('\n')
+  for (let li = 0; li < lines.length; li++) {
+    const trimmed = lines[li].trimStart()
+    if (!trimmed.startsWith('export ')) continue
+    if (firstExportLine === null) firstExportLine = li + 1
+    if (trimmed.includes(' from ')) continue
+    const m = trimmed.match(
+      /^export\s+(?:declare\s+)?(?:default\s+)?(?:type|interface|const|let|var|function|async\s+function|class|enum|abstract\s+class)\s+(\w+)/,
+    )
+    if (m) exportMap.set(m[1], li + 1)
+  }
+  return { exportMap, firstExportLine }
 }
 
 export function positionColumnNodes(

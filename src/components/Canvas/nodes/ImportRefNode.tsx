@@ -32,8 +32,8 @@ export function Pill({ item }: { item: ImportRefItem }) {
   const [hovered, setHovered] = useState(false)
 
   const handleClick = useCallback(() => {
-    void useCanvasStore.getState().focusFileByPath(item.resolvedPath)
-  }, [item.resolvedPath])
+    void useCanvasStore.getState().focusFileByPath(item.resolvedPath, item.targetLine)
+  }, [item.resolvedPath, item.targetLine])
 
   return (
     <div
