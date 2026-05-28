@@ -59,6 +59,8 @@ export type CanvasState = {
   savedViewport: { x: number; y: number } | null
   mdPreviewEnabled: boolean
   previewReady: boolean
+  /** Set by ref-pill clicks; consumed by CodeNode once the target editor mounts. */
+  pendingScroll: { filePath: string; line: number } | null
 
   setViewportHeight: (h: number) => void
   setFocus: (nodeId: string | null) => void
@@ -71,9 +73,10 @@ export type CanvasState = {
   setCodeNodeWidth: (width: number) => void
   setPreviewReady: (ready: boolean) => void
   updatePreview: () => Promise<void>
-  focusFileByPath: (repoRelativePath: string) => Promise<void>
+  focusFileByPath: (repoRelativePath: string, scrollToLine?: number) => Promise<void>
   navigateBack: () => Promise<void>
   showCommitDiff: (commitHash: string, filePath: string) => Promise<void>
+  setPendingScroll: (scroll: { filePath: string; line: number } | null) => void
 }
 
 export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =>
@@ -97,6 +100,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         savedViewport: null,
         mdPreviewEnabled: false,
         previewReady: true,
+        pendingScroll: null,
 
         onNodesChange: (changes) => {
           set({ nodes: applyNodeChanges(changes, get().nodes) })
@@ -206,7 +210,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           }
         },
 
-        focusFileByPath: async (repoRelativePath: string) => {
+        focusFileByPath: async (repoRelativePath: string, scrollToLine?: number) => {
           const { columns, lastOpenedFile, fileHistory } = get()
           const rootCol = columns[0]
           if (!rootCol) return
@@ -257,6 +261,10 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
               focusedNodeId: hasFile ? fileNodeId : null,
               cameraY: CANVAS_MARGIN,
               fileHistory: nextHistory,
+              pendingScroll:
+                scrollToLine !== undefined
+                  ? { filePath: repoRelativePath, line: scrollToLine }
+                  : null,
             })
 
             flattenAndRender(get, set)
@@ -265,6 +273,8 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
             console.warn('[canvas] focusFileByPath failed:', err)
           }
         },
+
+        setPendingScroll: (scroll) => set({ pendingScroll: scroll }),
 
         navigateBack: async () => {
           const { fileHistory } = get()
@@ -791,12 +801,15 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
 
     if (i === currentColumnIndex && !previewReady) continue
 
+    const targetNode = columns[i + 1]?.nodes.find((n) => n.id === targetId)
+    const isCodeTarget = targetNode?.type === 'codeNode'
+
     allEdges.push({
       id: `edge:col${i}:${sourceId}->${targetId}`,
       source: sourceId,
-      sourceHandle: 'right',
+      sourceHandle: isCodeTarget ? 'rightTitle' : 'right',
       target: targetId,
-      targetHandle: 'left',
+      targetHandle: isCodeTarget ? 'title' : 'left',
       type: 'column',
       animated: true,
       style: edgeStyle,

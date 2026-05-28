@@ -62,6 +62,9 @@ const proOptions = { hideAttribution: true }
 const bgStyle = { opacity: 0.1 }
 
 function ColumnEdge({ sourceX, sourceY, targetX, targetY, style }: EdgeProps) {
+  if (sourceY === targetY) {
+    return <BaseEdge path={`M${sourceX},${sourceY} L${targetX},${targetY}`} style={style} />
+  }
   const midX = (sourceX + targetX) / 2
   const path = `M${sourceX},${sourceY} L${midX},${sourceY} L${midX},${targetY} L${targetX},${targetY}`
   return <BaseEdge path={path} style={style} />

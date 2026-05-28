@@ -48,6 +48,8 @@ export interface ImportRefItem {
   resolvedPath: string
   kind: 'import' | 'imported-by'
   importedNames?: string[]
+  /** 1-based line in `resolvedPath` to scroll to when the pill is clicked. */
+  targetLine?: number
 }
 
 export interface ImportRefNodeData extends NodeDisplayFlags, Record<string, unknown> {
