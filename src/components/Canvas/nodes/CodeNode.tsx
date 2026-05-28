@@ -502,6 +502,27 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             '&.cm-merge-b .cm-changedLineGutter': {
               background: 'transparent',
             },
+            '.cm-cotectDeletionLine': {
+              padding: 0,
+            },
+            '.cm-deletedChunk .cm-deletedLine': {
+              opacity: 0.8,
+            },
+            '.cm-cotectDeletionLines': {
+              display: 'flex',
+              flexDirection: 'column',
+            },
+            '.cm-cotectDeletionLineRow': {
+              height: '18px',
+              lineHeight: '18px',
+              color: '#ef4444',
+              fontWeight: '700',
+              textAlign: 'right',
+              paddingRight: '4px',
+            },
+            '.cm-cotectChangedGutter': {
+              color: '#fbbf24',
+            },
             '&.cm-focused': {
               outline: 'none',
             },
