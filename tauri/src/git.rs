@@ -69,6 +69,59 @@ pub struct GitFileStatus {
     pub deletions: u32,
 }
 
+#[derive(Serialize, Debug)]
+pub struct GitHunk {
+    pub start_line: u32, // after-side first line (the `c` of `+c,d`)
+    pub line_count: u32, // after-side line count (`d`); 0 for pure deletions
+}
+
+#[derive(Serialize)]
+pub struct GitRangeFile {
+    pub path: String,
+    pub status: String,
+    pub insertions: u32,
+    pub deletions: u32,
+    pub hunks: Vec<GitHunk>,
+}
+
+/// Parse after-side hunk ranges per file from a `git diff` patch.
+/// Tracks the current file from `+++ b/<path>` lines and reads `@@ ... +c,d @@`.
+fn parse_diff_hunks(patch: &str) -> std::collections::HashMap<String, Vec<GitHunk>> {
+    let mut map: std::collections::HashMap<String, Vec<GitHunk>> =
+        std::collections::HashMap::new();
+    let mut current: Option<String> = None;
+    for line in patch.lines() {
+        if let Some(rest) = line.strip_prefix("+++ ") {
+            if rest == "/dev/null" {
+                current = None;
+            } else {
+                current = Some(rest.strip_prefix("b/").unwrap_or(rest).to_string());
+            }
+            continue;
+        }
+        if line.starts_with("@@ ") {
+            if let Some(path) = &current {
+                if let Some(plus) = line.split('+').nth(1) {
+                    let nums = plus.split('@').next().unwrap_or("").trim();
+                    let mut parts = nums.split(',');
+                    let start = parts.next().and_then(|s| s.trim().parse::<u32>().ok());
+                    let count = parts
+                        .next()
+                        .and_then(|s| s.trim().parse::<u32>().ok())
+                        .unwrap_or(1);
+                    if let Some(start_line) = start {
+                        map.entry(path.clone()).or_default().push(GitHunk {
+                            start_line,
+                            line_count: count,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
 #[derive(Serialize)]
 pub struct GitStatus {
     pub files: Vec<GitFileStatus>,
@@ -349,24 +402,33 @@ pub async fn git_show_commit_file(
 }
 
 /// Read-only diff of a commit range, `base..head`. Returns one entry per
-/// changed file with status (M/A/D/R) and insertion/deletion counts. Never
-/// touches HEAD, the index, or the working tree — safe to run while agents
-/// are committing. Pass the empty-tree hash as `base` for a root commit.
+/// changed file with status (M/A/D/R), insertion/deletion counts, and
+/// after-side hunk ranges. Never touches HEAD, the index, or the working
+/// tree — safe to run while agents are committing. Pass the empty-tree hash
+/// as `base` for a root commit.
 #[tauri::command]
 pub async fn git_diff_range(
     repo_path: String,
     base: String,
     head: String,
-) -> Result<Vec<GitFileStatus>, String> {
+) -> Result<Vec<GitRangeFile>, String> {
     let range_base = base.as_str();
     let range_head = head.as_str();
 
-    let numstat = run_git(&repo_path, &["diff", "--numstat", "--no-renames", range_base, range_head])
+    let numstat = run_git(
+        &repo_path,
+        &["diff", "--numstat", "--no-renames", range_base, range_head],
+    )
+    .await
+    .unwrap_or_default();
+    let name_status =
+        run_git(&repo_path, &["diff", "--name-status", range_base, range_head]).await?;
+    let patch = run_git(&repo_path, &["diff", "--no-renames", range_base, range_head])
         .await
         .unwrap_or_default();
-    let name_status = run_git(&repo_path, &["diff", "--name-status", range_base, range_head]).await?;
 
     let stats = parse_numstat(&numstat);
+    let mut hunks_by_path = parse_diff_hunks(&patch);
 
     let mut files = Vec::new();
     for line in name_status.lines() {
@@ -375,7 +437,6 @@ pub async fn git_diff_range(
             Some(c) if !c.is_empty() => c,
             _ => continue,
         };
-        // Renames/copies report `R100\told\tnew`; the new path is the last field.
         let path = match parts.last() {
             Some(p) if !p.is_empty() => p.to_string(),
             _ => continue,
@@ -389,11 +450,13 @@ pub async fn git_diff_range(
         }
         .to_string();
         let (insertions, deletions) = stats.get(&path).copied().unwrap_or((0, 0));
-        files.push(GitFileStatus {
+        let hunks = hunks_by_path.remove(&path).unwrap_or_default();
+        files.push(GitRangeFile {
             path,
             status,
             insertions,
             deletions,
+            hunks,
         });
     }
 
@@ -1005,7 +1068,6 @@ def7890123456\nSecond\nBob\n1700001000\nbody for second\n\n---END---\n\n1\t0\tb.
         write_and_commit(&repo, "a.txt", "one\ntwo\n", "c2");
         write_and_commit(&repo, "b.txt", "new\n", "c3");
 
-        // Diff from c1 (HEAD~2) to HEAD: a.txt modified, b.txt added.
         let files = git_diff_range(repo.clone(), "HEAD~2".to_string(), "HEAD".to_string())
             .await
             .unwrap();
@@ -1022,7 +1084,7 @@ def7890123456\nSecond\nBob\n1700001000\nbody for second\n\n---END---\n\n1\t0\tb.
         );
         let a = files.iter().find(|f| f.path == "a.txt").unwrap();
         assert_eq!(a.insertions, 1);
-        assert_eq!(a.deletions, 0);
+        assert!(!a.hunks.is_empty(), "a.txt should have at least one hunk");
     }
 
     #[tokio::test]
@@ -1039,6 +1101,24 @@ def7890123456\nSecond\nBob\n1700001000\nbody for second\n\n---END---\n\n1\t0\tb.
         assert_eq!(files[0].path, "a.txt");
         assert_eq!(files[0].status, "A");
         assert_eq!(files[0].insertions, 2);
+        assert_eq!(files[0].hunks.len(), 1);
+        assert_eq!(files[0].hunks[0].start_line, 1);
+        assert_eq!(files[0].hunks[0].line_count, 2);
+    }
+
+    #[tokio::test]
+    async fn git_diff_range_reports_multiple_hunks() {
+        let (_dir, repo) = make_repo();
+        let ten = (1..=10).map(|n| format!("line{n}\n")).collect::<String>();
+        write_and_commit(&repo, "a.txt", &ten, "c1");
+        let edited = "EDITED1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nEDITED10\n";
+        write_and_commit(&repo, "a.txt", edited, "c2");
+
+        let files = git_diff_range(repo.clone(), "HEAD~1".to_string(), "HEAD".to_string())
+            .await
+            .unwrap();
+        let a = files.iter().find(|f| f.path == "a.txt").unwrap();
+        assert_eq!(a.hunks.len(), 2, "expected two separate hunks, got {:?}", a.hunks);
     }
 
     #[tokio::test]
