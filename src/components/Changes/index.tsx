@@ -1,7 +1,13 @@
 import { memo, useMemo } from 'react'
 import { useGitStore, sortedFiles, type GitFileStatus } from '@/store/git'
 import { useCanvasStore } from '@/store/canvas'
-import { useReviewStore, type ReviewFile, type ReviewSession } from '@/store/review'
+import {
+  useReviewStore,
+  fileProgress,
+  overallProgress,
+  type ReviewFile,
+  type ReviewSession,
+} from '@/store/review'
 import NoGitRepo from '@/components/NoGitRepo'
 
 interface TreeNode {
@@ -123,8 +129,8 @@ const ReviewFileEntry = memo(function ReviewFileEntry({
   file: ReviewFile
   session: ReviewSession
 }) {
-  const viewed = session.viewedFiles.has(file.path)
-  const commentCount = session.comments.filter((c) => c.filePath === file.path).length
+  const { reviewed, total } = fileProgress(session, file)
+  const done = total > 0 && reviewed === total
   const open = () => {
     void useCanvasStore.getState().showRangeDiff(file.path, session.baseRef, session.tipSha)
   }
@@ -134,25 +140,19 @@ const ReviewFileEntry = memo(function ReviewFileEntry({
       onClick={open}
       title={file.path}
     >
-      <input
-        type="checkbox"
-        checked={viewed}
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => useReviewStore.getState().setViewed(file.path, e.target.checked)}
-        className="shrink-0 cursor-pointer"
-        title="Mark viewed"
-      />
       <span
         className={`shrink-0 w-4 text-center ${statusColors[file.status] ?? 'text-muted-foreground'}`}
       >
         {file.status}
       </span>
-      <span className={`truncate ${viewed ? 'text-muted-foreground/50 line-through' : ''}`}>
+      <span className={`truncate ${done ? 'text-muted-foreground/50' : ''}`}>
         {file.path.split('/').pop()}
       </span>
-      {commentCount > 0 && (
-        <span className="ml-auto shrink-0 text-[10px] text-primary">💬 {commentCount}</span>
-      )}
+      <span
+        className={`ml-auto shrink-0 text-[10px] ${done ? 'text-green-500' : 'text-muted-foreground/60'}`}
+      >
+        {reviewed}/{total}
+      </span>
     </div>
   )
 })
@@ -191,12 +191,12 @@ export default function Changes() {
   }
 
   if (review) {
-    const viewedCount = review.files.filter((f) => review.viewedFiles.has(f.path)).length
+    const progress = overallProgress(review)
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between px-2 py-1 text-[11px] border-b border-border/30 bg-primary/10">
           <span className="text-primary truncate" title={`Reviewing since ${review.baseCommit}`}>
-            Review · {review.baseCommit.slice(0, 7)} · {viewedCount}/{review.files.length} viewed
+            Review · {review.baseCommit.slice(0, 7)} · {progress.reviewed}/{progress.total} hunks
           </span>
           <button
             onClick={() => useReviewStore.getState().exitReview()}
