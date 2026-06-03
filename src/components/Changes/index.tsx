@@ -210,6 +210,54 @@ export default function Changes() {
           {review.files.map((file) => (
             <ReviewFileEntry key={file.path} file={file} session={review} />
           ))}
+          {review.comments.length > 0 && (
+            <div className="mt-2 border-t border-border/30 pt-1">
+              <div className="flex items-center justify-between px-2 py-1 text-[10px] text-muted-foreground/60">
+                <span>
+                  {review.comments.length} comment{review.comments.length !== 1 ? 's' : ''}
+                </span>
+                <button
+                  onClick={() => {
+                    const md = useReviewStore.getState().exportCommentsMarkdown()
+                    void navigator.clipboard.writeText(md)
+                  }}
+                  className="px-1.5 py-0.5 rounded hover:bg-muted/50 font-mono text-[10px] cursor-pointer"
+                  title="Copy all comments as markdown"
+                >
+                  Copy all
+                </button>
+              </div>
+              {review.comments.map((c) => (
+                <div
+                  key={c.id}
+                  className="px-2 py-1 text-[11px] hover:bg-muted/20 cursor-pointer"
+                  onClick={() =>
+                    useCanvasStore
+                      .getState()
+                      .showRangeDiff(c.filePath, review.baseRef, review.tipSha)
+                  }
+                >
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 font-mono">
+                    <span className="truncate">
+                      {c.filePath.split('/').pop()}:{c.startLine}
+                      {c.endLine !== c.startLine ? `-${c.endLine}` : ''}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        useReviewStore.getState().removeComment(c.id)
+                      }}
+                      className="px-1 rounded hover:bg-red-900/40 hover:text-red-400 cursor-pointer"
+                      title="Delete comment"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="mt-0.5 break-words">{c.body}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     )
