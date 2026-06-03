@@ -105,7 +105,9 @@ function deserializeSessions(raw: unknown): Record<string, ReviewSession> {
         baseRef: v.baseRef ?? '',
         tipSha: v.tipSha ?? '',
         startedAt: v.startedAt ?? 0,
-        files: v.files ?? [],
+        // Guard `hunks`: sessions persisted before per-hunk review lack it,
+        // and `fileProgress` calls `file.hunks.filter`.
+        files: (v.files ?? []).map((f) => ({ ...f, hunks: f.hunks ?? [] })),
         acceptedHunks: new Set(v.acceptedHunks ?? []),
         comments: v.comments ?? [],
       }
