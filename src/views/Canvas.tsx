@@ -213,6 +213,16 @@ function CanvasFlow() {
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
+      // Panes marked `.nowheel` (the code editor's `.cm-scroller`, the markdown
+      // preview) scroll natively. If we also pan the canvas or re-forward the
+      // delta to the editor, the same wheel tick gets applied twice — which
+      // desyncs CodeMirror's viewport (lines flicker blank, momentum scrolls
+      // stall, clicks land on stale geometry). Let the browser own it.
+      if ((e.target as HTMLElement).closest?.('.nowheel')) {
+        e.stopPropagation()
+        return
+      }
+
       e.stopPropagation()
 
       const store = useCanvasStore.getState()
