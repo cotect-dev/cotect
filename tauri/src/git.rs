@@ -110,8 +110,11 @@ fn parse_diff_hunks(patch: &str) -> std::collections::HashMap<String, Vec<GitHun
                         .and_then(|s| s.trim().parse::<u32>().ok())
                         .unwrap_or(1);
                     if let Some(start_line) = start {
+                        // Clamp to 1: an emptied (but not deleted) file yields
+                        // `+0,0`, and a 0 line number would crash 1-based
+                        // `doc.line()` lookups on the consumer side.
                         map.entry(path.clone()).or_default().push(GitHunk {
-                            start_line,
+                            start_line: start_line.max(1),
                             line_count: count,
                         });
                     }
