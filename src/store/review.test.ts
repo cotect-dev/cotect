@@ -29,6 +29,7 @@ describe('review store — session + viewed', () => {
     expect(useReviewStore.getState().sessions['abc1234'].viewedFiles.has('src/a.ts')).toBe(true)
     r.setViewed('src/a.ts', false)
     expect(useReviewStore.getState().active!.viewedFiles.has('src/a.ts')).toBe(false)
+    expect(useReviewStore.getState().sessions['abc1234'].viewedFiles.has('src/a.ts')).toBe(false)
   })
 
   it('re-entering a base commit restores prior viewed state with a fresh tip', () => {
