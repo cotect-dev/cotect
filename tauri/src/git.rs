@@ -348,6 +348,58 @@ pub async fn git_show_commit_file(
     run_git(&repo_path, &["show", &spec]).await
 }
 
+/// Read-only diff of a commit range, `base..head`. Returns one entry per
+/// changed file with status (M/A/D/R) and insertion/deletion counts. Never
+/// touches HEAD, the index, or the working tree — safe to run while agents
+/// are committing. Pass the empty-tree hash as `base` for a root commit.
+#[tauri::command]
+pub async fn git_diff_range(
+    repo_path: String,
+    base: String,
+    head: String,
+) -> Result<Vec<GitFileStatus>, String> {
+    let range_base = base.as_str();
+    let range_head = head.as_str();
+
+    let numstat = run_git(&repo_path, &["diff", "--numstat", range_base, range_head])
+        .await
+        .unwrap_or_default();
+    let name_status = run_git(&repo_path, &["diff", "--name-status", range_base, range_head]).await?;
+
+    let stats = parse_numstat(&numstat);
+
+    let mut files = Vec::new();
+    for line in name_status.lines() {
+        let mut parts = line.split('\t');
+        let code = match parts.next() {
+            Some(c) if !c.is_empty() => c,
+            _ => continue,
+        };
+        // Renames/copies report `R100\told\tnew`; the new path is the last field.
+        let path = match parts.last() {
+            Some(p) if !p.is_empty() => p.to_string(),
+            _ => continue,
+        };
+        let status = match code.chars().next().unwrap_or('M') {
+            'A' => "A",
+            'D' => "D",
+            'R' => "R",
+            'C' => "A",
+            _ => "M",
+        }
+        .to_string();
+        let (insertions, deletions) = stats.get(&path).copied().unwrap_or((0, 0));
+        files.push(GitFileStatus {
+            path,
+            status,
+            insertions,
+            deletions,
+        });
+    }
+
+    Ok(files)
+}
+
 /// Parse the output of `git log --name-only --format='@%ct' -- <paths>`.
 /// Output format (newest-first):
 ///
@@ -944,5 +996,48 @@ def7890123456\nSecond\nBob\n1700001000\nbody for second\n\n---END---\n\n1\t0\tb.
         let output = "abc\nMsg\nAuthor\n0\n\n---END---\n";
         let entries = parse_log_output(output);
         assert_eq!(entries[0].hash, "abc");
+    }
+
+    #[tokio::test]
+    async fn git_diff_range_lists_changes_between_two_commits() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "one\n", "c1");
+        write_and_commit(&repo, "a.txt", "one\ntwo\n", "c2");
+        write_and_commit(&repo, "b.txt", "new\n", "c3");
+
+        // Diff from c1 (HEAD~2) to HEAD: a.txt modified, b.txt added.
+        let files = git_diff_range(repo.clone(), "HEAD~2".to_string(), "HEAD".to_string())
+            .await
+            .unwrap();
+
+        let mut paths: Vec<(String, String)> =
+            files.iter().map(|f| (f.path.clone(), f.status.clone())).collect();
+        paths.sort();
+        assert_eq!(
+            paths,
+            vec![
+                ("a.txt".to_string(), "M".to_string()),
+                ("b.txt".to_string(), "A".to_string()),
+            ]
+        );
+        let a = files.iter().find(|f| f.path == "a.txt").unwrap();
+        assert_eq!(a.insertions, 1);
+        assert_eq!(a.deletions, 0);
+    }
+
+    #[tokio::test]
+    async fn git_diff_range_against_empty_tree_is_all_additions() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "x\ny\n", "c1");
+        let empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+        let files = git_diff_range(repo.clone(), empty_tree.to_string(), "HEAD".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.txt");
+        assert_eq!(files[0].status, "A");
+        assert_eq!(files[0].insertions, 2);
     }
 }
