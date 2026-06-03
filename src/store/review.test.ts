@@ -1,87 +1,94 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useReviewStore, type ReviewFile } from './review'
+import {
+  useReviewStore,
+  hunkReviewed,
+  fileProgress,
+  overallProgress,
+  type ReviewFile,
+} from './review'
 
 const files: ReviewFile[] = [
-  { path: 'src/a.ts', status: 'M', insertions: 3, deletions: 1 },
-  { path: 'src/b.ts', status: 'A', insertions: 5, deletions: 0 },
+  {
+    path: 'src/a.ts',
+    status: 'M',
+    insertions: 3,
+    deletions: 1,
+    hunks: [
+      { start_line: 10, line_count: 2 },
+      { start_line: 40, line_count: 1 },
+    ],
+  },
+  {
+    path: 'src/b.ts',
+    status: 'A',
+    insertions: 5,
+    deletions: 0,
+    hunks: [{ start_line: 1, line_count: 5 }],
+  },
 ]
 
 beforeEach(() => {
   useReviewStore.setState({ active: null, sessions: {} })
+  useReviewStore.getState().startReview('abc1234', 'abc1234~1', 'tip999', files)
 })
 
-describe('review store — session + viewed', () => {
-  it('startReview creates an active session', () => {
-    useReviewStore.getState().startReview('abc1234', 'abc1234~1', 'tip999', files)
+describe('review store — per-hunk', () => {
+  it('startReview seeds an active session with files+hunks', () => {
     const s = useReviewStore.getState().active!
-    expect(s.baseCommit).toBe('abc1234')
-    expect(s.baseRef).toBe('abc1234~1')
-    expect(s.tipSha).toBe('tip999')
     expect(s.files).toEqual(files)
-    expect(s.viewedFiles.size).toBe(0)
+    expect(s.acceptedHunks.size).toBe(0)
+    expect(s.comments).toEqual([])
   })
 
-  it('setViewed toggles a file and persists into sessions', () => {
+  it('acceptHunk / unacceptHunk toggle and persist', () => {
     const r = useReviewStore.getState()
-    r.startReview('abc1234', 'abc1234~1', 'tip999', files)
-    r.setViewed('src/a.ts', true)
-    expect(useReviewStore.getState().active!.viewedFiles.has('src/a.ts')).toBe(true)
-    expect(useReviewStore.getState().sessions['abc1234'].viewedFiles.has('src/a.ts')).toBe(true)
-    r.setViewed('src/a.ts', false)
-    expect(useReviewStore.getState().active!.viewedFiles.has('src/a.ts')).toBe(false)
-    expect(useReviewStore.getState().sessions['abc1234'].viewedFiles.has('src/a.ts')).toBe(false)
+    r.acceptHunk('src/a.ts', 10)
+    expect(useReviewStore.getState().active!.acceptedHunks.has('src/a.ts:10')).toBe(true)
+    expect(useReviewStore.getState().sessions['abc1234'].acceptedHunks.has('src/a.ts:10')).toBe(
+      true,
+    )
+    r.unacceptHunk('src/a.ts', 10)
+    expect(useReviewStore.getState().active!.acceptedHunks.has('src/a.ts:10')).toBe(false)
   })
 
-  it('re-entering a base commit restores prior viewed state with a fresh tip', () => {
+  it('a hunk is reviewed when accepted OR commented', () => {
     const r = useReviewStore.getState()
-    r.startReview('abc1234', 'abc1234~1', 'tip999', files)
-    r.setViewed('src/b.ts', true)
+    let s = useReviewStore.getState().active!
+    expect(hunkReviewed(s, 'src/a.ts', 10)).toBe(false)
+    r.acceptHunk('src/a.ts', 10)
+    s = useReviewStore.getState().active!
+    expect(hunkReviewed(s, 'src/a.ts', 10)).toBe(true)
+    r.addComment('src/a.ts', 40, 40, 'code', 'fix this')
+    s = useReviewStore.getState().active!
+    expect(hunkReviewed(s, 'src/a.ts', 40)).toBe(true)
+  })
+
+  it('fileProgress and overallProgress count reviewed hunks', () => {
+    const r = useReviewStore.getState()
+    r.acceptHunk('src/a.ts', 10)
+    r.addComment('src/a.ts', 40, 40, 'code', 'note')
+    const s = useReviewStore.getState().active!
+    expect(fileProgress(s, files[0])).toEqual({ reviewed: 2, total: 2 })
+    expect(fileProgress(s, files[1])).toEqual({ reviewed: 0, total: 1 })
+    expect(overallProgress(s)).toEqual({ reviewed: 2, total: 3 })
+  })
+
+  it('exportCommentsMarkdown renders path:range + body + snippet', () => {
+    useReviewStore.getState().addComment('src/a.ts', 10, 11, 'const x = 1', 'rename x')
+    const md = useReviewStore.getState().exportCommentsMarkdown()
+    expect(md).toContain('src/a.ts:10-11')
+    expect(md).toContain('rename x')
+    expect(md).toContain('const x = 1')
+  })
+
+  it('re-entering restores accepted hunks + comments with fresh tip', () => {
+    const r = useReviewStore.getState()
+    r.acceptHunk('src/b.ts', 1)
     r.exitReview()
     expect(useReviewStore.getState().active).toBeNull()
     r.startReview('abc1234', 'abc1234~1', 'tipNEW', files)
     const s = useReviewStore.getState().active!
     expect(s.tipSha).toBe('tipNEW')
-    expect(s.viewedFiles.has('src/b.ts')).toBe(true)
-  })
-})
-
-describe('review store — comments', () => {
-  beforeEach(() => {
-    useReviewStore.setState({ active: null, sessions: {} })
-    useReviewStore.getState().startReview('abc1234', 'abc1234~1', 'tip999', files)
-  })
-
-  it('addComment adds a comment with a stable id and persists it', () => {
-    const r = useReviewStore.getState()
-    r.addComment('src/a.ts', 10, 12, 'const x = 1', 'use const-correct name')
-    const c = useReviewStore.getState().active!.comments
-    expect(c).toHaveLength(1)
-    expect(c[0]).toMatchObject({
-      filePath: 'src/a.ts',
-      startLine: 10,
-      endLine: 12,
-      body: 'use const-correct name',
-    })
-    expect(c[0].id).toBeTruthy()
-    expect(useReviewStore.getState().sessions['abc1234'].comments).toHaveLength(1)
-  })
-
-  it('updateComment and removeComment mutate by id', () => {
-    const r = useReviewStore.getState()
-    r.addComment('src/a.ts', 1, 1, 'x', 'first')
-    const id = useReviewStore.getState().active!.comments[0].id
-    r.updateComment(id, 'edited')
-    expect(useReviewStore.getState().active!.comments[0].body).toBe('edited')
-    r.removeComment(id)
-    expect(useReviewStore.getState().active!.comments).toHaveLength(0)
-  })
-
-  it('exportCommentsMarkdown renders file:line + body', () => {
-    const r = useReviewStore.getState()
-    r.addComment('src/a.ts', 10, 12, 'const x = 1', 'rename x')
-    const md = useReviewStore.getState().exportCommentsMarkdown()
-    expect(md).toContain('src/a.ts:10-12')
-    expect(md).toContain('rename x')
-    expect(md).toContain('const x = 1')
+    expect(s.acceptedHunks.has('src/b.ts:1')).toBe(true)
   })
 })

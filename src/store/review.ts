@@ -2,43 +2,78 @@ import { create } from 'zustand'
 import { createStoreWithHMR } from '@/lib/hmr'
 import { withPersistence } from '@/store/persistence'
 
+export interface ReviewHunk {
+  start_line: number // after-side, 1-based
+  line_count: number
+}
+
 export interface ReviewFile {
   path: string // repo-relative
   status: string // 'M' | 'A' | 'D' | 'R' | 'U'
   insertions: number
   deletions: number
+  hunks: ReviewHunk[]
 }
 
 export interface ReviewComment {
   id: string
   filePath: string // repo-relative
-  startLine: number // 1-based, in the head/after snapshot
+  startLine: number // hunk start line in the after snapshot
   endLine: number
-  snippet: string // reviewed code at anchor time (context + drift detection)
+  snippet: string // hunk's after-side text at anchor time
   body: string
   createdAt: number
 }
 
 export interface ReviewSession {
-  baseCommit: string // selected commit C
-  baseRef: string // resolved base diff ref (C~1 or empty-tree hash)
-  tipSha: string // branch tip snapshot at review start
+  baseCommit: string
+  baseRef: string
+  tipSha: string
   startedAt: number
   files: ReviewFile[]
-  viewedFiles: Set<string>
+  acceptedHunks: Set<string> // keys: `${filePath}:${hunkStartLine}`
   comments: ReviewComment[]
 }
 
-interface PersistedSession extends Omit<ReviewSession, 'viewedFiles'> {
-  viewedFiles: string[]
+interface PersistedSession extends Omit<ReviewSession, 'acceptedHunks'> {
+  acceptedHunks: string[]
+}
+
+export function hunkKey(filePath: string, startLine: number): string {
+  return `${filePath}:${startLine}`
+}
+
+export function hunkReviewed(session: ReviewSession, filePath: string, startLine: number): boolean {
+  if (session.acceptedHunks.has(hunkKey(filePath, startLine))) return true
+  return session.comments.some((c) => c.filePath === filePath && c.startLine === startLine)
+}
+
+export function fileProgress(
+  session: ReviewSession,
+  file: ReviewFile,
+): { reviewed: number; total: number } {
+  const reviewed = file.hunks.filter((h) => hunkReviewed(session, file.path, h.start_line)).length
+  return { reviewed, total: file.hunks.length }
+}
+
+export function overallProgress(session: ReviewSession): { reviewed: number; total: number } {
+  let reviewed = 0
+  let total = 0
+  for (const f of session.files) {
+    const p = fileProgress(session, f)
+    reviewed += p.reviewed
+    total += p.total
+  }
+  return { reviewed, total }
 }
 
 interface ReviewState {
   active: ReviewSession | null
-  sessions: Record<string, ReviewSession> // keyed by baseCommit
+  sessions: Record<string, ReviewSession>
   startReview: (baseCommit: string, baseRef: string, tipSha: string, files: ReviewFile[]) => void
   exitReview: () => void
-  setViewed: (filePath: string, viewed: boolean) => void
+  acceptHunk: (filePath: string, startLine: number) => void
+  unacceptHunk: (filePath: string, startLine: number) => void
   addComment: (
     filePath: string,
     startLine: number,
@@ -46,18 +81,16 @@ interface ReviewState {
     snippet: string,
     body: string,
   ) => void
-  updateComment: (id: string, body: string) => void
   removeComment: (id: string) => void
   exportCommentsMarkdown: () => string
 }
 
-// Persist `sessions` only. Sets need explicit (de)serialization.
 function serializeSessions(
   sessions: Record<string, ReviewSession>,
 ): Record<string, PersistedSession> {
   const out: Record<string, PersistedSession> = {}
   for (const [k, s] of Object.entries(sessions)) {
-    out[k] = { ...s, viewedFiles: [...s.viewedFiles] }
+    out[k] = { ...s, acceptedHunks: [...s.acceptedHunks] }
   }
   return out
 }
@@ -72,9 +105,9 @@ function deserializeSessions(raw: unknown): Record<string, ReviewSession> {
         baseRef: v.baseRef ?? '',
         tipSha: v.tipSha ?? '',
         startedAt: v.startedAt ?? 0,
-        viewedFiles: new Set(v.viewedFiles ?? []),
-        comments: v.comments ?? [],
         files: v.files ?? [],
+        acceptedHunks: new Set(v.acceptedHunks ?? []),
+        comments: v.comments ?? [],
       }
     }
   }
@@ -87,7 +120,6 @@ function nextCommentId(): string {
   return `cmt_${Date.now().toString(36)}_${commentSeq}`
 }
 
-// Persist the active session back into `sessions` after every mutation.
 function persistActive(
   active: ReviewSession | null,
   sessions: Record<string, ReviewSession>,
@@ -111,7 +143,7 @@ export const useReviewStore = createStoreWithHMR(import.meta.hot, 'review', () =
             tipSha,
             startedAt: Date.now(),
             files,
-            viewedFiles: prior ? new Set(prior.viewedFiles) : new Set(),
+            acceptedHunks: prior ? new Set(prior.acceptedHunks) : new Set(),
             comments: prior ? [...prior.comments] : [],
           }
           set({ active, sessions: persistActive(active, get().sessions) })
@@ -119,13 +151,21 @@ export const useReviewStore = createStoreWithHMR(import.meta.hot, 'review', () =
 
         exitReview: () => set({ active: null }),
 
-        setViewed: (filePath, viewed) => {
+        acceptHunk: (filePath, startLine) => {
           const active = get().active
           if (!active) return
-          const viewedFiles = new Set(active.viewedFiles)
-          if (viewed) viewedFiles.add(filePath)
-          else viewedFiles.delete(filePath)
-          const next = { ...active, viewedFiles }
+          const acceptedHunks = new Set(active.acceptedHunks)
+          acceptedHunks.add(hunkKey(filePath, startLine))
+          const next = { ...active, acceptedHunks }
+          set({ active: next, sessions: persistActive(next, get().sessions) })
+        },
+
+        unacceptHunk: (filePath, startLine) => {
+          const active = get().active
+          if (!active) return
+          const acceptedHunks = new Set(active.acceptedHunks)
+          acceptedHunks.delete(hunkKey(filePath, startLine))
+          const next = { ...active, acceptedHunks }
           set({ active: next, sessions: persistActive(next, get().sessions) })
         },
 
@@ -142,16 +182,6 @@ export const useReviewStore = createStoreWithHMR(import.meta.hot, 'review', () =
             createdAt: Date.now(),
           }
           const next = { ...active, comments: [...active.comments, comment] }
-          set({ active: next, sessions: persistActive(next, get().sessions) })
-        },
-
-        updateComment: (id, body) => {
-          const active = get().active
-          if (!active) return
-          const next = {
-            ...active,
-            comments: active.comments.map((c) => (c.id === id ? { ...c, body } : c)),
-          }
           set({ active: next, sessions: persistActive(next, get().sessions) })
         },
 
