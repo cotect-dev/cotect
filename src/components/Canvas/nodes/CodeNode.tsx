@@ -43,6 +43,11 @@ import {
   commentHighlightField,
   commentHighlightTheme,
   setCommentRanges,
+  reviewHunkField,
+  reviewHunkGutter,
+  reviewHunkTheme,
+  setReviewHunks,
+  openHunkActions,
 } from './cmPlugins'
 import { getPlatform } from '@/services/platform'
 import { isMarkdownFile } from '@/lib/fileClassification'
@@ -245,6 +250,20 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       reviewFilePath ? (s.active?.comments.filter((c) => c.filePath === reviewFilePath) ?? []) : [],
     ),
   )
+  const reviewHunks = useReviewStore(
+    useShallow((s) =>
+      reviewFilePath ? (s.active?.files.find((f) => f.path === reviewFilePath)?.hunks ?? []) : [],
+    ),
+  )
+  const acceptedStartLines = useReviewStore(
+    useShallow((s) => {
+      if (!reviewFilePath || !s.active) return [] as number[]
+      const prefix = `${reviewFilePath}:`
+      return [...s.active.acceptedHunks]
+        .filter((k) => k.startsWith(prefix))
+        .map((k) => Number(k.slice(prefix.length)))
+    }),
+  )
 
   const gitEntry = useMemo(() => {
     if (hasHeadOverride || !gitStatus) return null
@@ -432,7 +451,15 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             },
           }),
           rainbowBrackets,
-          ...(reviewFilePath ? [commentHighlightField, commentHighlightTheme] : []),
+          ...(reviewFilePath
+            ? [
+                commentHighlightField,
+                commentHighlightTheme,
+                reviewHunkField,
+                reviewHunkGutter,
+                reviewHunkTheme,
+              ]
+            : []),
           vscodeDark,
           ...(isReadOnly ? [EditorState.readOnly.of(true)] : []),
           initialMergeExt,
@@ -444,27 +471,30 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
               if (!update.view.hasFocus && dirtyRef.current) void saveToFileRef.current()
             }
             if (update.geometryChanged) setGeometryVer((v) => v + 1)
-            if (reviewFilePath && update.selectionSet) {
-              const sel = update.state.selection.main
-              if (sel.empty) {
-                setCommentDraft(null)
-              } else {
-                const doc = update.state.doc
-                const startLine = doc.lineAt(sel.from).number
-                const endLine = doc.lineAt(sel.to).number
-                const snippet = update.state.sliceDoc(
-                  doc.line(startLine).from,
-                  doc.line(endLine).to,
-                )
-                const top = update.view.coordsAtPos(doc.line(startLine).from)
-                const scrollTop = update.view.scrollDOM.scrollTop
-                const editorTop = update.view.scrollDOM.getBoundingClientRect().top
-                setCommentDraft({
-                  startLine,
-                  endLine,
-                  snippet,
-                  top: top ? top.top - editorTop + scrollTop : 0,
-                })
+            if (reviewFilePath) {
+              for (const tr of update.transactions) {
+                for (const e of tr.effects) {
+                  if (e.is(openHunkActions)) {
+                    const { startLine, endLine } = e.value
+                    const doc = update.state.doc
+                    const safeStart = Math.max(1, Math.min(startLine, doc.lines))
+                    const safeEnd = Math.max(safeStart, Math.min(endLine, doc.lines))
+                    const snippet = update.state.sliceDoc(
+                      doc.line(safeStart).from,
+                      doc.line(safeEnd).to,
+                    )
+                    const top = update.view.coordsAtPos(doc.line(safeStart).from)
+                    const scrollTop = update.view.scrollDOM.scrollTop
+                    const editorTop = update.view.scrollDOM.getBoundingClientRect().top
+                    setCommentDraft({
+                      startLine: safeStart,
+                      endLine: safeEnd,
+                      snippet,
+                      top: top ? top.top - editorTop + scrollTop : 0,
+                    })
+                    setCommentBody('')
+                  }
+                }
               }
             }
           }),
@@ -636,6 +666,24 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       effects: setCommentRanges.of(fileComments.map((c) => ({ from: c.startLine, to: c.endLine }))),
     })
   }, [reviewFilePath, fileComments, editorReady])
+
+  useEffect(() => {
+    if (!reviewFilePath) return
+    const view = viewRef.current
+    if (!view) return
+    const accepted = new Set(acceptedStartLines)
+    const commented = new Set(fileComments.map((c) => c.startLine))
+    const display = reviewHunks.map((h) => ({
+      startLine: h.start_line,
+      endLine: h.line_count > 0 ? h.start_line + h.line_count - 1 : h.start_line,
+      state: accepted.has(h.start_line)
+        ? ('accepted' as const)
+        : commented.has(h.start_line)
+          ? ('commented' as const)
+          : ('none' as const),
+    }))
+    view.dispatch({ effects: setReviewHunks.of(display) })
+  }, [reviewFilePath, reviewHunks, acceptedStartLines, fileComments, editorReady])
 
   const pendingScroll = useCanvasStore((s) => s.pendingScroll)
   useEffect(() => {
@@ -887,6 +935,22 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
                 Lines {commentDraft.startLine}
                 {commentDraft.endLine !== commentDraft.startLine ? `–${commentDraft.endLine}` : ''}
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const accepted = acceptedStartLines.includes(commentDraft.startLine)
+                  if (accepted)
+                    useReviewStore.getState().unacceptHunk(reviewFilePath, commentDraft.startLine)
+                  else useReviewStore.getState().acceptHunk(reviewFilePath, commentDraft.startLine)
+                }}
+                className={`w-full mb-1 text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer ${
+                  acceptedStartLines.includes(commentDraft.startLine)
+                    ? 'bg-green-900/40 text-green-400'
+                    : 'bg-muted hover:bg-muted/70'
+                }`}
+              >
+                {acceptedStartLines.includes(commentDraft.startLine) ? '✓ Accepted' : 'Accept hunk'}
+              </button>
               <textarea
                 autoFocus
                 value={commentBody}
