@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react'
 import { useGitStore, sortedFiles, type GitFileStatus } from '@/store/git'
 import { useCanvasStore } from '@/store/canvas'
+import { useReviewStore, type ReviewFile, type ReviewSession } from '@/store/review'
 import NoGitRepo from '@/components/NoGitRepo'
 
 interface TreeNode {
@@ -115,12 +116,54 @@ const TreeEntry = memo(function TreeEntry({ node, depth }: { node: TreeNode; dep
   )
 })
 
+const ReviewFileEntry = memo(function ReviewFileEntry({
+  file,
+  session,
+}: {
+  file: ReviewFile
+  session: ReviewSession
+}) {
+  const viewed = session.viewedFiles.has(file.path)
+  const commentCount = session.comments.filter((c) => c.filePath === file.path).length
+  const open = () => {
+    void useCanvasStore.getState().showRangeDiff(file.path, session.baseRef, session.tipSha)
+  }
+  return (
+    <div
+      className="flex items-center gap-2 px-2 py-px hover:bg-primary/10 cursor-pointer text-xs font-mono"
+      onClick={open}
+      title={file.path}
+    >
+      <input
+        type="checkbox"
+        checked={viewed}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => useReviewStore.getState().setViewed(file.path, e.target.checked)}
+        className="shrink-0 cursor-pointer"
+        title="Mark viewed"
+      />
+      <span
+        className={`shrink-0 w-4 text-center ${statusColors[file.status] ?? 'text-muted-foreground'}`}
+      >
+        {file.status}
+      </span>
+      <span className={`truncate ${viewed ? 'text-muted-foreground/50 line-through' : ''}`}>
+        {file.path.split('/').pop()}
+      </span>
+      {commentCount > 0 && (
+        <span className="ml-auto shrink-0 text-[10px] text-primary">💬 {commentCount}</span>
+      )}
+    </div>
+  )
+})
+
 export default function Changes() {
   const isGitRepo = useGitStore((s) => s.isGitRepo)
   const status = useGitStore((s) => s.status)
   const fileTimes = useGitStore((s) => s.fileTimes)
   const sortMode = useGitStore((s) => s.sortMode)
   const setSortMode = useGitStore((s) => s.setSortMode)
+  const review = useReviewStore((s) => s.active)
 
   const tree = useMemo(
     () => (status && sortMode === 'path' ? buildCompactTree(status.files) : []),
@@ -145,6 +188,31 @@ export default function Changes() {
     path: 'Path',
     recent: 'Recent',
     oldest: 'Oldest',
+  }
+
+  if (review) {
+    const viewedCount = review.files.filter((f) => review.viewedFiles.has(f.path)).length
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-2 py-1 text-[11px] border-b border-border/30 bg-primary/10">
+          <span className="text-primary truncate" title={`Reviewing since ${review.baseCommit}`}>
+            Review · {review.baseCommit.slice(0, 7)} · {viewedCount}/{review.files.length} viewed
+          </span>
+          <button
+            onClick={() => useReviewStore.getState().exitReview()}
+            className="px-1.5 py-0.5 rounded hover:bg-muted/50 font-mono text-[10px] cursor-pointer"
+            title="Exit review"
+          >
+            Exit
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto py-1">
+          {review.files.map((file) => (
+            <ReviewFileEntry key={file.path} file={file} session={review} />
+          ))}
+        </div>
+      </div>
+    )
   }
 
   if (!isGitRepo) return <NoGitRepo />
