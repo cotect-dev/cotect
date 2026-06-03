@@ -1,19 +1,23 @@
-# Non-destructive commit review with comments
+# Non-destructive commit review with per-hunk comments
 
-**Date:** 2026-06-03
-**Status:** Approved design — ready for implementation plan
+**Date:** 2026-06-03 (revised: per-hunk granularity)
+**Status:** Approved design
 **Supersedes:** `2026-06-03-reopen-commit-as-changes-design.md` (the `git reset`
 approach was rejected as destructive to shared branch state).
+
+> **Revision note:** The first build used per-file "viewed" granularity
+> (GitHub-style). It is being reworked to **per-change-hunk** review: a file can
+> have several hunks, and each hunk is independently accepted or commented.
 
 ## Summary
 
 Let a human "go back" to before a commit and review everything committed since
 then — surfaced in the **Changes** panel — **without mutating git history, the
-index, or the working tree**. The reviewer marks files as viewed (progress
-tracking) and attaches comments to specific line ranges. Comments are collected
-as text the human can copy and paste to an external agent (e.g. `claude` in a
-terminal). The code is never edited or removed by the review itself; fixing is a
-separate, human-initiated, currently-external step.
+index, or the working tree**. The reviewer works **hunk by hunk**: each change
+hunk can be **accepted** (looks good) or **commented** (flagged for an agent to
+fix). Comments are collected as text the human can copy and paste to an external
+agent (e.g. `claude` in a terminal). The code is never edited or removed by the
+review itself; fixing is a separate, human-initiated, currently-external step.
 
 ## Goals & constraints
 
@@ -22,8 +26,8 @@ separate, human-initiated, currently-external step.
   committing and editing while a human reviews older commits.
 - **Surfaced in the Changes panel.** Reuse the existing panel/diff UI rather than
   inventing a separate review surface.
-- **GitHub-style review.** Per-file "viewed" checkbox for progress + comments
-  anchored to selected line ranges.
+- **Per-hunk review.** Each diff hunk is independently accepted or commented;
+  progress is tracked per hunk. Controls live **on each hunk in the diff**.
 - **Text-only handoff for now.** Comments are exported as text (clipboard /
   markdown). No Claude/agent integration is built in this iteration.
 - **Pluggable action seam.** The "what happens with a comment" step is an
@@ -40,23 +44,37 @@ git object database — it never moves `HEAD` or writes the working tree.
   C) against **head = the current branch tip**, captured as a fixed SHA at the
   moment review starts (`tipSHA`).
 - The changeset = `git diff <base>..<tipSHA>` — i.e. commit C and every commit
-  after it, presented as one set of changes (matches the earlier "last N in
-  sequence" choice).
+  after it, presented as one set of changes.
 - **Tip is snapshotted at entry.** Commits agents add *during* the review do not
   shift the review set. Re-entering review re-snapshots.
 - All file contents come from `git show <sha>:<path>` (read-only). Nothing is
   reset, stashed, staged, or written.
 
-Because it is purely read-only, it is safe to run at any time regardless of what
-agents are doing.
+## Hunks: single source of truth
 
-## Scope decisions (from brainstorming)
+Hunks come from **git**, so the Changes panel's totals and the in-diff
+interactive units never disagree.
 
-- **Range, not single commit.** Selecting C reviews `C..tip`. (Single-commit
-  diffs already exist via the History panel's `showCommitDiff`.)
-- **GitHub-style granularity.** Per-file viewed checkbox; comments on line ranges.
-- **Accept/decline are review verdicts, not edits.** "Declining" bad code does
-  **not** remove it; it produces a comment for a human/agent to act on later.
+- `git_diff_range` returns, per file, the list of **after-side hunk ranges**
+  parsed from the `@@ -a,b +c,d @@` headers of `git diff <base> <head>` (default
+  context). For each hunk we keep the after-side `startLine` (= `c`) and
+  `lineCount` (= `d`).
+- The **after** document shown in the review editor is exactly
+  `git show <tipSHA>:<path>`, so each hunk's `+c,d` maps directly to editor line
+  numbers — the gutter controls anchor on `startLine`.
+- The merge view (existing `buildMergeExtension`) still renders the red/green
+  diff visuals; git hunks drive the interactive accept/comment units.
+
+## Scope decisions (from brainstorming + revision)
+
+- **Range, not single commit.** Selecting C reviews `C..tip`.
+- **Per-hunk granularity.** Controls on each hunk in the diff. (Revised from the
+  earlier per-file "viewed" choice.)
+- **Reviewed = accepted OR commented.** A hunk counts toward progress once it is
+  accepted or has at least one comment.
+- **Accept/comment are review verdicts, not edits.** "Commenting" a hunk does
+  **not** change code; it produces a comment for a human/agent to act on later.
+  "Accept" only records that the hunk looks good.
 - **Text-only handoff now.** Agent auto-launch and its configurability are
   designed-for via a seam but **not implemented** in this iteration.
 
@@ -66,218 +84,203 @@ agents are doing.
 - Claude / `claude -p` background-agent integration.
 - The user-facing config toggle for review-action mode (only the text handler
   exists, so there is nothing to toggle yet).
-- Comment-anchor re-anchoring across code drift beyond the simple strategy below.
+- Inline editing of an existing comment's body (add + delete only for now).
+- Sub-hunk / arbitrary line-range comment anchoring (comments anchor to a hunk).
 
 ## Components
 
-### 1. Rust — read-only range diff
+### 1. Rust — read-only range diff with per-file hunks
 
-**File:** `tauri/src/git.rs` (new command), registered in `tauri/src/main.rs`.
+**File:** `tauri/src/git.rs`, registered in `tauri/src/main.rs`.
+
+`git_diff_range(repo_path, base, head) -> Result<Vec<GitFileStatus>, String>`
+already returns `{ path, status, insertions, deletions }` per changed file. Extend
+its result type with a `hunks` list:
 
 ```rust
-#[tauri::command]
-async fn git_diff_range(repo_path: String, base: String, head: String)
-    -> Result<Vec<GitFileStatus>, String>
+#[derive(Serialize)]
+pub struct GitHunk {
+    pub start_line: u32, // after-side first line (the `c` of `+c,d`)
+    pub line_count: u32, // after-side line count (`d`); 0 for pure deletions
+}
+// GitFileStatus gains: pub hunks: Vec<GitHunk>
 ```
 
-- Runs `git -C <repo> --no-optional-locks diff --numstat --name-status <base> <head>`
-  (or two calls: `--name-status` for status, `--numstat` for counts) via the
-  existing `run_git` helper; parses into the existing `GitFileStatus`
-  (`{ path, status, insertions, deletions }`) shape.
+- Parse the after-side hunk ranges from `git diff --no-renames <base> <head>`
+  `@@ -a,b +c,d @@` headers, grouped per file (track the current file from the
+  `+++ b/<path>` line; map back to the `name-status` path set). Default context.
+- For a pure deletion hunk (`+c,0`), `start_line = c` (the line after which the
+  deletion sits), `line_count = 0` — the gutter control anchors there.
 - Read-only; follows existing `git.rs` conventions and error mapping.
-- **File contents are fetched with the existing `git_show_commit_file(hash,
-  path)`** — no new command needed. `before = git_show_commit_file(base, path)`
-  (empty string if the file is absent in base), `after = git_show_commit_file(
-  head, path)`.
-- **Root commit:** if C has no parent, `base` is git's empty-tree object
-  (`4b825dc642cb6eb9a060e54bf8d69288fbee4904`) so the initial commit shows as
-  all-additions. The caller resolves this (see store).
+- File contents still come from the existing `git_show_commit_file`.
+- **Root commit:** caller passes the empty-tree hash as `base` (unchanged).
 
-### 2. Canvas store — open a range diff read-only
+The serialized field names cross the IPC boundary as the JS shape
+`{ startLine, lineCount }` (serde camelCase already used elsewhere — match the
+existing convention in `git.rs`; if snake_case is emitted, the TS type uses the
+emitted names). Confirm against existing structs during implementation.
 
-**File:** `src/store/canvas.ts` (extend the existing `showCommitDiff` pattern).
+### 2. Review store — sessions, per-hunk state, comments
 
-```ts
-showRangeDiff(filePath: string, base: string, head: string): Promise<void>
-```
-
-- Mirrors `showCommitDiff` (L290–352) but with explicit base/head: fetches
-  `after = git_show_commit_file(head, filePath)` and
-  `before = git_show_commit_file(base, filePath)`, builds a `readOnly` CodeNode
-  with `headOverride = before`, `code = after`, and metadata identifying the
-  review (base/head/filePath) so the comment layer can anchor to it.
-- The Changes panel (review mode) calls this instead of `focusFileByPath` when a
-  reviewed file is clicked.
-
-### 3. Review store (new) — sessions, viewed state, comments
-
-**File:** `src/store/review.ts` (new), persisted per-project via the existing
-`withPersistence` pattern (`scope: 'project'`, debounced, with
-`serialize`/`deserialize` for maps).
-
-Data model:
+**File:** `src/store/review.ts` (per-project persisted via `withPersistence`).
 
 ```ts
-interface ReviewComment {
+export interface ReviewHunk {
+  startLine: number // after-side, 1-based
+  lineCount: number
+}
+
+export interface ReviewFile {
+  path: string // repo-relative
+  status: string
+  insertions: number
+  deletions: number
+  hunks: ReviewHunk[]
+}
+
+export interface ReviewComment {
   id: string
-  filePath: string
-  startLine: number      // 1-based, in the head/after snapshot
-  endLine: number
-  snippet: string        // the reviewed code at anchor time (for context + drift detection)
-  body: string           // the human's comment
+  filePath: string // repo-relative
+  hunkStartLine: number // the hunk this comment belongs to
+  startLine: number // = hunkStartLine (kept for display/range)
+  endLine: number // hunkStartLine + lineCount - 1 (>= startLine)
+  snippet: string // hunk's after-side text at anchor time
+  body: string
   createdAt: number
 }
 
-interface ReviewSession {
-  baseCommit: string     // C (the selected commit); base diff = C~1 / empty-tree
-  baseRef: string        // resolved base (C~1 or empty-tree hash)
-  tipSha: string         // snapshot of the branch tip at review start
+export interface ReviewSession {
+  baseCommit: string
+  baseRef: string
+  tipSha: string
   startedAt: number
-  viewedFiles: Set<string>     // file paths marked "viewed"
+  files: ReviewFile[]
+  acceptedHunks: Set<string> // keys: `${filePath}:${hunkStartLine}`
   comments: ReviewComment[]
 }
-
-interface ReviewState {
-  active: ReviewSession | null
-  // Persisted history of sessions keyed by baseCommit so re-entering restores
-  // viewed state + comments for the same starting point.
-  sessions: Record<string /* baseCommit */, ReviewSession>
-}
 ```
 
-Actions:
+Helpers/actions:
 
-- `startReview(baseCommit, baseRef, tipSha, files)` — set `active`, hydrate from
-  `sessions[baseCommit]` if present (restoring viewed + comments).
-- `exitReview()` — clear `active` (session stays persisted).
-- `setViewed(filePath, viewed)`.
-- `addComment(filePath, startLine, endLine, snippet, body)` /
-  `updateComment(id, body)` / `removeComment(id)`.
-- `exportCommentsMarkdown(): string` — see the action seam.
+- `hunkKey(filePath, startLine) => \`${filePath}:${startLine}\``.
+- `startReview(baseCommit, baseRef, tipSha, files)` — restores prior session's
+  `acceptedHunks` + `comments` if present, fresh `tipSha`.
+- `exitReview()`.
+- `acceptHunk(filePath, startLine)` / `unacceptHunk(filePath, startLine)` —
+  toggle membership in `acceptedHunks`.
+- `addComment(filePath, hunk: ReviewHunk, snippet, body)` — anchors to the hunk;
+  `removeComment(id)`.
+- Derived (selectors/helpers, not stored):
+  - a hunk is **reviewed** if `acceptedHunks.has(key)` OR any comment has
+    `filePath === f && hunkStartLine === startLine`.
+  - per-file reviewed count and total (`file.hunks.length`); overall totals.
+- `exportCommentsMarkdown()` — unchanged in shape (`### <path>:<range>` + fenced
+  snippet + body), sorted by path then start line.
+- Persist only `sessions` (scope `project`) with Set (de)serialization, as today.
+  `active` not persisted; cleared on project switch (existing behavior).
 
-### 4. Changes panel — review mode
+### 3. CodeNode — per-hunk gutter controls + state visuals
 
-**File:** `src/components/Changes/index.tsx` (extend).
+**Files:** `src/components/Canvas/nodes/CodeNode.tsx`,
+`src/components/Canvas/nodes/cmPlugins.ts`.
 
-- **Entry point:** the History panel (`src/components/History/index.tsx`) gets a
-  per-commit action "Review changes since this commit." On click it resolves the
-  base (`<hash>~1`, or empty-tree if root), snapshots the current tip SHA
-  (`log[0].hash`), calls `git_diff_range`, and `startReview(...)` with the
-  resulting file list, then switches to the Files view so the Changes panel is
-  visible.
-- **Banner:** when `review.active`, the Changes panel shows a banner — e.g.
-  *"Reviewing N commits since `<shortHash>` · X/Y files viewed"* with an **Exit
-  review** button. Clearly distinct from the normal live-working-tree listing.
-- **File list:** the review changeset's files (from `git_diff_range`), each row
-  with its status badge (reuse existing M/A/D/U styling) and a **viewed
-  checkbox**. Clicking a row opens it via `showRangeDiff(path, baseRef, tipSha)`.
-  Progress (X/Y viewed) shown in the banner.
-- **Comments list:** a section listing all `active.comments` (`file:line` + body,
-  click to jump to the file/line), with a **Copy all** button (the text handler).
-- Normal (non-review) behavior is unchanged when `review.active` is null.
+For a review node (`data.review.filePath` set), the editor receives the file's
+hunks and their review state and renders:
 
-### 5. Read-only CodeNode — commenting affordance + markers
+- A **CodeMirror gutter** (`gutter` + `GutterMarker`) with a marker on each
+  hunk's `startLine`. The marker shows state: unreviewed (neutral dot),
+  **accepted** (green ✓), **commented** (amber 💬). Markers scroll natively with
+  the code. Clicking a marker opens a small action popover: **Accept / Unaccept**
+  and **Comment**.
+- The hunk list + state are pushed into the editor via a `StateField` updated by
+  a `StateEffect` (mirrors the Task-8 `setCommentRanges` pattern): the field
+  holds `{ startLine, state }[]` and provides the gutter markers + (reused)
+  changed-line highlight.
+- **Accept** → `acceptHunk(filePath, startLine)`. **Comment** → opens the comment
+  overlay (the existing Task-7 overlay, repurposed to anchor to the hunk rather
+  than an arbitrary selection) and calls `addComment(filePath, hunk, snippet,
+  body)` where `snippet` is the hunk's after-side text
+  (`sliceDoc(line(startLine).from, line(endLine).to)`).
+- The line-selection comment path from the first build is removed; commenting is
+  initiated from the hunk marker.
 
-**File:** `src/components/Canvas/nodes/CodeNode.tsx` (+ a small CM extension).
+`cmPlugins.ts` gains the gutter + state field (`setReviewHunks` effect,
+`reviewHunkField`, gutter, theme). Non-review nodes are unaffected (extension
+only added when `reviewFilePath` is set).
 
-- When the node is a review diff (readOnly + review metadata present):
-  - **Add a comment:** selecting a line range reveals a small "Comment" affordance
-    (floating button on selection, or a gutter "+"). Submitting calls
-    `addComment(...)` with the selected `startLine..endLine` and the selected text
-    as `snippet`. Read-only state still allows selection, so this works without
-    enabling edits.
-  - **Show existing comments:** a CodeMirror gutter marker / line decoration on
-    commented ranges; clicking opens the comment to read/edit/delete.
-- Comments anchor to `{ filePath, startLine, endLine }` in the head snapshot,
-  plus `snippet`. Drift handling (v1): on open, if the line content no longer
-  matches `snippet`, mark the comment "stale" (still shown in the list) rather
-  than silently mis-placing it. No automatic re-anchoring beyond this.
+### 4. Changes panel — review mode with per-hunk progress
 
-### 6. Comment-action seam (text-only now)
+**File:** `src/components/Changes/index.tsx`.
 
-A single abstraction for "do something with the review's comments":
+- Entry from History unchanged (`git_diff_range` now returns hunks too).
+- Banner shows **overall hunk progress**: `Review · <sha7> · <reviewedHunks>/<totalHunks> hunks`.
+- Each file row (`ReviewFileEntry`) shows its **per-file hunk progress**
+  (`reviewed/total`, e.g. `2/3`) instead of a viewed checkbox; clicking opens the
+  file via `showRangeDiff`. A file with all hunks reviewed is dimmed/checked.
+- Comments list + **Copy all** (markdown to clipboard) stay; each comment shows
+  `path:range` and jumps to the file on click; delete (✕) per comment.
 
-```ts
-interface ReviewActionHandler {
-  id: string
-  label: string
-  run(session: ReviewSession): Promise<void>
-}
-```
+### 5. Comment-action seam (text-only now)
 
-- The only handler now is **`copyAsMarkdown`** → builds and copies a structured
-  payload, e.g.:
-
-  ```markdown
-  ## Review — commits since <shortHash>
-
-  ### src/foo.ts:42–45
-  ```
-  <snippet>
-  ```
-  <comment body>
-  ```
-
-  via the platform clipboard API. Also exposed per-comment (copy one).
-- Future "launch agent" handler + a settings toggle selecting the active handler
-  plug in here without touching the store or UI data model. Not built now.
+Unchanged from the prior design: a `ReviewActionHandler` abstraction with one
+implementation — `copyAsMarkdown` (clipboard). Future agent handler + settings
+toggle plug in here. Not built now.
 
 ## Data flow
 
-1. History panel: user picks commit C → "Review changes since this commit."
-2. Resolve `baseRef` (`C~1` or empty-tree), snapshot `tipSha = log[0].hash`,
-   call `git_diff_range(repo, baseRef, tipSha)` → file list.
-3. `startReview(C, baseRef, tipSha, files)`; switch to Files view; Changes panel
-   enters review mode (banner + file list with viewed checkboxes).
-4. User clicks a file → `showRangeDiff(path, baseRef, tipSha)` → read-only merge
-   CodeNode (before = `git show baseRef:path`, after = `git show tipSha:path`).
-5. User selects lines → adds a comment (`addComment`), and/or checks "viewed".
-6. User clicks **Copy all** → markdown of all comments to clipboard → pastes into
-   their terminal agent. (Nothing in git or the working tree changed.)
-7. **Exit review** clears `active`; the session (viewed + comments) persists and
-   is restored if review is re-entered for the same base commit.
+1. History: pick commit C → "review". Resolve `baseRef` (`C~1` or empty-tree),
+   snapshot `tipSha`, call `git_diff_range` → files (each with `hunks`),
+   `startReview`, switch to Files view.
+2. Changes panel: banner + per-file hunk progress. Click a file → `showRangeDiff`
+   → read-only merge CodeNode; the file's hunks + state are pushed into the editor.
+3. In the diff: each hunk shows a gutter marker. Accept (✓) → `acceptHunk`;
+   Comment (💬) → overlay → `addComment` anchored to the hunk. Markers update;
+   per-file and overall progress update.
+4. Copy all → markdown of comments to clipboard → paste into a terminal agent.
+   Nothing in git or the working tree changed.
+5. Exit clears `active`; the session (accepted hunks + comments) persists and is
+   restored on re-entry for the same base commit.
 
 ## Edge cases
 
-- **Root commit (no parent):** base = empty-tree hash; the initial commit shows
-  as all additions. Handled in the store, not by disabling the action.
-- **Concurrent agent commits during review:** ignored by design — `tipSha` is
-  snapshotted at entry. A subtle banner note ("tip was `<sha>`") optional.
-- **File added in range:** absent in base → `before = ''` → shows as added.
-- **File deleted in range:** absent in head → `after = ''` → shows as deleted;
-  comments can still anchor in the base view if needed (v1: comment on the
-  after/current snapshot only; deleted files are view-only, no new comments).
-- **Comment anchor drift:** detected via `snippet` mismatch → comment flagged
-  "stale" in the list; not silently mis-rendered.
-- **Multi-window:** review state persists per-project and syncs via the existing
-  `synced state` mechanism; read-only git reads run anywhere safely.
-- **Concurrent live changes vs review:** review mode is clearly separated from the
-  live working-tree Changes view via the banner, so the two are not confused.
+- **Root commit:** base = empty-tree hash; initial commit shows as all-additions
+  (single big add hunk per file).
+- **Concurrent agent commits during review:** ignored — `tipSha` snapshotted.
+- **Pure-deletion hunk** (`+c,0`): anchored at line `c`, `lineCount` 0 → the
+  comment range is the single anchor line; the gutter marker sits there.
+- **File added in range:** one hunk covering the whole file. **Deleted in range:**
+  after-content empty → no hunks → file shows `0/0` (nothing to review); the row
+  is informational only.
+- **Hunk/comment anchor drift across re-entry:** if the snapshot changed, a
+  stored `acceptedHunks` key or comment `hunkStartLine` may not match a current
+  hunk → such entries are treated as stale (still listed in the comment list,
+  not mis-rendered in the gutter). No auto re-anchoring.
+- **Multi-window / persistence:** per-project, synced via existing mechanism.
 
 ## Persistence
 
-- `review.sessions` (per `baseCommit`) persisted with `scope: 'project'` using
-  `withPersistence`, debounced. `viewedFiles` (Set) and `comments` use custom
-  `serialize`/`deserialize`. `active` is **not** persisted (it's reconstructed
-  from `sessions` on `startReview`), avoiding a stale tipSha across restarts.
+- `review.sessions` (per `baseCommit`) persisted `scope: 'project'`, debounced;
+  `acceptedHunks` (Set) and `comments` use custom serialize/deserialize. `active`
+  not persisted (reconstructed on `startReview`).
 
 ## Testing
 
-- **Rust:** if `git.rs` has a temp-repo test harness, test `git_diff_range`
-  across a 2–3 commit range (and the empty-tree/root case) and assert the parsed
-  `GitFileStatus` list (paths, statuses, counts). Match existing conventions;
-  skip if none.
-- **Review store:** `startReview` hydrates from a persisted session;
-  `setViewed`/`addComment`/`updateComment`/`removeComment` mutate correctly;
-  `exportCommentsMarkdown` produces the expected text; round-trip
-  serialize/deserialize of `viewedFiles`/`comments`.
-- **UI:** History action computes the right base/tip and N; Changes review-mode
-  banner shows correct X/Y; clicking a file opens a read-only range diff;
-  selecting lines creates a comment; Copy-all yields the markdown payload.
+- **Rust:** test `git_diff_range` returns correct per-file `hunks` (after-side
+  start/count) for a multi-hunk file, an added file, and the empty-tree/root case
+  (existing temp-repo harness).
+- **Review store:** `acceptHunk`/`unacceptHunk` toggle; reviewed = accepted OR
+  commented; per-file + overall progress helpers; `addComment` anchors to the
+  hunk; `exportCommentsMarkdown`; round-trip serialize/deserialize of
+  `acceptedHunks`/`comments`.
+- **UI:** History computes base/tip; Changes banner/file rows show correct
+  hunk progress; opening a file shows a gutter marker per hunk; accept toggles
+  state; comment adds an anchored comment; Copy-all yields markdown.
 
 ## Conventions
 
-- Follow existing `git.rs` command and `src/store/*.ts` (zustand +
-  `withPersistence`) patterns; reuse `showCommitDiff`'s read-only CodeNode flow.
-- No new modal/toast system; reuse existing inline UI patterns.
-- No `Co-Authored-By` trailers in commits (project CLAUDE.md).
+- Follow existing `git.rs` and `src/store/*.ts` (zustand + `withPersistence`)
+  patterns; reuse `showCommitDiff`'s read-only CodeNode flow and the Task-8
+  StateField/effect/gutter pattern.
+- No new modal/toast system.
+- No `Co-Authored-By` trailers (project CLAUDE.md).
+```
