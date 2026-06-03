@@ -76,6 +76,7 @@ export type CanvasState = {
   focusFileByPath: (repoRelativePath: string, scrollToLine?: number) => Promise<void>
   navigateBack: () => Promise<void>
   showCommitDiff: (commitHash: string, filePath: string) => Promise<void>
+  showRangeDiff: (filePath: string, base: string, head: string) => Promise<void>
   setPendingScroll: (scroll: { filePath: string; line: number } | null) => void
 }
 
@@ -343,6 +344,69 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           const newColumns = [...columns.slice(0, 1), previewCol]
           set({
             columns: newColumns,
+            currentColumnIndex: 0,
+            focusedNodeId: null,
+            cameraY: CANVAS_MARGIN,
+          })
+
+          flattenAndRender(get, set)
+        },
+
+        showRangeDiff: async (filePath, base, head) => {
+          const { columns } = get()
+          const rootCol = columns[0]
+          if (!rootCol) return
+          const repoPath = rootCol.path
+
+          let afterContent = ''
+          try {
+            afterContent = await invoke<string>('git_show_commit_file', {
+              repoPath,
+              hash: head,
+              filePath,
+            })
+          } catch {
+            /* file deleted in range — show empty after-content */
+          }
+
+          let beforeContent = ''
+          try {
+            beforeContent = await invoke<string>('git_show_commit_file', {
+              repoPath,
+              hash: base,
+              filePath,
+            })
+          } catch {
+            /* file added in range — no base content */
+          }
+
+          const fileName = filePath.split('/').pop() || filePath
+          const lineCount = afterContent.split('\n').length
+          const codeNode: AppNode = {
+            id: `review:${repoPath}/${filePath}:${base}..${head}`,
+            type: 'codeNode',
+            position: { x: 0, y: 0 },
+            data: {
+              label: fileName,
+              filePath: joinPath(repoPath, filePath),
+              code: afterContent,
+              startLine: 1,
+              endLine: lineCount,
+              headOverride: beforeContent,
+              readOnly: true,
+              review: { filePath },
+            },
+          }
+
+          const previewCol: Column = {
+            path: joinPath(repoPath, filePath),
+            kind: 'file',
+            nodes: [codeNode],
+            edges: [],
+          }
+
+          set({
+            columns: [...columns.slice(0, 1), previewCol],
             currentColumnIndex: 0,
             focusedNodeId: null,
             cameraY: CANVAS_MARGIN,
