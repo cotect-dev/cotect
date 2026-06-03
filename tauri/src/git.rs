@@ -361,7 +361,7 @@ pub async fn git_diff_range(
     let range_base = base.as_str();
     let range_head = head.as_str();
 
-    let numstat = run_git(&repo_path, &["diff", "--numstat", range_base, range_head])
+    let numstat = run_git(&repo_path, &["diff", "--numstat", "--no-renames", range_base, range_head])
         .await
         .unwrap_or_default();
     let name_status = run_git(&repo_path, &["diff", "--name-status", range_base, range_head]).await?;
@@ -1039,5 +1039,31 @@ def7890123456\nSecond\nBob\n1700001000\nbody for second\n\n---END---\n\n1\t0\tb.
         assert_eq!(files[0].path, "a.txt");
         assert_eq!(files[0].status, "A");
         assert_eq!(files[0].insertions, 2);
+    }
+
+    #[tokio::test]
+    async fn git_diff_range_rename_with_edit_keeps_counts() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "old.txt", "line1\nline2\n", "c1");
+
+        // Rename old.txt -> new.txt and add a line, then commit.
+        StdCommand::new("git")
+            .arg("-C").arg(&repo)
+            .args(["mv", "old.txt", "new.txt"])
+            .status().unwrap();
+        std::fs::write(format!("{repo}/new.txt"), "line1\nline2\nline3\n").unwrap();
+        StdCommand::new("git")
+            .arg("-C").arg(&repo)
+            .args(["commit", "-aqm", "rename+edit"])
+            .status().unwrap();
+
+        let files = git_diff_range(repo.clone(), "HEAD~1".to_string(), "HEAD".to_string())
+            .await
+            .unwrap();
+
+        let f = files.iter().find(|f| f.path == "new.txt")
+            .expect("new.txt should be in the diff");
+        assert_eq!(f.status, "R");
+        assert!(f.insertions >= 1, "expected non-zero insertions, got {}", f.insertions);
     }
 }
