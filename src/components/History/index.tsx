@@ -4,8 +4,11 @@ import { useCanvasStore } from '@/store'
 import { invoke } from '@tauri-apps/api/core'
 import RelativeTime from '@/components/RelativeTime'
 import NoGitRepo from '@/components/NoGitRepo'
+import { useReviewStore, type ReviewFile } from '@/store/review'
+import { useViewStore } from '@/store/view'
 
 const LOG_PAGE_SIZE = 50
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
 const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry }) {
   const [expanded, setExpanded] = useState(false)
@@ -18,9 +21,38 @@ const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry 
     [commit.hash],
   )
 
+  const handleReview = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      const repoPath = useGitStore.getState().repoPath
+      const tipSha = useGitStore.getState().log?.[0]?.hash
+      if (!repoPath || !tipSha) return
+
+      const fetchRange = (base: string) =>
+        invoke<ReviewFile[]>('git_diff_range', { repoPath, base, head: tipSha })
+
+      let baseRef = `${commit.hash}~1`
+      let files: ReviewFile[]
+      try {
+        files = await fetchRange(baseRef)
+      } catch {
+        // Root commit: no parent — diff against the empty tree.
+        baseRef = EMPTY_TREE
+        try {
+          files = await fetchRange(baseRef)
+        } catch {
+          return
+        }
+      }
+      useReviewStore.getState().startReview(commit.hash, baseRef, tipSha, files)
+      useViewStore.getState().setViewMode('files')
+    },
+    [commit.hash],
+  )
+
   return (
     <div
-      className="px-2 py-1.5 border-b border-border/10 hover:bg-muted/30 cursor-pointer"
+      className="group/commit px-2 py-1.5 border-b border-border/10 hover:bg-muted/30 cursor-pointer"
       role="button"
       tabIndex={0}
       onClick={() => setExpanded((v) => !v)}
@@ -34,7 +66,17 @@ const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry 
     >
       <div className="flex items-center justify-between text-[10px] text-muted-foreground/50 font-mono">
         <span>{commit.hash}</span>
-        <RelativeTime timestamp={commit.timestamp} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleReview}
+            className="opacity-0 group-hover/commit:opacity-100 px-1 py-0.5 rounded hover:bg-primary/20 hover:text-primary transition-opacity cursor-pointer"
+            title="Review this commit and everything since it (read-only)"
+          >
+            review
+          </button>
+          <RelativeTime timestamp={commit.timestamp} />
+        </div>
       </div>
       <div
         className={`text-xs mt-0.5 ${expanded ? 'whitespace-pre-wrap break-words' : 'truncate'}`}
