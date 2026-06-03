@@ -13,6 +13,7 @@ import {
   restoreGeometryOnMonitor,
 } from '@/services/windowManager'
 import { useBrowserStore } from '@/store/browser'
+import '@/store/review'
 import { useGitStore, startGitWatcher, stopGitWatcher } from '@/store/git'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/layoutDefaults'
