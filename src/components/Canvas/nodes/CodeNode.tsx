@@ -40,6 +40,9 @@ import {
   getChunks,
   acceptChunk,
   rejectChunk,
+  commentHighlightField,
+  commentHighlightTheme,
+  setCommentRanges,
 } from './cmPlugins'
 import { getPlatform } from '@/services/platform'
 import { isMarkdownFile } from '@/lib/fileClassification'
@@ -50,6 +53,7 @@ import { useCanvasStore, type ImportRef } from '@/store/canvas'
 import { Pill, REF_HEIGHT } from './ImportRefNode'
 import { useGitStore } from '@/store/git'
 import { useReviewStore } from '@/store/review'
+import { useShallow } from 'zustand/react/shallow'
 import { samePath, toRepoRelative } from '@/lib/repoPath'
 
 import MarkdownPreview from './MarkdownPreview'
@@ -235,6 +239,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const gitStatus = useGitStore((s) => s.status)
   const repoPath = useGitStore((s) => s.repoPath)
   const loadHeadContent = useGitStore((s) => s.loadHeadContent)
+
+  const fileComments = useReviewStore(
+    useShallow((s) =>
+      reviewFilePath ? (s.active?.comments.filter((c) => c.filePath === reviewFilePath) ?? []) : [],
+    ),
+  )
 
   const gitEntry = useMemo(() => {
     if (hasHeadOverride || !gitStatus) return null
@@ -422,6 +432,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             },
           }),
           rainbowBrackets,
+          ...(reviewFilePath ? [commentHighlightField, commentHighlightTheme] : []),
           vscodeDark,
           ...(isReadOnly ? [EditorState.readOnly.of(true)] : []),
           initialMergeExt,
@@ -616,6 +627,15 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       effects: wrapCompartmentRef.current.reconfigure(lineWrap ? EditorView.lineWrapping : []),
     })
   }, [lineWrap])
+
+  useEffect(() => {
+    if (!reviewFilePath) return
+    const view = viewRef.current
+    if (!view) return
+    view.dispatch({
+      effects: setCommentRanges.of(fileComments.map((c) => ({ from: c.startLine, to: c.endLine }))),
+    })
+  }, [reviewFilePath, fileComments, editorReady])
 
   const pendingScroll = useCanvasStore((s) => s.pendingScroll)
   useEffect(() => {
