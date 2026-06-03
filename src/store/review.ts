@@ -39,6 +39,16 @@ interface ReviewState {
   startReview: (baseCommit: string, baseRef: string, tipSha: string, files: ReviewFile[]) => void
   exitReview: () => void
   setViewed: (filePath: string, viewed: boolean) => void
+  addComment: (
+    filePath: string,
+    startLine: number,
+    endLine: number,
+    snippet: string,
+    body: string,
+  ) => void
+  updateComment: (id: string, body: string) => void
+  removeComment: (id: string) => void
+  exportCommentsMarkdown: () => string
 }
 
 // Persist `sessions` only. Sets need explicit (de)serialization.
@@ -69,6 +79,12 @@ function deserializeSessions(raw: unknown): Record<string, ReviewSession> {
     }
   }
   return out
+}
+
+let commentSeq = 0
+function nextCommentId(): string {
+  commentSeq += 1
+  return `cmt_${Date.now().toString(36)}_${commentSeq}`
 }
 
 // Persist the active session back into `sessions` after every mutation.
@@ -111,6 +127,59 @@ export const useReviewStore = createStoreWithHMR(import.meta.hot, 'review', () =
           else viewedFiles.delete(filePath)
           const next = { ...active, viewedFiles }
           set({ active: next, sessions: persistActive(next, get().sessions) })
+        },
+
+        addComment: (filePath, startLine, endLine, snippet, body) => {
+          const active = get().active
+          if (!active) return
+          const comment: ReviewComment = {
+            id: nextCommentId(),
+            filePath,
+            startLine,
+            endLine,
+            snippet,
+            body,
+            createdAt: Date.now(),
+          }
+          const next = { ...active, comments: [...active.comments, comment] }
+          set({ active: next, sessions: persistActive(next, get().sessions) })
+        },
+
+        updateComment: (id, body) => {
+          const active = get().active
+          if (!active) return
+          const next = {
+            ...active,
+            comments: active.comments.map((c) => (c.id === id ? { ...c, body } : c)),
+          }
+          set({ active: next, sessions: persistActive(next, get().sessions) })
+        },
+
+        removeComment: (id) => {
+          const active = get().active
+          if (!active) return
+          const next = { ...active, comments: active.comments.filter((c) => c.id !== id) }
+          set({ active: next, sessions: persistActive(next, get().sessions) })
+        },
+
+        exportCommentsMarkdown: () => {
+          const active = get().active
+          if (!active || active.comments.length === 0) return ''
+          const lines: string[] = [`## Review — commits since ${active.baseCommit.slice(0, 7)}`, '']
+          const sorted = [...active.comments].sort(
+            (a, b) => a.filePath.localeCompare(b.filePath) || a.startLine - b.startLine,
+          )
+          for (const c of sorted) {
+            const range =
+              c.startLine === c.endLine ? `${c.startLine}` : `${c.startLine}-${c.endLine}`
+            lines.push(`### ${c.filePath}:${range}`)
+            lines.push('```')
+            lines.push(c.snippet)
+            lines.push('```')
+            lines.push(c.body)
+            lines.push('')
+          }
+          return lines.join('\n')
         },
       }),
       {

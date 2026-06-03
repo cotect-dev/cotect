@@ -44,3 +44,44 @@ describe('review store — session + viewed', () => {
     expect(s.viewedFiles.has('src/b.ts')).toBe(true)
   })
 })
+
+describe('review store — comments', () => {
+  beforeEach(() => {
+    useReviewStore.setState({ active: null, sessions: {} })
+    useReviewStore.getState().startReview('abc1234', 'abc1234~1', 'tip999', files)
+  })
+
+  it('addComment adds a comment with a stable id and persists it', () => {
+    const r = useReviewStore.getState()
+    r.addComment('src/a.ts', 10, 12, 'const x = 1', 'use const-correct name')
+    const c = useReviewStore.getState().active!.comments
+    expect(c).toHaveLength(1)
+    expect(c[0]).toMatchObject({
+      filePath: 'src/a.ts',
+      startLine: 10,
+      endLine: 12,
+      body: 'use const-correct name',
+    })
+    expect(c[0].id).toBeTruthy()
+    expect(useReviewStore.getState().sessions['abc1234'].comments).toHaveLength(1)
+  })
+
+  it('updateComment and removeComment mutate by id', () => {
+    const r = useReviewStore.getState()
+    r.addComment('src/a.ts', 1, 1, 'x', 'first')
+    const id = useReviewStore.getState().active!.comments[0].id
+    r.updateComment(id, 'edited')
+    expect(useReviewStore.getState().active!.comments[0].body).toBe('edited')
+    r.removeComment(id)
+    expect(useReviewStore.getState().active!.comments).toHaveLength(0)
+  })
+
+  it('exportCommentsMarkdown renders file:line + body', () => {
+    const r = useReviewStore.getState()
+    r.addComment('src/a.ts', 10, 12, 'const x = 1', 'rename x')
+    const md = useReviewStore.getState().exportCommentsMarkdown()
+    expect(md).toContain('src/a.ts:10-12')
+    expect(md).toContain('rename x')
+    expect(md).toContain('const x = 1')
+  })
+})
