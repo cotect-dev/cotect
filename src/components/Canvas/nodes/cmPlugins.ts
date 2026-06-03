@@ -3,6 +3,7 @@ import {
   ViewPlugin,
   Decoration,
   type DecorationSet,
+  gutter,
   GutterMarker,
   gutterLineClass,
   lineNumberWidgetMarker,
@@ -233,4 +234,88 @@ export const commentHighlightTheme: Extension = EditorView.theme({
     backgroundColor: 'rgba(250, 204, 21, 0.10)',
     boxShadow: 'inset 2px 0 0 rgba(250, 204, 21, 0.6)',
   },
+})
+
+export type HunkDisplay = {
+  startLine: number
+  endLine: number
+  state: 'none' | 'accepted' | 'commented'
+}
+
+export const setReviewHunks = StateEffect.define<HunkDisplay[]>()
+export const openHunkActions = StateEffect.define<{ startLine: number; endLine: number }>()
+
+export const reviewHunkField = StateField.define<HunkDisplay[]>({
+  create() {
+    return []
+  },
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setReviewHunks)) return e.value
+    return value
+  },
+})
+
+class HunkMarker extends GutterMarker {
+  readonly state: HunkDisplay['state']
+  constructor(state: HunkDisplay['state']) {
+    super()
+    this.state = state
+  }
+  eq(other: HunkMarker) {
+    return other.state === this.state
+  }
+  toDOM() {
+    const el = document.createElement('span')
+    el.className = `cm-cotectHunkMark cm-cotectHunkMark-${this.state}`
+    el.textContent = this.state === 'accepted' ? '✓' : this.state === 'commented' ? '💬' : '•'
+    el.title = 'Review this hunk'
+    return el
+  }
+}
+
+export const reviewHunkGutter = gutter({
+  class: 'cm-cotectHunkGutter',
+  markers: (view) => {
+    const hunks = view.state.field(reviewHunkField, false) ?? []
+    const maxLine = view.state.doc.lines
+    const marks = hunks
+      .map((h) => ({
+        pos: view.state.doc.line(Math.max(1, Math.min(h.startLine, maxLine))).from,
+        state: h.state,
+      }))
+      .sort((a, b) => a.pos - b.pos)
+      .map((m) => new HunkMarker(m.state).range(m.pos))
+    return RangeSet.of(marks, true)
+  },
+  initialSpacer: () => new HunkMarker('none'),
+  domEventHandlers: {
+    mousedown(view, line) {
+      const lineNo = view.state.doc.lineAt(line.from).number
+      const hunks = view.state.field(reviewHunkField, false) ?? []
+      const hunk = hunks.find((h) => h.startLine === lineNo)
+      if (!hunk) return false
+      view.dispatch({
+        effects: openHunkActions.of({ startLine: hunk.startLine, endLine: hunk.endLine }),
+      })
+      return true
+    },
+  },
+})
+
+export const reviewHunkTheme: Extension = EditorView.theme({
+  '.cm-cotectHunkGutter': {
+    width: '16px',
+    cursor: 'pointer',
+  },
+  '.cm-cotectHunkMark': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '10px',
+    width: '16px',
+    opacity: '0.85',
+  },
+  '.cm-cotectHunkMark-none': { color: 'rgba(255,255,255,0.35)' },
+  '.cm-cotectHunkMark-accepted': { color: '#22c55e' },
+  '.cm-cotectHunkMark-commented': { color: '#fbbf24' },
 })
