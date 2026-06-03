@@ -49,6 +49,7 @@ import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'
 import { useCanvasStore, type ImportRef } from '@/store/canvas'
 import { Pill, REF_HEIGHT } from './ImportRefNode'
 import { useGitStore } from '@/store/git'
+import { useReviewStore } from '@/store/review'
 import { samePath, toRepoRelative } from '@/lib/repoPath'
 
 import MarkdownPreview from './MarkdownPreview'
@@ -172,6 +173,14 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const scrollHandlerRef = useRef<{ scrollDOM: HTMLElement; handler: () => void } | null>(null)
   const resizeObRef = useRef<ResizeObserver | null>(null)
   const flags = getNodeFlags(data)
+  const reviewFilePath = data.review?.filePath
+  const [commentDraft, setCommentDraft] = useState<{
+    startLine: number
+    endLine: number
+    snippet: string
+    top: number
+  } | null>(null)
+  const [commentBody, setCommentBody] = useState('')
   const [editorReady, setEditorReady] = useState(false)
   const [editorFocused, setEditorFocused] = useState(false)
   const [lineWrap, setLineWrap] = useState(false)
@@ -424,6 +433,29 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
               if (!update.view.hasFocus && dirtyRef.current) void saveToFileRef.current()
             }
             if (update.geometryChanged) setGeometryVer((v) => v + 1)
+            if (reviewFilePath && update.selectionSet) {
+              const sel = update.state.selection.main
+              if (sel.empty) {
+                setCommentDraft(null)
+              } else {
+                const doc = update.state.doc
+                const startLine = doc.lineAt(sel.from).number
+                const endLine = doc.lineAt(sel.to).number
+                const snippet = update.state.sliceDoc(
+                  doc.line(startLine).from,
+                  doc.line(endLine).to,
+                )
+                const top = update.view.coordsAtPos(doc.line(startLine).from)
+                const scrollTop = update.view.scrollDOM.scrollTop
+                const editorTop = update.view.scrollDOM.getBoundingClientRect().top
+                setCommentDraft({
+                  startLine,
+                  endLine,
+                  snippet,
+                  top: top ? top.top - editorTop + scrollTop : 0,
+                })
+              }
+            }
           }),
           keymap.of([
             {
@@ -823,6 +855,56 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
                     </div>
                   )
                 })}
+              </div>
+            </div>
+          )}
+          {reviewFilePath && commentDraft && (
+            <div
+              className="absolute right-2 z-20 w-64 rounded border border-border bg-background shadow-lg p-2 pointer-events-auto"
+              style={{ top: commentDraft.top }}
+            >
+              <div className="text-[10px] text-muted-foreground mb-1 font-mono">
+                Lines {commentDraft.startLine}
+                {commentDraft.endLine !== commentDraft.startLine ? `–${commentDraft.endLine}` : ''}
+              </div>
+              <textarea
+                autoFocus
+                value={commentBody}
+                onChange={(e) => setCommentBody(e.target.value)}
+                placeholder="Comment for the agent…"
+                className="w-full h-16 text-xs bg-muted/40 rounded p-1 outline-none resize-none"
+              />
+              <div className="flex justify-end gap-1 mt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCommentDraft(null)
+                    setCommentBody('')
+                  }}
+                  className="text-[10px] px-1.5 py-0.5 rounded hover:bg-muted cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!commentBody.trim()}
+                  onClick={() => {
+                    useReviewStore
+                      .getState()
+                      .addComment(
+                        reviewFilePath,
+                        commentDraft.startLine,
+                        commentDraft.endLine,
+                        commentDraft.snippet,
+                        commentBody.trim(),
+                      )
+                    setCommentDraft(null)
+                    setCommentBody('')
+                  }}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary disabled:opacity-40 cursor-pointer"
+                >
+                  Comment
+                </button>
               </div>
             </div>
           )}
