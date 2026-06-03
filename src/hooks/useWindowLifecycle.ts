@@ -13,7 +13,7 @@ import {
   restoreGeometryOnMonitor,
 } from '@/services/windowManager'
 import { useBrowserStore } from '@/store/browser'
-import '@/store/review'
+import { useReviewStore } from '@/store/review'
 import { useGitStore, startGitWatcher, stopGitWatcher } from '@/store/git'
 import { loadLayoutIntoStore, startLayoutPersistence, stopLayoutPersistence } from '@/store/layout'
 import { DEFAULT_MAIN_LAYOUT } from '@/lib/layoutDefaults'
@@ -142,6 +142,7 @@ export function useWindowLifecycle() {
             startGitWatcher(state.rootPath, windowId)
             computeProjectId(state.rootPath)
               .then((newProjectId) => {
+                useReviewStore.getState().exitReview()
                 switchProject(newProjectId).catch((err) => {
                   console.warn('[windowLifecycle] persistence project switch failed:', err)
                 })

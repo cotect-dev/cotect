@@ -58,6 +58,10 @@ function deserializeSessions(raw: unknown): Record<string, ReviewSession> {
     for (const [k, v] of Object.entries(raw as Record<string, PersistedSession>)) {
       out[k] = {
         ...v,
+        baseCommit: v.baseCommit ?? k,
+        baseRef: v.baseRef ?? '',
+        tipSha: v.tipSha ?? '',
+        startedAt: v.startedAt ?? 0,
         viewedFiles: new Set(v.viewedFiles ?? []),
         comments: v.comments ?? [],
         files: v.files ?? [],
