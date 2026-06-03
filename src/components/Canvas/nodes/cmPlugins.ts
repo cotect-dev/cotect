@@ -8,7 +8,14 @@ import {
   lineNumberWidgetMarker,
   type WidgetType,
 } from '@codemirror/view'
-import { RangeSet, RangeSetBuilder, StateField, type Extension } from '@codemirror/state'
+import {
+  RangeSet,
+  RangeSetBuilder,
+  StateField,
+  StateEffect,
+  type Extension,
+  type Range,
+} from '@codemirror/state'
 import { syntaxTree } from '@codemirror/language'
 import { unifiedMergeView, getChunks, acceptChunk, rejectChunk } from '@codemirror/merge'
 
@@ -190,3 +197,40 @@ export function buildMergeExtension(head: string | null): Extension {
     ),
   ]
 }
+
+export const setCommentRanges = StateEffect.define<{ from: number; to: number }[]>()
+
+const commentLineDeco = Decoration.line({ class: 'cm-cotectCommentLine' })
+
+export const commentHighlightField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none
+  },
+  update(deco, tr) {
+    deco = deco.map(tr.changes)
+    for (const e of tr.effects) {
+      if (e.is(setCommentRanges)) {
+        const maxLine = tr.state.doc.lines
+        const ranges = e.value
+          .map((r) => ({ from: Math.min(r.from, maxLine), to: Math.min(r.to, maxLine) }))
+          .sort((a, b) => a.from - b.from)
+        const decos: Range<Decoration>[] = []
+        for (const r of ranges) {
+          for (let ln = r.from; ln <= r.to; ln++) {
+            decos.push(commentLineDeco.range(tr.state.doc.line(ln).from))
+          }
+        }
+        deco = Decoration.set(decos, true)
+      }
+    }
+    return deco
+  },
+  provide: (f) => EditorView.decorations.from(f),
+})
+
+export const commentHighlightTheme: Extension = EditorView.theme({
+  '.cm-cotectCommentLine': {
+    backgroundColor: 'rgba(250, 204, 21, 0.10)',
+    boxShadow: 'inset 2px 0 0 rgba(250, 204, 21, 0.6)',
+  },
+})
