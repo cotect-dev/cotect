@@ -49,6 +49,9 @@ describe('review store — per-hunk', () => {
     )
     r.unacceptHunk('src/a.ts', 10)
     expect(useReviewStore.getState().active!.acceptedHunks.has('src/a.ts:10')).toBe(false)
+    expect(useReviewStore.getState().sessions['abc1234'].acceptedHunks.has('src/a.ts:10')).toBe(
+      false,
+    )
   })
 
   it('a hunk is reviewed when accepted OR commented', () => {
