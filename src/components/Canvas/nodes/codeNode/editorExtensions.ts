@@ -9,17 +9,22 @@ import {
   rectangularSelection,
   crosshairCursor,
 } from '@codemirror/view'
-import { EditorState, type Extension } from '@codemirror/state'
+import { EditorState, EditorSelection, type Extension, type StateCommand } from '@codemirror/state'
 import {
   defaultKeymap,
   history,
   historyKeymap,
   indentWithTab,
-  copyLineDown,
   deleteLine,
   toggleComment,
 } from '@codemirror/commands'
-import { highlightSelectionMatches } from '@codemirror/search'
+import {
+  highlightSelectionMatches,
+  search,
+  searchKeymap,
+  gotoLine,
+  selectSelectionMatches,
+} from '@codemirror/search'
 import {
   closeBrackets,
   closeBracketsKeymap,
@@ -52,6 +57,20 @@ export interface EditorExtensionOptions {
   onOpenImport: (item: ImportRefItem) => void
 }
 
+/** VS Code's Ctrl+Shift+Enter — CM only ships the below-variant. */
+const insertBlankLineAbove: StateCommand = ({ state, dispatch }) => {
+  const changes = state.changeByRange((range) => {
+    const line = state.doc.lineAt(range.from)
+    const indent = /^\s*/.exec(line.text)?.[0] ?? ''
+    return {
+      changes: { from: line.from, insert: `${indent}\n` },
+      range: EditorSelection.cursor(line.from + indent.length),
+    }
+  })
+  dispatch(state.update(changes, { scrollIntoView: true, userEvent: 'input' }))
+  return true
+}
+
 /** Builds the full extension list for a CodeNode editor view. Static editor
  *  config (syntax, gutters, diff highlighting, keymap, theme) lives here;
  *  document content and stateful compartments are supplied by the caller. */
@@ -74,6 +93,8 @@ export function buildEditorExtensions(opts: EditorExtensionOptions): Extension[]
     rectangularSelection(),
     crosshairCursor(),
     highlightSelectionMatches(),
+    search({ top: true }),
+    EditorState.allowMultipleSelections.of(true),
     ...(langExt ? [langExt] : []),
     indentationMarkers({
       highlightActiveBlock: true,
@@ -109,6 +130,14 @@ export function buildEditorExtensions(opts: EditorExtensionOptions): Extension[]
           return true
         },
       },
+      // Before searchKeymap so Mod-g means goto-line (VS Code), not find-next;
+      // F3/Shift-F3 still cover find navigation.
+      { key: 'Mod-g', run: gotoLine },
+      { key: 'Mod-Shift-l', run: selectSelectionMatches },
+      { key: 'Mod-Shift-Enter', run: insertBlankLineAbove },
+      // searchKeymap before the blur-Escape: closeSearchPanel returns false when
+      // no panel is open, falling through to the canvas blur below.
+      ...searchKeymap,
       {
         key: 'Escape',
         run: (view) => {
@@ -118,7 +147,6 @@ export function buildEditorExtensions(opts: EditorExtensionOptions): Extension[]
           return true
         },
       },
-      { key: 'Mod-d', run: copyLineDown },
       { key: 'Mod-Shift-k', run: deleteLine },
       { key: 'Mod-/', run: toggleComment },
       { key: 'Tab', run: acceptCompletion },
