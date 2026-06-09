@@ -42,17 +42,17 @@ const VIEW_GRAPH = defineBinding({
   chord: '2',
   matches: (e) => e.key === '2',
 })
-const VIEW_SETTINGS = defineBinding({
-  id: 'canvas.view.settings',
-  label: 'View: Settings',
+const VIEW_HEALTH = defineBinding({
+  id: 'canvas.view.health',
+  label: 'View: Health',
   scope: 'global',
   group: 'Canvas',
   chord: '3',
   matches: (e) => e.key === '3',
 })
-const VIEW_HEALTH = defineBinding({
-  id: 'canvas.view.health',
-  label: 'View: Health',
+const VIEW_SETTINGS = defineBinding({
+  id: 'canvas.view.settings',
+  label: 'View: Settings',
   scope: 'global',
   group: 'Canvas',
   chord: '4',

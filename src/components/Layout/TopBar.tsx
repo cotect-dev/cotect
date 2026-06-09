@@ -41,8 +41,8 @@ import {
 const VIEW_BUTTONS: { mode: ViewMode; key: string; label: string; Icon: typeof FolderTree }[] = [
   { mode: 'files', key: '1', label: 'Files', Icon: FolderTree },
   { mode: 'graph', key: '2', label: 'Graph', Icon: Network },
-  { mode: 'settings', key: '3', label: 'Settings', Icon: SettingsIcon },
-  { mode: 'health', key: '4', label: 'Health', Icon: Activity },
+  { mode: 'health', key: '3', label: 'Health', Icon: Activity },
+  { mode: 'settings', key: '4', label: 'Settings', Icon: SettingsIcon },
 ]
 
 interface TopBarProps {
