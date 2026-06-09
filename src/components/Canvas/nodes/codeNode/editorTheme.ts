@@ -75,7 +75,6 @@ export const codeEditorTheme = EditorView.theme({
     backgroundColor: '#252526',
     color: '#cccccc',
     borderBottom: '1px solid rgba(255,255,255,0.06)',
-    zIndex: 25,
   },
   '.cm-panels.cm-panels-bottom': {
     borderTop: '1px solid rgba(255,255,255,0.06)',

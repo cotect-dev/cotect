@@ -17,14 +17,9 @@ import {
   indentWithTab,
   deleteLine,
   toggleComment,
+  simplifySelection,
 } from '@codemirror/commands'
-import {
-  highlightSelectionMatches,
-  search,
-  searchKeymap,
-  gotoLine,
-  selectSelectionMatches,
-} from '@codemirror/search'
+import { highlightSelectionMatches, search, searchKeymap, gotoLine } from '@codemirror/search'
 import {
   closeBrackets,
   closeBracketsKeymap,
@@ -133,7 +128,6 @@ export function buildEditorExtensions(opts: EditorExtensionOptions): Extension[]
       // Before searchKeymap so Mod-g means goto-line (VS Code), not find-next;
       // F3/Shift-F3 still cover find navigation.
       { key: 'Mod-g', run: gotoLine },
-      { key: 'Mod-Shift-l', run: selectSelectionMatches },
       { key: 'Mod-Shift-Enter', run: insertBlankLineAbove },
       // searchKeymap before the blur-Escape: closeSearchPanel returns false when
       // no panel is open, falling through to the canvas blur below.
@@ -141,6 +135,7 @@ export function buildEditorExtensions(opts: EditorExtensionOptions): Extension[]
       {
         key: 'Escape',
         run: (view) => {
+          if (simplifySelection(view)) return true
           view.contentDOM.blur()
           const container = document.querySelector('[data-canvas-container]') as HTMLElement | null
           container?.focus()
