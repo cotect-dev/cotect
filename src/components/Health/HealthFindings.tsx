@@ -1,20 +1,20 @@
 import { useMemo } from 'react'
 import { useHealthStore } from '@/store/health'
 import type { Severity, FindingType, Finding, FileMetrics } from '@/services/structureAnalyzer'
-import { AlertCircle, AlertTriangle, Info, HelpCircle } from 'lucide-react'
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
-import { navigateToFile } from './navigateToFile'
+import { AlertTriangle, Info } from 'lucide-react'
+import { Section, InfoTip, FileLink } from './shared'
+import { shortPath } from './format'
 
 const SEVERITY_ICON: Record<Severity, React.ReactNode> = {
-  error: <AlertCircle className="h-4 w-4 text-red-400" />,
-  warning: <AlertTriangle className="h-4 w-4 text-yellow-400" />,
-  info: <Info className="h-4 w-4 text-blue-400" />,
+  error: <AlertTriangle className="h-4 w-4 text-amber-400" />,
+  warning: <AlertTriangle className="h-4 w-4 text-amber-400" />,
+  info: <Info className="h-4 w-4 text-muted-foreground" />,
 }
 
 const SEVERITY_LABEL: Record<Severity, string> = {
-  error: 'Errors',
+  error: 'Needs attention',
   warning: 'Warnings',
-  info: 'Info',
+  info: 'Notes',
 }
 
 const FINDING_LABELS: Record<FindingType, string> = {
@@ -58,11 +58,6 @@ const FINDING_TOOLTIPS: Partial<Record<FindingType, string>> = {
 }
 
 const MAX_FILES_PER_CARD = 10
-
-function shortPath(path: string): string {
-  const parts = path.split('/')
-  return parts.length > 2 ? parts.slice(-2).join('/') : path
-}
 
 function getFileValue(
   type: FindingType,
@@ -197,30 +192,35 @@ export default function HealthFindings() {
     return grouped
   }, [findings, metricsMap])
 
-  const hasAny = findings.length > 0
+  if (findings.length === 0) {
+    return (
+      <Section title="Architecture findings">
+        <div className="rounded-lg border border-border bg-card px-3 py-6 text-center text-sm text-muted-foreground">
+          No findings — clean codebase!
+        </div>
+      </Section>
+    )
+  }
 
   return (
-    <TooltipProvider>
-      <div className="p-6 max-w-4xl space-y-8">
-        {!hasAny && (
-          <div className="text-sm text-muted-foreground py-8 text-center">
-            No findings — clean codebase!
-          </div>
-        )}
-
+    <Section
+      title="Architecture findings"
+      subtitle="Structural signals from the import graph. Heuristics, not hard errors — use as review hints."
+    >
+      <div className="space-y-6">
         {(['error', 'warning', 'info'] as Severity[]).map((severity) => {
           const typeMap = bySeverity.get(severity)!
           if (typeMap.size === 0) return null
           return (
-            <section key={severity} className="space-y-3">
+            <div key={severity} className="space-y-3">
               <div className="flex items-center gap-2">
                 {SEVERITY_ICON[severity]}
-                <h2 className="text-sm font-semibold text-foreground">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {SEVERITY_LABEL[severity]}
-                </h2>
+                </h3>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {[...typeMap.entries()].map(([type, entries]) => (
                   <FindingCard
                     key={type}
@@ -230,11 +230,11 @@ export default function HealthFindings() {
                   />
                 ))}
               </div>
-            </section>
+            </div>
           )
         })}
       </div>
-    </TooltipProvider>
+    </Section>
   )
 }
 
@@ -253,46 +253,33 @@ function FindingCard({
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center gap-1.5 mb-3">
+      <div className="mb-3 flex items-center gap-1.5">
         <span className="text-xs font-medium text-foreground">{FINDING_LABELS[type] ?? type}</span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
           {totalCount}
         </span>
-        {tooltip && (
-          <Tooltip>
-            <TooltipTrigger className="inline-flex cursor-help">
-              <HelpCircle className="h-3 w-3 text-muted-foreground/60 hover:text-muted-foreground" />
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs">
-              {tooltip}
-            </TooltipContent>
-          </Tooltip>
-        )}
+        {tooltip && <InfoTip text={tooltip} />}
       </div>
       <div className="space-y-1.5">
         {entries.map((entry, i) => (
           <div key={i} className="flex items-center justify-between gap-2 text-xs">
             {isNavigable ? (
-              <button
-                type="button"
-                onClick={() => navigateToFile(entry.file)}
-                className="truncate text-foreground/80 hover:text-primary cursor-pointer text-left font-mono"
+              <FileLink path={entry.file} className="min-w-0 flex-1" />
+            ) : (
+              <span
+                className="min-w-0 flex-1 truncate font-mono text-foreground/80"
                 title={entry.file}
               >
-                {shortPath(entry.file)}
-              </button>
-            ) : (
-              <span className="truncate text-foreground/80 font-mono" title={entry.file}>
                 {entry.file}
               </span>
             )}
             {entry.value && (
-              <span className="shrink-0 text-muted-foreground tabular-nums">{entry.value}</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">{entry.value}</span>
             )}
           </div>
         ))}
         {totalCount > MAX_FILES_PER_CARD && (
-          <div className="text-[10px] text-muted-foreground/60 pt-1">
+          <div className="pt-1 text-[10px] text-muted-foreground/60">
             +{totalCount - MAX_FILES_PER_CARD} more
           </div>
         )}
