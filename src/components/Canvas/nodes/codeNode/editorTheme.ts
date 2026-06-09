@@ -23,8 +23,6 @@ export const codeEditorTheme = EditorView.theme({
   '.cm-content': {
     padding: '4px 0',
     paddingRight: '26px',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-all',
     lineHeight: '18px',
   },
   '.cm-cursor': {
@@ -117,3 +115,10 @@ export const codeEditorTheme = EditorView.theme({
     outline: 'none',
   },
 })
+
+/** Compartment payload for the line-wrap toggle; off leaves CodeMirror's
+ *  base `white-space: pre` so long lines scroll horizontally. */
+export const lineWrapExtension = [
+  EditorView.lineWrapping,
+  EditorView.theme({ '.cm-content': { wordBreak: 'break-all' } }),
+]
