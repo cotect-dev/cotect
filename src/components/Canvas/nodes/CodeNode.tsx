@@ -2,177 +2,37 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useDragHandle } from '@/hooks/useDragHandle'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
-import {
-  EditorView,
-  keymap,
-  lineNumbers,
-  highlightActiveLine,
-  drawSelection,
-  dropCursor,
-  highlightSpecialChars,
-  rectangularSelection,
-  crosshairCursor,
-} from '@codemirror/view'
+import { EditorView } from '@codemirror/view'
 import { EditorState, Compartment } from '@codemirror/state'
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  indentWithTab,
-  copyLineDown,
-  deleteLine,
-  toggleComment,
-} from '@codemirror/commands'
-import { highlightSelectionMatches } from '@codemirror/search'
-import {
-  closeBrackets,
-  closeBracketsKeymap,
-  autocompletion,
-  acceptCompletion,
-} from '@codemirror/autocomplete'
-import { indentOnInput, bracketMatching, foldGutter, foldKeymap } from '@codemirror/language'
-import { indentationMarkers } from '@replit/codemirror-indentation-markers'
-import { vscodeDark } from './cmThemeVSCode'
-import { getLanguageExt } from './cmLanguages'
-import {
-  rainbowBrackets,
-  buildMergeExtension,
-  getChunks,
-  acceptChunk,
-  rejectChunk,
-  commentHighlightField,
-  commentHighlightTheme,
-  setCommentRanges,
-  reviewHunkField,
-  reviewHunkGutter,
-  reviewHunkTheme,
-  setReviewHunks,
-  openHunkActions,
-} from './cmPlugins'
+import { buildMergeExtension, getChunks, setCommentRanges } from './cmPlugins'
 import { getPlatform } from '@/services/platform'
 import { isMarkdownFile } from '@/lib/fileClassification'
-import type { CodeNode, ImportRefItem } from '@/types/nodes'
+import type { CodeNode } from '@/types/nodes'
 import { getNodeFlags, nodeFocusRing } from './nodeUtils'
 import { registerEditorView, unregisterEditorView } from './codeNodeRegistry'
-import { useCanvasStore, type ImportRef } from '@/store/canvas'
-import { Pill, REF_HEIGHT } from './ImportRefNode'
+import { useCanvasStore } from '@/store/canvas'
+import { REF_HEIGHT } from './ImportRefNode'
 import { useGitStore } from '@/store/git'
 import { useReviewStore } from '@/store/review'
-import { useShallow } from 'zustand/react/shallow'
 import { samePath, toRepoRelative } from '@/lib/repoPath'
-
 import MarkdownPreview from './MarkdownPreview'
 
-const MIN_CODE_NODE_WIDTH = 280
-const CODE_NODE_HEIGHT_RESERVED = 120
-const CM_PAD_TOP = 4
-const REF_GAP = 16
-
-interface RefLine {
-  items: ImportRefItem[]
-  showConnector: boolean
-}
-
-function toItem(ref: ImportRef): ImportRefItem {
-  return {
-    label: ref.label,
-    resolvedPath: ref.resolvedPath,
-    kind: ref.kind,
-    targetLine: ref.targetLine,
-  }
-}
-
-function computeRefLineLayouts(refs: ImportRef[]): {
-  inlineImports: Map<number, ImportRefItem[]>
-  rightSide: Map<number, RefLine>
-} {
-  const inlineImports = new Map<number, ImportRefItem[]>()
-  for (const ref of refs.filter((r) => r.kind === 'import')) {
-    if (!inlineImports.has(ref.line)) inlineImports.set(ref.line, [])
-    inlineImports.get(ref.line)!.push(toItem(ref))
-  }
-
-  const rightSide = new Map<number, RefLine>()
-  const importedBy = refs.filter((r) => r.kind === 'imported-by')
-  if (importedBy.length === 0) return { inlineImports, rightSide }
-
-  const ibByLine = new Map<number, ImportRef[]>()
-  for (const ref of importedBy) {
-    if (!ibByLine.has(ref.line)) ibByLine.set(ref.line, [])
-    ibByLine.get(ref.line)!.push(ref)
-  }
-
-  const lineEntries = new Map<number, ImportRef[]>()
-  const add = (line: number, ref: ImportRef) => {
-    if (!lineEntries.has(line)) lineEntries.set(line, [])
-    lineEntries.get(line)!.push(ref)
-  }
-
-  const ibAnchorLines = new Set<number>()
-  const sortedAnchors = [...ibByLine.keys()].sort((a, b) => a - b)
-  for (const anchorLine of sortedAnchors) {
-    ibAnchorLines.add(anchorLine)
-    const group = ibByLine.get(anchorLine)!
-    const count = group.length
-    let maxRows = 0
-    let probe = anchorLine
-    while (maxRows < count) {
-      const occupants = lineEntries.get(probe)
-      if (occupants && occupants.some((r) => r.kind === 'imported-by')) break
-      maxRows++
-      probe++
-    }
-    if (maxRows < 1) maxRows = 1
-    const numCols = Math.ceil(count / maxRows)
-    const rowsPerCol = Math.ceil(count / numCols)
-    for (let ri = 0; ri < count; ri++) {
-      const line = anchorLine + (ri % rowsPerCol)
-      add(line, group[ri])
-    }
-  }
-
-  for (const [line, entries] of lineEntries) {
-    rightSide.set(line, {
-      items: entries.map(toItem),
-      showConnector: ibAnchorLines.has(line),
-    })
-  }
-
-  return { inlineImports, rightSide }
-}
-
-function CodeNodeSkeleton({ lineCount, startLine }: { lineCount: number; startLine: number }) {
-  const visibleLines = Math.min(lineCount, 40)
-  return (
-    <div
-      className="overflow-hidden"
-      style={{
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-        fontSize: '12px',
-        lineHeight: '18px',
-      }}
-    >
-      {Array.from({ length: visibleLines }, (_, i) => {
-        const lineNum = startLine + i
-        const widthPercent = 20 + ((lineNum * 7) % 60)
-        return (
-          <div key={i} className="flex" style={{ height: 18 }}>
-            <span
-              className="text-right shrink-0 select-none text-muted-foreground/30"
-              style={{ width: 40, paddingRight: 8, fontSize: '12px' }}
-            >
-              {lineNum}
-            </span>
-            <div
-              className="rounded bg-foreground/[0.04]"
-              style={{ width: `${widthPercent}%`, height: 10, marginTop: 4 }}
-            />
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+import {
+  MIN_CODE_NODE_WIDTH,
+  CODE_NODE_HEIGHT_RESERVED,
+  CM_PAD_TOP,
+  HUNK_BTN_H,
+} from './codeNode/constants'
+import { computeRefLineLayouts } from './codeNode/refLineLayout'
+import { buildEditorExtensions } from './codeNode/editorExtensions'
+import { CodeNodeSkeleton } from './codeNode/CodeNodeSkeleton'
+import { CodeNodeHeader } from './codeNode/CodeNodeHeader'
+import { Minimap, type MinimapStripe } from './codeNode/Minimap'
+import { InlineRefPills, RightSideRefPills } from './codeNode/RefPills'
+import { HunkReviewLayer, type CommentDraft } from './codeNode/HunkReviewLayer'
+import { useReviewTarget, type HunkDisplay } from './codeNode/useReviewTarget'
+import { useAutoSave } from './codeNode/useAutoSave'
+import { useHeadContent } from './codeNode/useHeadContent'
 
 export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
@@ -182,14 +42,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const scrollHandlerRef = useRef<{ scrollDOM: HTMLElement; handler: () => void } | null>(null)
   const resizeObRef = useRef<ResizeObserver | null>(null)
   const flags = getNodeFlags(data)
-  const reviewFilePath = data.review?.filePath
-  const [commentDraft, setCommentDraft] = useState<{
-    startLine: number
-    endLine: number
-    snippet: string
-    top: number
-  } | null>(null)
+
+  const [commentDraft, setCommentDraft] = useState<CommentDraft | null>(null)
   const [commentBody, setCommentBody] = useState('')
+  const commentDraftRef = useRef(commentDraft)
+  commentDraftRef.current = commentDraft
+
   const [editorReady, setEditorReady] = useState(false)
   const [editorFocused, setEditorFocused] = useState(false)
   const [lineWrap, setLineWrap] = useState(false)
@@ -198,19 +56,26 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   dirtyRef.current = dirty
   const saveToFileRef = useRef<() => Promise<boolean>>(() => Promise.resolve(false))
   const [saving, setSaving] = useState(false)
+
   const isMd = isMarkdownFile(data.filePath)
   const mdPreviewEnabled = useCanvasStore((s) => s.mdPreviewEnabled)
   const [mdPreview, setMdPreview] = useState(() => isMd && mdPreviewEnabled)
   const [mdContent, setMdContent] = useState(data.code)
+
   const storeWidth = useCanvasStore((s) => s.codeNodeWidth)
   const setCodeNodeWidth = useCanvasStore((s) => s.setCodeNodeWidth)
   const setPreviewReady = useCanvasStore((s) => s.setPreviewReady)
   const [nodeWidth, setNodeWidth] = useState<number>(storeWidth)
   const [editorHeight, setEditorHeight] = useState(0)
+
   const refOverlayRef = useRef<HTMLDivElement>(null)
   const inlineOverlayRef = useRef<HTMLDivElement>(null)
+  const hunkLayerRef = useRef<HTMLDivElement>(null)
+  const hunkDisplaysRef = useRef<HunkDisplay[]>([])
+  const positionHunksRef = useRef<() => void>(() => {})
+
   const [geometryVer, setGeometryVer] = useState(0)
-  const [pinnedStripe, setPinnedStripe] = useState<number | null>(null)
+  const [pinnedStripePos, setPinnedStripePos] = useState<number | null>(null)
   const [linePositions, setLinePositions] = useState<Map<number, number>>(new Map())
   // Tracks the headContent value that linePositions was measured against. Pills
   // wait until this matches the current headContent so they never render at
@@ -218,9 +83,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [positionsHeadContent, setPositionsHeadContent] = useState<string | null | undefined>(
     undefined,
   )
-  const [minimapStripes, setMinimapStripes] = useState<
-    { startFrac: number; endFrac: number; color: string; fromPos: number }[]
-  >([])
+  const [minimapStripes, setMinimapStripes] = useState<MinimapStripe[]>([])
+  // Hunks derived from the editor's own merge diff — the working-tree fallback
+  // when there is no formal review session supplying hunks.
+  const [mergeHunks, setMergeHunks] = useState<{ startLine: number; endLine: number }[]>([])
 
   const importRefs = useCanvasStore((s) => {
     const previewIdx = s.currentColumnIndex + 1
@@ -245,69 +111,35 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const repoPath = useGitStore((s) => s.repoPath)
   const loadHeadContent = useGitStore((s) => s.loadHeadContent)
 
-  const fileComments = useReviewStore(
-    useShallow((s) =>
-      reviewFilePath ? (s.active?.comments.filter((c) => c.filePath === reviewFilePath) ?? []) : [],
-    ),
-  )
-  const reviewHunks = useReviewStore(
-    useShallow((s) =>
-      reviewFilePath ? (s.active?.files.find((f) => f.path === reviewFilePath)?.hunks ?? []) : [],
-    ),
-  )
-  const acceptedStartLines = useReviewStore(
-    useShallow((s) => {
-      if (!reviewFilePath || !s.active) return [] as number[]
-      const prefix = `${reviewFilePath}:`
-      return [...s.active.acceptedHunks]
-        .filter((k) => k.startsWith(prefix))
-        .map((k) => Number(k.slice(prefix.length)))
-    }),
-  )
-
   const gitEntry = useMemo(() => {
     if (hasHeadOverride || !gitStatus) return null
     return gitStatus.files.find((f) => samePath(data.filePath, f.path, repoPath)) ?? null
   }, [hasHeadOverride, gitStatus, data.filePath, repoPath])
-
   const isNewFile = gitEntry?.status === 'A' || gitEntry?.status === 'U'
-  // `undefined` means "not yet determined"; we treat it as null for the merge
-  // extension but use it to gate pill rendering so they don't appear until the
+
+  // `undefined` means "not yet determined"; the merge extension treats it as
+  // null but pill rendering waits on it so they don't appear before the
   // editor's diff blocks have been applied.
-  const [headContent, setHeadContent] = useState<string | null | undefined>(undefined)
+  const headContent = useHeadContent({
+    filePath: data.filePath,
+    repoPath,
+    headOverride: data.headOverride,
+    hasHeadOverride,
+    gitEntry,
+    isNewFile,
+    loadHeadContent,
+  })
   const headContentRef = useRef<string | null>(null)
   headContentRef.current = headContent ?? null
 
-  useEffect(() => {
-    if (hasHeadOverride) {
-      setHeadContent(data.headOverride ?? null)
-      return
-    }
-    let cancelled = false
-    if (!gitEntry) {
-      setHeadContent(null)
-      return
-    }
-    if (isNewFile) {
-      setHeadContent('')
-      return
-    }
-    const repoRel = toRepoRelative(data.filePath, repoPath)
-    void loadHeadContent(repoRel).then((content) => {
-      if (!cancelled) setHeadContent(content)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [
-    hasHeadOverride,
-    data.headOverride,
-    gitEntry,
-    isNewFile,
-    data.filePath,
+  const { reviewFilePath, fileComments, hunkDisplays, ensureReviewSession } = useReviewTarget({
+    filePath: data.filePath,
     repoPath,
-    loadHeadContent,
-  ])
+    hasGitChanges: !!gitEntry,
+    dataReviewFilePath: data.review?.filePath,
+    mergeHunks,
+  })
+  hunkDisplaysRef.current = hunkDisplays
 
   useEffect(() => {
     setMdContent(data.code)
@@ -350,51 +182,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   }, [data.filePath])
   saveToFileRef.current = saveToFile
 
-  const handleAcceptChunk = useCallback(
-    (pos: number) => {
-      const view = viewRef.current
-      if (!view) return
-      acceptChunk(view, pos)
-      void saveToFile()
-    },
-    [saveToFile],
-  )
-
-  const handleRejectChunk = useCallback(
-    (pos: number) => {
-      const view = viewRef.current
-      if (!view) return
-      rejectChunk(view, pos)
-      void saveToFile()
-    },
-    [saveToFile],
-  )
-
-  // Auto-save: periodic (every 5 seconds if dirty)
-  useEffect(() => {
-    if (isReadOnly) return
-    const id = setInterval(() => {
-      if (dirtyRef.current) void saveToFile()
-    }, 5000)
-    return () => clearInterval(id)
-  }, [isReadOnly, saveToFile])
-
-  // Auto-save: on window focus loss and before close
-  useEffect(() => {
-    if (isReadOnly) return
-    const onVisibilityChange = () => {
-      if (document.hidden && dirtyRef.current) void saveToFile()
-    }
-    const onBeforeUnload = () => {
-      if (dirtyRef.current) void saveToFile()
-    }
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      window.removeEventListener('beforeunload', onBeforeUnload)
-    }
-  }, [isReadOnly, saveToFile])
+  useAutoSave({ isReadOnly, dirtyRef, saveToFile })
 
   useEffect(() => {
     if (!editorRef.current) return
@@ -412,195 +200,23 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
       mergeCompartmentRef.current = new Compartment()
       wrapCompartmentRef.current = new Compartment()
-      const initialMergeExt = mergeCompartmentRef.current.of(
-        buildMergeExtension(headContentRef.current),
-      )
-      const initialWrapExt = wrapCompartmentRef.current.of([])
-
-      const langExt = getLanguageExt(data.filePath)
 
       const state = EditorState.create({
         doc: data.code,
-        extensions: [
-          lineNumbers({
-            formatNumber: (n) => String(n + data.startLine - 1),
-          }),
-          highlightActiveLine(),
-          highlightSpecialChars(),
-          history(),
-          foldGutter(),
-          drawSelection(),
-          dropCursor(),
-          indentOnInput(),
-          bracketMatching(),
-          closeBrackets(),
-          autocompletion(),
-          rectangularSelection(),
-          crosshairCursor(),
-          highlightSelectionMatches(),
-          ...(langExt ? [langExt] : []),
-          indentationMarkers({
-            highlightActiveBlock: true,
-            hideFirstIndent: false,
-            thickness: 1,
-            colors: {
-              light: 'rgba(255,255,255,0.08)',
-              dark: 'rgba(255,255,255,0.08)',
-              activeLight: 'rgba(255,255,255,0.16)',
-              activeDark: 'rgba(255,255,255,0.16)',
-            },
-          }),
-          rainbowBrackets,
-          ...(reviewFilePath
-            ? [
-                commentHighlightField,
-                commentHighlightTheme,
-                reviewHunkField,
-                reviewHunkGutter,
-                reviewHunkTheme,
-              ]
-            : []),
-          vscodeDark,
-          ...(isReadOnly ? [EditorState.readOnly.of(true)] : []),
-          initialMergeExt,
-          initialWrapExt,
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) setDirty(true)
-            if (update.focusChanged) {
-              setEditorFocused(update.view.hasFocus)
-              if (!update.view.hasFocus && dirtyRef.current) void saveToFileRef.current()
-            }
-            if (update.geometryChanged) setGeometryVer((v) => v + 1)
-            if (reviewFilePath) {
-              for (const tr of update.transactions) {
-                for (const e of tr.effects) {
-                  if (e.is(openHunkActions)) {
-                    const { startLine, endLine } = e.value
-                    const doc = update.state.doc
-                    const safeStart = Math.max(1, Math.min(startLine, doc.lines))
-                    const safeEnd = Math.max(safeStart, Math.min(endLine, doc.lines))
-                    const snippet = update.state.sliceDoc(
-                      doc.line(safeStart).from,
-                      doc.line(safeEnd).to,
-                    )
-                    const top = update.view.coordsAtPos(doc.line(safeStart).from)
-                    const scrollTop = update.view.scrollDOM.scrollTop
-                    const editorTop = update.view.scrollDOM.getBoundingClientRect().top
-                    setCommentDraft({
-                      startLine: safeStart,
-                      endLine: safeEnd,
-                      snippet,
-                      top: top ? top.top - editorTop + scrollTop : 0,
-                    })
-                    setCommentBody('')
-                  }
-                }
-              }
-            }
-          }),
-          keymap.of([
-            {
-              key: 'Mod-s',
-              run: () => {
-                void saveToFile()
-                return true
-              },
-            },
-            {
-              key: 'Escape',
-              run: (view) => {
-                view.contentDOM.blur()
-                const container = document.querySelector(
-                  '[data-canvas-container]',
-                ) as HTMLElement | null
-                container?.focus()
-                return true
-              },
-            },
-            { key: 'Mod-d', run: copyLineDown },
-            { key: 'Mod-Shift-k', run: deleteLine },
-            { key: 'Mod-/', run: toggleComment },
-            { key: 'Tab', run: acceptCompletion },
-            indentWithTab,
-            ...closeBracketsKeymap,
-            ...defaultKeymap,
-            ...historyKeymap,
-            ...foldKeymap,
-          ]),
-          EditorView.theme({
-            '&': {
-              fontSize: '12px',
-              maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`,
-            },
-            '.cm-scroller': {
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              overflowY: 'auto',
-              overscrollBehavior: 'contain',
-              scrollbarWidth: 'none',
-              '&::-webkit-scrollbar': { display: 'none' },
-            },
-            '.cm-gutters': {
-              backgroundColor: 'transparent',
-              borderRight: '1px solid rgba(255,255,255,0.06)',
-            },
-            '.cm-content': {
-              padding: '4px 0',
-              paddingRight: '26px',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-              lineHeight: '18px',
-            },
-            '.cm-cursor': {
-              borderLeftColor: '#aeafad',
-              borderLeftWidth: '2px',
-              animation: 'cm-blink-smooth 1s ease-in-out infinite',
-            },
-            '@keyframes cm-blink-smooth': {
-              '0%, 100%': { opacity: '1' },
-              '50%': { opacity: '0' },
-            },
-            '&.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText, .cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText':
-              {
-                background: 'none',
-              },
-            '&.cm-merge-a .cm-changedLine, .cm-deletedChunk': {
-              backgroundColor: 'rgba(220, 60, 50, 0.22)',
-            },
-            '&.cm-merge-b .cm-changedLine, .cm-inlineChangedLine': {
-              backgroundColor: 'rgba(80, 200, 100, 0.22)',
-            },
-            '&.cm-merge-a .cm-changedLineGutter, .cm-deletedLineGutter': {
-              background: 'transparent',
-            },
-            '&.cm-merge-b .cm-changedLineGutter': {
-              background: 'transparent',
-            },
-            '.cm-cotectDeletionLine': {
-              padding: 0,
-            },
-            '.cm-deletedChunk .cm-deletedLine': {
-              opacity: 0.8,
-            },
-            '.cm-cotectDeletionLines': {
-              display: 'flex',
-              flexDirection: 'column',
-            },
-            '.cm-cotectDeletionLineRow': {
-              height: '18px',
-              lineHeight: '18px',
-              color: '#ef4444',
-              fontWeight: '700',
-              textAlign: 'right',
-              paddingRight: '4px',
-            },
-            '.cm-cotectChangedGutter': {
-              color: '#fbbf24',
-            },
-            '&.cm-focused': {
-              outline: 'none',
-            },
-          }),
-        ],
+        extensions: buildEditorExtensions({
+          filePath: data.filePath,
+          startLine: data.startLine,
+          isReadOnly,
+          mergeExt: mergeCompartmentRef.current.of(buildMergeExtension(headContentRef.current)),
+          wrapExt: wrapCompartmentRef.current.of([]),
+          onSave: () => void saveToFileRef.current(),
+          onDocChanged: () => setDirty(true),
+          onFocusChange: (hasFocus) => {
+            setEditorFocused(hasFocus)
+            if (!hasFocus && dirtyRef.current) void saveToFileRef.current()
+          },
+          onGeometryChange: () => setGeometryVer((v) => v + 1),
+        }),
       })
 
       const view = new EditorView({ state, parent: container })
@@ -615,6 +231,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         const ty = `translateY(${-scrollDOM.scrollTop}px)`
         if (refOverlayRef.current) refOverlayRef.current.style.transform = ty
         if (inlineOverlayRef.current) inlineOverlayRef.current.style.transform = ty
+        positionHunksRef.current()
       }
       scrollDOM.addEventListener('scroll', handleEditorScroll, { passive: true })
       scrollHandlerRef.current = { scrollDOM, handler: handleEditorScroll }
@@ -658,32 +275,91 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     })
   }, [lineWrap])
 
+  // Push comment highlights into the editor; clear them when nothing is under review.
   useEffect(() => {
-    if (!reviewFilePath) return
     const view = viewRef.current
     if (!view) return
     view.dispatch({
-      effects: setCommentRanges.of(fileComments.map((c) => ({ from: c.startLine, to: c.endLine }))),
+      effects: setCommentRanges.of(
+        reviewFilePath ? fileComments.map((c) => ({ from: c.startLine, to: c.endLine })) : [],
+      ),
     })
   }, [reviewFilePath, fileComments, editorReady])
 
-  useEffect(() => {
-    if (!reviewFilePath) return
+  // Clamp each hunk's buttons (and the open comment input) to the top of its
+  // visible region. Positions are read from the line's actual rendered rect
+  // (coordsAtPos) relative to the overlay layer's own box, so there are no
+  // padding/origin assumptions to drift. `top` is owned imperatively (never via
+  // JSX style) so unrelated re-renders can't reset the buttons to 0 and pile
+  // them up. Imperative so scrolling doesn't re-render.
+  const positionHunks = useCallback(() => {
     const view = viewRef.current
-    if (!view) return
-    const accepted = new Set(acceptedStartLines)
-    const commented = new Set(fileComments.map((c) => c.startLine))
-    const display = reviewHunks.map((h) => ({
-      startLine: h.start_line,
-      endLine: h.line_count > 0 ? h.start_line + h.line_count - 1 : h.start_line,
-      state: accepted.has(h.start_line)
-        ? ('accepted' as const)
-        : commented.has(h.start_line)
-          ? ('commented' as const)
-          : ('none' as const),
-    }))
-    view.dispatch({ effects: setReviewHunks.of(display) })
-  }, [reviewFilePath, reviewHunks, acceptedStartLines, fileComments, editorReady])
+    const layer = hunkLayerRef.current
+    if (!view || !layer) return
+    const doc = view.state.doc
+    const layerTop = layer.getBoundingClientRect().top
+    const viewH = layer.clientHeight
+
+    // Hunk start_line includes leading diff context; anchor the buttons to the
+    // first line that's actually changed (a merge chunk start within the hunk).
+    const changedStarts = (getChunks(view.state)?.chunks ?? [])
+      .map((c) => doc.lineAt(Math.min(c.fromB, doc.length)).number)
+      .sort((a, b) => a - b)
+    const anchorLine = (s: number, e: number) => {
+      for (const ln of changedStarts) if (ln >= s && ln <= e) return ln
+      return s
+    }
+
+    // coordsAtPos can throw ("No tile at position") when called mid-scroll,
+    // before the view has measured tiles for the target region. Treat that the
+    // same as an out-of-range position (null) so a fast scroll never crashes.
+    const coordsAt = (pos: number) => {
+      try {
+        return view.coordsAtPos(pos)
+      } catch {
+        return null
+      }
+    }
+
+    const place = (el: HTMLElement, startLine: number, endLine: number, extra: number) => {
+      const s = Math.max(1, Math.min(anchorLine(startLine, endLine), doc.lines))
+      const e = Math.max(s, Math.min(endLine, doc.lines))
+      const sc = coordsAt(doc.line(s).from)
+      const ec = coordsAt(doc.line(e).from)
+      // ±Infinity when a boundary line is scrolled out of the rendered range.
+      let top = -Infinity
+      if (sc) {
+        top = sc.top - layerTop
+        // A modification renders its deleted lines as a block widget above the
+        // first changed line; the line-above's bottom is that block's top, so
+        // pull the anchor up to sit at the visible top of the change.
+        if (s > 1) {
+          const pc = coordsAt(doc.line(s - 1).from)
+          if (pc) top = Math.min(top, pc.bottom - layerTop)
+        }
+      }
+      const bottom = ec ? ec.bottom - layerTop : Infinity
+      const visible = (!!sc || !!ec) && bottom > 0 && top < viewH
+      el.style.display = visible ? '' : 'none'
+      if (!visible) return
+      const vp = Math.min(Math.max(0, top), Math.max(0, bottom - HUNK_BTN_H))
+      el.style.top = `${vp + extra}px`
+    }
+    for (const h of hunkDisplaysRef.current) {
+      const el = layer.querySelector(`[data-hunk="${h.startLine}"]`)
+      if (el instanceof HTMLElement) place(el, h.startLine, h.endLine, 0)
+    }
+    const cd = commentDraftRef.current
+    if (cd) {
+      const cEl = layer.querySelector('[data-hunk-comment]')
+      if (cEl instanceof HTMLElement) place(cEl, cd.startLine, cd.endLine, HUNK_BTN_H + 2)
+    }
+  }, [])
+  positionHunksRef.current = positionHunks
+
+  useLayoutEffect(() => {
+    positionHunks()
+  }, [positionHunks, hunkDisplays, commentDraft, geometryVer, editorHeight, headContent])
 
   const pendingScroll = useCanvasStore((s) => s.pendingScroll)
   useEffect(() => {
@@ -758,23 +434,26 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     const view = viewRef.current
     if (!view) {
       setMinimapStripes([])
+      setMergeHunks([])
       return
     }
     const result = getChunks(view.state)
     if (!result || result.chunks.length === 0) {
       setMinimapStripes([])
+      setMergeHunks([])
       return
     }
     const totalLines = view.state.doc.lines
     if (totalLines === 0) {
       setMinimapStripes([])
+      setMergeHunks([])
       return
     }
+    const lineOf = (pos: number) =>
+      view.state.doc.lineAt(Math.min(pos, view.state.doc.length)).number
     const stripes = result.chunks.map((chunk) => {
-      const startLine = view.state.doc.lineAt(Math.min(chunk.fromB, view.state.doc.length)).number
-      const endLine = view.state.doc.lineAt(
-        Math.min(Math.max(chunk.toB - 1, chunk.fromB), view.state.doc.length),
-      ).number
+      const startLine = lineOf(chunk.fromB)
+      const endLine = lineOf(Math.max(chunk.toB - 1, chunk.fromB))
       const isDelete = chunk.fromB === chunk.toB
       const isInsert = chunk.fromA === chunk.toA
       const color = isDelete ? '#dc2626' : isInsert ? '#22c55e' : '#3b82f6'
@@ -786,6 +465,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       }
     })
     setMinimapStripes(stripes)
+    setMergeHunks(
+      result.chunks.map((chunk) => ({
+        startLine: lineOf(chunk.fromB),
+        endLine: lineOf(Math.max(chunk.toB - 1, chunk.fromB)),
+      })),
+    )
   }, [geometryVer, headContent])
 
   const overlayHeight = useMemo(() => {
@@ -815,74 +500,97 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const dirPrefix = lastSlash >= 0 ? displayPath.slice(0, lastSlash + 1) : ''
   const fileName = lastSlash >= 0 ? displayPath.slice(lastSlash + 1) : displayPath
 
+  const handleToggleMdPreview = () => {
+    if (!mdPreview && viewRef.current) {
+      setMdContent(viewRef.current.state.doc.toString())
+    }
+    setMdPreview((v) => {
+      useCanvasStore.setState({ mdPreviewEnabled: !v })
+      return !v
+    })
+  }
+
+  const handleStripeClick = (fromPos: number) => {
+    viewRef.current?.dispatch({
+      effects: EditorView.scrollIntoView(fromPos, { y: 'center' }),
+    })
+    setPinnedStripePos((p) => (p === fromPos ? null : fromPos))
+  }
+
+  const handleAcceptHunk = (h: HunkDisplay) => {
+    if (!reviewFilePath) return
+    ensureReviewSession()
+    const rs = useReviewStore.getState()
+    if (h.state === 'accepted') rs.unacceptHunk(reviewFilePath, h.startLine)
+    else rs.acceptHunk(reviewFilePath, h.startLine)
+  }
+
+  const handleCommentHunk = (h: HunkDisplay) => {
+    const view = viewRef.current
+    if (!view) return
+    const doc = view.state.doc
+    const safeStart = Math.max(1, Math.min(h.startLine, doc.lines))
+    const safeEnd = Math.max(safeStart, Math.min(h.endLine, doc.lines))
+    const snippet = view.state.sliceDoc(doc.line(safeStart).from, doc.line(safeEnd).to)
+    // Re-opening a hunk that's already commented edits the existing comment in
+    // place rather than adding a duplicate.
+    const existing = fileComments.find((c) => c.startLine === h.startLine)
+    setCommentDraft({
+      startLine: h.startLine,
+      endLine: h.endLine,
+      snippet,
+      editingId: existing?.id,
+    })
+    setCommentBody(existing?.body ?? '')
+  }
+
+  const handleSubmitComment = () => {
+    if (commentDraft && reviewFilePath) {
+      ensureReviewSession()
+      const rs = useReviewStore.getState()
+      if (commentDraft.editingId) {
+        rs.updateComment(commentDraft.editingId, commentBody.trim())
+      } else {
+        rs.addComment(
+          reviewFilePath,
+          commentDraft.startLine,
+          commentDraft.endLine,
+          commentDraft.snippet,
+          commentBody.trim(),
+        )
+      }
+    }
+    setCommentDraft(null)
+    setCommentBody('')
+  }
+
+  const handleCancelComment = () => {
+    setCommentDraft(null)
+    setCommentBody('')
+  }
+
   return (
     <div
       className={`relative pointer-events-auto bg-background border border-r-0 rounded-l-lg nodrag nopan ${flags.isFocused ? nodeFocusRing(true, 'bordered') : 'border-border'} ${editorFocused ? 'border-primary/30' : ''} ${flags.isHidden ? 'opacity-30' : ''}`}
       style={{ width: nodeWidth }}
     >
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/30">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xs font-medium truncate" title={displayPath}>
-            {dirPrefix && <span className="text-foreground/40">{dirPrefix}</span>}
-            <span className="text-foreground">{fileName}</span>
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {isMd && (
-            <button
-              type="button"
-              onClick={() => {
-                if (!mdPreview && viewRef.current) {
-                  setMdContent(viewRef.current.state.doc.toString())
-                }
-                setMdPreview((v) => {
-                  useCanvasStore.setState({ mdPreviewEnabled: !v })
-                  return !v
-                })
-              }}
-              className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition-colors ${
-                mdPreview
-                  ? 'bg-primary/20 text-primary'
-                  : 'bg-muted text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {mdPreview ? 'preview' : 'source'}
-            </button>
-          )}
-          {data.commitHash && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-400 font-mono">
-              {data.commitHash.slice(0, 7)}
-            </span>
-          )}
-          {isNewFile && !isReadOnly && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-900/40 text-green-400 font-mono">
-              new
-            </span>
-          )}
-          {dirty && !isReadOnly && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-800/40 text-yellow-400 font-mono">
-              {saving ? 'saving...' : 'modified'}
-            </span>
-          )}
-          {editorFocused && !isReadOnly && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary font-mono">
-              editing
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => setLineWrap((v) => !v)}
-            className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer transition-colors ${
-              lineWrap
-                ? 'bg-primary/20 text-primary'
-                : 'bg-muted text-muted-foreground hover:text-foreground'
-            }`}
-            title={lineWrap ? 'Disable line wrapping' : 'Enable line wrapping'}
-          >
-            {lineCount}L{lineWrap ? '↩' : ''}
-          </button>
-        </div>
-      </div>
+      <CodeNodeHeader
+        displayPath={displayPath}
+        dirPrefix={dirPrefix}
+        fileName={fileName}
+        isMd={isMd}
+        mdPreview={mdPreview}
+        onToggleMdPreview={handleToggleMdPreview}
+        commitHash={data.commitHash}
+        isNewFile={isNewFile}
+        isReadOnly={isReadOnly}
+        dirty={dirty}
+        saving={saving}
+        editorFocused={editorFocused}
+        lineCount={lineCount}
+        lineWrap={lineWrap}
+        onToggleLineWrap={() => setLineWrap((v) => !v)}
+      />
 
       <div className="relative flex">
         <div className="relative overflow-hidden flex-1 min-w-0">
@@ -904,204 +612,41 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             />
           )}
           {!mdPreview && inlineImports && pillsReady && (
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              <div ref={inlineOverlayRef} className="absolute inset-0">
-                {[...inlineImports.entries()].map(([line, items]) => {
-                  const top = linePositions.get(line)
-                  return (
-                    <div
-                      key={line}
-                      className="absolute right-1 flex items-center gap-0.5 justify-end"
-                      style={{
-                        top: CM_PAD_TOP + (top ?? (line - 1) * REF_HEIGHT),
-                        height: REF_HEIGHT,
-                      }}
-                    >
-                      {items.map((item, idx) => (
-                        <Pill key={`${item.kind}:${item.resolvedPath}:${idx}`} item={item} />
-                      ))}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+            <InlineRefPills
+              overlayRef={inlineOverlayRef}
+              inlineImports={inlineImports}
+              linePositions={linePositions}
+            />
           )}
-          {reviewFilePath && commentDraft && (
-            <div
-              className="absolute right-2 z-20 w-64 rounded border border-border bg-background shadow-lg p-2 pointer-events-auto"
-              style={{ top: commentDraft.top }}
-            >
-              <div className="text-[10px] text-muted-foreground mb-1 font-mono">
-                Lines {commentDraft.startLine}
-                {commentDraft.endLine !== commentDraft.startLine ? `–${commentDraft.endLine}` : ''}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const accepted = acceptedStartLines.includes(commentDraft.startLine)
-                  if (accepted)
-                    useReviewStore.getState().unacceptHunk(reviewFilePath, commentDraft.startLine)
-                  else useReviewStore.getState().acceptHunk(reviewFilePath, commentDraft.startLine)
-                }}
-                className={`w-full mb-1 text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer ${
-                  acceptedStartLines.includes(commentDraft.startLine)
-                    ? 'bg-green-900/40 text-green-400'
-                    : 'bg-muted hover:bg-muted/70'
-                }`}
-              >
-                {acceptedStartLines.includes(commentDraft.startLine) ? '✓ Accepted' : 'Accept hunk'}
-              </button>
-              <textarea
-                autoFocus
-                value={commentBody}
-                onChange={(e) => setCommentBody(e.target.value)}
-                placeholder="Comment for the agent…"
-                className="w-full h-16 text-xs bg-muted/40 rounded p-1 outline-none resize-none"
-              />
-              <div className="flex justify-end gap-1 mt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCommentDraft(null)
-                    setCommentBody('')
-                  }}
-                  className="text-[10px] px-1.5 py-0.5 rounded hover:bg-muted cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={!commentBody.trim()}
-                  onClick={() => {
-                    useReviewStore
-                      .getState()
-                      .addComment(
-                        reviewFilePath,
-                        commentDraft.startLine,
-                        commentDraft.endLine,
-                        commentDraft.snippet,
-                        commentBody.trim(),
-                      )
-                    setCommentDraft(null)
-                    setCommentBody('')
-                  }}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary disabled:opacity-40 cursor-pointer"
-                >
-                  Comment
-                </button>
-              </div>
-            </div>
+          {reviewFilePath && editorReady && hunkDisplays.length > 0 && (
+            <HunkReviewLayer
+              layerRef={hunkLayerRef}
+              hunkDisplays={hunkDisplays}
+              onAccept={handleAcceptHunk}
+              onComment={handleCommentHunk}
+              commentDraft={commentDraft}
+              commentBody={commentBody}
+              onCommentBodyChange={setCommentBody}
+              onCancelComment={handleCancelComment}
+              onSubmitComment={handleSubmitComment}
+            />
           )}
         </div>
-        {!mdPreview && !isReadOnly && minimapStripes.length > 0 && editorHeight > 0 && (
-          <div className="relative shrink-0 pointer-events-auto z-10" style={{ width: 22 }}>
-            <div
-              className="relative h-full"
-              style={{
-                background: 'rgba(0,0,0,0.25)',
-                borderLeft: '1px solid rgba(255,255,255,0.06)',
-              }}
-            >
-              {minimapStripes.map((stripe, i) => {
-                const minH = 4
-                const top = stripe.startFrac * 100
-                const height = Math.max(
-                  (stripe.endFrac - stripe.startFrac) * 100,
-                  (minH / editorHeight) * 100,
-                )
-                const isPinned = pinnedStripe === i
-                return (
-                  <div
-                    key={i}
-                    className="absolute right-0 group/stripe"
-                    style={{ top: `${top}%`, height: `${height}%`, minHeight: minH, left: -38 }}
-                  >
-                    <div
-                      className={`absolute top-0 bottom-0 right-0 transition-opacity cursor-pointer ${isPinned ? 'opacity-100' : 'opacity-70 group-hover/stripe:opacity-100'}`}
-                      style={{ width: 22, backgroundColor: stripe.color }}
-                      onClick={() => {
-                        const view = viewRef.current
-                        if (view) {
-                          view.dispatch({
-                            effects: EditorView.scrollIntoView(stripe.fromPos, { y: 'center' }),
-                          })
-                        }
-                        setPinnedStripe(isPinned ? null : i)
-                      }}
-                    />
-                    <div
-                      className={`absolute left-0 top-1/2 -translate-y-1/2 ${isPinned ? 'flex' : 'hidden group-hover/stripe:flex'} gap-0.5`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleAcceptChunk(stripe.fromPos)
-                          setPinnedStripe(null)
-                        }}
-                        className="h-4 w-4 flex items-center justify-center rounded text-[9px] font-mono cursor-pointer bg-green-900/80 text-green-400 hover:bg-green-800"
-                      >
-                        ✓
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleRejectChunk(stripe.fromPos)
-                          setPinnedStripe(null)
-                        }}
-                        className="h-4 w-4 flex items-center justify-center rounded text-[9px] font-mono cursor-pointer bg-red-900/80 text-red-400 hover:bg-red-800"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+        {!mdPreview && minimapStripes.length > 0 && editorHeight > 0 && (
+          <Minimap
+            stripes={minimapStripes}
+            editorHeight={editorHeight}
+            pinnedPos={pinnedStripePos}
+            onStripeClick={handleStripeClick}
+          />
         )}
         {!mdPreview && rightSideLayout && pillsReady && (
-          <div
-            className="absolute top-0 pointer-events-none"
-            style={{
-              left: `calc(100% + ${REF_GAP / 4}px)`,
-              height: overlayHeight,
-              width: 999,
-              overflow: 'hidden',
-            }}
-          >
-            <div ref={refOverlayRef}>
-              {[...rightSideLayout.entries()]
-                .sort(([a], [b]) => a - b)
-                .map(([line, layout]) => {
-                  const top = linePositions.get(line)
-                  return (
-                    <div
-                      key={line}
-                      className="absolute flex items-center gap-0.5"
-                      style={{
-                        top: CM_PAD_TOP + (top ?? (line - 1) * REF_HEIGHT),
-                        height: REF_HEIGHT,
-                      }}
-                    >
-                      {layout.showConnector ? (
-                        <div className="flex items-center shrink-0" style={{ width: REF_GAP + 12 }}>
-                          <div className="h-px flex-1 bg-violet-400/20" />
-                          <span className="text-[9px] text-muted-foreground/40 font-mono leading-none px-px">
-                            {line}
-                          </span>
-                          <div className="h-px flex-1 bg-violet-400/20" />
-                        </div>
-                      ) : (
-                        <div className="shrink-0" style={{ width: REF_GAP + 12 }} />
-                      )}
-                      {layout.items.map((item, idx) => (
-                        <Pill key={`${item.kind}:${item.resolvedPath}:${idx}`} item={item} />
-                      ))}
-                    </div>
-                  )
-                })}
-            </div>
-          </div>
+          <RightSideRefPills
+            overlayRef={refOverlayRef}
+            rightSideLayout={rightSideLayout}
+            linePositions={linePositions}
+            overlayHeight={overlayHeight}
+          />
         )}
       </div>
 
