@@ -25,10 +25,12 @@ import {
 } from './codeNode/constants'
 import { computeRefLineLayouts } from './codeNode/refLineLayout'
 import { buildEditorExtensions } from './codeNode/editorExtensions'
+import type { InlineImportMap } from './codeNode/importClick'
+import { lineWrapExtension } from './codeNode/editorTheme'
 import { CodeNodeSkeleton } from './codeNode/CodeNodeSkeleton'
 import { CodeNodeHeader } from './codeNode/CodeNodeHeader'
 import { Minimap, type MinimapStripe } from './codeNode/Minimap'
-import { InlineRefPills, RightSideRefPills } from './codeNode/RefPills'
+import { RightSideRefPills } from './codeNode/RefPills'
 import { HunkReviewLayer, type CommentDraft } from './codeNode/HunkReviewLayer'
 import { useReviewTarget, type HunkDisplay } from './codeNode/useReviewTarget'
 import { useAutoSave } from './codeNode/useAutoSave'
@@ -69,7 +71,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const [editorHeight, setEditorHeight] = useState(0)
 
   const refOverlayRef = useRef<HTMLDivElement>(null)
-  const inlineOverlayRef = useRef<HTMLDivElement>(null)
   const hunkLayerRef = useRef<HTMLDivElement>(null)
   const hunkDisplaysRef = useRef<HunkDisplay[]>([])
   const positionHunksRef = useRef<() => void>(() => {})
@@ -103,6 +104,8 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       rightSideLayout: rightSide.size > 0 ? rightSide : null,
     }
   }, [importRefs])
+  const inlineImportsRef = useRef<InlineImportMap | null>(null)
+  inlineImportsRef.current = inlineImports
 
   const hasHeadOverride = data.headOverride !== undefined
   const isReadOnly = data.readOnly === true
@@ -208,7 +211,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           startLine: data.startLine,
           isReadOnly,
           mergeExt: mergeCompartmentRef.current.of(buildMergeExtension(headContentRef.current)),
-          wrapExt: wrapCompartmentRef.current.of([]),
+          wrapExt: wrapCompartmentRef.current.of(lineWrap ? lineWrapExtension : []),
           onSave: () => void saveToFileRef.current(),
           onDocChanged: () => setDirty(true),
           onFocusChange: (hasFocus) => {
@@ -216,6 +219,9 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             if (!hasFocus && dirtyRef.current) void saveToFileRef.current()
           },
           onGeometryChange: () => setGeometryVer((v) => v + 1),
+          getInlineImports: () => inlineImportsRef.current,
+          onOpenImport: (item) =>
+            void useCanvasStore.getState().focusFileByPath(item.resolvedPath, item.targetLine),
         }),
       })
 
@@ -230,7 +236,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       const handleEditorScroll = () => {
         const ty = `translateY(${-scrollDOM.scrollTop}px)`
         if (refOverlayRef.current) refOverlayRef.current.style.transform = ty
-        if (inlineOverlayRef.current) inlineOverlayRef.current.style.transform = ty
         positionHunksRef.current()
       }
       scrollDOM.addEventListener('scroll', handleEditorScroll, { passive: true })
@@ -271,7 +276,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     const view = viewRef.current
     if (!view) return
     view.dispatch({
-      effects: wrapCompartmentRef.current.reconfigure(lineWrap ? EditorView.lineWrapping : []),
+      effects: wrapCompartmentRef.current.reconfigure(lineWrap ? lineWrapExtension : []),
     })
   }, [lineWrap])
 
@@ -384,7 +389,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
   useLayoutEffect(() => {
     const view = viewRef.current
-    if (!view || (!rightSideLayout && !inlineImports)) {
+    if (!view || !rightSideLayout) {
       setLinePositions(new Map())
       return
     }
@@ -402,10 +407,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         const maxLine = v.state.doc.lines
         const lastBlock = v.lineBlockAt(v.state.doc.line(maxLine).from)
         const beyondTop = lastBlock.top + lastBlock.height
-        const allLines = new Set<number>([
-          ...(rightSideLayout?.keys() ?? []),
-          ...(inlineImports?.keys() ?? []),
-        ])
+        const allLines = new Set<number>([...(rightSideLayout?.keys() ?? [])])
         for (const line of allLines) {
           if (line >= 1 && line <= maxLine) {
             try {
@@ -428,7 +430,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     return () => {
       cancelled = true
     }
-  }, [rightSideLayout, inlineImports, geometryVer, headContent])
+  }, [rightSideLayout, geometryVer, headContent])
 
   useLayoutEffect(() => {
     const view = viewRef.current
@@ -609,13 +611,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
               content={mdContent}
               filePath={data.filePath}
               maxHeight={`calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`}
-            />
-          )}
-          {!mdPreview && inlineImports && pillsReady && (
-            <InlineRefPills
-              overlayRef={inlineOverlayRef}
-              inlineImports={inlineImports}
-              linePositions={linePositions}
             />
           )}
           {reviewFilePath && editorReady && hunkDisplays.length > 0 && (

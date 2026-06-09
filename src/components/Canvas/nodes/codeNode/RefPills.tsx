@@ -1,5 +1,4 @@
 import type { RefObject } from 'react'
-import type { ImportRefItem } from '@/types/nodes'
 import { Pill, REF_HEIGHT } from '../ImportRefNode'
 import { CM_PAD_TOP, REF_GAP } from './constants'
 import type { RefLine } from './refLineLayout'
@@ -8,36 +7,6 @@ import type { RefLine } from './refLineLayout'
  *  editor has measured real line tops. */
 function lineTop(line: number, linePositions: Map<number, number>): number {
   return CM_PAD_TOP + (linePositions.get(line) ?? (line - 1) * REF_HEIGHT)
-}
-
-/** `import` ref pills pinned to the right edge of their source line, layered
- *  over the editor. `overlayRef` is translated imperatively on scroll. */
-export function InlineRefPills({
-  overlayRef,
-  inlineImports,
-  linePositions,
-}: {
-  overlayRef: RefObject<HTMLDivElement | null>
-  inlineImports: Map<number, ImportRefItem[]>
-  linePositions: Map<number, number>
-}) {
-  return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      <div ref={overlayRef} className="absolute inset-0">
-        {[...inlineImports.entries()].map(([line, items]) => (
-          <div
-            key={line}
-            className="absolute right-1 flex items-center gap-0.5 justify-end"
-            style={{ top: lineTop(line, linePositions), height: REF_HEIGHT }}
-          >
-            {items.map((item, idx) => (
-              <Pill key={`${item.kind}:${item.resolvedPath}:${idx}`} item={item} />
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 /** `imported-by` ref pills packed into a column to the right of the editor,
