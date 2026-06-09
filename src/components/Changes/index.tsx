@@ -3,8 +3,10 @@ import { useGitStore, sortedFiles, type GitFileStatus } from '@/store/git'
 import { useCanvasStore } from '@/store/canvas'
 import {
   useReviewStore,
+  isCommitReview,
   fileProgress,
   overallProgress,
+  type ReviewComment,
   type ReviewFile,
   type ReviewSession,
 } from '@/store/review'
@@ -157,6 +159,59 @@ const ReviewFileEntry = memo(function ReviewFileEntry({
   )
 })
 
+const CommentsSection = memo(function CommentsSection({
+  comments,
+  onOpen,
+}: {
+  comments: ReviewComment[]
+  onOpen: (comment: ReviewComment) => void
+}) {
+  return (
+    <div className="mt-2 border-t border-border/30 pt-1">
+      <div className="flex items-center justify-between px-2 py-1 text-[10px] text-muted-foreground/60">
+        <span>
+          {comments.length} comment{comments.length !== 1 ? 's' : ''}
+        </span>
+        <button
+          onClick={() => {
+            const md = useReviewStore.getState().exportCommentsMarkdown()
+            void navigator.clipboard.writeText(md)
+          }}
+          className="px-1.5 py-0.5 rounded hover:bg-muted/50 font-mono text-[10px] cursor-pointer"
+          title="Copy all comments as markdown"
+        >
+          Copy all
+        </button>
+      </div>
+      {comments.map((c) => (
+        <div
+          key={c.id}
+          className="px-2 py-1 text-[11px] hover:bg-muted/20 cursor-pointer"
+          onClick={() => onOpen(c)}
+        >
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 font-mono">
+            <span className="truncate">
+              {c.filePath.split('/').pop()}:{c.startLine}
+              {c.endLine !== c.startLine ? `-${c.endLine}` : ''}
+            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                useReviewStore.getState().removeComment(c.id)
+              }}
+              className="px-1 rounded hover:bg-red-900/40 hover:text-red-400 cursor-pointer"
+              title="Delete comment"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="mt-0.5 break-words">{c.body}</div>
+        </div>
+      ))}
+    </div>
+  )
+})
+
 export default function Changes() {
   const isGitRepo = useGitStore((s) => s.isGitRepo)
   const status = useGitStore((s) => s.status)
@@ -164,6 +219,11 @@ export default function Changes() {
   const sortMode = useGitStore((s) => s.sortMode)
   const setSortMode = useGitStore((s) => s.setSortMode)
   const review = useReviewStore((s) => s.active)
+  // A commit-baseline review (from History) replaces the panel with its own diff
+  // file list + read-only range diffs. An implicit working-tree review only
+  // annotates the live changes, so the working-tree list below stays visible.
+  const commitReview = review && isCommitReview(review) ? review : null
+  const workingComments = commitReview ? [] : (review?.comments ?? [])
 
   const tree = useMemo(
     () => (status && sortMode === 'path' ? buildCompactTree(status.files) : []),
@@ -190,13 +250,18 @@ export default function Changes() {
     oldest: 'Oldest',
   }
 
-  if (review) {
-    const progress = overallProgress(review)
+  // Commit-baseline review: dedicated view over the diff-since-baseline files.
+  if (commitReview) {
+    const progress = overallProgress(commitReview)
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between px-2 py-1 text-[11px] border-b border-border/30 bg-primary/10">
-          <span className="text-primary truncate" title={`Reviewing since ${review.baseCommit}`}>
-            Review · {review.baseCommit.slice(0, 7)} · {progress.reviewed}/{progress.total} hunks
+          <span
+            className="text-primary truncate"
+            title={`Reviewing since ${commitReview.baseCommit}`}
+          >
+            Review · {commitReview.baseCommit.slice(0, 7)} · {progress.reviewed}/{progress.total}{' '}
+            hunks
           </span>
           <button
             onClick={() => useReviewStore.getState().exitReview()}
@@ -207,56 +272,18 @@ export default function Changes() {
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto py-1">
-          {review.files.map((file) => (
-            <ReviewFileEntry key={file.path} file={file} session={review} />
+          {commitReview.files.map((file) => (
+            <ReviewFileEntry key={file.path} file={file} session={commitReview} />
           ))}
-          {review.comments.length > 0 && (
-            <div className="mt-2 border-t border-border/30 pt-1">
-              <div className="flex items-center justify-between px-2 py-1 text-[10px] text-muted-foreground/60">
-                <span>
-                  {review.comments.length} comment{review.comments.length !== 1 ? 's' : ''}
-                </span>
-                <button
-                  onClick={() => {
-                    const md = useReviewStore.getState().exportCommentsMarkdown()
-                    void navigator.clipboard.writeText(md)
-                  }}
-                  className="px-1.5 py-0.5 rounded hover:bg-muted/50 font-mono text-[10px] cursor-pointer"
-                  title="Copy all comments as markdown"
-                >
-                  Copy all
-                </button>
-              </div>
-              {review.comments.map((c) => (
-                <div
-                  key={c.id}
-                  className="px-2 py-1 text-[11px] hover:bg-muted/20 cursor-pointer"
-                  onClick={() =>
-                    useCanvasStore
-                      .getState()
-                      .showRangeDiff(c.filePath, review.baseRef, review.tipSha)
-                  }
-                >
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 font-mono">
-                    <span className="truncate">
-                      {c.filePath.split('/').pop()}:{c.startLine}
-                      {c.endLine !== c.startLine ? `-${c.endLine}` : ''}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        useReviewStore.getState().removeComment(c.id)
-                      }}
-                      className="px-1 rounded hover:bg-red-900/40 hover:text-red-400 cursor-pointer"
-                      title="Delete comment"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="mt-0.5 break-words">{c.body}</div>
-                </div>
-              ))}
-            </div>
+          {commitReview.comments.length > 0 && (
+            <CommentsSection
+              comments={commitReview.comments}
+              onOpen={(c) =>
+                void useCanvasStore
+                  .getState()
+                  .showRangeDiff(c.filePath, commitReview.baseRef, commitReview.tipSha)
+              }
+            />
           )}
         </div>
       </div>
@@ -265,7 +292,11 @@ export default function Changes() {
 
   if (!isGitRepo) return <NoGitRepo />
 
-  if (!status || status.files.length === 0) {
+  const files = status?.files ?? []
+
+  // Working-tree changes — always shown. An implicit review's comments (if any)
+  // layer underneath without hiding the file list.
+  if (files.length === 0 && workingComments.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
         No changes
@@ -275,22 +306,30 @@ export default function Changes() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground/60 border-b border-border/30">
-        <span>
-          {status.files.length} file{status.files.length !== 1 ? 's' : ''} changed
-        </span>
-        <button
-          onClick={cycleSortMode}
-          className="px-1.5 py-0.5 rounded hover:bg-muted/50 font-mono text-[10px] cursor-pointer"
-          title="Toggle sort mode"
-        >
-          {sortLabel[sortMode]}
-        </button>
-      </div>
+      {files.length > 0 && (
+        <div className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground/60 border-b border-border/30">
+          <span>
+            {files.length} file{files.length !== 1 ? 's' : ''} changed
+          </span>
+          <button
+            onClick={cycleSortMode}
+            className="px-1.5 py-0.5 rounded hover:bg-muted/50 font-mono text-[10px] cursor-pointer"
+            title="Toggle sort mode"
+          >
+            {sortLabel[sortMode]}
+          </button>
+        </div>
+      )}
       <div className="flex-1 min-h-0 overflow-y-auto py-1">
         {sortMode === 'path'
           ? tree.map((node) => <TreeEntry key={node.path} node={node} depth={0} />)
           : flatSorted.map((file) => <FileEntry key={file.path} file={file} showFullPath />)}
+        {workingComments.length > 0 && (
+          <CommentsSection
+            comments={workingComments}
+            onOpen={(c) => void useCanvasStore.getState().focusFileByPath(c.filePath, c.startLine)}
+          />
+        )}
       </div>
     </div>
   )

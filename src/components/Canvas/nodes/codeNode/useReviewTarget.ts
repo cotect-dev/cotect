@@ -1,0 +1,120 @@
+import { useCallback, useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { useReviewStore, WORKING_TIP, type ReviewComment } from '@/store/review'
+import { useGitStore } from '@/store/git'
+import { toRepoRelative } from '@/lib/repoPath'
+
+export type HunkDisplay = {
+  startLine: number
+  endLine: number
+  state: 'none' | 'accepted' | 'commented'
+}
+
+interface UseReviewTargetOptions {
+  filePath: string
+  repoPath: string
+  /** True when the file has uncommitted changes — lets us review the working
+   *  tree even without an explicit "Start review" session. */
+  hasGitChanges: boolean
+  /** `data.review?.filePath` — set when opened as a commit-range review diff. */
+  dataReviewFilePath: string | undefined
+  /** Hunks derived from the editor's own merge diff; used as the working-tree
+   *  fallback when no formal session supplies hunks. */
+  mergeHunks: { startLine: number; endLine: number }[]
+}
+
+interface UseReviewTargetResult {
+  /** Repo-relative path under review, or undefined when there's nothing to review. */
+  reviewFilePath: string | undefined
+  fileComments: ReviewComment[]
+  hunkDisplays: HunkDisplay[]
+  /** Lazily opens an implicit working-tree review on first accept/comment. */
+  ensureReviewSession: () => void
+}
+
+/**
+ * Resolves the review context for a file and projects per-hunk accept/comment
+ * state into a flat list the editor overlay can render.
+ *
+ * A file is "under review" when opened via Start review (`data.review`), when an
+ * active session covers it, OR — the common case — whenever it simply has
+ * uncommitted changes, so accept/comment controls show without an explicit review.
+ */
+export function useReviewTarget({
+  filePath,
+  repoPath,
+  hasGitChanges,
+  dataReviewFilePath,
+  mergeHunks,
+}: UseReviewTargetOptions): UseReviewTargetResult {
+  const activeReviewFile = useReviewStore(
+    useShallow((s) => {
+      if (!s.active) return undefined
+      const rel = toRepoRelative(filePath, repoPath)
+      return s.active.files.some((f) => f.path === rel) ? rel : undefined
+    }),
+  )
+  const reviewFilePath =
+    dataReviewFilePath ??
+    activeReviewFile ??
+    (hasGitChanges && repoPath ? toRepoRelative(filePath, repoPath) : undefined)
+
+  const fileComments = useReviewStore(
+    useShallow((s) =>
+      reviewFilePath ? (s.active?.comments.filter((c) => c.filePath === reviewFilePath) ?? []) : [],
+    ),
+  )
+  const reviewHunks = useReviewStore(
+    useShallow((s) =>
+      reviewFilePath ? (s.active?.files.find((f) => f.path === reviewFilePath)?.hunks ?? []) : [],
+    ),
+  )
+  const acceptedStartLines = useReviewStore(
+    useShallow((s) => {
+      if (!reviewFilePath || !s.active) return [] as number[]
+      const prefix = `${reviewFilePath}:`
+      return [...s.active.acceptedHunks]
+        .filter((k) => k.startsWith(prefix))
+        .map((k) => Number(k.slice(prefix.length)))
+    }),
+  )
+
+  const hunkDisplays = useMemo<HunkDisplay[]>(() => {
+    if (!reviewFilePath) return []
+    const accepted = new Set(acceptedStartLines)
+    const commented = new Set(fileComments.map((c) => c.startLine))
+    // Formal review sessions carry server-computed hunks; for plain working-tree
+    // changes (no session hunks) fall back to the editor's own merge chunks.
+    const src =
+      reviewHunks.length > 0
+        ? reviewHunks.map((h) => ({
+            startLine: h.start_line,
+            endLine: h.line_count > 0 ? h.start_line + h.line_count - 1 : h.start_line,
+          }))
+        : mergeHunks
+    return src.map((h) => ({
+      startLine: h.startLine,
+      endLine: h.endLine,
+      state: accepted.has(h.startLine)
+        ? 'accepted'
+        : commented.has(h.startLine)
+          ? 'commented'
+          : 'none',
+    }))
+  }, [reviewFilePath, reviewHunks, mergeHunks, acceptedStartLines, fileComments])
+
+  // Lazily open an implicit working-tree review the first time the user
+  // accepts/comments without having started one from History, so their input
+  // has somewhere to persist. Keyed by HEAD so it (and its accepts/comments) is
+  // restored across remounts/reloads. Files are left empty — accept/comment are
+  // keyed by path+line, and the Changes panel keeps showing the live
+  // working-tree changes for a WORKING_TIP session rather than this file list.
+  const ensureReviewSession = useCallback(() => {
+    const rs = useReviewStore.getState()
+    if (rs.active) return
+    const headSha = useGitStore.getState().log?.[0]?.hash ?? 'working'
+    rs.startReview(headSha, 'HEAD', WORKING_TIP, [])
+  }, [])
+
+  return { reviewFilePath, fileComments, hunkDisplays, ensureReviewSession }
+}

@@ -39,6 +39,18 @@ interface PersistedSession extends Omit<ReviewSession, 'acceptedHunks'> {
   acceptedHunks: string[]
 }
 
+/** Sentinel `tipSha` for the implicit working-tree review — the session created
+ *  on first accept/comment that simply annotates the live uncommitted changes
+ *  (as opposed to a commit-baseline review started from History). */
+export const WORKING_TIP = 'WORKING'
+
+/** A commit-baseline review owns its own diff file list and read-only range
+ *  diffs. The implicit working-tree review does not — it layers annotations on
+ *  top of the always-visible working-tree changes. */
+export function isCommitReview(s: ReviewSession): boolean {
+  return s.tipSha !== WORKING_TIP
+}
+
 export function hunkKey(filePath: string, startLine: number): string {
   return `${filePath}:${startLine}`
 }
@@ -81,6 +93,7 @@ interface ReviewState {
     snippet: string,
     body: string,
   ) => void
+  updateComment: (id: string, body: string) => void
   removeComment: (id: string) => void
   exportCommentsMarkdown: () => string
 }
@@ -184,6 +197,16 @@ export const useReviewStore = createStoreWithHMR(import.meta.hot, 'review', () =
             createdAt: Date.now(),
           }
           const next = { ...active, comments: [...active.comments, comment] }
+          set({ active: next, sessions: persistActive(next, get().sessions) })
+        },
+
+        updateComment: (id, body) => {
+          const active = get().active
+          if (!active) return
+          const next = {
+            ...active,
+            comments: active.comments.map((c) => (c.id === id ? { ...c, body } : c)),
+          }
           set({ active: next, sessions: persistActive(next, get().sessions) })
         },
 
