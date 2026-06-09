@@ -54,14 +54,13 @@ All changes in `buildEditorExtensions` (`editorExtensions.ts`):
 
 | Feature | Binding | Implementation |
 | --- | --- | --- |
-| Find / replace panel | `Mod-F`, `Mod-Alt-F`, `F3`/`Shift-F3` | `search()` + `searchKeymap` from `@codemirror/search` |
-| Select next occurrence | `Mod-D` | `selectNextOccurrence` (replaces copy-line-down) |
+| Find / replace panel | `Mod-F`, `Mod-Alt-F`, `F3`/`Shift-F3` | `search({ top: true })` + `searchKeymap` from `@codemirror/search` |
+| Select next occurrence | `Mod-D` | `selectNextOccurrence` via `searchKeymap` (custom copy-line-down binding removed) |
 | Select all occurrences | `Mod-Shift-L` | `selectSelectionMatches` |
-| Multi-cursor | Alt+click | `EditorState.allowMultipleSelections.of(true)` |
-| Move line | `Alt-Up` / `Alt-Down` | `moveLineUp` / `moveLineDown` |
-| Copy line | `Shift-Alt-Up` / `Shift-Alt-Down` | `copyLineUp` / `copyLineDown` |
-| Go to line | `Mod-G` | `gotoLine` |
-| Insert blank line below/above | `Mod-Enter` / `Mod-Shift-Enter` | `insertBlankLine` + custom above-variant if not provided |
+| Multi-cursor | Alt+click, `Ctrl/Cmd-Alt-Up/Down` | `EditorState.allowMultipleSelections.of(true)` — `defaultKeymap` already binds `addCursorAbove/Below`; the facet is what's missing |
+| Move / copy line | `Alt-Up/Down`, `Shift-Alt-Up/Down` | already bound by `defaultKeymap`; works once verified |
+| Go to line | `Mod-G` | `gotoLine`, bound before `searchKeymap` so it wins over `findNext` (`F3` remains find-next) |
+| Insert blank line below/above | `Mod-Enter` / `Mod-Shift-Enter` | `insertBlankLine` (already in `defaultKeymap`) + custom `insertBlankLineAbove` |
 
 - Escape ordering: search panel close (from `searchKeymap`) must win over the
   existing blur-to-canvas Escape binding — `searchKeymap` is placed before the
@@ -72,7 +71,7 @@ All changes in `buildEditorExtensions` (`editorExtensions.ts`):
   the existing `EditorState.readOnly` facet.
 
 Explicitly out of scope: LSP-backed go-to-definition/rename, format-on-save,
-add-cursor-above/below (no built-in CM command), minimap changes.
+minimap changes.
 
 ## Error handling
 
