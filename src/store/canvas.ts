@@ -121,6 +121,32 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         setViewportHeight: (h) => set({ viewportHeight: h }),
 
         setFocus: (nodeId) => {
+          // Clicking a node that lives in a different column (e.g. the next /
+          // preview column) must make that column current — otherwise
+          // focusedNodeId points outside columns[currentColumnIndex], which
+          // leaves the node highlighted-but-dimmed, breaks the inter-column
+          // edge (it resolves to a node not in that column), and no-ops the
+          // preview (updatePreview only looks in the current column).
+          if (nodeId !== null) {
+            const { columns, currentColumnIndex, depthChain } = get()
+            const colIndex = columns.findIndex((c) => c.nodes.some((n) => n.id === nodeId))
+            if (colIndex !== -1 && colIndex !== currentColumnIndex) {
+              set({
+                currentColumnIndex: colIndex,
+                // Re-anchor the chain on the clicked column. Going forward this
+                // commits the drilled-in column; going backward it drops the
+                // abandoned forward branch. columns[colIndex].path already
+                // equals depthChain[colIndex] for any drilled-through column.
+                depthChain: [...depthChain.slice(0, colIndex), columns[colIndex].path],
+                focusedNodeId: nodeId,
+                cameraY: CANVAS_MARGIN,
+              })
+              flattenAndRender(get, set)
+              void get().updatePreview()
+              return
+            }
+          }
+
           set({ focusedNodeId: nodeId })
           flattenAndRender(get, set)
           void get().updatePreview()

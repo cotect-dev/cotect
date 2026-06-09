@@ -482,6 +482,75 @@ describe('navigateRight', () => {
   })
 })
 
+describe('setFocus across columns', () => {
+  beforeEach(() => {
+    resetStore()
+    vi.clearAllMocks()
+  })
+
+  function twoColumnSetup() {
+    const folderNode: AppNode = {
+      id: '/proj/src',
+      type: 'folder',
+      position: { x: 0, y: 0 },
+      data: { label: 'src', path: '/proj/src', isDirectory: true as const },
+    }
+    const childFile: AppNode = {
+      id: '/proj/src/main.ts',
+      type: 'file',
+      position: { x: 0, y: 0 },
+      data: { label: 'main.ts', path: '/proj/src/main.ts' },
+    }
+
+    useCanvasStore.setState({
+      columns: [
+        { path: '/proj', kind: 'directory', nodes: [folderNode], edges: [] },
+        { path: '/proj/src', kind: 'directory', nodes: [childFile], edges: [] },
+      ],
+      currentColumnIndex: 0,
+      depthChain: ['/proj'],
+      focusedNodeId: '/proj/src',
+      nodes: [
+        { ...folderNode, data: { ...folderNode.data } } as AppNode,
+        { ...childFile, data: { ...childFile.data } } as AppNode,
+      ],
+    })
+    mockReadFile.mockResolvedValue('const x = 1\n')
+  }
+
+  it('promotes the preview (next) column to current when a node in it is clicked', () => {
+    twoColumnSetup()
+
+    // Click a node that lives in the next/preview column.
+    useCanvasStore.getState().setFocus('/proj/src/main.ts')
+
+    const state = useCanvasStore.getState()
+    expect(state.currentColumnIndex).toBe(1)
+    expect(state.focusedNodeId).toBe('/proj/src/main.ts')
+    expect(state.depthChain).toEqual(['/proj', '/proj/src'])
+  })
+
+  it('renders the clicked next-column node as current (not a dimmed preview)', () => {
+    twoColumnSetup()
+
+    useCanvasStore.getState().setFocus('/proj/src/main.ts')
+
+    const rendered = useCanvasStore.getState().nodes.find((n) => n.id === '/proj/src/main.ts')!
+    expect(rendered.data.__isFocused).toBe(true)
+    expect(rendered.data.__isCurrent).toBe(true)
+  })
+
+  it('keeps the inter-column edge anchored to the real parent node', () => {
+    twoColumnSetup()
+
+    useCanvasStore.getState().setFocus('/proj/src/main.ts')
+
+    const edge = useCanvasStore.getState().edges.find((e) => e.id.startsWith('edge:col0:'))!
+    expect(edge.source).toBe('/proj/src')
+    expect(edge.target).toBe('/proj/src/main.ts')
+  })
+})
+
 describe('navigateLeft', () => {
   beforeEach(() => {
     resetStore()
