@@ -9,18 +9,14 @@ export interface FileChurn {
   lastModified: number
 }
 
-export interface ChangeCoupling {
-  fileA: string
-  fileB: string
-  coChangeCount: number
-  couplingStrength: number
-}
-
 export interface Hotspot {
   path: string
-  churnScore: number
-  fanIn: number
-  hotspotScore: number
+  commitCount: number
+  lineCount: number
+  inDegree: number // shown in the "why" line, not part of the score
+  churnScore: number // normalized 0..1
+  sizeScore: number // normalized 0..1
+  hotspotScore: number // churnScore * sizeScore
 }
 
 export function computeChurn(log: GitLogEntry[], knownFiles: Set<string>): FileChurn[] {
@@ -52,73 +48,34 @@ export function computeChurn(log: GitLogEntry[], knownFiles: Set<string>): FileC
   return [...map.values()].sort((a, b) => b.commitCount - a.commitCount)
 }
 
-export function computeChangeCoupling(
-  log: GitLogEntry[],
-  knownFiles: Set<string>,
-  minCoChanges: number = 3,
-): ChangeCoupling[] {
-  const pairCounts = new Map<string, number>()
-  const fileCounts = new Map<string, number>()
-
-  for (const entry of log) {
-    const files = entry.files.map((f) => f.path).filter((p) => knownFiles.has(p))
-    for (const f of files) {
-      fileCounts.set(f, (fileCounts.get(f) ?? 0) + 1)
-    }
-    for (let i = 0; i < files.length; i++) {
-      for (let j = i + 1; j < files.length; j++) {
-        const key = files[i] < files[j] ? `${files[i]}\0${files[j]}` : `${files[j]}\0${files[i]}`
-        pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1)
-      }
-    }
-  }
-
-  const results: ChangeCoupling[] = []
-  for (const [key, count] of pairCounts) {
-    if (count < minCoChanges) continue
-    const [fileA, fileB] = key.split('\0')
-    const maxCount = Math.max(fileCounts.get(fileA) ?? 1, fileCounts.get(fileB) ?? 1)
-    results.push({
-      fileA,
-      fileB,
-      coChangeCount: count,
-      couplingStrength: count / maxCount,
-    })
-  }
-
-  return results.sort((a, b) => b.coChangeCount - a.coChangeCount)
-}
-
-export function computeHotspots(
-  churn: FileChurn[],
-  metrics: FileMetrics[],
-  fanInThreshold: number = 5,
-): Hotspot[] {
+export function computeHotspots(churn: FileChurn[], metrics: FileMetrics[]): Hotspot[] {
   if (churn.length === 0 || metrics.length === 0) return []
 
   const maxChurn = Math.max(...churn.map((c) => c.commitCount))
   if (maxChurn === 0) return []
 
+  const nonTest = metrics.filter((m) => !m.isTest)
+  const maxLines = Math.max(...nonTest.map((m) => m.lineCount), 1)
   const churnMap = new Map(churn.map((c) => [c.path, c]))
-  const fanInValues = metrics.filter((m) => !m.isTest).map((m) => m.inDegree)
-  const maxFanIn = Math.max(...fanInValues, 1)
-
-  const churnThreshold = maxChurn * 0.2
 
   const hotspots: Hotspot[] = []
-  for (const m of metrics) {
-    if (m.isTest) continue
-    if (m.inDegree < fanInThreshold) continue
+  for (const m of nonTest) {
     const c = churnMap.get(m.path)
-    if (!c || c.commitCount < churnThreshold) continue
+    if (!c || c.commitCount < 2 || m.lineCount <= 0) continue
 
-    const normalizedChurn = c.commitCount / maxChurn
-    const normalizedFanIn = m.inDegree / maxFanIn
+    const churnScore = c.commitCount / maxChurn
+    const sizeScore = m.lineCount / maxLines
+    const hotspotScore = churnScore * sizeScore
+    if (hotspotScore === 0) continue
+
     hotspots.push({
       path: m.path,
-      churnScore: normalizedChurn,
-      fanIn: m.inDegree,
-      hotspotScore: normalizedChurn * normalizedFanIn,
+      commitCount: c.commitCount,
+      lineCount: m.lineCount,
+      inDegree: m.inDegree,
+      churnScore,
+      sizeScore,
+      hotspotScore,
     })
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeChurn, computeChangeCoupling, computeHotspots } from './gitAnalysis'
+import { computeChurn, computeHotspots, type FileChurn } from './gitAnalysis'
 import type { GitLogEntry } from '@/store/git'
 import type { FileMetrics } from '@/services/structureAnalyzer'
 
@@ -83,64 +83,6 @@ describe('computeChurn', () => {
   })
 })
 
-describe('computeChangeCoupling', () => {
-  it('detects files that frequently change together', () => {
-    const log = [
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }]),
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }]),
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }]),
-    ]
-    const result = computeChangeCoupling(log, known, 3)
-    expect(result).toHaveLength(1)
-    expect(result[0].coChangeCount).toBe(3)
-  })
-
-  it('filters below minCoChanges threshold', () => {
-    const log = [
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }]),
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }]),
-    ]
-    const result = computeChangeCoupling(log, known, 3)
-    expect(result).toHaveLength(0)
-  })
-
-  it('computes coupling strength', () => {
-    const log = [
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }]),
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }]),
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }]),
-      makeEntry([{ path: 'src/a.ts' }]),
-    ]
-    const result = computeChangeCoupling(log, known, 3)
-    expect(result[0].couplingStrength).toBe(3 / 4)
-  })
-
-  it('handles multi-file commits', () => {
-    const log = [
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }, { path: 'src/c.ts' }]),
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }, { path: 'src/c.ts' }]),
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }, { path: 'src/c.ts' }]),
-    ]
-    const result = computeChangeCoupling(log, known, 3)
-    expect(result).toHaveLength(3)
-  })
-
-  it('normalizes pair keys regardless of order', () => {
-    const log = [
-      makeEntry([{ path: 'src/b.ts' }, { path: 'src/a.ts' }]),
-      makeEntry([{ path: 'src/a.ts' }, { path: 'src/b.ts' }]),
-      makeEntry([{ path: 'src/b.ts' }, { path: 'src/a.ts' }]),
-    ]
-    const result = computeChangeCoupling(log, known, 3)
-    expect(result).toHaveLength(1)
-    expect(result[0].coChangeCount).toBe(3)
-  })
-
-  it('returns empty for empty log', () => {
-    expect(computeChangeCoupling([], known)).toEqual([])
-  })
-})
-
 describe('computeHotspots', () => {
   const baseMetrics: FileMetrics[] = [
     {
@@ -185,103 +127,51 @@ describe('computeHotspots', () => {
     },
   ]
 
-  it('identifies files with high churn and high fan-in', () => {
-    const churn = [
-      {
-        path: 'src/a.ts',
-        commitCount: 20,
-        totalInsertions: 100,
-        totalDeletions: 50,
-        lastModified: 1000,
-      },
-      {
-        path: 'src/b.ts',
-        commitCount: 15,
-        totalInsertions: 50,
-        totalDeletions: 20,
-        lastModified: 900,
-      },
-      {
-        path: 'src/c.ts',
-        commitCount: 2,
-        totalInsertions: 5,
-        totalDeletions: 1,
-        lastModified: 800,
-      },
-    ]
-    const result = computeHotspots(churn, baseMetrics, 5)
-    expect(result.length).toBeGreaterThanOrEqual(1)
+  const churnFor = (entries: [string, number][]): FileChurn[] =>
+    entries.map(([path, commitCount]) => ({
+      path,
+      commitCount,
+      totalInsertions: 0,
+      totalDeletions: 0,
+      lastModified: 1000,
+    }))
+
+  it('ranks the large, high-churn file highest', () => {
+    const result = computeHotspots(
+      churnFor([
+        ['src/a.ts', 20],
+        ['src/b.ts', 18],
+        ['src/c.ts', 3],
+      ]),
+      baseMetrics,
+    )
     expect(result[0].path).toBe('src/a.ts')
+    expect(result[0].hotspotScore).toBeGreaterThanOrEqual(result[1].hotspotScore)
   })
 
-  it('excludes test files', () => {
-    const churn = [
-      {
-        path: 'src/d.ts',
-        commitCount: 50,
-        totalInsertions: 200,
-        totalDeletions: 100,
-        lastModified: 1000,
-      },
-    ]
-    const metricsWithTestFanIn = baseMetrics.map((m) =>
-      m.path === 'src/d.ts' ? { ...m, inDegree: 20 } : m,
-    )
-    const result = computeHotspots(churn, metricsWithTestFanIn, 5)
+  it('excludes test files even with high churn', () => {
+    const result = computeHotspots(churnFor([['src/d.ts', 50]]), baseMetrics)
     expect(result.find((h) => h.path === 'src/d.ts')).toBeUndefined()
   })
 
-  it('excludes files below fan-in threshold', () => {
-    const churn = [
-      {
-        path: 'src/c.ts',
-        commitCount: 50,
-        totalInsertions: 200,
-        totalDeletions: 100,
-        lastModified: 1000,
-      },
-    ]
-    const result = computeHotspots(churn, baseMetrics, 5)
+  it('excludes files changed only once', () => {
+    const result = computeHotspots(churnFor([['src/a.ts', 1]]), baseMetrics)
     expect(result).toHaveLength(0)
+  })
+
+  it('excludes zero-line files', () => {
+    const zero = baseMetrics.map((m) => (m.path === 'src/a.ts' ? { ...m, lineCount: 0 } : m))
+    const result = computeHotspots(churnFor([['src/a.ts', 20]]), zero)
+    expect(result.find((h) => h.path === 'src/a.ts')).toBeUndefined()
   })
 
   it('returns empty for empty inputs', () => {
     expect(computeHotspots([], baseMetrics)).toEqual([])
-    expect(
-      computeHotspots(
-        [
-          {
-            path: 'src/a.ts',
-            commitCount: 10,
-            totalInsertions: 0,
-            totalDeletions: 0,
-            lastModified: 0,
-          },
-        ],
-        [],
-      ),
-    ).toEqual([])
+    expect(computeHotspots(churnFor([['src/a.ts', 10]]), [])).toEqual([])
   })
 
-  it('sorts by hotspot score descending', () => {
-    const churn = [
-      {
-        path: 'src/a.ts',
-        commitCount: 20,
-        totalInsertions: 100,
-        totalDeletions: 50,
-        lastModified: 1000,
-      },
-      {
-        path: 'src/b.ts',
-        commitCount: 18,
-        totalInsertions: 80,
-        totalDeletions: 30,
-        lastModified: 900,
-      },
-    ]
-    const result = computeHotspots(churn, baseMetrics, 5)
-    expect(result.length).toBe(2)
-    expect(result[0].hotspotScore).toBeGreaterThanOrEqual(result[1].hotspotScore)
+  it('carries factors for the why-line', () => {
+    const result = computeHotspots(churnFor([['src/a.ts', 20]]), baseMetrics)
+    expect(result[0]).toMatchObject({ commitCount: 20, lineCount: 100, inDegree: 10 })
   })
 })

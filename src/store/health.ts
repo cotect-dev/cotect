@@ -4,18 +4,11 @@ import { createStoreWithHMR } from '@/lib/hmr'
 import { getPlatform } from '@/services/platform'
 import { useGraphStore } from '@/store/graph'
 import { analyzeGraph, type Finding, type FileMetrics } from '@/services/structureAnalyzer'
-import {
-  computeChurn,
-  computeChangeCoupling,
-  computeHotspots,
-  type FileChurn,
-  type ChangeCoupling,
-  type Hotspot,
-} from '@/services/gitAnalysis'
+import { computeChurn, computeHotspots, type FileChurn, type Hotspot } from '@/services/gitAnalysis'
+import { computeFileSizes, type FileSizeInfo } from '@/lib/llmContext'
 import type { GitLogEntry } from '@/store/git'
 
 export type HealthScanState = 'idle' | 'analyzing' | 'ready' | 'error'
-export type HealthTab = 'summary' | 'findings' | 'metrics'
 
 interface HealthState {
   scanState: HealthScanState
@@ -27,14 +20,12 @@ interface HealthState {
   metrics: FileMetrics[]
 
   churn: FileChurn[]
-  coupling: ChangeCoupling[]
   hotspots: Hotspot[]
+  fileSizes: FileSizeInfo[]
 
-  activeTab: HealthTab
   metricsSortKey: string
   metricsSortDir: 'asc' | 'desc'
   analyze: (rootPath: string) => Promise<void>
-  setActiveTab: (tab: HealthTab) => void
   setMetricsSort: (key: string, dir: 'asc' | 'desc') => void
 }
 
@@ -49,10 +40,9 @@ export const useHealthStore = createStoreWithHMR(import.meta.hot, 'health', () =
     metrics: [],
 
     churn: [],
-    coupling: [],
     hotspots: [],
+    fileSizes: [],
 
-    activeTab: 'summary',
     metricsSortKey: 'path',
     metricsSortDir: 'asc',
     analyze: async (rootPath: string) => {
@@ -71,6 +61,7 @@ export const useHealthStore = createStoreWithHMR(import.meta.hot, 'health', () =
 
         const platform = getPlatform()
         const lineCounts = new Map<string, number>()
+        const charCounts = new Map<string, number>()
         let counted = 0
         await Promise.all(
           files.map(async (rel) => {
@@ -78,8 +69,10 @@ export const useHealthStore = createStoreWithHMR(import.meta.hot, 'health', () =
               const abs = `${rootPath}/${rel}`
               const content = await platform.fs.readFile(abs)
               lineCounts.set(rel, content.split('\n').length)
+              charCounts.set(rel, content.length)
             } catch {
               lineCounts.set(rel, 0)
+              charCounts.set(rel, 0)
             }
             counted++
             if (counted % 50 === 0) {
@@ -101,8 +94,8 @@ export const useHealthStore = createStoreWithHMR(import.meta.hot, 'health', () =
 
         set({ progress: 'Computing git metrics...' })
         const churn = computeChurn(gitLog, knownFiles)
-        const coupling = computeChangeCoupling(gitLog, knownFiles)
         const hotspots = computeHotspots(churn, result.metrics)
+        const fileSizes = computeFileSizes(result.metrics, charCounts)
 
         set({
           scanState: 'ready',
@@ -110,8 +103,8 @@ export const useHealthStore = createStoreWithHMR(import.meta.hot, 'health', () =
           findings: result.findings,
           metrics: result.metrics,
           churn,
-          coupling,
           hotspots,
+          fileSizes,
           lastAnalyzedAt: Date.now(),
         })
       } catch (err) {
@@ -123,7 +116,6 @@ export const useHealthStore = createStoreWithHMR(import.meta.hot, 'health', () =
       }
     },
 
-    setActiveTab: (tab) => set({ activeTab: tab }),
     setMetricsSort: (key, dir) => set({ metricsSortKey: key, metricsSortDir: dir }),
   })),
 )
