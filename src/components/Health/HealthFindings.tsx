@@ -112,14 +112,8 @@ function getFileValue(
     case 'missing-test':
       return 'no test'
     case 'hub-bottleneck':
-    case 'mixed-layers': {
-      const match = finding.message.match(/(\d+)\s+(different\s+)?layers/)
-      return match ? `${match[1]} layers` : ''
-    }
-    case 'wide-folder': {
-      const match = finding.message.match(/(\d+)\s+files/)
-      return match ? `${match[1]} files` : ''
-    }
+    case 'mixed-layers':
+      return finding.detail?.count != null ? `${finding.detail.count} layers` : ''
     case 'circular-dependency':
       return `${finding.files.length} files in cycle`
     case 'layer-violation':
@@ -143,7 +137,7 @@ export default function HealthFindings() {
   const metricsMap = useMemo(() => new Map(metrics.map((m) => [m.path, m])), [metrics])
 
   const bySeverity = useMemo(() => {
-    const grouped = new Map<Severity, Map<FindingType, FileEntry[]>>()
+    const grouped = new Map<Severity, Map<FindingType, { entries: FileEntry[]; total: number }>>()
 
     for (const sev of ['error', 'warning', 'info'] as Severity[]) {
       grouped.set(sev, new Map())
@@ -151,8 +145,8 @@ export default function HealthFindings() {
 
     for (const f of findings) {
       const typeMap = grouped.get(f.severity)!
-      if (!typeMap.has(f.type)) typeMap.set(f.type, [])
-      const entries = typeMap.get(f.type)!
+      if (!typeMap.has(f.type)) typeMap.set(f.type, { entries: [], total: 0 })
+      const entries = typeMap.get(f.type)!.entries
 
       if (f.type === 'circular-dependency') {
         entries.push({
@@ -162,18 +156,16 @@ export default function HealthFindings() {
           finding: f,
         })
       } else if (f.type === 'wide-folder') {
-        const match = f.message.match(/^Wide folder: (.+?) has (\d+) files/)
         entries.push({
-          file: match?.[1] ?? f.files[0],
-          value: `${match?.[2] ?? f.files.length} files`,
+          file: f.detail?.group ?? f.files[0],
+          value: `${f.detail?.count ?? f.files.length} files`,
           sortKey: f.files.length,
           finding: f,
         })
       } else if (f.type === 'layer-violation') {
-        const match = f.message.match(/\((.+?)\): (\d+) import/)
         entries.push({
-          file: match?.[1] ?? f.type,
-          value: `${match?.[2] ?? f.files.length} imports`,
+          file: f.detail?.group ?? f.type,
+          value: `${f.detail?.count ?? f.files.length} imports`,
           sortKey: f.files.length,
           finding: f,
         })
@@ -211,11 +203,10 @@ export default function HealthFindings() {
     }
 
     for (const typeMap of grouped.values()) {
-      for (const [type, entries] of typeMap) {
-        entries.sort((a, b) => b.sortKey - a.sortKey)
-        if (entries.length > MAX_FILES_PER_CARD) {
-          typeMap.set(type, entries.slice(0, MAX_FILES_PER_CARD))
-        }
+      for (const [type, group] of typeMap) {
+        group.entries.sort((a, b) => b.sortKey - a.sortKey)
+        const total = group.entries.length
+        typeMap.set(type, { entries: group.entries.slice(0, MAX_FILES_PER_CARD), total })
       }
     }
 
@@ -251,12 +242,12 @@ export default function HealthFindings() {
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {[...typeMap.entries()].map(([type, entries]) => (
+                {[...typeMap.entries()].map(([type, group]) => (
                   <FindingCard
                     key={type}
                     type={type}
-                    entries={entries}
-                    totalCount={findings.filter((f) => f.type === type).length}
+                    entries={group.entries}
+                    totalCount={group.total}
                   />
                 ))}
               </div>
@@ -309,9 +300,9 @@ function FindingCard({
             )}
           </div>
         ))}
-        {totalCount > MAX_FILES_PER_CARD && (
+        {totalCount > entries.length && (
           <div className="pt-1 text-[10px] text-muted-foreground/60">
-            +{totalCount - MAX_FILES_PER_CARD} more
+            +{totalCount - entries.length} more
           </div>
         )}
       </div>

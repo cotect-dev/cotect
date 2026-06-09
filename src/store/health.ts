@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
 import { createStoreWithHMR } from '@/lib/hmr'
-import { getPlatform } from '@/services/platform'
 import { useGraphStore } from '@/store/graph'
 import { analyzeGraph, type Finding, type FileMetrics } from '@/services/structureAnalyzer'
 import { computeChurn, computeHotspots, type FileChurn, type Hotspot } from '@/services/gitAnalysis'
@@ -15,6 +14,7 @@ interface HealthState {
   errorMessage: string | null
   lastAnalyzedAt: number | null
   progress: string | null
+  analyzedRoot: string | null
 
   findings: Finding[]
   metrics: FileMetrics[]
@@ -35,6 +35,7 @@ export const useHealthStore = createStoreWithHMR(import.meta.hot, 'health', () =
     errorMessage: null,
     lastAnalyzedAt: null,
     progress: null,
+    analyzedRoot: null,
 
     findings: [],
     metrics: [],
@@ -52,45 +53,37 @@ export const useHealthStore = createStoreWithHMR(import.meta.hot, 'health', () =
         return
       }
 
-      set({ scanState: 'analyzing', errorMessage: null, progress: 'Collecting file data...' })
+      // Set before the work starts so a failed run doesn't auto-retry in a loop
+      set({
+        scanState: 'analyzing',
+        errorMessage: null,
+        progress: 'Collecting file data...',
+        analyzedRoot: rootPath,
+      })
 
       try {
+        // Graceful degradation on failure — structural findings still available
+        const gitLogPromise = invoke<GitLogEntry[]>('git_log', {
+          repoPath: rootPath,
+          limit: 500,
+        }).catch(() => [] as GitLogEntry[])
+
         const files = graphState.allNodes.map((n) => n.id)
         const edges: [string, string][] = graphState.allEdges.map((e) => [e.source, e.target])
         const knownFiles = new Set(files)
 
-        const platform = getPlatform()
         const lineCounts = new Map<string, number>()
         const charCounts = new Map<string, number>()
-        let counted = 0
-        await Promise.all(
-          files.map(async (rel) => {
-            try {
-              const abs = `${rootPath}/${rel}`
-              const content = await platform.fs.readFile(abs)
-              lineCounts.set(rel, content.split('\n').length)
-              charCounts.set(rel, content.length)
-            } catch {
-              lineCounts.set(rel, 0)
-              charCounts.set(rel, 0)
-            }
-            counted++
-            if (counted % 50 === 0) {
-              set({ progress: `Reading files... ${counted}/${files.length}` })
-            }
-          }),
-        )
+        for (const n of graphState.allNodes) {
+          lineCounts.set(n.id, n.lineCount ?? 0)
+          charCounts.set(n.id, n.charCount ?? 0)
+        }
 
         set({ progress: 'Analyzing structure...' })
         const result = analyzeGraph(files, edges, {}, lineCounts)
 
         set({ progress: 'Fetching git history...' })
-        let gitLog: GitLogEntry[] = []
-        try {
-          gitLog = await invoke<GitLogEntry[]>('git_log', { repoPath: rootPath, limit: 500 })
-        } catch {
-          // Graceful degradation — structural findings still available
-        }
+        const gitLog = await gitLogPromise
 
         set({ progress: 'Computing git metrics...' })
         const churn = computeChurn(gitLog, knownFiles)

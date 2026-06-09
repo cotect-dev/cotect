@@ -93,6 +93,7 @@ describe('computeHotspots', () => {
       inDegree: 10,
       outDegree: 2,
       isTest: false,
+      hasTest: false,
       longestChainDepth: 1,
     },
     {
@@ -103,6 +104,7 @@ describe('computeHotspots', () => {
       inDegree: 8,
       outDegree: 1,
       isTest: false,
+      hasTest: false,
       longestChainDepth: 0,
     },
     {
@@ -113,6 +115,7 @@ describe('computeHotspots', () => {
       inDegree: 1,
       outDegree: 0,
       isTest: false,
+      hasTest: false,
       longestChainDepth: 0,
     },
     {
@@ -123,6 +126,7 @@ describe('computeHotspots', () => {
       inDegree: 0,
       outDegree: 0,
       isTest: true,
+      hasTest: false,
       longestChainDepth: 0,
     },
   ]

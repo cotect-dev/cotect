@@ -186,12 +186,12 @@ describe('layout store - state management', () => {
   describe('getSerializableLayout / loadLayoutIntoStore', () => {
     it('round-trips layout state', () => {
       useLayoutStore.getState().addPanel('changes', 'left')
-      useLayoutStore.getState().addPanel('tasks', 'right')
+      useLayoutStore.getState().addPanel('console', 'right')
       useLayoutStore.getState().setActiveTab('changes', 0)
 
       const serialized = getSerializableLayout()
       expect(serialized.panels.left).toEqual([['changes']])
-      expect(serialized.panels.right).toEqual([['tasks']])
+      expect(serialized.panels.right).toEqual([['console']])
 
       useLayoutStore.setState({
         panels: { left: [], right: [], bottom: [] },
@@ -203,8 +203,58 @@ describe('layout store - state management', () => {
 
       const restored = useLayoutStore.getState()
       expect(restored.panels.left).toEqual([['changes']])
-      expect(restored.panels.right).toEqual([['tasks']])
+      expect(restored.panels.right).toEqual([['console']])
       expect(restored.activeTab['changes']).toBe(0)
+    })
+
+    it('drops unknown panel ids from persisted layouts', () => {
+      loadLayoutIntoStore({
+        panels: { left: [['changes', 'tasks']], right: [], bottom: [] },
+        sizes: { left: [1], right: [], bottom: [] },
+        activeTab: { changes: 1 },
+      })
+      const { panels, sizes, activeTab } = useLayoutStore.getState()
+      expect(panels.left).toEqual([['changes']])
+      expect(sizes.left).toEqual([1])
+      expect(activeTab['changes']).toBe(0)
+    })
+
+    it('drops groups that become empty and renormalizes sizes', () => {
+      loadLayoutIntoStore({
+        panels: { left: [['tasks'], ['changes'], ['history']], right: [], bottom: [] },
+        sizes: { left: [0.5, 0.25, 0.25], right: [], bottom: [] },
+        activeTab: { tasks: 0, changes: 0, history: 0 },
+      })
+      const { panels, sizes, activeTab } = useLayoutStore.getState()
+      expect(panels.left).toEqual([['changes'], ['history']])
+      expect(sizes.left).toEqual([0.5, 0.5])
+      expect(sizes.left.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 5)
+      expect(activeTab).toEqual({ changes: 0, history: 0 })
+    })
+
+    it('rekeys activeTab and clamps index when a group leader is dropped', () => {
+      loadLayoutIntoStore({
+        panels: { left: [['tasks', 'changes', 'history']], right: [], bottom: [] },
+        sizes: { left: [1], right: [], bottom: [] },
+        activeTab: { tasks: 2 },
+      })
+      const { panels, activeTab } = useLayoutStore.getState()
+      expect(panels.left).toEqual([['changes', 'history']])
+      expect(activeTab['tasks']).toBeUndefined()
+      expect(activeTab['changes']).toBe(1)
+    })
+
+    it('keeps fully valid layouts intact', () => {
+      loadLayoutIntoStore({
+        panels: { left: [['changes', 'history']], right: [], bottom: [['console']] },
+        sizes: { left: [1], right: [], bottom: [1] },
+        activeTab: { changes: 1, console: 0 },
+      })
+      const { panels, sizes, activeTab } = useLayoutStore.getState()
+      expect(panels.left).toEqual([['changes', 'history']])
+      expect(panels.bottom).toEqual([['console']])
+      expect(sizes.left).toEqual([1])
+      expect(activeTab).toEqual({ changes: 1, console: 0 })
     })
   })
 

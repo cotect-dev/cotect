@@ -328,10 +328,29 @@ export function getSerializableLayout(): PersistedLayout {
 }
 
 export function loadLayoutIntoStore(saved: PersistedLayout): void {
+  const knownIds = new Set(PANEL_DEFINITIONS.map((d) => d.id))
+  const panels: Record<PanelPosition, string[][]> = { left: [], right: [], bottom: [] }
+  const sizes: Record<PanelPosition, number[]> = { left: [], right: [], bottom: [] }
+  const activeTab: Record<string, number> = {}
+
+  for (const pos of POSITIONS) {
+    const savedGroups = saved.panels[pos] ?? []
+    const savedSizes = saved.sizes[pos] ?? []
+    for (let gi = 0; gi < savedGroups.length; gi++) {
+      const group = savedGroups[gi].filter((id) => knownIds.has(id))
+      if (group.length === 0) continue
+      panels[pos].push(group)
+      sizes[pos].push(savedSizes[gi] ?? 1)
+      const savedTab = saved.activeTab[groupKey(savedGroups[gi])] ?? 0
+      activeTab[groupKey(group)] = Math.min(Math.max(savedTab, 0), group.length - 1)
+    }
+    sizes[pos] = renormalize(sizes[pos])
+  }
+
   useLayoutStore.setState({
-    panels: saved.panels,
-    sizes: saved.sizes,
-    activeTab: saved.activeTab,
+    panels,
+    sizes,
+    activeTab,
     zoneSizes: saved.zoneSizes ?? { ...DEFAULT_ZONE_SIZES },
   })
 }

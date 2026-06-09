@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useReviewStore, WORKING_TIP, type ReviewComment } from '@/store/review'
+import { useReviewStore, WORKING_TIP, isCommitReview, type ReviewComment } from '@/store/review'
 import { useGitStore } from '@/store/git'
 import { toRepoRelative } from '@/lib/repoPath'
 
@@ -59,19 +59,27 @@ export function useReviewTarget({
     activeReviewFile ??
     (hasGitChanges && repoPath ? toRepoRelative(filePath, repoPath) : undefined)
 
+  // Commit-review sessions anchor hunks/accepts/comments to the tip snapshot.
+  // Only render them when this node is the range-diff view (`data.review` set);
+  // a working-tree document opened from Files may have drifted from the tip.
+  const isRangeDiffView = dataReviewFilePath !== undefined
   const fileComments = useReviewStore(
-    useShallow((s) =>
-      reviewFilePath ? (s.active?.comments.filter((c) => c.filePath === reviewFilePath) ?? []) : [],
-    ),
+    useShallow((s) => {
+      if (!reviewFilePath || !s.active) return [] as ReviewComment[]
+      if (isCommitReview(s.active) && !isRangeDiffView) return [] as ReviewComment[]
+      return s.active.comments.filter((c) => c.filePath === reviewFilePath)
+    }),
   )
   const reviewHunks = useReviewStore(
-    useShallow((s) =>
-      reviewFilePath ? (s.active?.files.find((f) => f.path === reviewFilePath)?.hunks ?? []) : [],
-    ),
+    useShallow((s) => {
+      if (!reviewFilePath || !s.active || !isRangeDiffView) return []
+      return s.active.files.find((f) => f.path === reviewFilePath)?.hunks ?? []
+    }),
   )
   const acceptedStartLines = useReviewStore(
     useShallow((s) => {
       if (!reviewFilePath || !s.active) return [] as number[]
+      if (isCommitReview(s.active) && !isRangeDiffView) return [] as number[]
       const prefix = `${reviewFilePath}:`
       return [...s.active.acceptedHunks]
         .filter((k) => k.startsWith(prefix))

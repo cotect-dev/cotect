@@ -44,14 +44,14 @@ describe('review store — per-hunk', () => {
     const r = useReviewStore.getState()
     r.acceptHunk('src/a.ts', 10)
     expect(useReviewStore.getState().active!.acceptedHunks.has('src/a.ts:10')).toBe(true)
-    expect(useReviewStore.getState().sessions['abc1234'].acceptedHunks.has('src/a.ts:10')).toBe(
-      true,
-    )
+    expect(
+      useReviewStore.getState().sessions['abc1234..tip999'].acceptedHunks.has('src/a.ts:10'),
+    ).toBe(true)
     r.unacceptHunk('src/a.ts', 10)
     expect(useReviewStore.getState().active!.acceptedHunks.has('src/a.ts:10')).toBe(false)
-    expect(useReviewStore.getState().sessions['abc1234'].acceptedHunks.has('src/a.ts:10')).toBe(
-      false,
-    )
+    expect(
+      useReviewStore.getState().sessions['abc1234..tip999'].acceptedHunks.has('src/a.ts:10'),
+    ).toBe(false)
   })
 
   it('a hunk is reviewed when accepted OR commented', () => {
@@ -84,14 +84,36 @@ describe('review store — per-hunk', () => {
     expect(md).toContain('const x = 1')
   })
 
-  it('re-entering restores accepted hunks + comments with fresh tip', () => {
+  it('re-entering the same base..tip restores accepted hunks + comments', () => {
     const r = useReviewStore.getState()
     r.acceptHunk('src/b.ts', 1)
     r.exitReview()
     expect(useReviewStore.getState().active).toBeNull()
+    r.startReview('abc1234', 'abc1234~1', 'tip999', files)
+    const s = useReviewStore.getState().active!
+    expect(s.tipSha).toBe('tip999')
+    expect(s.acceptedHunks.has('src/b.ts:1')).toBe(true)
+  })
+
+  it('re-reviewing the same base with a new tip starts fresh (no stale anchors)', () => {
+    const r = useReviewStore.getState()
+    r.acceptHunk('src/b.ts', 1)
+    r.exitReview()
     r.startReview('abc1234', 'abc1234~1', 'tipNEW', files)
     const s = useReviewStore.getState().active!
     expect(s.tipSha).toBe('tipNEW')
-    expect(s.acceptedHunks.has('src/b.ts:1')).toBe(true)
+    expect(s.acceptedHunks.size).toBe(0)
+    expect(s.comments).toEqual([])
+  })
+
+  it('working-tree session does not collide with a commit review of the same sha', () => {
+    const r = useReviewStore.getState()
+    r.acceptHunk('src/a.ts', 10)
+    r.exitReview()
+    r.startReview('abc1234', 'HEAD', 'WORKING', [])
+    expect(useReviewStore.getState().active!.acceptedHunks.size).toBe(0)
+    const sessions = useReviewStore.getState().sessions
+    expect(sessions['abc1234..tip999'].acceptedHunks.has('src/a.ts:10')).toBe(true)
+    expect(sessions['abc1234..WORKING'].acceptedHunks.size).toBe(0)
   })
 })

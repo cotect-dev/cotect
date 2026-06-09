@@ -17,9 +17,9 @@ import {
   type Range,
 } from '@codemirror/state'
 import { syntaxTree } from '@codemirror/language'
-import { unifiedMergeView, getChunks, acceptChunk, rejectChunk } from '@codemirror/merge'
+import { unifiedMergeView, getChunks } from '@codemirror/merge'
 
-export { getChunks, acceptChunk, rejectChunk }
+export { getChunks }
 
 const RAINBOW_COLORS = ['#ffd700', '#da70d6', '#179fff']
 

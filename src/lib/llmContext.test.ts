@@ -10,6 +10,7 @@ const m = (path: string, lineCount: number, isTest = false): FileMetrics => ({
   inDegree: 0,
   outDegree: 0,
   isTest,
+  hasTest: false,
   longestChainDepth: 0,
 })
 

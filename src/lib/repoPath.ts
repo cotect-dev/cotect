@@ -25,6 +25,10 @@ export function joinPath(parent: string, child: string): string {
   return `${left}/${right}`
 }
 
+export function basename(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1) || path
+}
+
 export function samePath(absOrRel: string, statusEntryPath: string, repoPath: string): boolean {
   return toRepoRelative(absOrRel, repoPath) === statusEntryPath
 }

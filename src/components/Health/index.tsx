@@ -13,6 +13,7 @@ import HealthMetrics from './HealthMetrics'
 
 export default function Health() {
   const scanState = useHealthStore((s) => s.scanState)
+  const analyzedRoot = useHealthStore((s) => s.analyzedRoot)
   const analyze = useHealthStore((s) => s.analyze)
   const lastAnalyzedAt = useHealthStore((s) => s.lastAnalyzedAt)
   const progress = useHealthStore((s) => s.progress)
@@ -21,10 +22,10 @@ export default function Health() {
   const rootPath = useBrowserStore((s) => s.rootPath)
 
   useEffect(() => {
-    if (scanState === 'idle' && graphReady && rootPath) {
+    if (scanState !== 'analyzing' && graphReady && rootPath && analyzedRoot !== rootPath) {
       void analyze(rootPath)
     }
-  }, [scanState, graphReady, rootPath, analyze])
+  }, [scanState, graphReady, rootPath, analyzedRoot, analyze])
 
   const handleRefresh = () => {
     if (rootPath && scanState !== 'analyzing') {

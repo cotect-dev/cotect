@@ -1,10 +1,5 @@
-import { parseImports } from '@/services/treesitter'
-import { resolveImport } from '@/services/importResolver'
-import { getConfigForFile, PARSEABLE_EXTENSIONS } from '@/services/treesitter-queries'
 import { isTestFile } from '@/lib/fileClassification'
-import { HIDDEN_DIRECTORIES } from '@/lib/constants'
-import { toRepoRelative } from '@/lib/repoPath'
-import { getPlatform } from '@/services/platform'
+import { basename } from '@/lib/repoPath'
 
 export type FindingType =
   | 'circular-dependency'
@@ -27,6 +22,7 @@ export interface Finding {
   severity: Severity
   files: string[]
   message: string
+  detail?: { count?: number; group?: string }
 }
 
 export interface FileMetrics {
@@ -37,6 +33,7 @@ export interface FileMetrics {
   inDegree: number
   outDegree: number
   isTest: boolean
+  hasTest: boolean
   longestChainDepth: number
 }
 
@@ -50,7 +47,6 @@ export interface AnalysisConfig {
   fanInThreshold: number
   fanOutThreshold: number
   depthThreshold: number
-  maxFiles: number
   largeFileThreshold: number
   wideFolderThreshold: number
   mixedLayerThreshold: number
@@ -60,7 +56,6 @@ const DEFAULT_CONFIG: AnalysisConfig = {
   fanInThreshold: 10,
   fanOutThreshold: 15,
   depthThreshold: 8,
-  maxFiles: 500,
   largeFileThreshold: 300,
   wideFolderThreshold: 15,
   mixedLayerThreshold: 4,
@@ -83,78 +78,9 @@ function getLayer(filePath: string): string {
   return parts[srcIdx + 1]
 }
 
-function getExtension(path: string): string {
-  const name = path.slice(path.lastIndexOf('/') + 1)
-  const dot = name.lastIndexOf('.')
-  return dot >= 0 ? name.slice(dot).toLowerCase() : ''
-}
-
-function getFilename(path: string): string {
-  return path.slice(path.lastIndexOf('/') + 1)
-}
-
 function getDirname(path: string): string {
   const slash = path.lastIndexOf('/')
   return slash >= 0 ? path.slice(0, slash) : ''
-}
-
-async function collectFiles(
-  rootPath: string,
-  maxFiles: number,
-  onProgress?: (count: number) => void,
-): Promise<string[]> {
-  const platform = getPlatform()
-  const found: string[] = []
-  const queue: string[] = [rootPath]
-
-  while (queue.length > 0 && found.length < maxFiles) {
-    const dir = queue.shift()!
-    let entries
-    try {
-      entries = await platform.fs.readDirectory(dir)
-    } catch {
-      continue
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory) {
-        if (HIDDEN_DIRECTORIES.has(entry.name) || entry.name.startsWith('.')) continue
-        queue.push(entry.path)
-      } else {
-        if (!PARSEABLE_EXTENSIONS.has(getExtension(entry.name))) continue
-        if (found.length >= maxFiles) break
-        found.push(entry.path)
-        if (onProgress && found.length % 25 === 0) onProgress(found.length)
-      }
-    }
-  }
-  return found
-}
-
-function buildGraph(
-  relFiles: string[],
-  importsByFile: Map<string, string[]>,
-  knownFiles: Set<string>,
-): { adj: Map<string, Set<string>>; radj: Map<string, Set<string>> } {
-  const adj = new Map<string, Set<string>>()
-  const radj = new Map<string, Set<string>>()
-
-  for (const f of relFiles) {
-    adj.set(f, new Set())
-    radj.set(f, new Set())
-  }
-
-  for (const [from, specifiers] of importsByFile) {
-    const config = getConfigForFile(from)
-    if (!config) continue
-    for (const spec of specifiers) {
-      const target = resolveImport(spec, from, knownFiles, config.id)
-      if (!target || target === from) continue
-      adj.get(from)!.add(target)
-      radj.get(target)?.add(from)
-    }
-  }
-
-  return { adj, radj }
 }
 
 function findCycles(adj: Map<string, Set<string>>): string[][] {
@@ -273,20 +199,34 @@ export function analyzeGraph(
     })
   }
 
+  const testFiles = new Set(files.filter((f) => isTestFile(basename(f))))
+  const hasMatchingTest = (path: string, folder: string): boolean => {
+    const name = basename(path)
+    const dotIdx = name.indexOf('.')
+    if (dotIdx < 0) return false
+    const base = name.slice(0, dotIdx)
+    const ext = name.slice(dotIdx)
+    return (
+      testFiles.has(`${folder}/${base}.test${ext}`) || testFiles.has(`${folder}/${base}.spec${ext}`)
+    )
+  }
+
   const depthMemo = new Map<string, number>()
   const depthVisiting = new Set<string>()
   const metrics: FileMetrics[] = files.map((path) => {
     const inDegree = radj.get(path)?.size ?? 0
     const outDegree = adj.get(path)?.size ?? 0
     const depth = longestPathFrom(path, adj, depthMemo, depthVisiting)
+    const folder = getDirname(path)
     return {
       path,
-      folder: getDirname(path),
+      folder,
       layer: getLayer(path),
       lineCount: lineCounts?.get(path) ?? 0,
       inDegree,
       outDegree,
-      isTest: isTestFile(getFilename(path)),
+      isTest: isTestFile(basename(path)),
+      hasTest: hasMatchingTest(path, folder),
       longestChainDepth: depth,
     }
   })
@@ -353,6 +293,7 @@ export function analyzeGraph(
       severity: 'warning',
       files: imports.map((i) => i.split(' → ')[0]),
       message: `Layer violation (${direction}): ${imports.length} import(s) flow upward — ${imports.slice(0, 3).join(', ')}${imports.length > 3 ? ` (+${imports.length - 3} more)` : ''}`,
+      detail: { count: imports.length, group: direction },
     })
   }
 
@@ -367,6 +308,7 @@ export function analyzeGraph(
         severity: 'info',
         files: [m.path],
         message: `Hub bottleneck: ${m.path} is imported from ${importerLayers.size} different layers (${[...importerLayers].join(', ')})`,
+        detail: { count: importerLayers.size },
       })
     }
   }
@@ -396,21 +338,15 @@ export function analyzeGraph(
         severity: 'info',
         files: paths,
         message: `Wide folder: ${folder} has ${paths.length} files`,
+        detail: { count: paths.length, group: folder },
       })
     }
   }
 
-  const testFiles = new Set(metrics.filter((m) => m.isTest).map((m) => m.path))
   for (const m of metrics) {
     if (m.isTest || entryPoints.has(m.path)) continue
-    const name = getFilename(m.path)
-    const dotIdx = name.indexOf('.')
-    if (dotIdx < 0) continue
-    const base = name.slice(0, dotIdx)
-    const hasTest =
-      testFiles.has(`${m.folder}/${base}.test${name.slice(dotIdx)}`) ||
-      testFiles.has(`${m.folder}/${base}.spec${name.slice(dotIdx)}`)
-    if (!hasTest && m.outDegree > 2) {
+    if (basename(m.path).indexOf('.') < 0) continue
+    if (!m.hasTest && m.outDegree > 2) {
       findings.push({
         type: 'missing-test',
         severity: 'info',
@@ -435,6 +371,7 @@ export function analyzeGraph(
         severity: 'info',
         files: [m.path],
         message: `Mixed layers: ${m.path} imports from ${importedLayers.size} layers (${[...importedLayers].join(', ')})`,
+        detail: { count: importedLayers.size },
       })
     }
   }
@@ -445,47 +382,4 @@ export function analyzeGraph(
   })
 
   return { findings, metrics, graph: { nodes: files, edges: [...edges] } }
-}
-
-export async function analyzeStructure(
-  rootPath: string,
-  config: Partial<AnalysisConfig> = {},
-  onProgress?: (stage: string, count: number) => void,
-): Promise<AnalysisResult> {
-  const cfg = { ...DEFAULT_CONFIG, ...config }
-
-  onProgress?.('collecting', 0)
-  const absFiles = await collectFiles(rootPath, cfg.maxFiles, (n) => onProgress?.('collecting', n))
-  const relFiles = absFiles.map((p) => toRepoRelative(p, rootPath))
-  const knownFiles = new Set(relFiles)
-
-  onProgress?.('parsing', 0)
-  const platform = getPlatform()
-  const importsByFile = new Map<string, string[]>()
-  const lineCounts = new Map<string, number>()
-  let parsed = 0
-  await Promise.all(
-    absFiles.map(async (abs, i) => {
-      const rel = relFiles[i]
-      try {
-        const source = await platform.fs.readFile(abs)
-        lineCounts.set(rel, source.split('\n').length)
-        importsByFile.set(rel, await parseImports(rel, source))
-      } catch {
-        importsByFile.set(rel, [])
-      }
-      parsed++
-      if (parsed % 25 === 0) onProgress?.('parsing', parsed)
-    }),
-  )
-
-  onProgress?.('analyzing', 0)
-  const { adj } = buildGraph(relFiles, importsByFile, knownFiles)
-
-  const edges: [string, string][] = []
-  for (const [from, targets] of adj) {
-    for (const to of targets) edges.push([from, to])
-  }
-
-  return analyzeGraph(relFiles, edges, config, lineCounts)
 }

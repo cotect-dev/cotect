@@ -21,12 +21,9 @@ export default function HealthSummary() {
 
   const testPresence = useMemo(() => {
     const nonTest = metrics.filter((m) => !m.isTest)
-    const missingTestFiles = new Set(
-      findings.filter((f) => f.type === 'missing-test').flatMap((f) => f.files),
-    )
-    const withTest = nonTest.filter((m) => !missingTestFiles.has(m.path)).length
+    const withTest = nonTest.filter((m) => m.hasTest).length
     return nonTest.length > 0 ? Math.round((withTest / nonTest.length) * 100) : 100
-  }, [metrics, findings])
+  }, [metrics])
 
   const riskyCount = useMemo(() => fileSizes.filter((f) => f.isRisky).length, [fileSizes])
 

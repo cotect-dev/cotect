@@ -26,10 +26,11 @@ import { kotlin, csharp, dart, scala } from '@codemirror/legacy-modes/mode/clike
 import { diff } from '@codemirror/legacy-modes/mode/diff'
 import { protobuf } from '@codemirror/legacy-modes/mode/protobuf'
 import { nginx } from '@codemirror/legacy-modes/mode/nginx'
+import { basename } from '@/lib/repoPath'
 
 export function getLanguageExt(filePath: string): Extension | null {
   const ext = filePath.match(/\.([^./]+)$/)?.[1]?.toLowerCase()
-  const basename = filePath.split('/').pop()?.toLowerCase() ?? ''
+  const fileName = basename(filePath).toLowerCase()
   switch (ext) {
     case 'ts':
     case 'tsx':
@@ -122,12 +123,12 @@ export function getLanguageExt(filePath: string): Extension | null {
     case 'patch':
       return StreamLanguage.define(diff)
     case 'conf':
-      if (basename.startsWith('nginx')) return StreamLanguage.define(nginx)
+      if (fileName.startsWith('nginx')) return StreamLanguage.define(nginx)
       return null
     default:
-      if (basename === 'dockerfile' || basename.startsWith('dockerfile.'))
+      if (fileName === 'dockerfile' || fileName.startsWith('dockerfile.'))
         return StreamLanguage.define(dockerFile)
-      if (basename === 'gemfile' || basename === 'rakefile' || basename === 'vagrantfile')
+      if (fileName === 'gemfile' || fileName === 'rakefile' || fileName === 'vagrantfile')
         return StreamLanguage.define(ruby)
       return null
   }
