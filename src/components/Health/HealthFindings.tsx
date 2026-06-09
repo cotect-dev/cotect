@@ -1,7 +1,22 @@
 import { useMemo } from 'react'
 import { useHealthStore } from '@/store/health'
 import type { Severity, FindingType, Finding, FileMetrics } from '@/services/structureAnalyzer'
-import { AlertTriangle, Info } from 'lucide-react'
+import {
+  AlertTriangle,
+  Info,
+  RefreshCw,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Crown,
+  Unplug,
+  Layers,
+  Layers2,
+  Link2,
+  Network,
+  FileWarning,
+  FolderTree,
+  FlaskConical,
+} from 'lucide-react'
 import { Section, InfoTip, FileLink } from './shared'
 import { shortPath } from './format'
 
@@ -30,6 +45,21 @@ const FINDING_LABELS: Record<FindingType, string> = {
   'wide-folder': 'Wide Folders',
   'missing-test': 'Missing Tests',
   'mixed-layers': 'Mixed-Layer Imports',
+}
+
+const FINDING_ICON: Record<FindingType, React.ReactNode> = {
+  'circular-dependency': <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />,
+  'high-fan-in': <ArrowDownToLine className="h-3.5 w-3.5 text-muted-foreground" />,
+  'high-fan-out': <ArrowUpFromLine className="h-3.5 w-3.5 text-muted-foreground" />,
+  'god-module': <Crown className="h-3.5 w-3.5 text-muted-foreground" />,
+  orphan: <Unplug className="h-3.5 w-3.5 text-muted-foreground" />,
+  'layer-violation': <Layers className="h-3.5 w-3.5 text-muted-foreground" />,
+  'deep-chain': <Link2 className="h-3.5 w-3.5 text-muted-foreground" />,
+  'hub-bottleneck': <Network className="h-3.5 w-3.5 text-muted-foreground" />,
+  'large-file': <FileWarning className="h-3.5 w-3.5 text-muted-foreground" />,
+  'wide-folder': <FolderTree className="h-3.5 w-3.5 text-muted-foreground" />,
+  'missing-test': <FlaskConical className="h-3.5 w-3.5 text-muted-foreground" />,
+  'mixed-layers': <Layers2 className="h-3.5 w-3.5 text-muted-foreground" />,
 }
 
 const FINDING_TOOLTIPS: Partial<Record<FindingType, string>> = {
@@ -254,6 +284,7 @@ function FindingCard({
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-center gap-1.5">
+        <span className="shrink-0">{FINDING_ICON[type]}</span>
         <span className="text-xs font-medium text-foreground">{FINDING_LABELS[type] ?? type}</span>
         <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
           {totalCount}
