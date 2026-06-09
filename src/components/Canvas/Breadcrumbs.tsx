@@ -1,10 +1,11 @@
 import { memo, useCallback, useMemo } from 'react'
 import { ChevronRight, ChevronLeft, Home } from 'lucide-react'
 import { useCanvasStore } from '@/store'
+import { basename } from '@/lib/repoPath'
 
 function crumbLabel(path: string): string {
   if (path.includes(':')) return path.split(':').pop()!
-  return path.split('/').pop() || path
+  return basename(path)
 }
 
 export default memo(function Breadcrumbs() {

@@ -35,8 +35,11 @@ const CommitEntry = memo(function CommitEntry({ commit }: { commit: GitLogEntry 
       let files: ReviewFile[]
       try {
         files = await fetchRange(baseRef)
-      } catch {
-        // Root commit: no parent — diff against the empty tree.
+      } catch (err) {
+        // Only a missing parent (root commit) warrants the empty-tree fallback;
+        // transient failures (e.g. GIT_TIMEOUT) must not silently re-diff.
+        const msg = String(err)
+        if (!msg.includes('unknown revision') && !msg.includes('bad revision')) return
         baseRef = EMPTY_TREE
         try {
           files = await fetchRange(baseRef)

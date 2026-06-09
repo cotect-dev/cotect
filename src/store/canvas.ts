@@ -13,7 +13,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { NODE_WIDTH, NODE_H_GAP, CANVAS_MARGIN } from '@/lib/canvasGeometry'
 import { isImageFile } from '@/lib/fileClassification'
 import { clampY } from '@/lib/canvasCamera'
-import { joinPath, toRepoRelative } from '@/lib/repoPath'
+import { basename, joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
 import { withPersistence, waitForPersistence } from '@/store/persistence'
 import { useGitStore } from '@/store/git'
@@ -320,29 +320,20 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           if (!rootCol) return
           const repoPath = rootCol.path
 
-          let afterContent: string
-          try {
-            afterContent = await invoke<string>('git_show_commit_file', {
-              repoPath,
-              hash: commitHash,
-              filePath,
-            })
-          } catch {
-            return
-          }
-
-          let beforeContent = ''
-          try {
-            beforeContent = await invoke<string>('git_show_commit_file', {
+          const [afterRes, beforeRes] = await Promise.allSettled([
+            invoke<string>('git_show_commit_file', { repoPath, hash: commitHash, filePath }),
+            invoke<string>('git_show_commit_file', {
               repoPath,
               hash: `${commitHash}~1`,
               filePath,
-            })
-          } catch {
-            /* file didn't exist in parent commit */
-          }
+            }),
+          ])
+          if (afterRes.status === 'rejected') return
+          const afterContent = afterRes.value
+          // file didn't exist in parent commit → empty before-content
+          const beforeContent = beforeRes.status === 'fulfilled' ? beforeRes.value : ''
 
-          const fileName = filePath.split('/').pop() || filePath
+          const fileName = basename(filePath)
           const lineCount = afterContent.split('\n').length
           const codeNode: AppNode = {
             id: `code:${repoPath}/${filePath}:${commitHash}`,
@@ -384,29 +375,18 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           if (!rootCol) return
           const repoPath = rootCol.path
 
-          let afterContent = ''
-          try {
-            afterContent = await invoke<string>('git_show_commit_file', {
-              repoPath,
-              hash: head,
-              filePath,
-            })
-          } catch {
-            /* file deleted in range — show empty after-content */
-          }
+          const [afterContent, beforeContent] = await Promise.all([
+            // file deleted in range — show empty after-content
+            invoke<string>('git_show_commit_file', { repoPath, hash: head, filePath }).catch(
+              () => '',
+            ),
+            // file added in range — no base content
+            invoke<string>('git_show_commit_file', { repoPath, hash: base, filePath }).catch(
+              () => '',
+            ),
+          ])
 
-          let beforeContent = ''
-          try {
-            beforeContent = await invoke<string>('git_show_commit_file', {
-              repoPath,
-              hash: base,
-              filePath,
-            })
-          } catch {
-            /* file added in range — no base content */
-          }
-
-          const fileName = filePath.split('/').pop() || filePath
+          const fileName = basename(filePath)
           const lineCount = afterContent.split('\n').length
           const codeNode: AppNode = {
             id: `review:${repoPath}/${filePath}:${base}..${head}`,

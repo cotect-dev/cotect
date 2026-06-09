@@ -51,6 +51,14 @@ export function isCommitReview(s: ReviewSession): boolean {
   return s.tipSha !== WORKING_TIP
 }
 
+/** Sessions are keyed by the base+tip pair: a working-tree session
+ *  (tipSha=WORKING) must not collide with a commit review of the same base,
+ *  and a re-review after new commits must not restore stale tip-anchored
+ *  accepts/comments. */
+export function sessionKey(baseCommit: string, tipSha: string): string {
+  return `${baseCommit}..${tipSha}`
+}
+
 export function hunkKey(filePath: string, startLine: number): string {
   return `${filePath}:${startLine}`
 }
@@ -114,7 +122,7 @@ function deserializeSessions(raw: unknown): Record<string, ReviewSession> {
     for (const [k, v] of Object.entries(raw as Record<string, PersistedSession>)) {
       out[k] = {
         ...v,
-        baseCommit: v.baseCommit ?? k,
+        baseCommit: v.baseCommit ?? k.split('..')[0],
         baseRef: v.baseRef ?? '',
         tipSha: v.tipSha ?? '',
         startedAt: v.startedAt ?? 0,
@@ -140,7 +148,7 @@ function persistActive(
   sessions: Record<string, ReviewSession>,
 ): Record<string, ReviewSession> {
   if (!active) return sessions
-  return { ...sessions, [active.baseCommit]: active }
+  return { ...sessions, [sessionKey(active.baseCommit, active.tipSha)]: active }
 }
 
 export const useReviewStore = createStoreWithHMR(import.meta.hot, 'review', () =>
@@ -151,7 +159,9 @@ export const useReviewStore = createStoreWithHMR(import.meta.hot, 'review', () =
         sessions: {},
 
         startReview: (baseCommit, baseRef, tipSha, files) => {
-          const prior = get().sessions[baseCommit]
+          // Old persisted sessions were keyed by baseCommit alone; those keys
+          // simply never match and are left untouched.
+          const prior = get().sessions[sessionKey(baseCommit, tipSha)]
           const active: ReviewSession = {
             baseCommit,
             baseRef,

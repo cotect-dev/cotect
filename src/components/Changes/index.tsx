@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react'
 import { useGitStore, sortedFiles, type GitFileStatus } from '@/store/git'
 import { useCanvasStore } from '@/store/canvas'
+import { basename } from '@/lib/repoPath'
 import {
   useReviewStore,
   isCommitReview,
@@ -72,7 +73,7 @@ const FileEntry = memo(function FileEntry({
   const handleClick = () => {
     void useCanvasStore.getState().focusFileByPath(file.path)
   }
-  const displayName = showFullPath ? file.path : file.path.split('/').pop()
+  const displayName = showFullPath ? file.path : basename(file.path)
   const truncateStyle: React.CSSProperties = showFullPath
     ? { direction: 'rtl', textAlign: 'left', unicodeBidi: 'plaintext' }
     : {}
@@ -148,7 +149,7 @@ const ReviewFileEntry = memo(function ReviewFileEntry({
         {file.status}
       </span>
       <span className={`truncate ${done ? 'text-muted-foreground/50' : ''}`}>
-        {file.path.split('/').pop()}
+        {basename(file.path)}
       </span>
       <span
         className={`ml-auto shrink-0 text-[10px] ${done ? 'text-green-500' : 'text-muted-foreground/60'}`}
@@ -191,7 +192,7 @@ const CommentsSection = memo(function CommentsSection({
         >
           <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 font-mono">
             <span className="truncate">
-              {c.filePath.split('/').pop()}:{c.startLine}
+              {basename(c.filePath)}:{c.startLine}
               {c.endLine !== c.startLine ? `-${c.endLine}` : ''}
             </span>
             <button

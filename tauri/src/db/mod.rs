@@ -56,18 +56,14 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, 1);
-        for t in &[
-            "kv",
-        ] {
-            let n: i32 = c
-                .query_row(
-                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
-                    [t],
-                    |r| r.get(0),
-                )
-                .unwrap();
-            assert_eq!(n, 1, "table {} missing", t);
-        }
+        let n: i32 = c
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='kv'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1, "table kv missing");
     }
 
     #[test]

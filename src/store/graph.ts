@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createStoreWithHMR } from '@/lib/hmr'
 import { getPlatform } from '@/services/platform'
 import { HIDDEN_DIRECTORIES } from '@/lib/constants'
-import { toRepoRelative } from '@/lib/repoPath'
+import { basename, toRepoRelative } from '@/lib/repoPath'
 import { parseImports } from '@/services/treesitter'
 import { resolveImport } from '@/services/importResolver'
 import { isTestFile } from '@/lib/fileClassification'
@@ -23,6 +23,8 @@ export interface GraphFileNode {
   outDegree: number
   score: number
   isTestFile: boolean
+  lineCount: number
+  charCount: number
 }
 
 export interface GraphFileEdge {
@@ -61,11 +63,6 @@ function getExtension(path: string): string {
   const name = slash >= 0 ? path.slice(slash + 1) : path
   const dot = name.lastIndexOf('.')
   return dot >= 0 ? name.slice(dot).toLowerCase() : ''
-}
-
-function getFilename(path: string): string {
-  const slash = path.lastIndexOf('/')
-  return slash >= 0 ? path.slice(slash + 1) : path
 }
 
 function getDirname(path: string): string {
@@ -128,22 +125,28 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () =>
 
         const platform = getPlatform()
         const importsByFile = new Map<string, string[]>()
+        const lineCounts = new Map<string, number>()
+        const charCounts = new Map<string, number>()
         await Promise.all(
           absFiles.map(async (abs, i) => {
             const rel = relFiles[i]
             try {
               const source = await platform.fs.readFile(abs)
+              lineCounts.set(rel, source.split('\n').length)
+              charCounts.set(rel, source.length)
               const specifiers = await parseImports(rel, source)
               importsByFile.set(rel, specifiers)
             } catch {
               importsByFile.set(rel, [])
+              lineCounts.set(rel, 0)
+              charCounts.set(rel, 0)
             }
           }),
         )
 
         const rawNodes: GraphFileNode[] = relFiles.map((rel) => {
           const config = getConfigForFile(rel)
-          const filename = getFilename(rel)
+          const filename = basename(rel)
           return {
             id: rel,
             label: filename,
@@ -153,6 +156,8 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () =>
             outDegree: 0,
             score: 0,
             isTestFile: isTestFile(filename),
+            lineCount: lineCounts.get(rel) ?? 0,
+            charCount: charCounts.get(rel) ?? 0,
           }
         })
 

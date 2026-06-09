@@ -87,19 +87,30 @@ pub struct GitRangeFile {
 /// Parse after-side hunk ranges per file from a `git diff` patch.
 /// Tracks the current file from `+++ b/<path>` lines and reads `@@ ... +c,d @@`.
 fn parse_diff_hunks(patch: &str) -> std::collections::HashMap<String, Vec<GitHunk>> {
-    let mut map: std::collections::HashMap<String, Vec<GitHunk>> =
-        std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<String, Vec<GitHunk>> = std::collections::HashMap::new();
     let mut current: Option<String> = None;
+    // Only honor `+++ ` inside a file header (after `diff --git`); added
+    // content lines beginning with "++ " also render as "+++ ...".
+    let mut expect_header = false;
     for line in patch.lines() {
-        if let Some(rest) = line.strip_prefix("+++ ") {
-            if rest == "/dev/null" {
-                current = None;
-            } else {
-                current = Some(rest.strip_prefix("b/").unwrap_or(rest).to_string());
-            }
+        if line.starts_with("diff --git ") {
+            expect_header = true;
+            current = None;
             continue;
         }
+        if expect_header {
+            if let Some(rest) = line.strip_prefix("+++ ") {
+                if rest == "/dev/null" {
+                    current = None;
+                } else {
+                    current = Some(rest.strip_prefix("b/").unwrap_or(rest).to_string());
+                }
+                expect_header = false;
+                continue;
+            }
+        }
         if line.starts_with("@@ ") {
+            expect_header = false;
             if let Some(path) = &current {
                 if let Some(plus) = line.split('+').nth(1) {
                     let nums = plus.split('@').next().unwrap_or("").trim();
@@ -424,11 +435,25 @@ pub async fn git_diff_range(
     )
     .await
     .unwrap_or_default();
-    let name_status =
-        run_git(&repo_path, &["diff", "--name-status", range_base, range_head]).await?;
-    let patch = run_git(&repo_path, &["diff", "--no-renames", range_base, range_head])
-        .await
-        .unwrap_or_default();
+    // Pin rename detection on so 'R' status doesn't depend on user diff config.
+    let name_status = run_git(
+        &repo_path,
+        &[
+            "-c",
+            "diff.renames=true",
+            "diff",
+            "--name-status",
+            range_base,
+            range_head,
+        ],
+    )
+    .await?;
+    let patch = run_git(
+        &repo_path,
+        &["diff", "--no-renames", range_base, range_head],
+    )
+    .await
+    .unwrap_or_default();
 
     let stats = parse_numstat(&numstat);
     let mut hunks_by_path = parse_diff_hunks(&patch);
@@ -440,11 +465,13 @@ pub async fn git_diff_range(
             Some(c) if !c.is_empty() => c,
             _ => continue,
         };
-        let path = match parts.last() {
+        let fields: Vec<&str> = parts.collect();
+        let path = match fields.last() {
             Some(p) if !p.is_empty() => p.to_string(),
             _ => continue,
         };
-        let status = match code.chars().next().unwrap_or('M') {
+        let status_char = code.chars().next().unwrap_or('M');
+        let status = match status_char {
             'A' => "A",
             'D' => "D",
             'R' => "R",
@@ -453,7 +480,15 @@ pub async fn git_diff_range(
         }
         .to_string();
         let (insertions, deletions) = stats.get(&path).copied().unwrap_or((0, 0));
-        let hunks = hunks_by_path.remove(&path).unwrap_or_default();
+        let mut hunks = hunks_by_path.remove(&path).unwrap_or_default();
+        // A deleted file has no after-side hunks (`+++ /dev/null`); give it one
+        // synthetic hunk so review progress isn't a never-completable 0/0.
+        if status.starts_with('D') && hunks.is_empty() {
+            hunks.push(GitHunk {
+                start_line: 1,
+                line_count: 1,
+            });
+        }
         files.push(GitRangeFile {
             path,
             status,
@@ -461,6 +496,22 @@ pub async fn git_diff_range(
             deletions,
             hunks,
         });
+        // Rename/copy lines carry the old path first; surface it as a deletion
+        // (counts come from the --no-renames numstat) so it stays reviewable.
+        if (status_char == 'R' || status_char == 'C') && fields.len() >= 2 {
+            let old_path = fields[0].to_string();
+            let (ins, del) = stats.get(&old_path).copied().unwrap_or((0, 0));
+            files.push(GitRangeFile {
+                path: old_path,
+                status: "D".to_string(),
+                insertions: ins,
+                deletions: del,
+                hunks: vec![GitHunk {
+                    start_line: 1,
+                    line_count: 1,
+                }],
+            });
+        }
     }
 
     Ok(files)
@@ -1075,8 +1126,10 @@ def7890123456\nSecond\nBob\n1700001000\nbody for second\n\n---END---\n\n1\t0\tb.
             .await
             .unwrap();
 
-        let mut paths: Vec<(String, String)> =
-            files.iter().map(|f| (f.path.clone(), f.status.clone())).collect();
+        let mut paths: Vec<(String, String)> = files
+            .iter()
+            .map(|f| (f.path.clone(), f.status.clone()))
+            .collect();
         paths.sort();
         assert_eq!(
             paths,
@@ -1121,7 +1174,12 @@ def7890123456\nSecond\nBob\n1700001000\nbody for second\n\n---END---\n\n1\t0\tb.
             .await
             .unwrap();
         let a = files.iter().find(|f| f.path == "a.txt").unwrap();
-        assert_eq!(a.hunks.len(), 2, "expected two separate hunks, got {:?}", a.hunks);
+        assert_eq!(
+            a.hunks.len(),
+            2,
+            "expected two separate hunks, got {:?}",
+            a.hunks
+        );
     }
 
     #[tokio::test]
@@ -1131,22 +1189,124 @@ def7890123456\nSecond\nBob\n1700001000\nbody for second\n\n---END---\n\n1\t0\tb.
 
         // Rename old.txt -> new.txt and add a line, then commit.
         StdCommand::new("git")
-            .arg("-C").arg(&repo)
+            .arg("-C")
+            .arg(&repo)
             .args(["mv", "old.txt", "new.txt"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         std::fs::write(format!("{repo}/new.txt"), "line1\nline2\nline3\n").unwrap();
         StdCommand::new("git")
-            .arg("-C").arg(&repo)
+            .arg("-C")
+            .arg(&repo)
             .args(["commit", "-aqm", "rename+edit"])
-            .status().unwrap();
+            .status()
+            .unwrap();
 
         let files = git_diff_range(repo.clone(), "HEAD~1".to_string(), "HEAD".to_string())
             .await
             .unwrap();
 
-        let f = files.iter().find(|f| f.path == "new.txt")
+        let f = files
+            .iter()
+            .find(|f| f.path == "new.txt")
             .expect("new.txt should be in the diff");
         assert_eq!(f.status, "R");
-        assert!(f.insertions >= 1, "expected non-zero insertions, got {}", f.insertions);
+        assert!(
+            f.insertions >= 1,
+            "expected non-zero insertions, got {}",
+            f.insertions
+        );
+    }
+
+    #[tokio::test]
+    async fn git_diff_range_pure_rename_emits_r_and_old_path_d() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "old.txt", "line1\nline2\n", "c1");
+
+        StdCommand::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["mv", "old.txt", "new.txt"])
+            .status()
+            .unwrap();
+        StdCommand::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["commit", "-aqm", "pure rename"])
+            .status()
+            .unwrap();
+
+        let files = git_diff_range(repo.clone(), "HEAD~1".to_string(), "HEAD".to_string())
+            .await
+            .unwrap();
+
+        let renamed = files
+            .iter()
+            .find(|f| f.path == "new.txt")
+            .expect("new.txt should be in the diff");
+        assert_eq!(renamed.status, "R");
+
+        let deleted = files
+            .iter()
+            .find(|f| f.path == "old.txt")
+            .expect("old.txt should appear as a deletion");
+        assert_eq!(deleted.status, "D");
+        assert_eq!(deleted.deletions, 2);
+        assert_eq!(deleted.hunks.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn git_diff_range_deleted_file_gets_one_synthetic_hunk() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "x\ny\n", "c1");
+        StdCommand::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["rm", "-q", "a.txt"])
+            .status()
+            .unwrap();
+        StdCommand::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["commit", "-qm", "delete a"])
+            .status()
+            .unwrap();
+
+        let files = git_diff_range(repo.clone(), "HEAD~1".to_string(), "HEAD".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.txt");
+        assert_eq!(files[0].status, "D");
+        assert_eq!(files[0].hunks.len(), 1);
+        assert_eq!(files[0].hunks[0].start_line, 1);
+        assert_eq!(files[0].hunks[0].line_count, 1);
+    }
+
+    #[test]
+    fn parse_diff_hunks_ignores_added_content_lines_starting_with_plus_plus() {
+        // The added content line "++ rogue" renders as "+++ rogue" in the
+        // patch; it must not be mistaken for a file header.
+        let patch = "\
+diff --git a/a.txt b/a.txt
+index 0000000..1111111 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,2 +1,3 @@
+ line1
++++ rogue
+ line2
+@@ -10,2 +11,3 @@
+ a
++x
+ b
+";
+        let map = parse_diff_hunks(patch);
+        assert_eq!(map.len(), 1, "hunks leaked to a fake file: {map:?}");
+        let hunks = map.get("a.txt").expect("hunks for a.txt");
+        assert_eq!(hunks.len(), 2);
+        assert_eq!(hunks[0].start_line, 1);
+        assert_eq!(hunks[1].start_line, 11);
     }
 }

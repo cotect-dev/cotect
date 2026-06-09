@@ -4,7 +4,7 @@ import { HIDDEN_DIRECTORIES } from '@/lib/constants'
 import { NODE_WIDTH, NODE_HEIGHT, NODE_V_GAP, NODE_V_GAP_SMALL } from '@/lib/canvasGeometry'
 import { getImageMimeType, IMAGE_PREVIEW_MAX_BYTES } from '@/lib/fileClassification'
 import { isTestFile } from '@/lib/fileClassification'
-import { joinPath, toRepoRelative } from '@/lib/repoPath'
+import { basename, joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
 import { useGitStore } from '@/store/git'
 import { useGraphStore } from '@/store/graph'
@@ -33,12 +33,14 @@ export interface Column {
   importRefs?: ImportRef[]
 }
 
+function isVisibleEntry(e: { isDirectory: boolean; name: string }): boolean {
+  return !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.'))
+}
+
 export async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
   const platform = getPlatform()
   const rawEntries = await platform.fs.readDirectory(dirPath)
-  const entries = rawEntries.filter(
-    (e) => !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.')),
-  )
+  const entries = rawEntries.filter(isVisibleEntry)
 
   const folders = entries.filter((e) => e.isDirectory).sort((a, b) => a.name.localeCompare(b.name))
   const regularFiles = entries
@@ -54,9 +56,7 @@ export async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
     folders.map(async (folder) => {
       try {
         const children = await platform.fs.readDirectory(folder.path)
-        const visible = children.filter(
-          (e) => !e.isDirectory || (!HIDDEN_DIRECTORIES.has(e.name) && !e.name.startsWith('.')),
-        )
+        const visible = children.filter(isVisibleEntry)
         childCountMap.set(folder.path, visible.length)
       } catch {
         /* unreadable directory */
@@ -90,7 +90,7 @@ export async function buildDirectoryNodes(dirPath: string): Promise<AppNode[]> {
 export async function buildFileNode(filePath: string): Promise<AppNode> {
   const platform = getPlatform()
   const content = await platform.fs.readFile(filePath)
-  const fileName = filePath.split('/').pop() || filePath
+  const fileName = basename(filePath)
   const lineCount = content.split('\n').length
 
   return {
@@ -113,7 +113,7 @@ export async function buildHeadFallbackNode(filePath: string): Promise<AppNode |
   const repoRel = toRepoRelative(filePath, repoPath)
   const headContent = await loadHeadContent(repoRel)
   if (headContent === null) return null
-  const fileName = filePath.split('/').pop() || filePath
+  const fileName = basename(filePath)
   const lineCount = headContent.split('\n').length
   return {
     id: `code:${filePath}:__head__`,
@@ -126,7 +126,7 @@ export async function buildHeadFallbackNode(filePath: string): Promise<AppNode |
 export async function buildImageNode(filePath: string): Promise<AppNode | null> {
   const platform = getPlatform()
   const bytes = await platform.fs.readBinaryFile(filePath)
-  const fileName = filePath.split('/').pop() || filePath
+  const fileName = basename(filePath)
 
   if (bytes.length > IMAGE_PREVIEW_MAX_BYTES) {
     return null
@@ -247,7 +247,7 @@ export async function resolveFileImportRefs(
     const resolved = resolveImport(imp.specifier, repoRel, knownFiles, config.id)
     if (!resolved || resolved === repoRel) continue
     if (seen.has(resolved)) continue
-    const label = resolved.split('/').pop() || resolved
+    const label = basename(resolved)
     if (isTestFile(label)) continue
     seen.add(resolved)
     importTargets.push({ resolved, names: imp.names, line: imp.line, label })
@@ -284,7 +284,7 @@ export async function resolveFileImportRefs(
 
   const directImporters = allEdges
     .filter((e) => e.target === repoRel && e.source !== repoRel)
-    .filter((e) => !isTestFile(e.source.split('/').pop() || e.source))
+    .filter((e) => !isTestFile(basename(e.source)))
     .map((e) => e.source)
 
   if (directImporters.length > 0) {
@@ -336,7 +336,7 @@ export async function resolveFileImportRefs(
           (e) =>
             e.target === middleFile && e.source !== repoRel && !directImporterSet.has(e.source),
         )
-        .filter((e) => !isTestFile(e.source.split('/').pop() || e.source))
+        .filter((e) => !isTestFile(basename(e.source)))
         .map((e) => e.source)
 
       if (consumers.length === 0) continue
@@ -378,7 +378,7 @@ export async function resolveFileImportRefs(
     for (const { imp, names, importLine } of allBindings) {
       if (seen.has(imp)) continue
       seen.add(imp)
-      const label = imp.split('/').pop() || imp
+      const label = basename(imp)
 
       const byLine = new Map<number, string[]>()
       for (const name of names) {
