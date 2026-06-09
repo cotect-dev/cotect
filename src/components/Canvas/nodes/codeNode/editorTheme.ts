@@ -73,6 +73,46 @@ export const codeEditorTheme = EditorView.theme({
   '.cm-cotectChangedGutter': {
     color: '#73c48d',
   },
+  '.cm-panels': {
+    backgroundColor: '#252526',
+    color: '#cccccc',
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    zIndex: 25,
+  },
+  '.cm-panels.cm-panels-bottom': {
+    borderTop: '1px solid rgba(255,255,255,0.06)',
+    borderBottom: 'none',
+  },
+  '.cm-panel.cm-search, .cm-panel.cm-gotoLine': {
+    fontSize: '11px',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+    padding: '4px 6px',
+  },
+  '.cm-panel input, .cm-panel button, .cm-panel label': {
+    fontSize: '11px',
+  },
+  '.cm-textfield': {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '3px',
+    color: '#cccccc',
+  },
+  '.cm-button': {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundImage: 'none',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '3px',
+    color: '#cccccc',
+    cursor: 'pointer',
+  },
+  '.cm-button:active': {
+    backgroundImage: 'none',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  '.cm-panel.cm-search [name=close], .cm-panel.cm-gotoLine [name=close]': {
+    color: 'rgba(255,255,255,0.5)',
+    cursor: 'pointer',
+  },
   '&.cm-focused': {
     outline: 'none',
   },
