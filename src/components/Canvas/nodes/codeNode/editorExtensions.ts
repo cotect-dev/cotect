@@ -32,6 +32,8 @@ import { vscodeDark } from '../cmThemeVSCode'
 import { getLanguageExt } from '../cmLanguages'
 import { rainbowBrackets, commentHighlightField, commentHighlightTheme } from '../cmPlugins'
 import { codeEditorTheme } from './editorTheme'
+import { importClickExtension, type InlineImportMap } from './importClick'
+import type { ImportRefItem } from '@/types/nodes'
 
 export interface EditorExtensionOptions {
   filePath: string
@@ -46,6 +48,8 @@ export interface EditorExtensionOptions {
   onDocChanged: () => void
   onFocusChange: (hasFocus: boolean) => void
   onGeometryChange: () => void
+  getInlineImports: () => InlineImportMap | null
+  onOpenImport: (item: ImportRefItem) => void
 }
 
 /** Builds the full extension list for a CodeNode editor view. Static editor
@@ -83,6 +87,7 @@ export function buildEditorExtensions(opts: EditorExtensionOptions): Extension[]
       },
     }),
     rainbowBrackets,
+    importClickExtension(opts.getInlineImports, opts.onOpenImport),
     // Always present but inert until setCommentRanges fires, so a review
     // session that activates after the editor mounts still highlights.
     commentHighlightField,
