@@ -4,21 +4,15 @@ import { useGraphStore } from '@/store/graph'
 import { useBrowserStore } from '@/store'
 import RelativeTime from '@/components/RelativeTime'
 import { RefreshCw, Loader2 } from 'lucide-react'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import HealthSummary from './HealthSummary'
+import ReviewPriority from './ReviewPriority'
+import LlmReadiness from './LlmReadiness'
 import HealthFindings from './HealthFindings'
 import HealthMetrics from './HealthMetrics'
-import type { HealthTab } from '@/store/health'
-
-const TABS: { id: HealthTab; label: string }[] = [
-  { id: 'summary', label: 'Summary' },
-  { id: 'findings', label: 'Findings' },
-  { id: 'metrics', label: 'Metrics' },
-]
 
 export default function Health() {
   const scanState = useHealthStore((s) => s.scanState)
-  const activeTab = useHealthStore((s) => s.activeTab)
-  const setActiveTab = useHealthStore((s) => s.setActiveTab)
   const analyze = useHealthStore((s) => s.analyze)
   const lastAnalyzedAt = useHealthStore((s) => s.lastAnalyzedAt)
   const progress = useHealthStore((s) => s.progress)
@@ -38,32 +32,10 @@ export default function Health() {
     }
   }
 
-  const findingCount = useHealthStore((s) => s.findings.length)
-
   return (
     <div className="flex flex-col w-full h-full overflow-hidden bg-background">
       <div className="shrink-0 flex items-center gap-4 px-6 py-3 border-b border-border">
         <h1 className="text-sm font-semibold text-foreground">Codebase Health</h1>
-
-        <div className="flex items-center gap-1 bg-muted rounded-md p-0.5">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-1 text-xs rounded-sm cursor-pointer transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tab.label}
-              {tab.id === 'findings' && findingCount > 0 && (
-                <span className="ml-1.5 text-[10px] text-muted-foreground">{findingCount}</span>
-              )}
-            </button>
-          ))}
-        </div>
 
         <div className="flex-1" />
 
@@ -118,11 +90,15 @@ export default function Health() {
         )}
 
         {scanState === 'ready' && (
-          <>
-            {activeTab === 'summary' && <HealthSummary />}
-            {activeTab === 'findings' && <HealthFindings />}
-            {activeTab === 'metrics' && <HealthMetrics />}
-          </>
+          <TooltipProvider>
+            <div className="p-6 space-y-8">
+              <HealthSummary />
+              <ReviewPriority />
+              <LlmReadiness />
+              <HealthFindings />
+              <HealthMetrics />
+            </div>
+          </TooltipProvider>
         )}
       </div>
     </div>

@@ -1,8 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useHealthStore } from '@/store/health'
 import { ArrowUp, ArrowDown } from 'lucide-react'
 import RelativeTime from '@/components/RelativeTime'
-import { navigateToFile } from './navigateToFile'
+import { Section, FileLink } from './shared'
 
 interface Row {
   path: string
@@ -33,6 +33,7 @@ export default function HealthMetrics() {
   const sortKey = useHealthStore((s) => s.metricsSortKey)
   const sortDir = useHealthStore((s) => s.metricsSortDir)
   const setSort = useHealthStore((s) => s.setMetricsSort)
+  const [open, setOpen] = useState(false)
 
   const rows = useMemo(() => {
     const churnMap = new Map(churn.map((c) => [c.path, c]))
@@ -70,62 +71,70 @@ export default function HealthMetrics() {
   }
 
   return (
-    <div className="p-6 overflow-x-auto">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b border-border">
-            {COLUMNS.map((col) => (
-              <th
-                key={col.key}
-                onClick={() => handleSort(col.key)}
-                className={`py-2 px-3 font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none ${
-                  col.align === 'right' ? 'text-right' : 'text-left'
-                }`}
-              >
-                <span className="inline-flex items-center gap-1">
-                  {col.label}
-                  {sortKey === col.key &&
-                    (sortDir === 'asc' ? (
-                      <ArrowUp className="h-3 w-3" />
-                    ) : (
-                      <ArrowDown className="h-3 w-3" />
-                    ))}
-                </span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((row) => (
-            <tr
-              key={row.path}
-              className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${
-                row.isTest ? 'opacity-50' : ''
-              }`}
-            >
-              <td className="py-1.5 px-3">
-                <button
-                  type="button"
-                  onClick={() => navigateToFile(row.path)}
-                  className="font-mono text-foreground/80 hover:text-primary cursor-pointer text-left"
-                  title={row.path}
+    <Section
+      title="All files"
+      right={
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="cursor-pointer text-xs text-muted-foreground hover:text-foreground"
+        >
+          {open ? 'Hide' : `Show all ${sorted.length} files`}
+        </button>
+      }
+    >
+      {open && (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border">
+                {COLUMNS.map((col) => (
+                  <th
+                    key={col.key}
+                    onClick={() => handleSort(col.key)}
+                    className={`select-none cursor-pointer px-3 py-2 font-medium text-muted-foreground transition-colors hover:text-foreground ${
+                      col.align === 'right' ? 'text-right' : 'text-left'
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {sortKey === col.key &&
+                        (sortDir === 'asc' ? (
+                          <ArrowUp className="h-3 w-3" />
+                        ) : (
+                          <ArrowDown className="h-3 w-3" />
+                        ))}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((row) => (
+                <tr
+                  key={row.path}
+                  className={`border-b border-border/50 transition-colors hover:bg-muted/30 ${
+                    row.isTest ? 'opacity-50' : ''
+                  }`}
                 >
-                  {row.path}
-                </button>
-              </td>
-              <td className="py-1.5 px-3 text-muted-foreground">{row.layer}</td>
-              <td className="py-1.5 px-3 text-right tabular-nums">{row.lineCount || '—'}</td>
-              <td className="py-1.5 px-3 text-right tabular-nums">{row.inDegree}</td>
-              <td className="py-1.5 px-3 text-right tabular-nums">{row.outDegree}</td>
-              <td className="py-1.5 px-3 text-right tabular-nums">{row.longestChainDepth}</td>
-              <td className="py-1.5 px-3 text-right tabular-nums">{row.commitCount || '—'}</td>
-              <td className="py-1.5 px-3 text-muted-foreground">
-                {row.lastModified > 0 ? <RelativeTime timestamp={row.lastModified} /> : '—'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                  <td className="px-3 py-1.5">
+                    <FileLink path={row.path} label={row.path} />
+                  </td>
+                  <td className="px-3 py-1.5 text-muted-foreground">{row.layer}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{row.lineCount || '—'}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{row.inDegree}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{row.outDegree}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{row.longestChainDepth}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{row.commitCount || '—'}</td>
+                  <td className="px-3 py-1.5 text-muted-foreground">
+                    {row.lastModified > 0 ? <RelativeTime timestamp={row.lastModified} /> : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Section>
   )
 }
