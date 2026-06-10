@@ -208,7 +208,10 @@ export function CanvasFlow() {
   useCanvasKeyboard(containerRef)
 
   useEffect(() => {
-    containerRef.current?.focus()
+    // preventScroll: in the embedded landing demo this mount would otherwise
+    // yank the page down to the demo box; in the app the container fills the
+    // window, so there is nothing to scroll.
+    containerRef.current?.focus({ preventScroll: true })
   }, [])
 
   const handleWheel = useCallback(
