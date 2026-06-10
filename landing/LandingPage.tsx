@@ -1,14 +1,19 @@
-import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import logoUrl from '../public/logo.svg'
 import iconUrl from '../public/icon.svg'
+import { DemoBoundary } from './components/DemoBoundary'
+import { DOWNLOADS, detectOS } from './downloads'
 
-// The demos pull in the full CodeMirror stack (every language package the app
-// supports). Lazy-load them so the hero paints with just React on the wire.
-const LiveReviewDemo = lazy(() =>
-  import('./components/LiveReviewDemo').then((m) => ({ default: m.LiveReviewDemo })),
+// The demos pull in the full app stack (ReactFlow, every CodeMirror language
+// package). Lazy-load them so the hero paints with just React on the wire.
+const CanvasDemo = lazy(() =>
+  import('./components/CanvasDemo').then((m) => ({ default: m.CanvasDemo })),
 )
-const PolyglotDemo = lazy(() =>
-  import('./components/PolyglotDemo').then((m) => ({ default: m.PolyglotDemo })),
+const GraphDemo = lazy(() =>
+  import('./components/GraphDemo').then((m) => ({ default: m.GraphDemo })),
+)
+const HealthDemo = lazy(() =>
+  import('./components/HealthDemo').then((m) => ({ default: m.HealthDemo })),
 )
 
 function DemoFallback({ height }: { height: number }) {
@@ -19,8 +24,6 @@ function DemoFallback({ height }: { height: number }) {
     />
   )
 }
-
-const CONTACT = 'mailto:grz.raczek@gmail.com?subject=cotect%20early%20access'
 
 /** Scroll-triggered reveal: children animate up once when they enter the viewport. */
 function Reveal({
@@ -71,21 +74,37 @@ function Nav() {
           <a href="#demo" className="hover:text-foreground transition-colors max-sm:hidden">
             demo
           </a>
-          <a href="#why" className="hover:text-foreground transition-colors max-sm:hidden">
-            why
+          <a href="#graph" className="hover:text-foreground transition-colors max-sm:hidden">
+            graph
           </a>
-          <a href="#languages" className="hover:text-foreground transition-colors max-sm:hidden">
-            languages
+          <a href="#health" className="hover:text-foreground transition-colors max-sm:hidden">
+            health
           </a>
           <a
-            href={CONTACT}
+            href="#download"
             className="rounded border border-green-500/40 bg-green-500/10 px-3 py-1.5 text-green-400 hover:bg-green-500/20 transition-colors"
           >
-            early access
+            download
           </a>
         </nav>
       </div>
     </header>
+  )
+}
+
+function HeroDownloadButton() {
+  const [os] = useState(() => detectOS())
+  const label =
+    os === 'mac' ? DOWNLOADS.mac.label : os === 'windows' ? DOWNLOADS.windows.label : 'download'
+  const href =
+    os === 'mac' ? DOWNLOADS.mac.url : os === 'windows' ? DOWNLOADS.windows.url : '#download'
+  return (
+    <a
+      href={href}
+      className="rounded-md border border-border px-5 py-2.5 font-mono text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+    >
+      {label.toLowerCase()}
+    </a>
   )
 }
 
@@ -122,12 +141,7 @@ function Hero() {
           >
             try the live demo ↓
           </a>
-          <a
-            href={CONTACT}
-            className="rounded-md border border-border px-5 py-2.5 font-mono text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-          >
-            get early access
-          </a>
+          <HeroDownloadButton />
         </div>
         <p
           className="mt-10 font-mono text-[11px] text-muted-foreground/70"
@@ -142,34 +156,35 @@ function Hero() {
   )
 }
 
-function DemoSection() {
+function CanvasSection() {
   return (
     <section id="demo" className="relative py-24 scroll-mt-14">
       <div className="mx-auto max-w-5xl px-5">
         <Reveal>
-          <HunkLabel text="-0,0 +1,3 review" />
+          <HunkLabel text="-0,0 +1,3 canvas" />
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
             This is not a screenshot.
           </h2>
           <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
-            The editor below is the component that ships in the desktop app — same diff engine, same
-            review controls. The agent was asked to add exponential backoff to{' '}
-            <code className="font-mono text-foreground/80 text-sm">fetchWithRetry</code>. It did…
-            and a little more. Accept what&apos;s right, comment on what isn&apos;t.
+            The canvas below is the real cotect editor, the same component the desktop app ships. It
+            opened a small repository on its own. Now it is yours: drag the nodes, pan around, and
+            review the change an agent just made to{' '}
+            <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>.
           </p>
           <p className="mt-2 font-mono text-xs text-amber-400/90">
-            hint: look closely at hunk two — nobody asked for more retries.
+            hint: look closely at hunk two. nobody asked for more retries.
           </p>
         </Reveal>
         <Reveal delay={120} className="mt-8">
-          <Suspense fallback={<DemoFallback height={515} />}>
-            <LiveReviewDemo />
-          </Suspense>
+          <DemoBoundary>
+            <Suspense fallback={<DemoFallback height={560} />}>
+              <CanvasDemo />
+            </Suspense>
+          </DemoBoundary>
         </Reveal>
         <Reveal delay={200}>
           <p className="mt-4 font-mono text-[11px] text-muted-foreground/70">
-            tip: flip <span className="text-foreground/70">read-only</span> in the header to edit —
-            the diff, minimap and hunks recompute as you type.
+            read-only by default · live working tree · hunk-by-hunk review
           </p>
         </Reveal>
       </div>
@@ -177,84 +192,62 @@ function DemoSection() {
   )
 }
 
-const FEATURES = [
-  {
-    title: 'read-only by default',
-    body: 'Files open locked. Your agents keep writing; a stale buffer can never clobber their work. Unlock a file only when you mean to change it.',
-  },
-  {
-    title: 'live working tree',
-    body: 'The whole repository is watched. When an agent touches a file you are reading, it reloads in place — and warns you first if you had unsaved edits.',
-  },
-  {
-    title: 'hunk-by-hunk review',
-    body: 'Accept or comment on every change, straight in the editor. Progress is tracked per file and per session — n of m hunks, at a glance.',
-  },
-  {
-    title: 'review that survives restarts',
-    body: 'Sessions persist locally. Quit mid-review, reopen tomorrow, and pick up on the exact hunk where you stopped.',
-  },
-  {
-    title: 'spatial navigation',
-    body: 'Folders and files unfold left-to-right as columns on an infinite canvas. Jump through imports with a modifier-click and keep your trail visible.',
-  },
-  {
-    title: 'built for reading speed',
-    body: 'Opening a file paints in ~20 ms. Diffs, minimaps and import resolution arrive after paint — never blocking the next keystroke.',
-  },
-]
-
-function Features() {
+function GraphSection() {
   return (
-    <section id="why" className="relative py-24 scroll-mt-14">
+    <section id="graph" className="relative py-24 scroll-mt-14">
       <div className="mx-auto max-w-5xl px-5">
         <Reveal>
-          <HunkLabel text="why cotect" />
+          <HunkLabel text="import graph" />
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
-            Reading is the new writing.
+            See the shape of the repository.
           </h2>
           <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
-            When agents do the typing, the human job shifts to inspection. Every default in cotect
-            is chosen for people who read more code than they write.
-          </p>
-        </Reveal>
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f, i) => (
-            <Reveal key={f.title} delay={i * 70}>
-              <div className="feature-card h-full rounded-lg border border-border bg-card/60 p-5">
-                <h3 className="font-mono text-sm text-green-400">
-                  <span className="text-green-500/50 mr-2">+</span>
-                  {f.title}
-                </h3>
-                <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{f.body}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function Languages() {
-  return (
-    <section id="languages" className="relative py-24 scroll-mt-14">
-      <div className="mx-auto max-w-5xl px-5">
-        <Reveal>
-          <HunkLabel text="languages" />
-          <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
-            Reads everything your agents write.
-          </h2>
-          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
-            TypeScript, Rust, Python, Go and twenty-some more — with syntax highlighting,
-            indentation guides and rainbow brackets. Switch a tab below and watch the editor remount
-            from scratch; the timer is real.
+            cotect resolves imports across the codebase and draws the result. Click any file to see
+            what it pulls in and what depends on it.
           </p>
         </Reveal>
         <Reveal delay={120} className="mt-8">
-          <Suspense fallback={<DemoFallback height={425} />}>
-            <PolyglotDemo />
-          </Suspense>
+          <DemoBoundary>
+            <Suspense fallback={<DemoFallback height={480} />}>
+              <GraphDemo />
+            </Suspense>
+          </DemoBoundary>
+        </Reveal>
+        <Reveal delay={200}>
+          <p className="mt-4 font-mono text-[11px] text-muted-foreground/70">
+            import resolution · dependency and dependent edges · test files marked
+          </p>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
+function HealthSection() {
+  return (
+    <section id="health" className="relative py-24 scroll-mt-14">
+      <div className="mx-auto max-w-5xl px-5">
+        <Reveal>
+          <HunkLabel text="codebase health" />
+          <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
+            Know where it hurts.
+          </h2>
+          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
+            Structural findings, churn hotspots and oversized files, computed from the repository
+            itself. Sort the table and judge for yourself.
+          </p>
+        </Reveal>
+        <Reveal delay={120} className="mt-8">
+          <DemoBoundary>
+            <Suspense fallback={<DemoFallback height={560} />}>
+              <HealthDemo />
+            </Suspense>
+          </DemoBoundary>
+        </Reveal>
+        <Reveal delay={200}>
+          <p className="mt-4 font-mono text-[11px] text-muted-foreground/70">
+            circular dependencies · hotspots · context window fit
+          </p>
         </Reveal>
       </div>
     </section>
@@ -270,7 +263,7 @@ const STEPS = [
   {
     n: '02',
     cmd: 'let the agents loose',
-    desc: 'Claude Code, Codex, whatever you run — cotect watches the tree and shows their edits as they land.',
+    desc: 'Claude Code, Codex, whatever you run. cotect watches the tree and shows their edits as they land.',
   },
   {
     n: '03',
@@ -312,13 +305,66 @@ function HowItWorks() {
               <span className="text-green-400">review and know</span>
             </p>
             <a
-              href={CONTACT}
+              href="#download"
               className="mt-6 inline-block rounded-md bg-green-500/15 border border-green-500/40 px-6 py-3 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors"
             >
-              get early access
+              download
             </a>
           </div>
         </Reveal>
+      </div>
+    </section>
+  )
+}
+
+function DownloadSection() {
+  return (
+    <section id="download" className="relative py-24 scroll-mt-14">
+      <div className="mx-auto max-w-5xl px-5">
+        <Reveal>
+          <HunkLabel text="download" />
+          <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
+            Download cotect.
+          </h2>
+          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
+            Free while in development. Point it at a repository and start reading.
+          </p>
+        </Reveal>
+        <div className="mt-10 grid gap-4 sm:grid-cols-3">
+          <Reveal delay={0}>
+            <div className="h-full rounded-lg border border-border bg-card/40 p-5">
+              <div className="font-mono text-xs text-muted-foreground/60">windows</div>
+              <a
+                href={DOWNLOADS.windows.url}
+                className="mt-3 inline-block rounded-md bg-green-500/15 border border-green-500/40 px-4 py-2 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors"
+              >
+                Download for Windows
+              </a>
+            </div>
+          </Reveal>
+          <Reveal delay={90}>
+            <div className="h-full rounded-lg border border-border bg-card/40 p-5">
+              <div className="font-mono text-xs text-muted-foreground/60">macos</div>
+              <a
+                href={DOWNLOADS.mac.url}
+                className="mt-3 inline-block rounded-md bg-green-500/15 border border-green-500/40 px-4 py-2 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors"
+              >
+                Download for macOS
+              </a>
+              <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
+                unsigned build for now: right-click the app and choose Open on first launch.
+              </p>
+            </div>
+          </Reveal>
+          <Reveal delay={180}>
+            <div className="h-full rounded-lg border border-border bg-card/40 p-5">
+              <div className="font-mono text-xs text-muted-foreground/60">linux</div>
+              <pre className="mt-3 rounded bg-[#1e1e1e] p-3 font-mono text-[11px] leading-relaxed text-muted-foreground overflow-x-auto">
+                {`curl -LO ${DOWNLOADS.linux.appImageUrl}\nchmod +x cotect.AppImage\n./cotect.AppImage`}
+              </pre>
+            </div>
+          </Reveal>
+        </div>
       </div>
     </section>
   )
@@ -331,7 +377,7 @@ function Footer() {
         <div className="flex items-center gap-2">
           <img src={iconUrl} alt="" className="h-5 w-5" />
           <span className="font-mono text-xs text-muted-foreground">
-            cotect — for engineers who read more code than they write
+            cotect · for engineers who read more code than they write
           </span>
         </div>
         <span className="font-mono text-[11px] text-muted-foreground/60">© 2026 cotect</span>
@@ -347,10 +393,11 @@ export function LandingPage() {
       <Nav />
       <main>
         <Hero />
-        <DemoSection />
-        <Features />
-        <Languages />
+        <CanvasSection />
+        <GraphSection />
+        <HealthSection />
         <HowItWorks />
+        <DownloadSection />
       </main>
       <Footer />
     </div>
