@@ -16,6 +16,7 @@ import { REF_HEIGHT } from './ImportRefNode'
 import { useGitStore } from '@/store/git'
 import { useReviewStore } from '@/store/review'
 import { samePath, toRepoRelative } from '@/lib/repoPath'
+import { isDemoMode } from '@/lib/demoMode'
 import MarkdownPreview from './MarkdownPreview'
 
 import {
@@ -206,6 +207,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     const view = viewRef.current
     if (!view) return false
     if (isReadOnlyRef.current || externalChangeRef.current) return false
+    if (isDemoMode()) {
+      setDirty(false)
+      return true
+    }
     setSaving(true)
     try {
       const platform = getPlatform()

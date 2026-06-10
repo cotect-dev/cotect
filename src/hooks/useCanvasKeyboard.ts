@@ -2,6 +2,7 @@ import { useEffect, type RefObject } from 'react'
 import { useCanvasStore, useViewStore } from '@/store'
 import { getPlatform } from '@/services/platform'
 import { defineBinding } from '@/lib/keybindings'
+import { isDemoMode } from '@/lib/demoMode'
 
 const FOCUS_GUARD_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 
@@ -226,6 +227,7 @@ export function useCanvasKeyboard(containerRef: RefObject<HTMLDivElement | null>
     // Global listener: reclaim focus for the canvas on WASD/arrows so the
     // user doesn't have to click it after interacting with other UI.
     function handleGlobalKeyDown(e: KeyboardEvent) {
+      if (isDemoMode()) return
       if (useViewStore.getState().viewMode !== 'files') return
 
       const active = document.activeElement as HTMLElement | null
