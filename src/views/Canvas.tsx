@@ -74,7 +74,7 @@ const edgeTypes = { column: ColumnEdge }
 
 const defaultViewport: RFViewport = { x: CANVAS_MARGIN, y: CANVAS_MARGIN, zoom: 1 }
 
-function CanvasFlow() {
+export function CanvasFlow() {
   const containerRef = useRef<HTMLDivElement>(null)
   const nodes = useCanvasStore((s) => s.nodes)
   const edges = useCanvasStore((s) => s.edges)
