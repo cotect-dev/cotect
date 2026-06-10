@@ -344,8 +344,10 @@ const demoFindings: Finding[] = [
 // fetchWithRetry: (18/18)*(34/412) = 1.0 * 0.0825 ≈ 0.0825
 // client:         (14/18)*(412/412) = 0.778 * 1.0 = 0.778
 // routes:         (9/18)*(94/412)   = 0.5 * 0.228 = 0.114
+// log:            (6/18)*(52/412)   = 0.333 * 0.126 ≈ 0.042
 // queue:          (5/18)*(61/412)   = 0.278 * 0.148 = 0.041
-// Sorted by hotspotScore: client(0.778) > routes(0.114) > fetchWithRetry(0.0825) > queue(0.041)
+// config:         (3/18)*(38/412)   = 0.167 * 0.092 ≈ 0.015
+// Sorted by hotspotScore: client(0.778) > routes(0.114) > fetchWithRetry(0.0825) > log(0.042) > queue(0.041) > config(0.015)
 const demoChurn: FileChurn[] = [
   {
     path: 'src/net/fetchWithRetry.ts',
@@ -422,6 +424,15 @@ const demoHotspots: Hotspot[] = [
     hotspotScore: (18 / MAX_CHURN) * (34 / MAX_LINES),
   },
   {
+    path: 'src/lib/log.ts',
+    commitCount: 6,
+    lineCount: 52,
+    inDegree: 5,
+    churnScore: 6 / MAX_CHURN,
+    sizeScore: 52 / MAX_LINES,
+    hotspotScore: (6 / MAX_CHURN) * (52 / MAX_LINES),
+  },
+  {
     path: 'src/lib/queue.ts',
     commitCount: 5,
     lineCount: 61,
@@ -429,6 +440,15 @@ const demoHotspots: Hotspot[] = [
     churnScore: 5 / MAX_CHURN,
     sizeScore: 61 / MAX_LINES,
     hotspotScore: (5 / MAX_CHURN) * (61 / MAX_LINES),
+  },
+  {
+    path: 'src/lib/config.ts',
+    commitCount: 3,
+    lineCount: 38,
+    inDegree: 1,
+    churnScore: 3 / MAX_CHURN,
+    sizeScore: 38 / MAX_LINES,
+    hotspotScore: (3 / MAX_CHURN) * (38 / MAX_LINES),
   },
 ]
 
@@ -454,7 +474,7 @@ export const HEALTH_DATA = {
 }
 
 // Canvas geometry constants (match flattenAndRender: xOffset = colIndex * (NODE_WIDTH + NODE_H_GAP))
-const COL_STEP = NODE_WIDTH + NODE_H_GAP // 212
+const COL_STEP = NODE_WIDTH + NODE_H_GAP
 
 function makeFileNode(id: string, label: string, isTestFile?: boolean): AppNode {
   return {
@@ -506,7 +526,7 @@ export function buildCanvasSeed(): {
   // Col 0: /demo/relay root listing
   const col0Nodes = positionNodes(
     [
-      makeFolderNode(SRC_FOLDER_ID, 'src', 3),
+      makeFolderNode(SRC_FOLDER_ID, 'src', 4),
       makeFileNode(`${DEMO_ROOT}/package.json`, 'package.json'),
       makeFileNode(`${DEMO_ROOT}/README.md`, 'README.md'),
     ],
@@ -584,10 +604,10 @@ export function buildCanvasSeed(): {
       style: EDGE_STYLE,
     },
     {
-      id: `edge:col1:${NET_FOLDER_ID}->${col2Nodes[0].id}`,
+      id: `edge:col1:${NET_FOLDER_ID}->${CHANGED_FILE_ID}`,
       source: NET_FOLDER_ID,
       sourceHandle: 'right',
-      target: col2Nodes[0].id,
+      target: CHANGED_FILE_ID,
       targetHandle: 'left',
       type: 'column',
       animated: true,
