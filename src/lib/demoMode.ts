@@ -1,5 +1,5 @@
-// Demo mode mounts the real app views on the landing page against seeded
-// stores. Guards the few code paths that touch Tauri or global input.
+// Mutable module flag (not an env define): the landing build shares src/ chunks
+// with the app, so the landing entry flips this at boot before React mounts.
 let demo = false
 
 export function setDemoMode(on: boolean): void {
