@@ -7,6 +7,7 @@ import {
   isCommitReview,
   fileProgress,
   overallProgress,
+  workingSessionOf,
   type ReviewComment,
   type ReviewFile,
   type ReviewSession,
@@ -63,12 +64,16 @@ const statusColors: Record<string, string> = {
   '??': 'text-muted-foreground',
 }
 
+type HunkProgress = { reviewed: number; total: number }
+
 const FileEntry = memo(function FileEntry({
   file,
   showFullPath,
+  progress,
 }: {
   file: GitFileStatus
   showFullPath?: boolean
+  progress?: HunkProgress
 }) {
   const handleClick = () => {
     void useCanvasStore.getState().focusFileByPath(file.path)
@@ -77,6 +82,7 @@ const FileEntry = memo(function FileEntry({
   const truncateStyle: React.CSSProperties = showFullPath
     ? { direction: 'rtl', textAlign: 'left', unicodeBidi: 'plaintext' }
     : {}
+  const done = progress !== undefined && progress.total > 0 && progress.reviewed === progress.total
   return (
     <div
       className="flex items-center justify-between gap-2 px-2 py-px hover:bg-primary/10 cursor-pointer text-xs font-mono"
@@ -89,11 +95,19 @@ const FileEntry = memo(function FileEntry({
         >
           {file.status}
         </span>
-        <span className="truncate" style={truncateStyle}>
+        <span
+          className={`truncate ${done ? 'text-muted-foreground/50' : ''}`}
+          style={truncateStyle}
+        >
           {displayName}
         </span>
       </div>
       <div className="flex items-center gap-1 shrink-0 text-[10px]">
+        {progress !== undefined && progress.total > 0 && (
+          <span className={done ? 'text-green-500' : 'text-muted-foreground/60'}>
+            {progress.reviewed}/{progress.total}
+          </span>
+        )}
         {file.insertions > 0 && <span className="text-green-500">+{file.insertions}</span>}
         {file.deletions > 0 && <span className="text-red-500">-{file.deletions}</span>}
       </div>
@@ -101,11 +115,19 @@ const FileEntry = memo(function FileEntry({
   )
 })
 
-const TreeEntry = memo(function TreeEntry({ node, depth }: { node: TreeNode; depth: number }) {
+const TreeEntry = memo(function TreeEntry({
+  node,
+  depth,
+  progressByPath,
+}: {
+  node: TreeNode
+  depth: number
+  progressByPath: Map<string, HunkProgress>
+}) {
   if (node.file) {
     return (
       <div style={{ paddingLeft: depth * 12 }}>
-        <FileEntry file={node.file} />
+        <FileEntry file={node.file} progress={progressByPath.get(node.file.path)} />
       </div>
     )
   }
@@ -119,7 +141,12 @@ const TreeEntry = memo(function TreeEntry({ node, depth }: { node: TreeNode; dep
         {node.name}/
       </div>
       {node.children.map((child) => (
-        <TreeEntry key={child.path} node={child} depth={depth + 1} />
+        <TreeEntry
+          key={child.path}
+          node={child}
+          depth={depth + 1}
+          progressByPath={progressByPath}
+        />
       ))}
     </>
   )
@@ -219,12 +246,37 @@ export default function Changes() {
   const fileTimes = useGitStore((s) => s.fileTimes)
   const sortMode = useGitStore((s) => s.sortMode)
   const setSortMode = useGitStore((s) => s.setSortMode)
+  const workingDiff = useGitStore((s) => s.workingDiff)
+  const headSha = useGitStore((s) => s.log?.[0]?.hash)
   const review = useReviewStore((s) => s.active)
   // A commit-baseline review (from History) replaces the panel with its own diff
   // file list + read-only range diffs. An implicit working-tree review only
   // annotates the live changes, so the working-tree list below stays visible.
   const commitReview = review && isCommitReview(review) ? review : null
-  const workingComments = commitReview ? [] : (review?.comments ?? [])
+  const workingSession = useReviewStore((s) => workingSessionOf(s, headSha))
+  const workingComments = commitReview ? [] : (workingSession?.comments ?? [])
+
+  // Per-file and overall hunk progress over the live working tree, counted
+  // against git's own hunk ranges (same keys the editor's accept buttons use).
+  const workingProgress = useMemo(() => {
+    const byPath = new Map<string, HunkProgress>()
+    for (const f of workingDiff) {
+      byPath.set(
+        f.path,
+        workingSession ? fileProgress(workingSession, f) : { reviewed: 0, total: f.hunks.length },
+      )
+    }
+    return byPath
+  }, [workingDiff, workingSession])
+  const workingOverall = useMemo(() => {
+    let reviewed = 0
+    let total = 0
+    for (const p of workingProgress.values()) {
+      reviewed += p.reviewed
+      total += p.total
+    }
+    return { reviewed, total }
+  }, [workingProgress])
 
   const tree = useMemo(
     () => (status && sortMode === 'path' ? buildCompactTree(status.files) : []),
@@ -311,6 +363,16 @@ export default function Changes() {
         <div className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground/60 border-b border-border/30">
           <span>
             {files.length} file{files.length !== 1 ? 's' : ''} changed
+            {workingOverall.total > 0 && (
+              <span
+                className={
+                  workingOverall.reviewed === workingOverall.total ? 'text-green-500' : undefined
+                }
+              >
+                {' '}
+                · {workingOverall.reviewed}/{workingOverall.total} hunks
+              </span>
+            )}
           </span>
           <button
             onClick={cycleSortMode}
@@ -323,8 +385,17 @@ export default function Changes() {
       )}
       <div className="flex-1 min-h-0 overflow-y-auto py-1">
         {sortMode === 'path'
-          ? tree.map((node) => <TreeEntry key={node.path} node={node} depth={0} />)
-          : flatSorted.map((file) => <FileEntry key={file.path} file={file} showFullPath />)}
+          ? tree.map((node) => (
+              <TreeEntry key={node.path} node={node} depth={0} progressByPath={workingProgress} />
+            ))
+          : flatSorted.map((file) => (
+              <FileEntry
+                key={file.path}
+                file={file}
+                showFullPath
+                progress={workingProgress.get(file.path)}
+              />
+            ))}
         {workingComments.length > 0 && (
           <CommentsSection
             comments={workingComments}

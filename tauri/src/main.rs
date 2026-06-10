@@ -71,6 +71,7 @@ fn main() {
             git::git_show_file,
             git::git_show_commit_file,
             git::git_diff_range,
+            git::git_diff_working,
             git::git_file_times,
             synced_state::set_synced_state,
             synced_state::get_synced_state,

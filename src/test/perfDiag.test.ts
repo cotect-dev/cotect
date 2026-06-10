@@ -23,9 +23,9 @@ function baseOpts(mergeExt: Extension) {
   return {
     filePath: 'src/bench.ts',
     startLine: 1,
-    isReadOnly: false,
     mergeExt,
     wrapExt: new Compartment().of([]),
+    readOnlyExt: new Compartment().of([]),
     onSave: () => {},
     onDocChanged: () => {},
     onFocusChange: () => {},

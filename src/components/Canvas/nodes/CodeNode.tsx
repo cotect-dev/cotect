@@ -6,6 +6,7 @@ import { EditorView } from '@codemirror/view'
 import { EditorState, Compartment } from '@codemirror/state'
 import { buildMergeExtension, getChunks, setCommentRanges } from './cmPlugins'
 import { getPlatform } from '@/services/platform'
+import { markSelfWrite, onExternalFileChange } from '@/services/fileChanges'
 import { isMarkdownFile } from '@/lib/fileClassification'
 import type { CodeNode } from '@/types/nodes'
 import { getNodeFlags, nodeFocusRing } from './nodeUtils'
@@ -36,11 +37,20 @@ import { useReviewTarget, type HunkDisplay } from './codeNode/useReviewTarget'
 import { useAutoSave } from './codeNode/useAutoSave'
 import { useHeadContent } from './codeNode/useHeadContent'
 
+// How long the editor must stay mounted before the merge diff is computed.
+// Long enough that key-repeat navigation unmounts the editor first, short
+// enough to be imperceptible once the user actually lands on a file.
+const MERGE_APPLY_DWELL_MS = 80
+
 export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const mergeCompartmentRef = useRef<Compartment>(new Compartment())
   const wrapCompartmentRef = useRef<Compartment>(new Compartment())
+  const readOnlyCompartmentRef = useRef<Compartment>(new Compartment())
+  // Last mounted file + scroll offset, so an in-place reload (external change)
+  // restores the reading position instead of jumping to the top.
+  const mountedDocRef = useRef<{ filePath: string; scrollTop: number } | null>(null)
   const scrollHandlerRef = useRef<{ scrollDOM: HTMLElement; handler: () => void } | null>(null)
   const resizeObRef = useRef<ResizeObserver | null>(null)
   const flags = getNodeFlags(data)
@@ -76,6 +86,17 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const positionHunksRef = useRef<() => void>(() => {})
 
   const [geometryVer, setGeometryVer] = useState(0)
+  // CodeMirror reports geometryChanged on every keystroke and scroll-measure;
+  // coalesce to one React render per frame so typing isn't paced by the
+  // position/stripe recompute cascade.
+  const geometryRafRef = useRef<number | null>(null)
+  const bumpGeometry = useCallback(() => {
+    if (geometryRafRef.current !== null) return
+    geometryRafRef.current = requestAnimationFrame(() => {
+      geometryRafRef.current = null
+      setGeometryVer((v) => v + 1)
+    })
+  }, [])
   const [pinnedStripePos, setPinnedStripePos] = useState<number | null>(null)
   const [linePositions, setLinePositions] = useState<Map<number, number>>(new Map())
   // Tracks the headContent value that linePositions was measured against. Pills
@@ -88,6 +109,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   // Hunks derived from the editor's own merge diff — the working-tree fallback
   // when there is no formal review session supplying hunks.
   const [mergeHunks, setMergeHunks] = useState<{ startLine: number; endLine: number }[]>([])
+  // The HEAD text the merge compartment has actually applied. Diffing a large
+  // file blocks for hundreds of ms, so the editor mounts plain and the merge
+  // extension lands after first paint — this lags headContent until then, and
+  // diff-derived UI (pills, hunks, stripes) keys off it rather than the prop.
+  const [mergedHead, setMergedHead] = useState<string | null>(null)
+  const mergedHeadRef = useRef<string | null>(null)
 
   const importRefs = useCanvasStore((s) => {
     const previewIdx = s.currentColumnIndex + 1
@@ -108,7 +135,20 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   inlineImportsRef.current = inlineImports
 
   const hasHeadOverride = data.headOverride !== undefined
-  const isReadOnly = data.readOnly === true
+  // Commit/range-diff snapshots can never be edited. Working files open locked
+  // too: this is a review tool and agents may be writing the same files
+  // concurrently, so editing is an explicit per-node opt-in.
+  const isPermanentReadOnly = data.readOnly === true
+  const [editUnlocked, setEditUnlocked] = useState(false)
+  const isReadOnly = isPermanentReadOnly || !editUnlocked
+  const isReadOnlyRef = useRef(isReadOnly)
+  isReadOnlyRef.current = isReadOnly
+  // A "file changed on disk under a dirty buffer" decision is pending; all
+  // saving is suspended until the user picks a side, so a stale autosave can
+  // never clobber the newer external write.
+  const [externalChange, setExternalChange] = useState(false)
+  const externalChangeRef = useRef(externalChange)
+  externalChangeRef.current = externalChange
 
   const gitStatus = useGitStore((s) => s.status)
   const repoPath = useGitStore((s) => s.repoPath)
@@ -132,9 +172,6 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     isNewFile,
     loadHeadContent,
   })
-  const headContentRef = useRef<string | null>(null)
-  headContentRef.current = headContent ?? null
-
   const { reviewFilePath, fileComments, hunkDisplays, ensureReviewSession } = useReviewTarget({
     filePath: data.filePath,
     repoPath,
@@ -168,10 +205,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   const saveToFile = useCallback(async () => {
     const view = viewRef.current
     if (!view) return false
+    if (isReadOnlyRef.current || externalChangeRef.current) return false
     setSaving(true)
     try {
       const platform = getPlatform()
       const newContent = view.state.doc.toString()
+      markSelfWrite(data.filePath)
       await platform.fs.writeFile(data.filePath, newContent)
       setDirty(false)
       void useGitStore.getState().refresh()
@@ -185,7 +224,23 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   }, [data.filePath])
   saveToFileRef.current = saveToFile
 
-  useAutoSave({ isReadOnly, dirtyRef, saveToFile })
+  useAutoSave({ isReadOnly, dirtyRef, suspendedRef: externalChangeRef, saveToFile })
+
+  // External (agent) writes to this file: a clean buffer reloads in place; a
+  // dirty buffer keeps the user's text and asks via the banner below.
+  useEffect(() => {
+    if (isPermanentReadOnly) return
+    return onExternalFileChange(data.filePath, () => {
+      if (dirtyRef.current) setExternalChange(true)
+      else void useCanvasStore.getState().reloadFileColumn(data.filePath)
+    })
+  }, [data.filePath, isPermanentReadOnly])
+
+  // Re-locking flushes pending edits so "locked" always means "saved".
+  const handleToggleUnlocked = useCallback(() => {
+    if (editUnlocked && dirtyRef.current) void saveToFileRef.current()
+    setEditUnlocked(!editUnlocked)
+  }, [editUnlocked])
 
   useEffect(() => {
     if (!editorRef.current) return
@@ -203,22 +258,31 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
       mergeCompartmentRef.current = new Compartment()
       wrapCompartmentRef.current = new Compartment()
+      readOnlyCompartmentRef.current = new Compartment()
 
       const state = EditorState.create({
         doc: data.code,
         extensions: buildEditorExtensions({
           filePath: data.filePath,
           startLine: data.startLine,
-          isReadOnly,
-          mergeExt: mergeCompartmentRef.current.of(buildMergeExtension(headContentRef.current)),
+          // Mount with an *identity* merge (original = the doc itself, zero
+          // chunks, ~free to diff) rather than the real HEAD: diffing a large
+          // file blocks first paint for hundreds of ms, so the deferred effect
+          // below applies the real diff post-paint. The identity merge still
+          // registers the 4px change gutter, so the reconfigure later doesn't
+          // shift the code sideways.
+          mergeExt: mergeCompartmentRef.current.of(buildMergeExtension(data.code)),
           wrapExt: wrapCompartmentRef.current.of(lineWrap ? lineWrapExtension : []),
+          readOnlyExt: readOnlyCompartmentRef.current.of(
+            isReadOnlyRef.current ? EditorState.readOnly.of(true) : [],
+          ),
           onSave: () => void saveToFileRef.current(),
           onDocChanged: () => setDirty(true),
           onFocusChange: (hasFocus) => {
             setEditorFocused(hasFocus)
             if (!hasFocus && dirtyRef.current) void saveToFileRef.current()
           },
-          onGeometryChange: () => setGeometryVer((v) => v + 1),
+          onGeometryChange: bumpGeometry,
           getInlineImports: () => inlineImportsRef.current,
           onOpenImport: (item) =>
             void useCanvasStore.getState().focusFileByPath(item.resolvedPath, item.targetLine),
@@ -228,12 +292,21 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       const view = new EditorView({ state, parent: container })
       viewRef.current = view
       registerEditorView(view)
+      mergedHeadRef.current = null
+      setMergedHead(null)
       setEditorReady(true)
       setPreviewReady(true)
       setGeometryVer((v) => v + 1)
 
       const scrollDOM = view.scrollDOM
+      // Same file remounting (in-place reload after an external change) keeps
+      // its reading position; a different file starts at the top.
+      if (mountedDocRef.current?.filePath === data.filePath) {
+        scrollDOM.scrollTop = mountedDocRef.current.scrollTop
+      }
+      mountedDocRef.current = { filePath: data.filePath, scrollTop: scrollDOM.scrollTop }
       const handleEditorScroll = () => {
+        if (mountedDocRef.current) mountedDocRef.current.scrollTop = scrollDOM.scrollTop
         const ty = `translateY(${-scrollDOM.scrollTop}px)`
         if (refOverlayRef.current) refOverlayRef.current.style.transform = ty
         positionHunksRef.current()
@@ -248,6 +321,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
     return () => {
       cancelAnimationFrame(rafId)
+      if (geometryRafRef.current !== null) {
+        cancelAnimationFrame(geometryRafRef.current)
+        geometryRafRef.current = null
+      }
       resizeObRef.current?.disconnect()
       resizeObRef.current = null
       const sh = scrollHandlerRef.current
@@ -263,14 +340,48 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     }
   }, [data.code, data.filePath, data.startLine]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useLayoutEffect(() => {
-    if (headContent === undefined) return
+  // Lock/unlock without rebuilding the editor.
+  useEffect(() => {
+    if (!editorReady) return
     const view = viewRef.current
     if (!view) return
     view.dispatch({
-      effects: mergeCompartmentRef.current.reconfigure(buildMergeExtension(headContent)),
+      effects: readOnlyCompartmentRef.current.reconfigure(
+        isReadOnly ? EditorState.readOnly.of(true) : [],
+      ),
     })
-  }, [headContent])
+  }, [isReadOnly, editorReady])
+
+  // Apply the merge diff after paint. rAF fires *before* paint, so nest a
+  // timeout inside it — the dispatch (which computes the diff, up to hundreds
+  // of ms for a large modified file) runs with the plain editor already on
+  // screen. The dwell means rapid node-to-node scanning unmounts the editor
+  // (cancelling via the cleanup) before the diff cost is ever paid.
+  useEffect(() => {
+    if (!editorReady || headContent === undefined) return
+    const view = viewRef.current
+    if (!view || headContent === mergedHeadRef.current) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const rafId = requestAnimationFrame(() => {
+      timer = setTimeout(() => {
+        if (viewRef.current !== view) return
+        // A null HEAD (no diff) falls back to an identity merge of the current
+        // doc instead of removing the extension — dropping it would unregister
+        // the change gutter and shift the code left.
+        view.dispatch({
+          effects: mergeCompartmentRef.current.reconfigure(
+            buildMergeExtension(headContent ?? view.state.doc.toString()),
+          ),
+        })
+        mergedHeadRef.current = headContent
+        setMergedHead(headContent)
+      }, MERGE_APPLY_DWELL_MS)
+    })
+    return () => {
+      cancelAnimationFrame(rafId)
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }, [headContent, editorReady])
 
   useEffect(() => {
     const view = viewRef.current
@@ -364,7 +475,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
   useLayoutEffect(() => {
     positionHunks()
-  }, [positionHunks, hunkDisplays, commentDraft, geometryVer, editorHeight, headContent])
+  }, [positionHunks, hunkDisplays, commentDraft, geometryVer, editorHeight, mergedHead])
 
   const pendingScroll = useCanvasStore((s) => s.pendingScroll)
   useEffect(() => {
@@ -399,7 +510,11 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     // EditorView` can return estimate-based tops that shift once CM does
     // its first measure pass.
     let cancelled = false
-    const headContentAtRequest = headContent
+    // Tag positions with the head the merge compartment had applied when this
+    // measurement was scheduled (not the prop, which can run ahead of the
+    // deferred apply) — pillsReady only trusts positions measured against the
+    // layout that actually includes the diff blocks.
+    const headContentAtRequest = mergedHead
     view.requestMeasure({
       key: 'codeNode-linePositions',
       read: (v) => {
@@ -423,14 +538,20 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       },
       write: (positions) => {
         if (cancelled) return
-        setLinePositions(positions)
+        setLinePositions((prev) => {
+          if (prev.size !== positions.size) return positions
+          for (const [line, top] of positions) {
+            if (prev.get(line) !== top) return positions
+          }
+          return prev
+        })
         setPositionsHeadContent(headContentAtRequest)
       },
     })
     return () => {
       cancelled = true
     }
-  }, [rightSideLayout, geometryVer, headContent])
+  }, [rightSideLayout, geometryVer, mergedHead])
 
   useLayoutEffect(() => {
     const view = viewRef.current
@@ -466,14 +587,32 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         fromPos: chunk.fromB,
       }
     })
-    setMinimapStripes(stripes)
-    setMergeHunks(
-      result.chunks.map((chunk) => ({
-        startLine: lineOf(chunk.fromB),
-        endLine: lineOf(Math.max(chunk.toB - 1, chunk.fromB)),
-      })),
+    // Bail to the previous arrays when nothing moved — geometry changes fire
+    // far more often than chunks actually shift, and a fresh identity here
+    // re-renders the whole node.
+    setMinimapStripes((prev) =>
+      prev.length === stripes.length &&
+      prev.every(
+        (p, i) =>
+          p.startFrac === stripes[i].startFrac &&
+          p.endFrac === stripes[i].endFrac &&
+          p.color === stripes[i].color &&
+          p.fromPos === stripes[i].fromPos,
+      )
+        ? prev
+        : stripes,
     )
-  }, [geometryVer, headContent])
+    const hunks = result.chunks.map((chunk) => ({
+      startLine: lineOf(chunk.fromB),
+      endLine: lineOf(Math.max(chunk.toB - 1, chunk.fromB)),
+    }))
+    setMergeHunks((prev) =>
+      prev.length === hunks.length &&
+      prev.every((p, i) => p.startLine === hunks[i].startLine && p.endLine === hunks[i].endLine)
+        ? prev
+        : hunks,
+    )
+  }, [geometryVer, mergedHead])
 
   const overlayHeight = useMemo(() => {
     if (!rightSideLayout || rightSideLayout.size === 0) return editorHeight
@@ -487,7 +626,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
   }, [rightSideLayout, editorHeight, linePositions])
 
   // Pills stay hidden until: the editor is mounted, the file's HEAD content
-  // has been resolved (so the merge view's deletion blocks are applied), and
+  // has been resolved, the deferred merge apply has landed for it, and
   // linePositions has been measured against that same headContent — so the
   // tops we render against actually match the editor's current layout.
   const pillsReady =
@@ -584,7 +723,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         mdPreview={mdPreview}
         onToggleMdPreview={handleToggleMdPreview}
         commitHash={data.commitHash}
-        isNewFile={isNewFile}
+        isNewFile={isNewFile && !isPermanentReadOnly}
         isReadOnly={isReadOnly}
         dirty={dirty}
         saving={saving}
@@ -592,7 +731,37 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
         lineCount={lineCount}
         lineWrap={lineWrap}
         onToggleLineWrap={() => setLineWrap((v) => !v)}
+        canUnlock={!isPermanentReadOnly}
+        unlocked={editUnlocked}
+        onToggleUnlocked={handleToggleUnlocked}
       />
+
+      {externalChange && (
+        <div className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] bg-yellow-900/30 text-yellow-300 border-b border-yellow-700/40">
+          <span className="truncate">Changed on disk — your unsaved edits are stale</span>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              className="px-1.5 py-0.5 rounded bg-yellow-700/40 hover:bg-yellow-700/60 cursor-pointer"
+              onClick={() => {
+                setExternalChange(false)
+                setDirty(false)
+                void useCanvasStore.getState().reloadFileColumn(data.filePath)
+              }}
+            >
+              Load new version
+            </button>
+            <button
+              type="button"
+              className="px-1.5 py-0.5 rounded hover:bg-muted/50 cursor-pointer"
+              onClick={() => setExternalChange(false)}
+              title="Keep the buffer; saving resumes and will overwrite the on-disk version"
+            >
+              Keep my edits
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="relative flex">
         <div className="relative overflow-hidden flex-1 min-w-0">
@@ -627,14 +796,19 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             />
           )}
         </div>
-        {!mdPreview && minimapStripes.length > 0 && editorHeight > 0 && (
-          <Minimap
-            stripes={minimapStripes}
-            editorHeight={editorHeight}
-            pinnedPos={pinnedStripePos}
-            onStripeClick={handleStripeClick}
-          />
-        )}
+        {/* Reserve the minimap column as soon as a diff source is known (git
+            entry / commit override) — stripes land after the deferred merge,
+            and mounting the column only then would jolt the editor's width. */}
+        {!mdPreview &&
+          editorHeight > 0 &&
+          (gitEntry !== null || hasHeadOverride || minimapStripes.length > 0) && (
+            <Minimap
+              stripes={minimapStripes}
+              editorHeight={editorHeight}
+              pinnedPos={pinnedStripePos}
+              onStripeClick={handleStripeClick}
+            />
+          )}
         {!mdPreview && rightSideLayout && pillsReady && (
           <RightSideRefPills
             overlayRef={refOverlayRef}

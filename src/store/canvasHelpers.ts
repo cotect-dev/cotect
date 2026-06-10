@@ -154,7 +154,26 @@ export async function buildImageNode(filePath: string): Promise<AppNode | null> 
   }
 }
 
+// The LCS below costs up to ~40ms at the 2000-line cap, and focus alternation
+// between two files recomputes it with identical inputs every time — cache the
+// last few results keyed on input identity.
+const visualLineMapCache = new Map<string, number[]>()
+const VISUAL_LINE_MAP_CACHE_MAX = 8
+
 function computeVisualLineMap(headContent: string, workingContent: string): number[] {
+  const cacheKey = `${headContent.length}:${workingContent.length}:${headContent}\u0000${workingContent}`
+  const cached = visualLineMapCache.get(cacheKey)
+  if (cached) return cached
+  const result = computeVisualLineMapUncached(headContent, workingContent)
+  if (visualLineMapCache.size >= VISUAL_LINE_MAP_CACHE_MAX) {
+    const oldest = visualLineMapCache.keys().next().value
+    if (oldest !== undefined) visualLineMapCache.delete(oldest)
+  }
+  visualLineMapCache.set(cacheKey, result)
+  return result
+}
+
+function computeVisualLineMapUncached(headContent: string, workingContent: string): number[] {
   const a = headContent.split('\n')
   const b = workingContent.split('\n')
   const n = a.length
@@ -202,6 +221,20 @@ function computeVisualLineMap(headContent: string, workingContent: string): numb
   return visualMap
 }
 
+// Resolution parses this file plus every importer with tree-sitter and reads
+// every import target over IPC — far too heavy to repeat per revisit during
+// navigation. Entries validate by input identity: head text comes from the git
+// store's per-sha cache and the graph node list is replaced wholesale on
+// rescans, so reference equality is enough.
+interface ImportRefsCacheEntry {
+  code: string
+  head: string | null
+  graph: unknown
+  refs: ImportRef[]
+}
+const importRefsCache = new Map<string, ImportRefsCacheEntry>()
+const IMPORT_REFS_CACHE_MAX = 32
+
 export async function resolveFileImportRefs(
   filePath: string,
   codeNode: AppNode,
@@ -222,14 +255,24 @@ export async function resolveFileImportRefs(
   const knownFiles = new Set(allNodes.map((n) => n.id))
   const source = codeNode.data.code
 
-  let vmap: number[] | null = null
+  let headContent: string | null = null
   const gitEntry = gitState.status?.files.find((f) => f.path === repoRel)
   if (gitEntry && gitEntry.status !== 'A' && gitEntry.status !== 'U') {
-    const headContent = await gitState.loadHeadContent(repoRel)
-    if (headContent !== null) {
-      vmap = computeVisualLineMap(headContent, source)
-    }
+    headContent = await gitState.loadHeadContent(repoRel)
   }
+
+  const cached = importRefsCache.get(filePath)
+  if (
+    cached &&
+    cached.code === source &&
+    cached.head === headContent &&
+    cached.graph === allNodes
+  ) {
+    return cached.refs
+  }
+
+  const vmap: number[] | null =
+    headContent !== null ? computeVisualLineMap(headContent, source) : null
 
   const toVisual = (srcLine: number) => {
     if (!vmap) return srcLine
@@ -414,6 +457,12 @@ export async function resolveFileImportRefs(
       }
     }
   }
+
+  if (importRefsCache.size >= IMPORT_REFS_CACHE_MAX) {
+    const oldest = importRefsCache.keys().next().value
+    if (oldest !== undefined) importRefsCache.delete(oldest)
+  }
+  importRefsCache.set(filePath, { code: source, head: headContent, graph: allNodes, refs })
 
   return refs
 }

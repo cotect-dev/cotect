@@ -39,11 +39,11 @@ export interface EditorExtensionOptions {
   filePath: string
   /** Document line numbers are offset so a sliced node shows file-absolute numbers. */
   startLine: number
-  isReadOnly: boolean
-  /** Pre-wrapped (compartment.of) merge + line-wrap extensions, owned by the caller
-   *  so they can be reconfigured without rebuilding the editor. */
+  /** Pre-wrapped (compartment.of) merge + line-wrap + read-only extensions, owned
+   *  by the caller so they can be reconfigured without rebuilding the editor. */
   mergeExt: Extension
   wrapExt: Extension
+  readOnlyExt: Extension
   onSave: () => void
   onDocChanged: () => void
   onFocusChange: (hasFocus: boolean) => void
@@ -109,7 +109,7 @@ export function buildEditorExtensions(opts: EditorExtensionOptions): Extension[]
     commentHighlightField,
     commentHighlightTheme,
     vscodeDark,
-    ...(opts.isReadOnly ? [EditorState.readOnly.of(true)] : []),
+    opts.readOnlyExt,
     opts.mergeExt,
     opts.wrapExt,
     EditorView.updateListener.of((update) => {

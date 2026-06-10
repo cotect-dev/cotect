@@ -1,7 +1,7 @@
 use notify::RecursiveMode;
 use notify_debouncer_full::{new_debouncer, DebouncedEvent, Debouncer, RecommendedCache};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -40,6 +40,28 @@ fn event_kind_str(kind: &notify::EventKind) -> Option<&'static str> {
     }
 }
 
+/// Drop any path that contains a component whose name exactly matches an entry in
+/// `ignore_set`. Only bare directory/file names are compared (not prefixes or substrings).
+///
+/// Example: `ignore_set = {"node_modules", ".git"}` drops
+/// `/repo/node_modules/lodash/index.js` but keeps `/repo/my-node_modules/x`.
+fn filter_ignored(paths: Vec<String>, ignore_set: &HashSet<String>) -> Vec<String> {
+    if ignore_set.is_empty() {
+        return paths;
+    }
+    paths
+        .into_iter()
+        .filter(|p| {
+            !std::path::Path::new(p)
+                .components()
+                .any(|c| match c.as_os_str().to_str() {
+                    Some(name) => ignore_set.contains(name),
+                    None => ignore_set.contains(&c.as_os_str().to_string_lossy().into_owned()),
+                })
+        })
+        .collect()
+}
+
 /// Aggregate a debounced batch into sorted-unique paths and sorted-unique kind strings.
 /// Events whose kind doesn't map to a user-visible label (Any, Other, Access) are skipped.
 fn aggregate_events<'a, I>(batch: I) -> (Vec<String>, Vec<String>)
@@ -65,7 +87,13 @@ where
 }
 
 #[tauri::command]
-pub fn watch_path(app: AppHandle, path: String, id: String, recursive: bool) -> Result<(), String> {
+pub fn watch_path(
+    app: AppHandle,
+    path: String,
+    id: String,
+    recursive: bool,
+    ignore: Option<Vec<String>>,
+) -> Result<(), String> {
     let state = app.state::<WatcherState>();
     let mut watchers = state.watchers.lock().map_err(|e| e.to_string())?;
 
@@ -73,6 +101,9 @@ pub fn watch_path(app: AppHandle, path: String, id: String, recursive: bool) -> 
 
     let watch_id = id.clone();
     let app_handle = app.clone();
+    // Build the ignore set once here, outside the callback, so the closure only
+    // pays an O(1) membership test per path component.
+    let ignore_set: HashSet<String> = ignore.unwrap_or_default().into_iter().collect();
 
     let mut debouncer = new_debouncer(
         Duration::from_millis(100),
@@ -88,6 +119,7 @@ pub fn watch_path(app: AppHandle, path: String, id: String, recursive: bool) -> 
                     .iter()
                     .map(|e| (&e.event.kind, e.event.paths.as_slice())),
             );
+            let paths = filter_ignored(paths, &ignore_set);
 
             if !paths.is_empty() {
                 let _ = app_handle.emit(
@@ -139,6 +171,85 @@ mod tests {
 
     fn paths(names: &[&str]) -> Vec<PathBuf> {
         names.iter().map(PathBuf::from).collect()
+    }
+
+    fn ignore_set(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    // ── filter_ignored ──────────────────────────────────────────────────────
+
+    #[test]
+    fn filter_ignored_empty_set_keeps_all() {
+        let set = HashSet::new();
+        let input = vec![
+            "/repo/node_modules/lodash/index.js".to_string(),
+            "/repo/src/main.rs".to_string(),
+        ];
+        let out = filter_ignored(input.clone(), &set);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn filter_ignored_drops_path_with_matching_component() {
+        let set = ignore_set(&["node_modules", ".git"]);
+        let input = vec![
+            "/repo/node_modules/lodash/index.js".to_string(),
+            "/repo/.git/FETCH_HEAD".to_string(),
+            "/repo/src/main.rs".to_string(),
+        ];
+        let out = filter_ignored(input, &set);
+        assert_eq!(out, vec!["/repo/src/main.rs".to_string()]);
+    }
+
+    #[test]
+    fn filter_ignored_matching_component_anywhere_in_path() {
+        // Component appears in the middle, not just at root.
+        let set = ignore_set(&["target"]);
+        let input = vec![
+            "/repo/sub/target/debug/app".to_string(),
+            "/repo/src/lib.rs".to_string(),
+        ];
+        let out = filter_ignored(input, &set);
+        assert_eq!(out, vec!["/repo/src/lib.rs".to_string()]);
+    }
+
+    #[test]
+    fn filter_ignored_exact_component_only_not_prefix_match() {
+        // "distx" and "my-dist" must NOT be dropped when ignore contains "dist".
+        let set = ignore_set(&["dist"]);
+        let input = vec![
+            "/repo/distx/bundle.js".to_string(),
+            "/repo/my-dist/out.js".to_string(),
+            "/repo/dist/bundle.js".to_string(),
+        ];
+        let out = filter_ignored(input, &set);
+        assert_eq!(
+            out,
+            vec![
+                "/repo/distx/bundle.js".to_string(),
+                "/repo/my-dist/out.js".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn filter_ignored_non_ignored_path_survives() {
+        let set = ignore_set(&["node_modules", ".git", "target", "dist"]);
+        let kept = "/repo/src/components/App.tsx".to_string();
+        let out = filter_ignored(vec![kept.clone()], &set);
+        assert_eq!(out, vec![kept]);
+    }
+
+    #[test]
+    fn filter_ignored_all_filtered_returns_empty() {
+        let set = ignore_set(&["node_modules"]);
+        let input = vec![
+            "/a/node_modules/x.js".to_string(),
+            "/b/node_modules/y.js".to_string(),
+        ];
+        let out = filter_ignored(input, &set);
+        assert!(out.is_empty());
     }
 
     #[test]

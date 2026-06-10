@@ -415,49 +415,16 @@ pub async fn git_show_commit_file(
     run_git(&repo_path, &["show", &spec]).await
 }
 
-/// Read-only diff of a commit range, `base..head`. Returns one entry per
-/// changed file with status (M/A/D/R), insertion/deletion counts, and
-/// after-side hunk ranges. Never touches HEAD, the index, or the working
-/// tree — safe to run while agents are committing. Pass the empty-tree hash
-/// as `base` for a root commit.
-#[tauri::command]
-pub async fn git_diff_range(
-    repo_path: String,
-    base: String,
-    head: String,
-) -> Result<Vec<GitRangeFile>, String> {
-    let range_base = base.as_str();
-    let range_head = head.as_str();
-
-    let numstat = run_git(
-        &repo_path,
-        &["diff", "--numstat", "--no-renames", range_base, range_head],
-    )
-    .await
-    .unwrap_or_default();
-    // Pin rename detection on so 'R' status doesn't depend on user diff config.
-    let name_status = run_git(
-        &repo_path,
-        &[
-            "-c",
-            "diff.renames=true",
-            "diff",
-            "--name-status",
-            range_base,
-            range_head,
-        ],
-    )
-    .await?;
-    let patch = run_git(
-        &repo_path,
-        &["diff", "--no-renames", range_base, range_head],
-    )
-    .await
-    .unwrap_or_default();
-
-    let stats = parse_numstat(&numstat);
-    let mut hunks_by_path = parse_diff_hunks(&patch);
-
+/// Build the per-file list shared by `git_diff_range` and `git_diff_working`.
+///
+/// `name_status`  — output of `git diff --name-status` (with rename detection on).
+/// `stats`        — parsed `--numstat` map: path → (insertions, deletions).
+/// `hunks_by_path` — parsed `git diff` patch, consumed by this function.
+fn assemble_range_files(
+    name_status: &str,
+    stats: &HashMap<String, (u32, u32)>,
+    hunks_by_path: &mut HashMap<String, Vec<GitHunk>>,
+) -> Vec<GitRangeFile> {
     let mut files = Vec::new();
     for line in name_status.lines() {
         let mut parts = line.split('\t');
@@ -513,8 +480,81 @@ pub async fn git_diff_range(
             });
         }
     }
+    files
+}
 
-    Ok(files)
+/// Read-only diff of a commit range, `base..head`. Returns one entry per
+/// changed file with status (M/A/D/R), insertion/deletion counts, and
+/// after-side hunk ranges. Never touches HEAD, the index, or the working
+/// tree — safe to run while agents are committing. Pass the empty-tree hash
+/// as `base` for a root commit.
+#[tauri::command]
+pub async fn git_diff_range(
+    repo_path: String,
+    base: String,
+    head: String,
+) -> Result<Vec<GitRangeFile>, String> {
+    let range_base = base.as_str();
+    let range_head = head.as_str();
+
+    let numstat = run_git(
+        &repo_path,
+        &["diff", "--numstat", "--no-renames", range_base, range_head],
+    )
+    .await
+    .unwrap_or_default();
+    // Pin rename detection on so 'R' status doesn't depend on user diff config.
+    let name_status = run_git(
+        &repo_path,
+        &[
+            "-c",
+            "diff.renames=true",
+            "diff",
+            "--name-status",
+            range_base,
+            range_head,
+        ],
+    )
+    .await?;
+    let patch = run_git(
+        &repo_path,
+        &["diff", "--no-renames", range_base, range_head],
+    )
+    .await
+    .unwrap_or_default();
+
+    let stats = parse_numstat(&numstat);
+    let mut hunks_by_path = parse_diff_hunks(&patch);
+
+    Ok(assemble_range_files(&name_status, &stats, &mut hunks_by_path))
+}
+
+/// Read-only diff of the working tree against HEAD (tracked files only;
+/// untracked files are synthesized by the frontend from git status). Same
+/// shape as git_diff_range. Never touches HEAD, the index, or the working
+/// tree.
+#[tauri::command]
+pub async fn git_diff_working(repo_path: String) -> Result<Vec<GitRangeFile>, String> {
+    let numstat = run_git(
+        &repo_path,
+        &["diff", "--numstat", "--no-renames", "HEAD"],
+    )
+    .await
+    .unwrap_or_default();
+    // Pin rename detection on so 'R' status doesn't depend on user diff config.
+    let name_status = run_git(
+        &repo_path,
+        &["-c", "diff.renames=true", "diff", "--name-status", "HEAD"],
+    )
+    .await?;
+    let patch = run_git(&repo_path, &["diff", "--no-renames", "HEAD"])
+        .await
+        .unwrap_or_default();
+
+    let stats = parse_numstat(&numstat);
+    let mut hunks_by_path = parse_diff_hunks(&patch);
+
+    Ok(assemble_range_files(&name_status, &stats, &mut hunks_by_path))
 }
 
 /// Parse the output of `git log --name-only --format='@%ct' -- <paths>`.
@@ -1308,5 +1348,77 @@ index 0000000..1111111 100644
         assert_eq!(hunks.len(), 2);
         assert_eq!(hunks[0].start_line, 1);
         assert_eq!(hunks[1].start_line, 11);
+    }
+
+    // ── git_diff_working ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn git_diff_working_modified_file_shows_hunks_and_m_status() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "line1\nline2\n", "init");
+        // Modify the file in the working tree (unstaged).
+        std::fs::write(format!("{repo}/a.txt"), "line1\nline2\nline3\n").unwrap();
+
+        let files = git_diff_working(repo).await.unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.txt");
+        assert_eq!(files[0].status, "M");
+        assert_eq!(files[0].insertions, 1);
+        assert!(!files[0].hunks.is_empty(), "expected at least one hunk");
+    }
+
+    #[tokio::test]
+    async fn git_diff_working_clean_tree_returns_empty() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "hello\n", "init");
+        // Nothing modified — working tree is clean.
+
+        let files = git_diff_working(repo).await.unwrap();
+
+        assert!(
+            files.is_empty(),
+            "expected empty diff for clean tree, got {} file(s)",
+            files.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn git_diff_working_staged_change_appears_in_diff() {
+        // `git diff HEAD` includes staged changes, so a staged-but-uncommitted
+        // modification must still show up.
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "line1\n", "init");
+        std::fs::write(format!("{repo}/a.txt"), "line1\nstaged_line\n").unwrap();
+        StdCommand::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+
+        let files = git_diff_working(repo).await.unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.txt");
+        assert_eq!(files[0].status, "M");
+        assert!(files[0].insertions >= 1);
+    }
+
+    #[tokio::test]
+    async fn git_diff_working_deleted_tracked_file_gets_synthetic_hunk() {
+        let (_dir, repo) = make_repo();
+        write_and_commit(&repo, "a.txt", "x\ny\n", "init");
+        // Delete the file from the working tree (unstaged).
+        std::fs::remove_file(format!("{repo}/a.txt")).unwrap();
+
+        let files = git_diff_working(repo).await.unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.txt");
+        assert_eq!(files[0].status, "D");
+        assert_eq!(files[0].hunks.len(), 1, "deleted file must get the synthetic hunk");
+        assert_eq!(files[0].hunks[0].start_line, 1);
+        assert_eq!(files[0].hunks[0].line_count, 1);
     }
 }
