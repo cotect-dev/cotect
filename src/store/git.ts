@@ -3,6 +3,10 @@ import { invoke } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
 import { createStoreWithHMR } from '@/lib/hmr'
 import { toAbsolute } from '@/lib/repoPath'
+import { HIDDEN_DIRECTORIES } from '@/lib/constants'
+import { emitFileChanges } from '@/services/fileChanges'
+import { useReviewStore, type ReviewFile } from '@/store/review'
+import { waitForPersistence } from '@/store/persistence'
 
 export interface GitFileStatus {
   path: string
@@ -71,6 +75,9 @@ interface GitState {
   lastCommitTimestamp: number | null
   headContent: { sha: string; files: Record<string, string> }
   loadHeadContent: (repoRelativePath: string) => Promise<string | null>
+  /** Per-file hunk ranges of the working tree vs HEAD (untracked files
+   *  synthesized) — drives review progress over uncommitted changes. */
+  workingDiff: ReviewFile[]
   fileTimes: Record<string, number>
   sortMode: 'path' | 'recent' | 'oldest'
   setSortMode: (mode: 'path' | 'recent' | 'oldest') => void
@@ -93,6 +100,7 @@ const failedGitState = (
   | 'branch'
   | 'branches'
   | 'lastCommitTimestamp'
+  | 'workingDiff'
 > => ({
   initialized: true,
   isGitRepo: false,
@@ -102,7 +110,31 @@ const failedGitState = (
   branch: null,
   branches: [],
   lastCommitTimestamp: null,
+  workingDiff: [],
 })
+
+/** Working-tree hunk data comes from `git diff HEAD`, which can't see
+ *  untracked files — synthesize a whole-file hunk for those so review
+ *  progress covers them. A null diff (command failed, e.g. no commits yet)
+ *  degrades to untracked-only synthesis. */
+export function withUntrackedHunks(
+  diff: ReviewFile[] | null,
+  status: GitStatus | null,
+): ReviewFile[] {
+  const base = diff ?? []
+  if (!status) return base
+  const present = new Set(base.map((f) => f.path))
+  const synthesized: ReviewFile[] = status.files
+    .filter((f) => (f.status === 'A' || f.status === 'U') && !present.has(f.path))
+    .map((f) => ({
+      path: f.path,
+      status: f.status,
+      insertions: f.insertions,
+      deletions: f.deletions,
+      hunks: [{ start_line: 1, line_count: Math.max(1, f.insertions) }],
+    }))
+  return synthesized.length > 0 ? [...base, ...synthesized] : base
+}
 
 export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () =>
   create<GitState>((set, get) => ({
@@ -116,6 +148,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () =>
     branches: [],
     lastCommitTimestamp: null,
     headContent: { sha: '', files: {} },
+    workingDiff: [],
     fileTimes: {},
     sortMode: 'path',
     loading: false,
@@ -154,13 +187,15 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () =>
       set({ loading: true })
 
       try {
-        const [status, log, branch, branches, lastCommitTime] = await Promise.allSettled([
-          invoke<GitStatus>('git_status', { repoPath }),
-          invoke<GitLogEntry[]>('git_log', { repoPath, limit: 50 }),
-          invoke<GitBranch>('git_branch', { repoPath }),
-          invoke<string[]>('git_branches', { repoPath }),
-          invoke<number>('git_last_commit_time', { repoPath }),
-        ])
+        const [status, log, branch, branches, lastCommitTime, workingDiff] =
+          await Promise.allSettled([
+            invoke<GitStatus>('git_status', { repoPath }),
+            invoke<GitLogEntry[]>('git_log', { repoPath, limit: 50 }),
+            invoke<GitBranch>('git_branch', { repoPath }),
+            invoke<string[]>('git_branches', { repoPath }),
+            invoke<number>('git_last_commit_time', { repoPath }),
+            invoke<ReviewFile[]>('git_diff_working', { repoPath }),
+          ])
 
         const broadcastFailed = (state: ReturnType<typeof failedGitState>) => {
           broadcastGitState(
@@ -198,6 +233,8 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () =>
           return
         }
 
+        // workingDiff is auxiliary and legitimately fails on no-commit repos —
+        // it doesn't count toward PARTIAL_FAILURE.
         const hasPartialFailure = [status, log, branch, branches, lastCommitTime].some(
           (r) => r.status === 'rejected',
         )
@@ -211,12 +248,24 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () =>
           branch: branch.status === 'fulfilled' ? branch.value : null,
           branches: branches.status === 'fulfilled' ? branches.value : [],
           lastCommitTimestamp: lastCommitTime.status === 'fulfilled' ? lastCommitTime.value : null,
+          workingDiff: withUntrackedHunks(
+            workingDiff.status === 'fulfilled' ? workingDiff.value : null,
+            status.status === 'fulfilled' ? status.value : null,
+          ),
         }
         const headSha = log.status === 'fulfilled' ? (log.value?.[0]?.hash ?? '') : ''
         const currentHeadContent = get().headContent
         const nextHeadContent =
           currentHeadContent.sha === headSha ? currentHeadContent : { sha: headSha, files: {} }
         set({ ...newState, headContent: nextHeadContent, loading: false })
+
+        // Re-attach persisted working-review marks once both HEAD and the
+        // hydrated sessions are known.
+        if (headSha) {
+          void waitForPersistence().then(() =>
+            useReviewStore.getState().resumeWorkingSession(headSha),
+          )
+        }
 
         const broadcastWithTimes = (fileTimes: Record<string, number>) => {
           broadcastGitState(
@@ -310,6 +359,7 @@ export const useGitStore = createStoreWithHMR(import.meta.hot, 'git', () =>
         lastCommitTimestamp: null,
         loading: false,
         headContent: { sha: '', files: {} },
+        workingDiff: [],
         fileTimes: {},
       })
     },
@@ -354,6 +404,7 @@ export interface GitSyncPayload {
   branches: string[]
   lastCommitTimestamp: number | null
   headContent: { sha: string; files: Record<string, string> }
+  workingDiff: ReviewFile[]
   fileTimes: Record<string, number>
   sortMode: 'path' | 'recent' | 'oldest'
 }
@@ -369,6 +420,7 @@ type GitSyncStateSlice = Pick<
   | 'branches'
   | 'lastCommitTimestamp'
   | 'headContent'
+  | 'workingDiff'
   | 'fileTimes'
   | 'sortMode'
 >
@@ -413,11 +465,12 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
 
   // Only the main window runs git commands and broadcasts.
   if (isMain) {
-    const watches: Array<{ path: string; id: string; recursive: boolean }> = [
+    // The whole repo is watched recursively — agents edit arbitrary layouts,
+    // not just src/. Noisy build/dependency directories are filtered Rust-side
+    // by component name; .git churn is covered by its own non-recursive watch.
+    const watches: Array<{ path: string; id: string; recursive: boolean; ignore?: string[] }> = [
       { path: `${repoPath}/.git`, id: 'git', recursive: false },
-      { path: repoPath, id: 'source', recursive: false },
-      { path: `${repoPath}/src`, id: 'source-src', recursive: true },
-      { path: `${repoPath}/tauri/src`, id: 'source-rs', recursive: true },
+      { path: repoPath, id: 'source', recursive: true, ignore: [...HIDDEN_DIRECTORIES] },
     ]
     for (const w of watches) {
       invoke('watch_path', w).catch((err) => {
@@ -432,8 +485,12 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
 
     const GIT_WATCH_IDS = new Set(watches.map((w) => w.id))
     const fsListenPromise = listen('fs-changed', (event) => {
-      const payload = event.payload as { id: string }
+      const payload = event.payload as { id: string; paths?: string[] }
       if (GIT_WATCH_IDS.has(payload.id)) {
+        // Let open editors react to files changed under them (agent writes).
+        if (payload.id === 'source' && Array.isArray(payload.paths)) {
+          emitFileChanges(payload.paths)
+        }
         useGitStore
           .getState()
           .refresh()

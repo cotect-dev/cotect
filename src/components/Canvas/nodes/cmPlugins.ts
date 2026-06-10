@@ -22,6 +22,11 @@ import { unifiedMergeView, getChunks } from '@codemirror/merge'
 export { getChunks }
 
 const RAINBOW_COLORS = ['#ffd700', '#da70d6', '#179fff']
+// One shared Decoration per color — allocating a fresh Decoration.mark per
+// bracket made decoration rebuilds (every mount and doc change) allocation-bound.
+const RAINBOW_MARKS = RAINBOW_COLORS.map((color) =>
+  Decoration.mark({ attributes: { style: `color: ${color}` } }),
+)
 
 function buildRainbowDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
@@ -61,43 +66,42 @@ function buildRainbowDecorations(view: EditorView): DecorationSet {
   })
 
   if (decos.length === 0) {
+    // Plain-text fallback: scan char codes via the doc's chunk iterator —
+    // per-character sliceString here allocated a string per char on every
+    // keystroke, which dominated typing cost in bracket-less documents.
     const doc = view.state.doc
-    const openBrackets: Record<string, string> = { '(': ')', '[': ']', '{': '}' }
-    const closeBrackets = new Set([')', ']', '}'])
-    const openStack: { depth: number }[] = []
+    const OPEN_PAREN = 40 // (
+    const CLOSE_PAREN = 41 // )
+    const OPEN_BRACKET = 91 // [
+    const CLOSE_BRACKET = 93 // ]
+    const OPEN_BRACE = 123 // {
+    const CLOSE_BRACE = 125 // }
+    const depthStack: number[] = []
     const collected: { from: number; to: number; depth: number }[] = []
-    for (let i = 0; i < doc.length; i++) {
-      const ch = doc.sliceString(i, i + 1)
-      if (ch in openBrackets) {
-        collected.push({ from: i, to: i + 1, depth: openStack.length })
-        openStack.push({ depth: openStack.length })
-      } else if (closeBrackets.has(ch)) {
-        const d = openStack.length > 0 ? openStack.pop()!.depth : 0
-        collected.push({ from: i, to: i + 1, depth: d })
+    let pos = 0
+    for (let iter = doc.iter(); !iter.next().done; ) {
+      const chunk = iter.value
+      for (let i = 0; i < chunk.length; i++) {
+        const code = chunk.charCodeAt(i)
+        if (code === OPEN_PAREN || code === OPEN_BRACKET || code === OPEN_BRACE) {
+          collected.push({ from: pos + i, to: pos + i + 1, depth: depthStack.length })
+          depthStack.push(depthStack.length)
+        } else if (code === CLOSE_PAREN || code === CLOSE_BRACKET || code === CLOSE_BRACE) {
+          const d = depthStack.length > 0 ? depthStack.pop()! : 0
+          collected.push({ from: pos + i, to: pos + i + 1, depth: d })
+        }
       }
+      pos += chunk.length
     }
-    collected.sort((a, b) => a.from - b.from)
     for (const d of collected) {
-      builder.add(
-        d.from,
-        d.to,
-        Decoration.mark({
-          attributes: { style: `color: ${RAINBOW_COLORS[d.depth % RAINBOW_COLORS.length]}` },
-        }),
-      )
+      builder.add(d.from, d.to, RAINBOW_MARKS[d.depth % RAINBOW_MARKS.length])
     }
     return builder.finish()
   }
 
   decos.sort((a, b) => a.from - b.from)
   for (const d of decos) {
-    builder.add(
-      d.from,
-      d.to,
-      Decoration.mark({
-        attributes: { style: `color: ${RAINBOW_COLORS[d.depth % RAINBOW_COLORS.length]}` },
-      }),
-    )
+    builder.add(d.from, d.to, RAINBOW_MARKS[d.depth % RAINBOW_MARKS.length])
   }
   return builder.finish()
 }
@@ -168,9 +172,13 @@ const changedLineGutterMarker = new ChangedLineGutterMarker()
 
 const changedLineGutterField = StateField.define<RangeSet<GutterMarker>>({
   create: () => RangeSet.empty,
-  update(_value, tr) {
+  update(value, tr) {
     const chunks = getChunks(tr.state)
     if (!chunks) return RangeSet.empty
+    // Chunks keep their identity across transactions that don't touch the doc
+    // or the merge baseline (selection moves, focus, effects) — skip the
+    // rebuild then, since line positions can't have moved either.
+    if (!tr.docChanged && getChunks(tr.startState)?.chunks === chunks.chunks) return value
     const doc = tr.state.doc
     const builder = new RangeSetBuilder<GutterMarker>()
     for (const chunk of chunks.chunks) {

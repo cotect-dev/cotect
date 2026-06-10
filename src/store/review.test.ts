@@ -4,6 +4,8 @@ import {
   hunkReviewed,
   fileProgress,
   overallProgress,
+  workingSessionOf,
+  WORKING_TIP,
   type ReviewFile,
 } from './review'
 
@@ -115,5 +117,66 @@ describe('review store — per-hunk', () => {
     const sessions = useReviewStore.getState().sessions
     expect(sessions['abc1234..tip999'].acceptedHunks.has('src/a.ts:10')).toBe(true)
     expect(sessions['abc1234..WORKING'].acceptedHunks.size).toBe(0)
+  })
+})
+
+describe('working-tree sessions', () => {
+  it('workingSessionOf prefers an active working session', () => {
+    const r = useReviewStore.getState()
+    r.exitReview()
+    r.startReview('head111', 'HEAD', WORKING_TIP, [])
+    const s = useReviewStore.getState()
+    expect(workingSessionOf(s, 'head111')).toBe(s.active)
+  })
+
+  it('workingSessionOf hides working data while a commit review is active', () => {
+    // beforeEach left a commit review (tip999) active
+    expect(workingSessionOf(useReviewStore.getState(), 'abc1234')).toBeNull()
+  })
+
+  it('workingSessionOf falls back to the persisted session for the given HEAD', () => {
+    const r = useReviewStore.getState()
+    r.exitReview()
+    r.startReview('head222', 'HEAD', WORKING_TIP, [])
+    useReviewStore.getState().acceptHunk('src/a.ts', 10)
+    useReviewStore.getState().exitReview()
+    const s = useReviewStore.getState()
+    expect(s.active).toBeNull()
+    expect(workingSessionOf(s, 'head222')?.acceptedHunks.has('src/a.ts:10')).toBe(true)
+    expect(workingSessionOf(s, 'otherhead')).toBeNull()
+  })
+
+  it('resumeWorkingSession re-activates a persisted session with content', () => {
+    const r = useReviewStore.getState()
+    r.exitReview()
+    r.startReview('head333', 'HEAD', WORKING_TIP, [])
+    useReviewStore.getState().acceptHunk('src/a.ts', 10)
+    useReviewStore.getState().exitReview()
+
+    useReviewStore.getState().resumeWorkingSession('head333')
+    expect(useReviewStore.getState().active?.acceptedHunks.has('src/a.ts:10')).toBe(true)
+  })
+
+  it('resumeWorkingSession ignores empty sessions and existing actives', () => {
+    const r = useReviewStore.getState()
+    r.exitReview()
+    r.startReview('head444', 'HEAD', WORKING_TIP, []) // no accepts/comments
+    useReviewStore.getState().exitReview()
+    useReviewStore.getState().resumeWorkingSession('head444')
+    expect(useReviewStore.getState().active).toBeNull()
+
+    // active commit review must not be displaced
+    useReviewStore.getState().startReview('abc1234', 'abc1234~1', 'tip999', files)
+    useReviewStore.getState().resumeWorkingSession('head444')
+    expect(useReviewStore.getState().active?.tipSha).toBe('tip999')
+  })
+
+  it('overallProgress accepts an external file list (working tree)', () => {
+    const r = useReviewStore.getState()
+    r.exitReview()
+    r.startReview('head555', 'HEAD', WORKING_TIP, [])
+    useReviewStore.getState().acceptHunk('src/a.ts', 10)
+    const session = useReviewStore.getState().active!
+    expect(overallProgress(session, files)).toEqual({ reviewed: 1, total: 3 })
   })
 })

@@ -82,12 +82,23 @@ export function importClickExtension(
 
   const domHandlers = EditorView.domEventHandlers({
     mousedown: (e, view) => {
-      if (e.button !== 0 || !isMod(e)) return false
+      // macOS WebKit promotes Ctrl+click to a secondary-button press
+      // (button 2), so accept that shape as the same navigation gesture.
+      const isModClick = (e.button === 0 && isMod(e)) || (e.button === 2 && e.ctrlKey)
+      if (!isModClick) return false
       const line = lineAtCoords(view, e)
       const item = line === null ? null : resolveImportAtLine(getImports(), line)
       if (!item) return false
       e.preventDefault()
       onNavigate(item)
+      return true
+    },
+    contextmenu: (e) => {
+      // Ctrl/Cmd+click is the import-navigation gesture; never let macOS turn
+      // it into the native Look Up / Translate menu. Plain right-click (no
+      // modifier) keeps the default menu.
+      if (!isMod(e)) return false
+      e.preventDefault()
       return true
     },
     mousemove: (e, view) => {

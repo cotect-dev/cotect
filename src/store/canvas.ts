@@ -73,6 +73,7 @@ export type CanvasState = {
   setCodeNodeWidth: (width: number) => void
   setPreviewReady: (ready: boolean) => void
   updatePreview: () => Promise<void>
+  reloadFileColumn: (filePath: string) => Promise<void>
   focusFileByPath: (repoRelativePath: string, scrollToLine?: number) => Promise<void>
   navigateBack: () => Promise<void>
   showCommitDiff: (commitHash: string, filePath: string) => Promise<void>
@@ -590,6 +591,12 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         },
 
         updatePreview: async () => {
+          // Any navigation supersedes a pending import-ref resolution — during
+          // rapid scanning the heavy parse work should never even start.
+          if (importRefsDwellTimer !== null) {
+            clearTimeout(importRefsDwellTimer)
+            importRefsDwellTimer = null
+          }
           const { focusedNodeId, columns, currentColumnIndex } = get()
           if (!focusedNodeId) {
             const trimmed = columns.slice(0, currentColumnIndex + 1)
@@ -617,22 +624,47 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
               const path = node.data.path
               const fileName = node.data.label
               let contentNode: AppNode | null = null
-              let importRefs: ImportRef[] | undefined
+              let refSourceNode: AppNode | null = null
               try {
                 if (isImageFile(fileName)) {
                   const imageNode = await buildImageNode(path)
                   contentNode = imageNode ?? (await buildFileNode(path))
                 } else {
                   contentNode = await buildFileNode(path)
-                  importRefs = await resolveFileImportRefs(path, contentNode)
+                  refSourceNode = contentNode
                 }
               } catch {
                 contentNode = await buildHeadFallbackNode(path)
               }
               if (contentNode) {
-                previewCol = { path, kind: 'file', nodes: [contentNode], edges: [], importRefs }
+                previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
                 const { repoPath } = useGitStore.getState()
                 if (repoPath) set({ lastOpenedFile: toRepoRelative(path, repoPath) })
+                // Import-ref resolution (HEAD diff map + tree-sitter parse of
+                // this file and every importer + one fs read per import) is
+                // far too slow to gate the column on, and heavy enough to jank
+                // the editor mount it would overlap. Show the code immediately
+                // and only start resolving once the focus has dwelled; pills
+                // patch in when they arrive, as long as this column is still
+                // on screen.
+                if (refSourceNode) {
+                  const sourceNode = refSourceNode
+                  const col = previewCol
+                  importRefsDwellTimer = setTimeout(() => {
+                    importRefsDwellTimer = null
+                    void resolveFileImportRefs(path, sourceNode)
+                      .then((importRefs: ImportRef[]) => {
+                        if (importRefs.length === 0) return
+                        const state = get()
+                        const colIndex = state.columns.indexOf(col)
+                        if (colIndex === -1) return
+                        const patched = [...state.columns]
+                        patched[colIndex] = { ...col, importRefs }
+                        set({ columns: patched })
+                      })
+                      .catch(() => {})
+                  }, IMPORT_REFS_DWELL_MS)
+                }
               }
             }
 
@@ -656,6 +688,31 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
             flattenAndRender(get, set)
           } catch {
             /* ignored */
+          }
+        },
+
+        // Re-read a file column's content from disk in place — used when the
+        // file changed externally (an agent wrote it) while on screen. Import
+        // refs are cleared rather than recomputed; they come back on the next
+        // focus via updatePreview.
+        reloadFileColumn: async (filePath: string) => {
+          const idx = get().columns.findIndex((c) => c.kind === 'file' && c.path === filePath)
+          if (idx === -1) return
+          const wasImage = get().columns[idx].nodes[0]?.type === 'imageNode'
+          try {
+            const contentNode = wasImage
+              ? ((await buildImageNode(filePath)) ?? (await buildFileNode(filePath)))
+              : await buildFileNode(filePath)
+            if (!contentNode) return
+            const columns = get().columns
+            const col = columns[idx]
+            if (!col || col.kind !== 'file' || col.path !== filePath) return
+            const patched = [...columns]
+            patched[idx] = { ...col, nodes: [contentNode], importRefs: undefined }
+            set({ columns: patched })
+            flattenAndRender(get, set)
+          } catch {
+            // unreadable (deleted mid-write) — the git refresh reshapes things
           }
         },
       }),
@@ -779,10 +836,30 @@ async function refreshDirectoryColumns(affected: Set<string>): Promise<void> {
   )
 }
 
+// Import-ref resolution only starts after the focus has dwelled on a file —
+// rapid scanning cancels the timer before any parse work begins.
+const IMPORT_REFS_DWELL_MS = 150
+let importRefsDwellTimer: ReturnType<typeof setTimeout> | null = null
+
+// Shallow object equality used to decide whether a rebuilt node/edge can keep
+// its previous identity, so memo'd node components don't re-render on every
+// flatten pass.
+function shallowEqualRecord(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  if (a === b) return true
+  const aKeys = Object.keys(a)
+  if (aKeys.length !== Object.keys(b).length) return false
+  for (const k of aKeys) {
+    if (a[k] !== b[k]) return false
+  }
+  return true
+}
+
+const COLUMN_EDGE_STYLE = { stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1.5 }
+
 function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasState>) => void) {
   const { columns, currentColumnIndex } = get()
   if (columns.length === 0) {
-    set({ nodes: [], edges: [] })
+    if (get().nodes.length > 0 || get().edges.length > 0) set({ nodes: [], edges: [] })
     return
   }
 
@@ -790,6 +867,39 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
   const allEdges: Edge[] = []
 
   const { focusedNodeId, hiddenNodeIds, viewportHeight, cameraY } = get()
+
+  // Reuse previous node/edge objects when nothing about them changed — fresh
+  // identities here would re-render every memo'd node and drop React Flow's
+  // measured dimensions.
+  const prevNodes = get().nodes
+  const prevEdges = get().edges
+  const prevNodeById = new Map<string, AppNode>(prevNodes.map((n) => [n.id, n]))
+  const prevEdgeById = new Map<string, Edge>(prevEdges.map((e) => [e.id, e]))
+  const pushNode = (candidate: AppNode) => {
+    const prev = prevNodeById.get(candidate.id)
+    if (
+      prev &&
+      prev.type === candidate.type &&
+      prev.position.x === candidate.position.x &&
+      prev.position.y === candidate.position.y &&
+      shallowEqualRecord(prev.data, candidate.data)
+    ) {
+      allNodes.push(prev)
+      return
+    }
+    allNodes.push(candidate)
+  }
+  const pushEdge = (candidate: Edge) => {
+    const prev = prevEdgeById.get(candidate.id)
+    if (
+      prev &&
+      shallowEqualRecord(prev as Record<string, unknown>, candidate as Record<string, unknown>)
+    ) {
+      allEdges.push(prev)
+      return
+    }
+    allEdges.push(candidate)
+  }
 
   const orderColumn = (col: Column): AppNode[] => [
     ...col.nodes.filter((n) => !hiddenNodeIds.has(n.id)),
@@ -824,7 +934,7 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
 
     // Cast preserves the discriminated-union shape that spread loses in inference.
     for (const node of positioned) {
-      allNodes.push({
+      pushNode({
         ...node,
         data: {
           ...node.data,
@@ -837,12 +947,12 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
     }
 
     for (const edge of col.edges) {
-      allEdges.push({ ...edge })
+      pushEdge({ ...edge })
     }
   }
 
   const { rightFocusMemory } = get()
-  const edgeStyle = { stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1.5 }
+  const edgeStyle = COLUMN_EDGE_STYLE
 
   const findNodeByPath = (col: Column, path: string): string | null => {
     const match = col.nodes.find((n) => {
@@ -874,7 +984,7 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
     const targetNode = columns[i + 1]?.nodes.find((n) => n.id === targetId)
     const isCodeTarget = targetNode?.type === 'codeNode'
 
-    allEdges.push({
+    pushEdge({
       id: `edge:col${i}:${sourceId}->${targetId}`,
       source: sourceId,
       sourceHandle: isCodeTarget ? 'rightTitle' : 'right',
@@ -886,5 +996,15 @@ function flattenAndRender(get: () => CanvasState, set: (partial: Partial<CanvasS
     })
   }
 
-  set({ nodes: allNodes, edges: allEdges })
+  // Keep the previous arrays (and skip notifying subscribers of a no-op) when
+  // every element was reused.
+  const nodesUnchanged =
+    allNodes.length === prevNodes.length && allNodes.every((n, i) => n === prevNodes[i])
+  const edgesUnchanged =
+    allEdges.length === prevEdges.length && allEdges.every((e, i) => e === prevEdges[i])
+  if (nodesUnchanged && edgesUnchanged) return
+  set({
+    nodes: nodesUnchanged ? prevNodes : allNodes,
+    edges: edgesUnchanged ? prevEdges : allEdges,
+  })
 }

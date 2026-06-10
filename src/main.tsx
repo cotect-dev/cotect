@@ -17,6 +17,10 @@ function preloadChunk(mod: Promise<unknown>, name: string): void {
   })
 }
 
+// CodeNode first: it is by far the largest chunk (CodeMirror + languages) and
+// sits behind every file open — without warming, the first click on a file
+// stalls blank on a Suspense fallback while ~1.3MB fetches and evaluates.
+preloadChunk(import('@/components/Canvas/nodes/CodeNode'), 'CodeNode')
 preloadChunk(import('@/components/Changes'), 'Changes')
 if (DEV) preloadChunk(import('@/components/Console'), 'Console')
 preloadChunk(import('@/components/Settings'), 'Settings')

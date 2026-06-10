@@ -9,6 +9,7 @@ import {
   stopGitWatcher,
   buildGitSyncPayload,
   applyGitSyncPayload,
+  withUntrackedHunks,
   type GitStatus,
   type GitLogEntry,
   type GitBranch,
@@ -321,20 +322,13 @@ describe('startGitWatcher / stopGitWatcher', () => {
       id: 'git',
       recursive: false,
     })
+    // The repo root is watched recursively (agents edit arbitrary layouts),
+    // with noisy directories filtered Rust-side.
     expect(mockInvoke).toHaveBeenCalledWith('watch_path', {
       path: '/repo',
       id: 'source',
-      recursive: false,
-    })
-    expect(mockInvoke).toHaveBeenCalledWith('watch_path', {
-      path: '/repo/src',
-      id: 'source-src',
       recursive: true,
-    })
-    expect(mockInvoke).toHaveBeenCalledWith('watch_path', {
-      path: '/repo/tauri/src',
-      id: 'source-rs',
-      recursive: true,
+      ignore: expect.arrayContaining(['node_modules', '.git', 'dist', 'target']),
     })
   })
 
@@ -430,6 +424,7 @@ describe('buildGitSyncPayload / applyGitSyncPayload', () => {
     branches: ['main', 'feat/x'],
     lastCommitTimestamp: 1234,
     headContent: { sha: 'abc', files: { 'a.ts': 'old' } },
+    workingDiff: [],
     fileTimes: { 'a.ts': 999 },
     sortMode: 'recent' as const,
   }
@@ -489,5 +484,61 @@ describe('branchLabel', () => {
 
   it('returns "unknown" when branch is null', () => {
     expect(branchLabel(null)).toBe('unknown')
+  })
+})
+
+describe('withUntrackedHunks', () => {
+  const diffFile = {
+    path: 'src/a.ts',
+    status: 'M',
+    insertions: 3,
+    deletions: 1,
+    hunks: [{ start_line: 10, line_count: 2 }],
+  }
+  const statusWith = (files: GitStatus['files']): GitStatus => ({
+    files,
+    total_insertions: 0,
+    total_deletions: 0,
+  })
+
+  it('appends a whole-file hunk for untracked files missing from the diff', () => {
+    const status = statusWith([
+      { path: 'src/a.ts', status: 'M', insertions: 3, deletions: 1 },
+      { path: 'src/new.ts', status: 'U', insertions: 12, deletions: 0 },
+    ])
+    const out = withUntrackedHunks([diffFile], status)
+    expect(out).toHaveLength(2)
+    expect(out[1]).toEqual({
+      path: 'src/new.ts',
+      status: 'U',
+      insertions: 12,
+      deletions: 0,
+      hunks: [{ start_line: 1, line_count: 12 }],
+    })
+  })
+
+  it('does not duplicate files the diff already covers (staged adds)', () => {
+    const status = statusWith([{ path: 'src/a.ts', status: 'A', insertions: 3, deletions: 0 }])
+    const out = withUntrackedHunks([diffFile], status)
+    expect(out).toHaveLength(1)
+    expect(out[0]).toBe(diffFile)
+  })
+
+  it('degrades a null diff (no commits yet) to untracked-only synthesis', () => {
+    const status = statusWith([{ path: 'a.ts', status: 'U', insertions: 0, deletions: 0 }])
+    const out = withUntrackedHunks(null, status)
+    expect(out).toEqual([
+      {
+        path: 'a.ts',
+        status: 'U',
+        insertions: 0,
+        deletions: 0,
+        hunks: [{ start_line: 1, line_count: 1 }],
+      },
+    ])
+  })
+
+  it('returns the diff unchanged when status is null', () => {
+    expect(withUntrackedHunks([diffFile], null)).toEqual([diffFile])
   })
 })

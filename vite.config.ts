@@ -14,14 +14,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
           'vendor-reactflow': ['@xyflow/react'],
           'vendor-ui': ['@base-ui/react', 'lucide-react', '@dnd-kit/core'],
           'vendor-tauri': ['@tauri-apps/api', '@tauri-apps/plugin-dialog', '@tauri-apps/plugin-fs'],
-          // CodeMirror is statically imported by CodeNode (which is now a
-          // static node type) — put it in its own vendor chunk so the
-          // browser modulepreloads it in parallel with the main bundle
-          // and the first file drill renders instantly.
+          // CodeNode (the lazy chunk holding the editor) is preloaded at
+          // startup from main.tsx; splitting CodeMirror's core into its own
+          // vendor chunk lets the two fetch in parallel.
           'vendor-codemirror': [
             '@codemirror/view',
             '@codemirror/state',

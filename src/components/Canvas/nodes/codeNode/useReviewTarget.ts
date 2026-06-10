@@ -1,8 +1,25 @@
 import { useCallback, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useReviewStore, WORKING_TIP, isCommitReview, type ReviewComment } from '@/store/review'
+import {
+  useReviewStore,
+  WORKING_TIP,
+  isCommitReview,
+  workingSessionOf,
+  type ReviewComment,
+  type ReviewSession,
+} from '@/store/review'
 import { useGitStore } from '@/store/git'
 import { toRepoRelative } from '@/lib/repoPath'
+
+/** Session whose accepts/comments this node should display: the active one,
+ *  else the persisted working session for the current HEAD (restores review
+ *  marks after a restart without waiting for the first interaction). */
+function displaySession(s: {
+  active: ReviewSession | null
+  sessions: Record<string, ReviewSession>
+}): ReviewSession | null {
+  return s.active ?? workingSessionOf(s, useGitStore.getState().log?.[0]?.hash)
+}
 
 export type HunkDisplay = {
   startLine: number
@@ -65,9 +82,10 @@ export function useReviewTarget({
   const isRangeDiffView = dataReviewFilePath !== undefined
   const fileComments = useReviewStore(
     useShallow((s) => {
-      if (!reviewFilePath || !s.active) return [] as ReviewComment[]
-      if (isCommitReview(s.active) && !isRangeDiffView) return [] as ReviewComment[]
-      return s.active.comments.filter((c) => c.filePath === reviewFilePath)
+      const session = displaySession(s)
+      if (!reviewFilePath || !session) return [] as ReviewComment[]
+      if (isCommitReview(session) && !isRangeDiffView) return [] as ReviewComment[]
+      return session.comments.filter((c) => c.filePath === reviewFilePath)
     }),
   )
   const reviewHunks = useReviewStore(
@@ -76,12 +94,21 @@ export function useReviewTarget({
       return s.active.files.find((f) => f.path === reviewFilePath)?.hunks ?? []
     }),
   )
+  // Hunks of the working tree vs HEAD as git computed them — the same ranges
+  // the Changes panel counts, so accepting here moves the panel's progress.
+  const workingHunks = useGitStore(
+    useShallow((s) => {
+      if (isRangeDiffView || !reviewFilePath) return []
+      return s.workingDiff.find((f) => f.path === reviewFilePath)?.hunks ?? []
+    }),
+  )
   const acceptedStartLines = useReviewStore(
     useShallow((s) => {
-      if (!reviewFilePath || !s.active) return [] as number[]
-      if (isCommitReview(s.active) && !isRangeDiffView) return [] as number[]
+      const session = displaySession(s)
+      if (!reviewFilePath || !session) return [] as number[]
+      if (isCommitReview(session) && !isRangeDiffView) return [] as number[]
       const prefix = `${reviewFilePath}:`
-      return [...s.active.acceptedHunks]
+      return [...session.acceptedHunks]
         .filter((k) => k.startsWith(prefix))
         .map((k) => Number(k.slice(prefix.length)))
     }),
@@ -91,15 +118,19 @@ export function useReviewTarget({
     if (!reviewFilePath) return []
     const accepted = new Set(acceptedStartLines)
     const commented = new Set(fileComments.map((c) => c.startLine))
-    // Formal review sessions carry server-computed hunks; for plain working-tree
-    // changes (no session hunks) fall back to the editor's own merge chunks.
+    const toRange = (h: { start_line: number; line_count: number }) => ({
+      startLine: h.start_line,
+      endLine: h.line_count > 0 ? h.start_line + h.line_count - 1 : h.start_line,
+    })
+    // Range reviews carry session hunks; working-tree files use git's own hunk
+    // ranges (the ones the Changes panel counts) so accepts line up with its
+    // progress; the editor's merge chunks remain the last-resort fallback.
     const src =
       reviewHunks.length > 0
-        ? reviewHunks.map((h) => ({
-            startLine: h.start_line,
-            endLine: h.line_count > 0 ? h.start_line + h.line_count - 1 : h.start_line,
-          }))
-        : mergeHunks
+        ? reviewHunks.map(toRange)
+        : workingHunks.length > 0
+          ? workingHunks.map(toRange)
+          : mergeHunks
     return src.map((h) => ({
       startLine: h.startLine,
       endLine: h.endLine,
@@ -109,7 +140,7 @@ export function useReviewTarget({
           ? 'commented'
           : 'none',
     }))
-  }, [reviewFilePath, reviewHunks, mergeHunks, acceptedStartLines, fileComments])
+  }, [reviewFilePath, reviewHunks, workingHunks, mergeHunks, acceptedStartLines, fileComments])
 
   // Lazily open an implicit working-tree review the first time the user
   // accepts/comments without having started one from History, so their input

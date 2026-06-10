@@ -14,6 +14,10 @@ interface CodeNodeHeaderProps {
   lineCount: number
   lineWrap: boolean
   onToggleLineWrap: () => void
+  /** False for commit/range snapshots, which can never be edited. */
+  canUnlock: boolean
+  unlocked: boolean
+  onToggleUnlocked: () => void
 }
 
 const badge = 'text-[10px] px-1.5 py-0.5 rounded font-mono'
@@ -40,6 +44,9 @@ export function CodeNodeHeader({
   lineCount,
   lineWrap,
   onToggleLineWrap,
+  canUnlock,
+  unlocked,
+  onToggleUnlocked,
 }: CodeNodeHeaderProps) {
   return (
     <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/30">
@@ -58,9 +65,7 @@ export function CodeNodeHeader({
         {commitHash && (
           <span className={`${badge} bg-blue-900/40 text-blue-400`}>{commitHash.slice(0, 7)}</span>
         )}
-        {isNewFile && !isReadOnly && (
-          <span className={`${badge} bg-green-900/40 text-green-400`}>new</span>
-        )}
+        {isNewFile && <span className={`${badge} bg-green-900/40 text-green-400`}>new</span>}
         {dirty && !isReadOnly && (
           <span className={`${badge} bg-yellow-800/40 text-yellow-400`}>
             {saving ? 'saving...' : 'modified'}
@@ -68,6 +73,20 @@ export function CodeNodeHeader({
         )}
         {editorFocused && !isReadOnly && (
           <span className={`${badge} bg-primary/20 text-primary`}>editing</span>
+        )}
+        {canUnlock && (
+          <button
+            type="button"
+            onClick={onToggleUnlocked}
+            className={toggleBtn(unlocked)}
+            title={
+              unlocked
+                ? 'Lock editing — back to read-only'
+                : 'Unlock editing — files open read-only so concurrent agent writes stay safe'
+            }
+          >
+            {unlocked ? 'editable' : 'read-only'}
+          </button>
         )}
         <button
           type="button"

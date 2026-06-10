@@ -76,10 +76,13 @@ export function fileProgress(
   return { reviewed, total: file.hunks.length }
 }
 
-export function overallProgress(session: ReviewSession): { reviewed: number; total: number } {
+export function overallProgress(
+  session: ReviewSession,
+  files: ReviewFile[] = session.files,
+): { reviewed: number; total: number } {
   let reviewed = 0
   let total = 0
-  for (const f of session.files) {
+  for (const f of files) {
     const p = fileProgress(session, f)
     reviewed += p.reviewed
     total += p.total
@@ -87,10 +90,27 @@ export function overallProgress(session: ReviewSession): { reviewed: number; tot
   return { reviewed, total }
 }
 
+/** The session annotating the live working tree: the active one when it's a
+ *  working review, or — when nothing is active (e.g. after a restart) — the
+ *  persisted working session for the current HEAD, so accepts/comments made
+ *  earlier still display without requiring a new interaction first. */
+export function workingSessionOf(
+  state: { active: ReviewSession | null; sessions: Record<string, ReviewSession> },
+  headSha: string | undefined,
+): ReviewSession | null {
+  if (state.active) return isCommitReview(state.active) ? null : state.active
+  if (!headSha) return null
+  return state.sessions[sessionKey(headSha, WORKING_TIP)] ?? null
+}
+
 interface ReviewState {
   active: ReviewSession | null
   sessions: Record<string, ReviewSession>
   startReview: (baseCommit: string, baseRef: string, tipSha: string, files: ReviewFile[]) => void
+  /** Re-activate the persisted working-tree session for `headSha` (if any has
+   *  content), so accepts/comments survive a restart without waiting for the
+   *  first new interaction. No-op when a session is already active. */
+  resumeWorkingSession: (headSha: string | undefined) => void
   exitReview: () => void
   acceptHunk: (filePath: string, startLine: number) => void
   unacceptHunk: (filePath: string, startLine: number) => void
@@ -172,6 +192,13 @@ export const useReviewStore = createStoreWithHMR(import.meta.hot, 'review', () =
             comments: prior ? [...prior.comments] : [],
           }
           set({ active, sessions: persistActive(active, get().sessions) })
+        },
+
+        resumeWorkingSession: (headSha) => {
+          if (get().active || !headSha) return
+          const prior = get().sessions[sessionKey(headSha, WORKING_TIP)]
+          if (!prior || (prior.acceptedHunks.size === 0 && prior.comments.length === 0)) return
+          set({ active: prior })
         },
 
         exitReview: () => set({ active: null }),
