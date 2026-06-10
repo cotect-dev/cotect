@@ -61,6 +61,17 @@ describe('demo dataset consistency', () => {
     const ids = new Set(GRAPH_NODES.map((n) => n.id))
     for (const c of HEALTH_DATA.churn) expect(ids.has(c.path), c.path).toBe(true)
   })
+
+  it('hotspots agree with graph nodes and churn', () => {
+    const byId = new Map(GRAPH_NODES.map((n) => [n.id, n]))
+    const churnByPath = new Map(HEALTH_DATA.churn.map((c) => [c.path, c]))
+    for (const h of HEALTH_DATA.hotspots) {
+      expect(h.lineCount, `${h.path} lineCount`).toBe(byId.get(h.path)?.lineCount)
+      expect(h.inDegree, `${h.path} inDegree`).toBe(byId.get(h.path)?.inDegree)
+      expect(h.commitCount, `${h.path} commitCount`).toBe(churnByPath.get(h.path)?.commitCount)
+      expect(h.hotspotScore, `${h.path} score`).toBeCloseTo(h.churnScore * h.sizeScore, 10)
+    }
+  })
 })
 
 describe('seedDemoStores', () => {

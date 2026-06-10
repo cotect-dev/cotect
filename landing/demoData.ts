@@ -340,14 +340,6 @@ const demoFindings: Finding[] = [
   },
 ]
 
-// Hotspot scores: churnScore = commitCount/maxChurn(18), sizeScore = lineCount/maxLines(412)
-// fetchWithRetry: (18/18)*(34/412) = 1.0 * 0.0825 ≈ 0.0825
-// client:         (14/18)*(412/412) = 0.778 * 1.0 = 0.778
-// routes:         (9/18)*(94/412)   = 0.5 * 0.228 = 0.114
-// log:            (6/18)*(52/412)   = 0.333 * 0.126 ≈ 0.042
-// queue:          (5/18)*(61/412)   = 0.278 * 0.148 = 0.041
-// config:         (3/18)*(38/412)   = 0.167 * 0.092 ≈ 0.015
-// Sorted by hotspotScore: client(0.778) > routes(0.114) > fetchWithRetry(0.0825) > log(0.042) > queue(0.041) > config(0.015)
 const demoChurn: FileChurn[] = [
   {
     path: 'src/net/fetchWithRetry.ts',
@@ -393,64 +385,34 @@ const demoChurn: FileChurn[] = [
   },
 ]
 
-const MAX_CHURN = 18
-const MAX_LINES = 412
-const demoHotspots: Hotspot[] = [
-  {
-    path: 'src/api/client.ts',
-    commitCount: 14,
-    lineCount: 412,
-    inDegree: 3,
-    churnScore: 14 / MAX_CHURN,
-    sizeScore: 412 / MAX_LINES,
-    hotspotScore: (14 / MAX_CHURN) * (412 / MAX_LINES),
-  },
-  {
-    path: 'src/api/routes.ts',
-    commitCount: 9,
-    lineCount: 94,
-    inDegree: 2,
-    churnScore: 9 / MAX_CHURN,
-    sizeScore: 94 / MAX_LINES,
-    hotspotScore: (9 / MAX_CHURN) * (94 / MAX_LINES),
-  },
-  {
-    path: 'src/net/fetchWithRetry.ts',
-    commitCount: 18,
-    lineCount: 34,
-    inDegree: 2,
-    churnScore: 18 / MAX_CHURN,
-    sizeScore: 34 / MAX_LINES,
-    hotspotScore: (18 / MAX_CHURN) * (34 / MAX_LINES),
-  },
-  {
-    path: 'src/lib/log.ts',
-    commitCount: 6,
-    lineCount: 52,
-    inDegree: 5,
-    churnScore: 6 / MAX_CHURN,
-    sizeScore: 52 / MAX_LINES,
-    hotspotScore: (6 / MAX_CHURN) * (52 / MAX_LINES),
-  },
-  {
-    path: 'src/lib/queue.ts',
-    commitCount: 5,
-    lineCount: 61,
-    inDegree: 2,
-    churnScore: 5 / MAX_CHURN,
-    sizeScore: 61 / MAX_LINES,
-    hotspotScore: (5 / MAX_CHURN) * (61 / MAX_LINES),
-  },
-  {
-    path: 'src/lib/config.ts',
-    commitCount: 3,
-    lineCount: 38,
-    inDegree: 1,
-    churnScore: 3 / MAX_CHURN,
-    sizeScore: 38 / MAX_LINES,
-    hotspotScore: (3 / MAX_CHURN) * (38 / MAX_LINES),
-  },
-]
+// Derive hotspots from canonical sources (demoChurn + GRAPH_NODES) so lineCount,
+// inDegree, and commitCount never drift from the data they depend on.
+// MAX_CHURN = max commitCount across demoChurn entries (18 = fetchWithRetry)
+// MAX_LINES = max lineCount across non-test GRAPH_NODES (412 = client.ts)
+// Sorted by hotspotScore desc: client(≈0.778) > routes(≈0.114) > fetchWithRetry(≈0.083) > log(≈0.042) > queue(≈0.041) > config(≈0.015)
+const _nodeById = new Map(GRAPH_NODES.map((n) => [n.id, n]))
+const MAX_CHURN = Math.max(...demoChurn.map((c) => c.commitCount))
+const MAX_LINES = Math.max(...GRAPH_NODES.filter((n) => !n.isTestFile).map((n) => n.lineCount), 1)
+const demoHotspots: Hotspot[] = demoChurn
+  .filter((c) => {
+    const node = _nodeById.get(c.path)
+    return node && !node.isTestFile && c.commitCount >= 2 && node.lineCount > 0
+  })
+  .map((c) => {
+    const node = _nodeById.get(c.path)!
+    const churnScore = c.commitCount / MAX_CHURN
+    const sizeScore = node.lineCount / MAX_LINES
+    return {
+      path: c.path,
+      commitCount: c.commitCount,
+      lineCount: node.lineCount,
+      inDegree: node.inDegree,
+      churnScore,
+      sizeScore,
+      hotspotScore: churnScore * sizeScore,
+    }
+  })
+  .sort((a, b) => b.hotspotScore - a.hotspotScore)
 
 const demoFileSizes: FileSizeInfo[] = GRAPH_NODES.filter((n) => !n.isTestFile)
   .map((n) => {
