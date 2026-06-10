@@ -1,4 +1,3 @@
-// src/test/landingDemoData.test.ts
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   DEMO_ROOT,
@@ -42,6 +41,25 @@ describe('demo dataset consistency', () => {
     const seed = buildCanvasSeed()
     const keys = new Set(seed.nodes.map((n) => `${n.position.x}:${n.position.y}`))
     expect(keys.size).toBe(seed.nodes.length)
+  })
+
+  it('graph node degrees match the edge list', () => {
+    const inDeg = new Map<string, number>()
+    const outDeg = new Map<string, number>()
+    for (const e of GRAPH_EDGES) {
+      outDeg.set(e.source, (outDeg.get(e.source) ?? 0) + 1)
+      inDeg.set(e.target, (inDeg.get(e.target) ?? 0) + 1)
+    }
+    for (const n of GRAPH_NODES) {
+      expect(n.inDegree, `${n.id} inDegree`).toBe(inDeg.get(n.id) ?? 0)
+      expect(n.outDegree, `${n.id} outDegree`).toBe(outDeg.get(n.id) ?? 0)
+      expect(n.score, `${n.id} score`).toBe(n.inDegree + n.outDegree)
+    }
+  })
+
+  it('churn paths reference existing graph nodes', () => {
+    const ids = new Set(GRAPH_NODES.map((n) => n.id))
+    for (const c of HEALTH_DATA.churn) expect(ids.has(c.path), c.path).toBe(true)
   })
 })
 
