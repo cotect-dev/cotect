@@ -192,7 +192,7 @@ const demoMetrics: FileMetrics[] = [
   {
     path: 'src/index.ts',
     folder: 'src',
-    layer: 'other',
+    layer: 'index.ts',
     lineCount: 28,
     inDegree: 0,
     outDegree: 4,
@@ -321,7 +321,7 @@ const demoFindings: Finding[] = [
   },
   {
     type: 'large-file',
-    severity: 'warning',
+    severity: 'info',
     files: ['src/api/client.ts'],
     message: 'client.ts is 412 lines; consider splitting transport and parsing',
   },
@@ -574,10 +574,10 @@ export function buildCanvasSeed(): {
   const EDGE_STYLE = { stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1.5 }
   const edges: Edge[] = [
     {
-      id: `edge:col0:${SRC_FOLDER_ID}->${col1Nodes[0].id}`,
+      id: `edge:col0:${SRC_FOLDER_ID}->${NET_FOLDER_ID}`,
       source: SRC_FOLDER_ID,
       sourceHandle: 'right',
-      target: col1Nodes[0].id,
+      target: NET_FOLDER_ID,
       targetHandle: 'left',
       type: 'column',
       animated: true,
