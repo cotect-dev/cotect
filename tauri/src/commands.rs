@@ -113,9 +113,12 @@ pub fn is_wayland() -> bool {
         && std::env::var("XDG_SESSION_TYPE").is_ok_and(|v| v == "wayland")
 }
 
+#[cfg(target_os = "linux")]
 use gdk::prelude::*;
+#[cfg(target_os = "linux")]
 use gtk::prelude::{GtkWindowExt, WidgetExt};
 
+#[cfg(target_os = "linux")]
 fn find_gtk_window_by_title(
     tauri_windows: &std::collections::HashMap<String, tauri::WebviewWindow>,
     target_title: &str,
@@ -139,6 +142,7 @@ fn find_gtk_window_by_title(
     None
 }
 
+#[cfg(target_os = "linux")]
 fn with_matching_gtk_windows<T>(
     app: &tauri::AppHandle,
     mut f: impl FnMut(&gtk::Window, &gdk::Window, &str) -> Option<T>,
@@ -175,6 +179,7 @@ pub struct CursorWindowInfo {
     pub y: f64,
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn get_cursor_window(app: tauri::AppHandle) -> Option<CursorWindowInfo> {
     let display = gdk::Display::default()?;
@@ -214,6 +219,7 @@ pub struct WindowMonitorInfo {
     pub scale_factor: i32,
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn get_window_monitor(app: tauri::AppHandle, label: String) -> Option<WindowMonitorInfo> {
     let display = gdk::Display::default()?;
@@ -238,6 +244,7 @@ pub fn get_window_monitor(app: tauri::AppHandle, label: String) -> Option<Window
     })
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn set_window_on_monitor(app: tauri::AppHandle, label: String, monitor_index: i32) -> bool {
     let Some(display) = gdk::Display::default() else {
@@ -291,6 +298,7 @@ pub struct MonitorInfo {
     pub scale_factor: i32,
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn get_monitors() -> Vec<MonitorInfo> {
     let Some(display) = gdk::Display::default() else {
@@ -312,6 +320,99 @@ pub fn get_monitors() -> Vec<MonitorInfo> {
                 height: geo.height(),
                 scale_factor: monitor.scale_factor(),
             })
+        })
+        .collect()
+}
+
+// macOS/Windows variants of the window-manager commands, built on tauri's
+// cross-platform monitor and cursor APIs (reliable outside Wayland).
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn get_cursor_window(app: tauri::AppHandle) -> Option<CursorWindowInfo> {
+    let pos = app.cursor_position().ok()?;
+    for (label, win) in app.webview_windows() {
+        let Ok(origin) = win.outer_position() else {
+            continue;
+        };
+        let Ok(size) = win.outer_size() else {
+            continue;
+        };
+        let x = pos.x - origin.x as f64;
+        let y = pos.y - origin.y as f64;
+        if x >= 0.0 && y >= 0.0 && x < size.width as f64 && y < size.height as f64 {
+            return Some(CursorWindowInfo { label, x, y });
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn get_window_monitor(app: tauri::AppHandle, label: String) -> Option<WindowMonitorInfo> {
+    let win = app.webview_windows().get(&label)?.clone();
+    let monitor = win.current_monitor().ok()??;
+    let pos = monitor.position();
+    let size = monitor.size();
+    Some(WindowMonitorInfo {
+        monitor_model: monitor.name().cloned(),
+        monitor_manufacturer: None,
+        monitor_x: pos.x,
+        monitor_y: pos.y,
+        monitor_width: size.width as i32,
+        monitor_height: size.height as i32,
+        scale_factor: monitor.scale_factor().round() as i32,
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn set_window_on_monitor(app: tauri::AppHandle, label: String, monitor_index: i32) -> bool {
+    let Ok(monitors) = app.available_monitors() else {
+        return false;
+    };
+    let Some(monitor) = monitors.get(monitor_index.max(0) as usize) else {
+        return false;
+    };
+    let windows = app.webview_windows();
+    let Some(win) = windows.get(&label) else {
+        return false;
+    };
+    let Ok(size) = win.outer_size() else {
+        return false;
+    };
+    let mpos = monitor.position();
+    let msize = monitor.size();
+    let x = mpos.x + (msize.width as i32 - size.width as i32) / 2;
+    let y = mpos.y + (msize.height as i32 - size.height as i32) / 2;
+    win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+        x, y,
+    )))
+    .is_ok()
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn get_monitors(app: tauri::AppHandle) -> Vec<MonitorInfo> {
+    let Ok(monitors) = app.available_monitors() else {
+        return vec![];
+    };
+    monitors
+        .iter()
+        .enumerate()
+        .map(|(i, monitor)| {
+            let pos = monitor.position();
+            let size = monitor.size();
+            MonitorInfo {
+                index: i as i32,
+                model: monitor.name().cloned(),
+                manufacturer: None,
+                x: pos.x,
+                y: pos.y,
+                width: size.width as i32,
+                height: size.height as i32,
+                scale_factor: monitor.scale_factor().round() as i32,
+            }
         })
         .collect()
 }

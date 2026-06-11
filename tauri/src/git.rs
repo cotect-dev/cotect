@@ -526,7 +526,11 @@ pub async fn git_diff_range(
     let stats = parse_numstat(&numstat);
     let mut hunks_by_path = parse_diff_hunks(&patch);
 
-    Ok(assemble_range_files(&name_status, &stats, &mut hunks_by_path))
+    Ok(assemble_range_files(
+        &name_status,
+        &stats,
+        &mut hunks_by_path,
+    ))
 }
 
 /// Read-only diff of the working tree against HEAD (tracked files only;
@@ -535,12 +539,9 @@ pub async fn git_diff_range(
 /// tree.
 #[tauri::command]
 pub async fn git_diff_working(repo_path: String) -> Result<Vec<GitRangeFile>, String> {
-    let numstat = run_git(
-        &repo_path,
-        &["diff", "--numstat", "--no-renames", "HEAD"],
-    )
-    .await
-    .unwrap_or_default();
+    let numstat = run_git(&repo_path, &["diff", "--numstat", "--no-renames", "HEAD"])
+        .await
+        .unwrap_or_default();
     // Pin rename detection on so 'R' status doesn't depend on user diff config.
     let name_status = run_git(
         &repo_path,
@@ -554,7 +555,11 @@ pub async fn git_diff_working(repo_path: String) -> Result<Vec<GitRangeFile>, St
     let stats = parse_numstat(&numstat);
     let mut hunks_by_path = parse_diff_hunks(&patch);
 
-    Ok(assemble_range_files(&name_status, &stats, &mut hunks_by_path))
+    Ok(assemble_range_files(
+        &name_status,
+        &stats,
+        &mut hunks_by_path,
+    ))
 }
 
 /// Parse the output of `git log --name-only --format='@%ct' -- <paths>`.
@@ -1417,7 +1422,11 @@ index 0000000..1111111 100644
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "a.txt");
         assert_eq!(files[0].status, "D");
-        assert_eq!(files[0].hunks.len(), 1, "deleted file must get the synthetic hunk");
+        assert_eq!(
+            files[0].hunks.len(),
+            1,
+            "deleted file must get the synthetic hunk"
+        );
         assert_eq!(files[0].hunks[0].start_line, 1);
         assert_eq!(files[0].hunks[0].line_count, 1);
     }
