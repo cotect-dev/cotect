@@ -8,7 +8,12 @@ export const DOWNLOADS = {
 } as const
 
 export function detectOS(platform?: string): OS {
-  const p = platform ?? (typeof navigator !== 'undefined' ? navigator.platform : '')
+  const p =
+    platform ??
+    (typeof navigator !== 'undefined'
+      ? ((navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+        navigator.platform)
+      : '')
   if (/mac/i.test(p)) return 'mac'
   if (/win/i.test(p)) return 'windows'
   if (/linux/i.test(p)) return 'linux'

@@ -25,6 +25,7 @@ import { CANVAS_MARGIN } from '@/lib/canvasGeometry'
 import { anchorViewport, clampToFocus, type Viewport } from '@/lib/canvasCamera'
 import { notifyCanvasScrolled } from '@/components/Canvas/nodes/codeNodeRegistry'
 import { defineBinding } from '@/lib/keybindings'
+import { isDemoMode } from '@/lib/demoMode'
 
 const VIEW_FILES = defineBinding({
   id: 'canvas.view.files',
@@ -208,9 +209,11 @@ export function CanvasFlow() {
   useCanvasKeyboard(containerRef)
 
   useEffect(() => {
-    // preventScroll: in the embedded landing demo this mount would otherwise
-    // yank the page down to the demo box; in the app the container fills the
-    // window, so there is nothing to scroll.
+    // Skipped in the landing demo: the container handler swallows Tab and
+    // arrow keys, so auto-focusing would trap page-level keyboard navigation
+    // until the visitor clicks elsewhere. Clicking into the demo still
+    // focuses it natively (tabIndex).
+    if (isDemoMode()) return
     containerRef.current?.focus({ preventScroll: true })
   }, [])
 

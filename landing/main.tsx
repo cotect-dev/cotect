@@ -5,7 +5,6 @@ import { LandingPage } from './LandingPage'
 import iconUrl from '../public/icon.svg'
 import { initPlatform } from '@/services/platform'
 import { setDemoMode } from '@/lib/demoMode'
-import { seedDemoStores } from './demoData'
 
 // publicDir is disabled for this entry (the app's public/ carries multi-MB
 // wasm parsers), so the favicon is wired through the asset pipeline instead.
@@ -18,6 +17,9 @@ document.head.appendChild(favicon)
 async function start() {
   setDemoMode(true)
   await initPlatform()
+  // Dynamic import: demoData pulls in the store stack (ReactFlow, CodeMirror
+  // helpers), which must stay out of the eager hero chunk.
+  const { seedDemoStores } = await import('./demoData')
   seedDemoStores()
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
