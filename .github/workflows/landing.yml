@@ -1,0 +1,44 @@
+# Deploys the landing page to GitHub Pages on the public cotect-releases
+# repo (gh-pages branch) on every push to main. Uses the same RELEASES_TOKEN
+# PAT as the release workflow (contents: write on cotect-releases).
+name: landing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'landing/**'
+      - 'src/**'
+      - 'public/**'
+      - 'vite.landing.config.ts'
+      - 'package.json'
+      - 'yarn.lock'
+      - '.github/workflows/landing.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn landing:build
+      - name: Push to cotect-releases gh-pages
+        run: |
+          cd dist-landing
+          touch .nojekyll
+          git init -b gh-pages
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "deploy landing from $GITHUB_SHA"
+          git push --force "https://x-access-token:${RELEASES_TOKEN}@github.com/grzracz/cotect-releases.git" gh-pages
+        env:
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}

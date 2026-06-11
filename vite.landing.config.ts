@@ -9,6 +9,9 @@ import tailwindcss from '@tailwindcss/vite'
 // real product code.
 export default defineConfig({
   root: path.resolve(__dirname, 'landing'),
+  // Relative asset paths: the site must work both at the GitHub Pages
+  // project subpath and at the cotect.dev root.
+  base: './',
   // Branding SVGs are imported as modules; don't copy the app's public/
   // (tree-sitter wasm etc.) into the site bundle.
   publicDir: false,
