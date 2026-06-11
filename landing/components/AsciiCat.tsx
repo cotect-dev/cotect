@@ -4,9 +4,10 @@ import iconUrl from '../../public/icon.svg'
 // The alien cat from the logo rendered as ASCII art on a canvas: the icon's
 // alpha channel is sampled into a character grid once, drawn to a persistent
 // layer, then kept alive by a slow matrix-style churn of glyphs and a scanning
-// shimmer. Hovering opens an x-ray window that dims the surface and reveals
-// a cartoon-radiograph cat skeleton beneath (filled bones: skull with eye
-// socket and teeth, chevron spine, ribcage, limbs, capsule tail); moving the
+// shimmer. Hovering opens an x-ray window that dims the surface and brightens
+// the glyphs that fall on a cartoon-radiograph cat skeleton (skull with eye
+// socket and teeth, chevron spine, ribcage, limbs, capsule tail), so the
+// bones appear as highlighted characters within the cat itself; moving the
 // cursor fires neuron-like lightning along the bones. Append ?skeleton to
 // the URL to display the full skeleton without hovering (layout review).
 
@@ -434,11 +435,10 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     let layerCtx: CanvasRenderingContext2D | null = null
     // Pointer position in canvas coordinates; null while the cursor is away.
     let pointer: { x: number; y: number } | null = null
-    // The skeleton pre-rendered once, a scratch canvas for masking it into
-    // the hover window, and a node graph for the lightning walks.
-    let skeletonLayer: HTMLCanvasElement | null = null
-    let scratch: HTMLCanvasElement | null = null
-    let scratchCtx: CanvasRenderingContext2D | null = null
+    // The skeleton sampled into the glyph grid: each entry pairs a cell with
+    // how much bone covers it, so the hover highlights existing characters
+    // instead of drawing a separate image. Plus a node graph for lightning.
+    const boneCells: Array<{ cell: Cell; w: number }> = []
     let skelNodes: Cell[] = []
     const skelAdj = new Map<Cell, Cell[]>()
     let bolts: Bolt[] = []
@@ -528,20 +528,21 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       ctx.textBaseline = 'top'
       const half = CELL / 2
 
-      // X-ray: dim the surface and composite the skeleton layer in. Hover
-      // mode masks it with a soft radial window at the cursor; review mode
-      // shows the whole figure.
-      if (showFull && skeletonLayer) {
+      // X-ray: dim the surface, then repaint the glyphs sitting on bone in a
+      // bright bone tint, so the skeleton shows up as highlighted characters.
+      // Hover mode does this inside a soft radial window at the cursor;
+      // review mode lights the whole figure.
+      if (showFull && boneCells.length) {
         ctx.save()
         ctx.globalCompositeOperation = 'destination-out'
         ctx.fillStyle = 'rgba(0, 0, 0, 0.62)'
         ctx.fillRect(0, 0, RENDER_SIZE, RENDER_SIZE)
         ctx.restore()
-        ctx.save()
-        ctx.globalAlpha = 0.95
-        ctx.drawImage(skeletonLayer, 0, 0, RENDER_SIZE, RENDER_SIZE)
-        ctx.restore()
-      } else if (pointer && skeletonLayer && scratch && scratchCtx) {
+        for (const { cell, w } of boneCells) {
+          ctx.fillStyle = `rgba(227, 247, 234, ${w * 0.95})`
+          ctx.fillText(cell.char, cell.x, cell.y)
+        }
+      } else if (pointer && boneCells.length) {
         ctx.save()
         ctx.globalCompositeOperation = 'destination-out'
         const hole = ctx.createRadialGradient(
@@ -560,27 +561,15 @@ export function AsciiCat({ className = '' }: { className?: string }) {
         ctx.fill()
         ctx.restore()
 
-        const m = scratchCtx
-        m.clearRect(0, 0, RENDER_SIZE, RENDER_SIZE)
-        const win = m.createRadialGradient(
-          pointer.x,
-          pointer.y,
-          0,
-          pointer.x,
-          pointer.y,
-          XRAY_RADIUS,
-        )
-        win.addColorStop(0, 'rgba(255, 255, 255, 0.92)')
-        win.addColorStop(0.7, 'rgba(255, 255, 255, 0.55)')
-        win.addColorStop(1, 'rgba(255, 255, 255, 0)')
-        m.fillStyle = win
-        m.beginPath()
-        m.arc(pointer.x, pointer.y, XRAY_RADIUS, 0, Math.PI * 2)
-        m.fill()
-        m.globalCompositeOperation = 'source-in'
-        m.drawImage(skeletonLayer, 0, 0, RENDER_SIZE, RENDER_SIZE)
-        m.globalCompositeOperation = 'source-over'
-        ctx.drawImage(scratch, 0, 0, RENDER_SIZE, RENDER_SIZE)
+        for (const { cell, w } of boneCells) {
+          const d = Math.hypot(cell.x + half - pointer.x, cell.y + half - pointer.y)
+          if (d >= XRAY_RADIUS) continue
+          // Falloff shaped like the old radial mask: strong at the center,
+          // about half strength at 70% radius, gone at the rim.
+          const f = 1 - (d / XRAY_RADIUS) ** 2
+          ctx.fillStyle = `rgba(227, 247, 234, ${w * f * 0.95})`
+          ctx.fillText(cell.char, cell.x, cell.y)
+        }
       }
 
       // Lightning: arcs fire along the skeleton while the cursor moves, then
@@ -661,20 +650,35 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       const half = CELL / 2
       const G = (g: number) => g * CELL + half
 
-      // Pre-render the skeleton once; per-frame work is just compositing.
-      skeletonLayer = document.createElement('canvas')
-      skeletonLayer.width = RENDER_SIZE * dpr
-      skeletonLayer.height = RENDER_SIZE * dpr
-      const sctx = skeletonLayer.getContext('2d')
+      // Rasterize the bone art once into an offscreen canvas, then collapse
+      // it onto the glyph grid: each cell's coverage becomes the weight of
+      // its highlight. Thin bones (chevrons, fibula) only part-fill a cell,
+      // so coverage is boosted before clamping to keep them readable.
+      const skel = document.createElement('canvas')
+      skel.width = RENDER_SIZE
+      skel.height = RENDER_SIZE
+      const sctx = skel.getContext('2d', { willReadFrequently: true })
       if (sctx) {
-        sctx.scale(dpr, dpr)
         drawSkeletonArt(sctx, G, CELL)
+        const data = sctx.getImageData(0, 0, RENDER_SIZE, RENDER_SIZE).data
+        const cellMap = new Map(cells.map((c) => [`${c.x},${c.y}`, c]))
+        for (let y = 0; y < RENDER_SIZE; y += CELL) {
+          for (let x = 0; x < RENDER_SIZE; x += CELL) {
+            let sum = 0
+            let count = 0
+            for (let dy = 0; dy < CELL && y + dy < RENDER_SIZE; dy++) {
+              for (let dx = 0; dx < CELL && x + dx < RENDER_SIZE; dx++) {
+                sum += data[((y + dy) * RENDER_SIZE + x + dx) * 4 + 3]
+                count++
+              }
+            }
+            const coverage = sum / count / 255
+            if (coverage < 0.08) continue
+            const cell = cellMap.get(`${x},${y}`)
+            if (cell) boneCells.push({ cell, w: Math.min(1, coverage * 2.4) })
+          }
+        }
       }
-      scratch = document.createElement('canvas')
-      scratch.width = RENDER_SIZE * dpr
-      scratch.height = RENDER_SIZE * dpr
-      scratchCtx = scratch.getContext('2d')
-      scratchCtx?.scale(dpr, dpr)
 
       // Lightning graph: nodes sampled along every bone chain and rib,
       // chained in order, then cross-linked where chains come close.
