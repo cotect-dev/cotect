@@ -5,9 +5,10 @@ import iconUrl from '../../public/icon.svg'
 // alpha channel is sampled into a character grid once, drawn to a persistent
 // layer, then kept alive by a slow matrix-style churn of glyphs and a scanning
 // shimmer. Hovering opens an x-ray window that dims the surface and reveals
-// a hand-fitted cat skeleton beneath; moving the cursor fires neuron-like
-// lightning along the bones. Append ?skeleton to the URL to display the full
-// skeleton without hovering (layout review mode).
+// a cartoon-radiograph cat skeleton beneath (filled bones: skull with eye
+// socket and teeth, chevron spine, ribcage, limbs, capsule tail); moving the
+// cursor fires neuron-like lightning along the bones. Append ?skeleton to
+// the URL to display the full skeleton without hovering (layout review).
 
 const RENDER_SIZE = 480
 const CELL = 7
@@ -53,227 +54,310 @@ interface Bolt {
   life: number
 }
 
-// Precomputed x-ray anatomy, in render coordinates. Each piece carries a
-// midpoint so the hover window can brighten it by distance to the cursor.
-interface BoneStroke {
-  x1: number
-  y1: number
-  x2: number
-  y2: number
-  mx: number
-  my: number
-  w: number
-}
+type Pt = [number, number]
 
-interface RibStroke {
-  x1: number
-  y1: number
-  cx: number
-  cy: number
-  x2: number
-  y2: number
-  mx: number
-  my: number
-}
-
-// The skeleton itself, hand-fitted to the icon's silhouette on the same
-// 69-cell sampling grid using an offline preview tool, with every point
-// verified to keep a margin from the silhouette edge (2 cells in thick
-// regions, centered in thin strips like the tail; the left ear strip is too
-// thin to hold a bone at all). The cat sits in profile facing left: skull
-// top-left with an angular orbit, spine along the back, egg-shaped ribcage
-// closing on a sternum, front legs lower-left, pelvis plate and folded hind
-// leg in the haunch, tail rising on the right and tucking behind the haunch
-// at its base. Coordinates are grid cells; w is stroke width.
-const BONES: Array<{ pts: Array<[number, number]>; w?: number; ticks?: boolean }> = [
-  // cranium dome
-  {
-    pts: [
-      [26, 20],
-      [25.5, 15.5],
-      [23, 12],
-      [18, 10.8],
-      [13.5, 11.5],
-      [11, 13.5],
-      [10.5, 15.5],
-    ],
-    w: 1.7,
-  },
-  // jaw
-  {
-    pts: [
-      [10.5, 15.5],
-      [10, 17.5],
-      [11, 19.5],
-      [13, 20.8],
-      [17, 21.3],
-      [22, 21],
-      [26, 20],
-    ],
-    w: 1.4,
-  },
-  // eye socket as an angular orbit
-  {
-    pts: [
-      [12, 14.8],
-      [13.8, 15.6],
-      [14.2, 17.4],
-      [12.8, 18.3],
-      [11.6, 16.8],
-      [12, 14.8],
-    ],
-    w: 1,
-  },
-  // cheekbone
-  {
-    pts: [
-      [14.5, 18],
-      [18, 18.8],
-      [20.5, 19],
-    ],
-    w: 1,
-  },
-  // right ear cartilage
-  {
-    pts: [
-      [19, 10.5],
-      [18, 8],
-      [17, 6],
-      [16.2, 4.8],
-    ],
-    w: 1,
-  },
-  // cervical vertebrae
-  {
-    pts: [
-      [24, 19.5],
-      [26, 22.5],
-      [28, 26],
-    ],
-    w: 2,
-    ticks: true,
-  },
-  // spine along the back
-  {
-    pts: [
-      [28, 26],
-      [30, 30],
-      [32, 34],
-      [35, 38],
-      [38, 42],
-      [41, 45],
-      [44, 48],
-      [46, 50],
-    ],
-    w: 2.2,
-    ticks: true,
-  },
-  // sternum collecting the rib ends
-  {
-    pts: [
-      [19, 31],
-      [18, 34],
-      [18.5, 37.5],
-      [20, 41],
-      [22, 44],
-      [24.5, 46.6],
-    ],
-    w: 1.1,
-  },
-  // scapula
-  {
-    pts: [
-      [26, 30],
-      [29.5, 33.5],
-      [24, 34],
-      [26, 30],
-    ],
-    w: 1.2,
-  },
-  // front legs, near and far
-  {
-    pts: [
-      [26, 35.5],
-      [23, 41.5],
-      [20.8, 50],
-      [20.2, 58],
-      [19.8, 62.8],
-    ],
-    w: 1.6,
-  },
-  {
-    pts: [
-      [27.5, 36.5],
-      [24.5, 42.5],
-      [23.2, 51],
-      [22.8, 58],
-      [22.2, 63],
-    ],
-    w: 1.2,
-  },
-  // pelvis as an angular plate
-  {
-    pts: [
-      [45, 50.5],
-      [47.5, 52],
-      [47, 54],
-      [44.5, 53.5],
-      [45, 50.5],
-    ],
-    w: 1.4,
-  },
-  // hind leg folded under the haunch: femur, tibia, foot
-  {
-    pts: [
-      [46, 53],
-      [42, 54.5],
-      [39, 56],
-    ],
-    w: 1.8,
-  },
-  {
-    pts: [
-      [39, 56],
-      [42.5, 59.5],
-      [45, 62],
-    ],
-    w: 1.6,
-  },
-  {
-    pts: [
-      [45, 62],
-      [40, 63],
-      [36, 63.3],
-    ],
-    w: 1.3,
-  },
-  // tail: emerges from behind the haunch and rises on the right
-  {
-    pts: [
-      [54, 60],
-      [55, 57.5],
-      [55.8, 55],
-      [56, 52],
-      [55.2, 48.5],
-      [55, 46.5],
-      [54.2, 43],
-      [54, 39],
-      [54, 34],
-      [54.2, 29.5],
-    ],
-    w: 1.5,
-    ticks: true,
-  },
+// Skeleton geometry shared by the bone art and the lightning graph, in grid
+// coordinates of the 69-cell icon sampling. Hand-fitted to the silhouette
+// with an offline preview tool so every bone keeps a margin from the edge.
+const SPINE_PTS: Pt[] = [
+  [24.5, 20.8],
+  [26, 23],
+  [28, 26],
+  [30, 30],
+  [32, 34],
+  [35, 38],
+  [38, 42],
+  [41, 45],
+  [44, 48],
+  [46, 50],
 ]
 
-const RIBS: Array<{ from: [number, number]; via: [number, number]; to: [number, number] }> = [
-  { from: [28.3, 27], via: [25, 31.5], to: [19, 31.5] },
-  { from: [29.5, 29.5], via: [25.2, 34.5], to: [18.2, 34.5] },
-  { from: [31, 32.5], via: [26.3, 37.9], to: [18.7, 38] },
-  { from: [33, 35.8], via: [28, 41.2], to: [20.3, 41.3] },
-  { from: [35.2, 39], via: [30.2, 44.3], to: [22.3, 44.2] },
-  { from: [37.5, 42], via: [32.5, 46.7], to: [24.5, 46.6] },
+const RIBS: Array<{ from: Pt; via: Pt; to: Pt }> = [
+  { from: [28.3, 27.2], via: [24.6, 31.6], to: [19.2, 31.6] },
+  { from: [29.6, 29.8], via: [25, 34.8], to: [18.3, 34.6] },
+  { from: [31, 32.6], via: [26.2, 38], to: [18.8, 38] },
+  { from: [33, 35.8], via: [27.9, 41.3], to: [20.4, 41.2] },
+  { from: [35.2, 39], via: [30.1, 44.4], to: [22.4, 44.1] },
+  { from: [37.4, 41.9], via: [32.4, 46.8], to: [24.6, 46.5] },
 ]
+
+const TAIL_PTS: Pt[] = [
+  [54, 60],
+  [55, 57.5],
+  [55.8, 55],
+  [56, 52],
+  [55.2, 48.5],
+  [55, 46.5],
+  [54.2, 43],
+  [54, 39],
+  [54, 34],
+  [54.2, 29.5],
+]
+
+// Chains the lightning can travel beyond the spine/ribs/tail: skull outline,
+// ear, sternum, both leg bone runs.
+const GRAPH_CHAINS: Pt[][] = [
+  [
+    [24.5, 20.2],
+    [25.6, 14.8],
+    [21, 11.2],
+    [13.8, 12],
+    [10.3, 15.2],
+    [9.5, 18.2],
+    [12, 20],
+    [16, 21],
+    [21.5, 20.7],
+    [24.5, 20.2],
+  ],
+  [
+    [19, 10.8],
+    [16.4, 5],
+  ],
+  [
+    [19, 31],
+    [18, 34],
+    [18.5, 37.5],
+    [20, 41],
+    [22, 44],
+    [24.5, 46.6],
+  ],
+  [
+    [26, 35.5],
+    [23, 41.5],
+    [21, 49.8],
+    [20.3, 57.6],
+    [20.3, 62.5],
+  ],
+  [
+    [45.8, 52.8],
+    [39.3, 55.9],
+    [44.7, 62],
+    [37.2, 63.2],
+  ],
+  SPINE_PTS,
+  TAIL_PTS,
+]
+
+// The bone art itself, in the style of a cartoon radiograph: filled shapes
+// with knobbed ends. Drawn once into an offscreen layer. P converts grid
+// coordinates to pixels, S is the pixel size of one grid cell.
+function drawSkeletonArt(ctx: CanvasRenderingContext2D, P: (g: number) => number, S: number) {
+  const BONE = '#e3f7ea'
+  const px = P
+  const W = (g: number) => g * S
+
+  const knobLine = (
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    w: number,
+    knob = true,
+  ): void => {
+    ctx.strokeStyle = BONE
+    ctx.lineCap = 'round'
+    ctx.lineWidth = W(w)
+    ctx.beginPath()
+    ctx.moveTo(px(x1), px(y1))
+    ctx.lineTo(px(x2), px(y2))
+    ctx.stroke()
+    if (knob) {
+      ctx.fillStyle = BONE
+      for (const [x, y] of [
+        [x1, y1],
+        [x2, y2],
+      ]) {
+        ctx.beginPath()
+        ctx.arc(px(x), px(y), W(w) * 0.62, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  }
+  const poly = (pts: Pt[]): void => {
+    ctx.beginPath()
+    ctx.moveTo(px(pts[0][0]), px(pts[0][1]))
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(px(pts[i][0]), px(pts[i][1]))
+    ctx.closePath()
+  }
+  const curve = (pts: Pt[]): void => {
+    ctx.beginPath()
+    ctx.moveTo(px(pts[0][0]), px(pts[0][1]))
+    for (let i = 1; i < pts.length - 1; i++) {
+      const mx = (pts[i][0] + pts[i + 1][0]) / 2
+      const my = (pts[i][1] + pts[i + 1][1]) / 2
+      ctx.quadraticCurveTo(px(pts[i][0]), px(pts[i][1]), px(mx), px(my))
+    }
+    ctx.lineTo(px(pts[pts.length - 1][0]), px(pts[pts.length - 1][1]))
+  }
+
+  // Skull: cranium and muzzle as one blob whose bottom edge zigzags into
+  // upper teeth; eye socket and nostril punched out; separate lower jaw.
+  ctx.fillStyle = BONE
+  ctx.beginPath()
+  ctx.moveTo(px(24.5), px(20.2))
+  for (const [cx, cy, x, y] of [
+    [26.3, 17.5, 25.6, 14.8],
+    [24.5, 12, 21, 11.2],
+    [17, 10.6, 13.8, 12],
+    [11.4, 13.2, 10.3, 15.2],
+    [9.5, 16.6, 9.5, 18.2],
+  ]) {
+    ctx.quadraticCurveTo(px(cx), px(cy), px(x), px(y))
+  }
+  ctx.lineTo(px(10), px(19.1))
+  for (const [x, y] of [
+    [10.9, 20.4],
+    [11.4, 19.2],
+    [12.1, 20.5],
+    [12.8, 19.3],
+    [13.6, 20.6],
+    [14.2, 19.4],
+    [15, 19.6],
+  ]) {
+    ctx.lineTo(px(x), px(y))
+  }
+  ctx.quadraticCurveTo(px(18), px(20.6), px(21.5), px(20.7))
+  ctx.closePath()
+  ctx.fill()
+  ctx.save()
+  ctx.globalCompositeOperation = 'destination-out'
+  ctx.beginPath()
+  ctx.ellipse(px(13.4), px(15.7), W(1.85), W(1.5), -0.35, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.ellipse(px(10.4), px(17.6), W(0.45), W(0.3), -0.8, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+  ctx.strokeStyle = BONE
+  ctx.lineCap = 'round'
+  ctx.lineWidth = W(0.85)
+  curve([
+    [10.8, 20.8],
+    [13, 21.3],
+    [16.5, 21.4],
+    [19.5, 20.9],
+  ])
+  ctx.stroke()
+
+  // Ear cartilage: two capsules into the right ear.
+  knobLine(19, 10.8, 17.8, 7.6, 0.75)
+  knobLine(17.6, 7.2, 16.4, 5, 0.65)
+
+  // Neck and spine: thin base with chevron vertebrae; the last leg stays
+  // plain so the chevrons do not pile onto the pelvis.
+  ctx.lineWidth = W(0.8)
+  curve(SPINE_PTS)
+  ctx.stroke()
+  for (let i = 0; i < SPINE_PTS.length - 2; i++) {
+    const [ax, ay] = SPINE_PTS[i]
+    const [bx, by] = SPINE_PTS[i + 1]
+    const len = Math.hypot(bx - ax, by - ay)
+    const ux = (bx - ax) / len
+    const uy = (by - ay) / len
+    const vx = -uy
+    const vy = ux
+    const n = Math.max(1, Math.round(len / 1.75))
+    for (let k = 0; k < n; k++) {
+      const t = (k + 0.5) / n
+      const cx = ax + (bx - ax) * t
+      const cy = ay + (by - ay) * t
+      ctx.lineWidth = W(0.44)
+      for (const s of [1, -1]) {
+        ctx.beginPath()
+        ctx.moveTo(px(cx + vx * 0.78 * s), px(cy + vy * 0.78 * s))
+        ctx.lineTo(px(cx + ux * 0.8 + vx * 0.16 * s), px(cy + uy * 0.8 + vy * 0.16 * s))
+        ctx.stroke()
+      }
+    }
+  }
+
+  // Scapula: filled blade over the front of the ribcage.
+  poly([
+    [25, 30.4],
+    [28.8, 33.4],
+    [26.6, 35.6],
+    [23.4, 34.2],
+  ])
+  ctx.fillStyle = BONE
+  ctx.fill()
+
+  // Ribcage and sternum.
+  ctx.lineWidth = W(0.8)
+  for (const { from, via, to } of RIBS) {
+    ctx.beginPath()
+    ctx.moveTo(px(from[0]), px(from[1]))
+    ctx.quadraticCurveTo(px(via[0]), px(via[1]), px(to[0]), px(to[1]))
+    ctx.stroke()
+  }
+  ctx.lineWidth = W(0.65)
+  curve([
+    [19, 31],
+    [18, 34],
+    [18.5, 37.5],
+    [20, 41],
+    [22, 44],
+    [24.5, 46.6],
+  ])
+  ctx.stroke()
+
+  // Front leg: humerus, radius and ulna, metacarpus, three toes.
+  knobLine(26, 35.5, 23, 41.5, 1.35)
+  knobLine(23, 41.3, 21, 49.8, 0.95)
+  knobLine(23.7, 41.9, 21.8, 49.6, 0.55, false)
+  knobLine(20.8, 50.6, 20.3, 57.6, 0.95)
+  knobLine(20.2, 58.4, 18.9, 62.4, 0.68)
+  knobLine(20.3, 58.6, 20.3, 62.7, 0.68)
+  knobLine(20.4, 58.4, 21.6, 62.2, 0.68)
+
+  // Pelvis.
+  poly([
+    [44.8, 50.6],
+    [47.4, 51.6],
+    [47.5, 53.2],
+    [45.6, 54],
+    [44.2, 52.8],
+  ])
+  ctx.fillStyle = BONE
+  ctx.fill()
+
+  // Hind leg folded under the haunch: femur, tibia and fibula, metatarsus,
+  // three toes.
+  knobLine(45.8, 52.8, 39.4, 55.8, 1.25)
+  knobLine(39.2, 56, 44.8, 61.8, 1.05)
+  knobLine(39.9, 56.8, 44.9, 62.3, 0.55, false)
+  knobLine(44.6, 62.2, 37.2, 63.2, 0.95)
+  knobLine(37, 63.2, 35, 62.6, 0.6)
+  knobLine(37, 63.4, 35.2, 63.6, 0.6)
+  knobLine(37, 63.5, 35.6, 64.2, 0.6)
+
+  // Tail: capsule segments along the strip, tapering toward the tip.
+  const flat: Pt[] = []
+  for (let i = 0; i < TAIL_PTS.length - 1; i++) {
+    const [ax, ay] = TAIL_PTS[i]
+    const [bx, by] = TAIL_PTS[i + 1]
+    const n = Math.ceil(Math.hypot(bx - ax, by - ay) * 4)
+    for (let k = 0; k < n; k++) flat.push([ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n])
+  }
+  flat.push(TAIL_PTS[TAIL_PTS.length - 1])
+  let acc = 0
+  let segStart = 0
+  let segIdx = 0
+  for (let i = 1; i < flat.length; i++) {
+    acc += Math.hypot(flat[i][0] - flat[i - 1][0], flat[i][1] - flat[i - 1][1])
+    if (acc >= 1.9) {
+      const taper = 1 - segIdx * 0.05
+      knobLine(flat[segStart][0], flat[segStart][1], flat[i][0], flat[i][1], 0.8 * taper, false)
+      segIdx++
+      let g = 0
+      while (i < flat.length - 1 && g < 0.55) {
+        i++
+        g += Math.hypot(flat[i][0] - flat[i - 1][0], flat[i][1] - flat[i - 1][1])
+      }
+      segStart = i
+      acc = 0
+    }
+  }
+}
 
 function sampleCells(img: HTMLImageElement): Cell[] {
   const off = document.createElement('canvas')
@@ -350,13 +434,13 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     let layerCtx: CanvasRenderingContext2D | null = null
     // Pointer position in canvas coordinates; null while the cursor is away.
     let pointer: { x: number; y: number } | null = null
-    // The anatomy drawn inside the x-ray window, plus a node graph sampled
-    // along it for the lightning walks.
+    // The skeleton pre-rendered once, a scratch canvas for masking it into
+    // the hover window, and a node graph for the lightning walks.
+    let skeletonLayer: HTMLCanvasElement | null = null
+    let scratch: HTMLCanvasElement | null = null
+    let scratchCtx: CanvasRenderingContext2D | null = null
     let skelNodes: Cell[] = []
     const skelAdj = new Map<Cell, Cell[]>()
-    let boneStrokes: BoneStroke[] = []
-    let contourStrokes: BoneStroke[] = []
-    let ribStrokes: RibStroke[] = []
     let bolts: Bolt[] = []
     let lastSpawn = 0
     let movedSinceSpawn = 0
@@ -444,74 +528,59 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       ctx.textBaseline = 'top'
       const half = CELL / 2
 
-      // X-ray: in hover mode a soft window around the cursor, in review mode
-      // the whole figure.
-      if (showFull || pointer) {
+      // X-ray: dim the surface and composite the skeleton layer in. Hover
+      // mode masks it with a soft radial window at the cursor; review mode
+      // shows the whole figure.
+      if (showFull && skeletonLayer) {
         ctx.save()
         ctx.globalCompositeOperation = 'destination-out'
-        if (showFull) {
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.62)'
-          ctx.fillRect(0, 0, RENDER_SIZE, RENDER_SIZE)
-        } else if (pointer) {
-          const hole = ctx.createRadialGradient(
-            pointer.x,
-            pointer.y,
-            0,
-            pointer.x,
-            pointer.y,
-            XRAY_RADIUS,
-          )
-          hole.addColorStop(0, 'rgba(0, 0, 0, 0.8)')
-          hole.addColorStop(1, 'rgba(0, 0, 0, 0)')
-          ctx.fillStyle = hole
-          ctx.beginPath()
-          ctx.arc(pointer.x, pointer.y, XRAY_RADIUS, 0, Math.PI * 2)
-          ctx.fill()
-        }
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.62)'
+        ctx.fillRect(0, 0, RENDER_SIZE, RENDER_SIZE)
+        ctx.restore()
+        ctx.save()
+        ctx.globalAlpha = 0.95
+        ctx.drawImage(skeletonLayer, 0, 0, RENDER_SIZE, RENDER_SIZE)
+        ctx.restore()
+      } else if (pointer && skeletonLayer && scratch && scratchCtx) {
+        ctx.save()
+        ctx.globalCompositeOperation = 'destination-out'
+        const hole = ctx.createRadialGradient(
+          pointer.x,
+          pointer.y,
+          0,
+          pointer.x,
+          pointer.y,
+          XRAY_RADIUS,
+        )
+        hole.addColorStop(0, 'rgba(0, 0, 0, 0.8)')
+        hole.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        ctx.fillStyle = hole
+        ctx.beginPath()
+        ctx.arc(pointer.x, pointer.y, XRAY_RADIUS, 0, Math.PI * 2)
+        ctx.fill()
         ctx.restore()
 
-        // Brightness by proximity to the cursor; flat in review mode.
-        // Negative means outside the window.
-        const strengthFor = (mx: number, my: number): number => {
-          if (showFull) return 1
-          if (!pointer) return -1
-          const d = Math.hypot(mx - pointer.x, my - pointer.y)
-          return d > XRAY_RADIUS ? -1 : 1 - d / XRAY_RADIUS
-        }
-
-        // The anatomy: a faint body contour, then bones with vertebra ticks
-        // and the ribs.
-        ctx.lineCap = 'round'
-        ctx.lineWidth = 0.7
-        for (const s of contourStrokes) {
-          const strength = strengthFor(s.mx, s.my)
-          if (strength < 0) continue
-          ctx.strokeStyle = `rgba(220, 252, 231, ${0.04 + strength * 0.16})`
-          ctx.beginPath()
-          ctx.moveTo(s.x1, s.y1)
-          ctx.lineTo(s.x2, s.y2)
-          ctx.stroke()
-        }
-        ctx.lineWidth = 0.9
-        for (const s of ribStrokes) {
-          const strength = strengthFor(s.mx, s.my)
-          if (strength < 0) continue
-          ctx.strokeStyle = `rgba(220, 252, 231, ${0.07 + strength * 0.38})`
-          ctx.beginPath()
-          ctx.moveTo(s.x1, s.y1)
-          ctx.quadraticCurveTo(s.cx, s.cy, s.x2, s.y2)
-          ctx.stroke()
-        }
-        for (const s of boneStrokes) {
-          const strength = strengthFor(s.mx, s.my)
-          if (strength < 0) continue
-          ctx.strokeStyle = `rgba(226, 252, 236, ${0.12 + strength * 0.55})`
-          ctx.lineWidth = s.w
-          ctx.beginPath()
-          ctx.moveTo(s.x1, s.y1)
-          ctx.lineTo(s.x2, s.y2)
-          ctx.stroke()
-        }
+        const m = scratchCtx
+        m.clearRect(0, 0, RENDER_SIZE, RENDER_SIZE)
+        const win = m.createRadialGradient(
+          pointer.x,
+          pointer.y,
+          0,
+          pointer.x,
+          pointer.y,
+          XRAY_RADIUS,
+        )
+        win.addColorStop(0, 'rgba(255, 255, 255, 0.92)')
+        win.addColorStop(0.7, 'rgba(255, 255, 255, 0.55)')
+        win.addColorStop(1, 'rgba(255, 255, 255, 0)')
+        m.fillStyle = win
+        m.beginPath()
+        m.arc(pointer.x, pointer.y, XRAY_RADIUS, 0, Math.PI * 2)
+        m.fill()
+        m.globalCompositeOperation = 'source-in'
+        m.drawImage(skeletonLayer, 0, 0, RENDER_SIZE, RENDER_SIZE)
+        m.globalCompositeOperation = 'source-over'
+        ctx.drawImage(scratch, 0, 0, RENDER_SIZE, RENDER_SIZE)
       }
 
       // Lightning: arcs fire along the skeleton while the cursor moves, then
@@ -589,142 +658,32 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       if (disposed) return
       cells = sampleCells(img)
 
-      const dim = Math.ceil(RENDER_SIZE / CELL)
-      const occ: boolean[][] = Array.from({ length: dim }, () => new Array(dim).fill(false))
-      for (const c of cells) occ[c.y / CELL][c.x / CELL] = true
-
       const half = CELL / 2
       const G = (g: number) => g * CELL + half
 
-      // Body contour: occupied cells touching the outside, chained into a
-      // faint outline so the window reads like a radiograph, not floating
-      // lines.
-      const outside: boolean[][] = Array.from({ length: dim }, () => new Array(dim).fill(false))
-      const flood: Array<[number, number]> = []
-      for (let i = 0; i < dim; i++) {
-        for (const [gx, gy] of [
-          [i, 0],
-          [i, dim - 1],
-          [0, i],
-          [dim - 1, i],
-        ]) {
-          if (!occ[gy][gx] && !outside[gy][gx]) {
-            outside[gy][gx] = true
-            flood.push([gx, gy])
-          }
-        }
+      // Pre-render the skeleton once; per-frame work is just compositing.
+      skeletonLayer = document.createElement('canvas')
+      skeletonLayer.width = RENDER_SIZE * dpr
+      skeletonLayer.height = RENDER_SIZE * dpr
+      const sctx = skeletonLayer.getContext('2d')
+      if (sctx) {
+        sctx.scale(dpr, dpr)
+        drawSkeletonArt(sctx, G, CELL)
       }
-      for (let qi = 0; qi < flood.length; qi++) {
-        const [gx, gy] = flood[qi]
-        for (const [dx, dy] of [
-          [1, 0],
-          [-1, 0],
-          [0, 1],
-          [0, -1],
-        ]) {
-          const nx = gx + dx
-          const ny = gy + dy
-          if (nx < 0 || nx >= dim || ny < 0 || ny >= dim) continue
-          if (occ[ny][nx] || outside[ny][nx]) continue
-          outside[ny][nx] = true
-          flood.push([nx, ny])
-        }
-      }
-      const isContour = (gx: number, gy: number) =>
-        occ[gy][gx] &&
-        [
-          [1, 0],
-          [-1, 0],
-          [0, 1],
-          [0, -1],
-        ].some(([dx, dy]) => {
-          const nx = gx + dx
-          const ny = gy + dy
-          return nx < 0 || nx >= dim || ny < 0 || ny >= dim || outside[ny][nx]
-        })
-      contourStrokes = []
-      for (let gy = 0; gy < dim; gy++) {
-        for (let gx = 0; gx < dim; gx++) {
-          if (!isContour(gx, gy)) continue
-          for (const [dx, dy] of [
-            [1, 0],
-            [0, 1],
-            [1, 1],
-            [1, -1],
-          ]) {
-            const nx = gx + dx
-            const ny = gy + dy
-            if (nx < 0 || nx >= dim || ny < 0 || ny >= dim || !isContour(nx, ny)) continue
-            contourStrokes.push({
-              x1: G(gx),
-              y1: G(gy),
-              x2: G(nx),
-              y2: G(ny),
-              mx: G((gx + nx) / 2),
-              my: G((gy + ny) / 2),
-              w: 0.7,
-            })
-          }
-        }
-      }
+      scratch = document.createElement('canvas')
+      scratch.width = RENDER_SIZE * dpr
+      scratch.height = RENDER_SIZE * dpr
+      scratchCtx = scratch.getContext('2d')
+      scratchCtx?.scale(dpr, dpr)
 
-      // The authored skeleton, scaled to render coordinates.
-      boneStrokes = []
-      for (const bone of BONES) {
-        const w = bone.w ?? 1.4
-        for (let i = 1; i < bone.pts.length; i++) {
-          const [ax, ay] = bone.pts[i - 1]
-          const [bx, by] = bone.pts[i]
-          boneStrokes.push({
-            x1: G(ax),
-            y1: G(ay),
-            x2: G(bx),
-            y2: G(by),
-            mx: G((ax + bx) / 2),
-            my: G((ay + by) / 2),
-            w,
-          })
-          if (bone.ticks) {
-            // Vertebra ticks perpendicular to the bone.
-            const segLen = Math.hypot(bx - ax, by - ay)
-            const px = -(by - ay) / segLen
-            const py = (bx - ax) / segLen
-            const n = Math.max(1, Math.round(segLen / 1.6))
-            for (let k = 0; k < n; k++) {
-              const tt = (k + 0.5) / n
-              const cx = G(ax + (bx - ax) * tt)
-              const cy = G(ay + (by - ay) * tt)
-              boneStrokes.push({
-                x1: cx - px * 3.5,
-                y1: cy - py * 3.5,
-                x2: cx + px * 3.5,
-                y2: cy + py * 3.5,
-                mx: cx,
-                my: cy,
-                w: 0.8,
-              })
-            }
-          }
-        }
-      }
-      ribStrokes = RIBS.map((r) => {
-        const x1 = G(r.from[0])
-        const y1 = G(r.from[1])
-        const cx = G(r.via[0])
-        const cy = G(r.via[1])
-        const x2 = G(r.to[0])
-        const y2 = G(r.to[1])
-        return { x1, y1, cx, cy, x2, y2, mx: (x1 + 2 * cx + x2) / 4, my: (y1 + 2 * cy + y2) / 4 }
-      })
-
-      // Lightning graph: nodes sampled along every bone and rib, chained in
-      // order, then cross-linked where chains come close (the joints).
-      const chains: Array<Array<[number, number]>> = []
-      for (const bone of BONES) {
-        const chain: Array<[number, number]> = [[G(bone.pts[0][0]), G(bone.pts[0][1])]]
-        for (let i = 1; i < bone.pts.length; i++) {
-          const [ax, ay] = bone.pts[i - 1]
-          const [bx, by] = bone.pts[i]
+      // Lightning graph: nodes sampled along every bone chain and rib,
+      // chained in order, then cross-linked where chains come close.
+      const chains: Pt[][] = []
+      for (const pts of GRAPH_CHAINS) {
+        const chain: Pt[] = [[G(pts[0][0]), G(pts[0][1])]]
+        for (let i = 1; i < pts.length; i++) {
+          const [ax, ay] = pts[i - 1]
+          const [bx, by] = pts[i]
           const n = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay) / 1.4))
           for (let k = 1; k <= n; k++) {
             chain.push([G(ax + ((bx - ax) * k) / n), G(ay + ((by - ay) * k) / n)])
@@ -733,7 +692,7 @@ export function AsciiCat({ className = '' }: { className?: string }) {
         chains.push(chain)
       }
       for (const r of RIBS) {
-        const chain: Array<[number, number]> = []
+        const chain: Pt[] = []
         for (let k = 0; k <= 8; k++) {
           const tt = k / 8
           const u = 1 - tt
