@@ -76,7 +76,7 @@ export function CanvasDemo() {
       ref={boxRef}
       onPointerDownCapture={cancel}
       onKeyDownCapture={cancel}
-      className="relative h-[560px] rounded-lg border border-border overflow-hidden bg-background"
+      className="relative h-[440px] sm:h-[560px] rounded-lg border border-border overflow-hidden bg-background"
     >
       <ReactFlowProvider>
         <CanvasFlow />

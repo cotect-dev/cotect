@@ -16,12 +16,11 @@ const HealthDemo = lazy(() =>
   import('./components/HealthDemo').then((m) => ({ default: m.HealthDemo })),
 )
 
-function DemoFallback({ height }: { height: number }) {
+// Height classes mirror each demo component's container so the skeleton
+// does not jump when the lazy chunk arrives.
+function DemoFallback({ heightClass }: { heightClass: string }) {
   return (
-    <div
-      className="rounded-lg border border-border bg-[#1e1e1e] animate-pulse"
-      style={{ height }}
-    />
+    <div className={`rounded-lg border border-border bg-[#1e1e1e] animate-pulse ${heightClass}`} />
   )
 }
 
@@ -110,7 +109,7 @@ function HeroDownloadButton() {
 
 function Hero() {
   return (
-    <section id="top" className="relative overflow-hidden pt-36 pb-24">
+    <section id="top" className="relative overflow-hidden pt-28 pb-16 sm:pt-36 sm:pb-24">
       <div className="hero-glow" aria-hidden />
       <div className="relative mx-auto max-w-5xl px-5 hero-stagger">
         <p className="font-mono text-xs text-muted-foreground" style={{ ['--i' as string]: 0 }}>
@@ -158,7 +157,7 @@ function Hero() {
 
 function CanvasSection() {
   return (
-    <section id="demo" className="relative py-24 scroll-mt-14">
+    <section id="demo" className="relative py-16 sm:py-24 scroll-mt-14">
       <div className="mx-auto max-w-5xl px-5">
         <Reveal>
           <HunkLabel text="-0,0 +1,3 canvas" />
@@ -177,7 +176,7 @@ function CanvasSection() {
         </Reveal>
         <Reveal delay={120} className="mt-8">
           <DemoBoundary>
-            <Suspense fallback={<DemoFallback height={560} />}>
+            <Suspense fallback={<DemoFallback heightClass="h-[440px] sm:h-[560px]" />}>
               <CanvasDemo />
             </Suspense>
           </DemoBoundary>
@@ -194,7 +193,7 @@ function CanvasSection() {
 
 function GraphSection() {
   return (
-    <section id="graph" className="relative py-24 scroll-mt-14">
+    <section id="graph" className="relative py-16 sm:py-24 scroll-mt-14">
       <div className="mx-auto max-w-5xl px-5">
         <Reveal>
           <HunkLabel text="import graph" />
@@ -208,7 +207,7 @@ function GraphSection() {
         </Reveal>
         <Reveal delay={120} className="mt-8">
           <DemoBoundary>
-            <Suspense fallback={<DemoFallback height={480} />}>
+            <Suspense fallback={<DemoFallback heightClass="h-[380px] sm:h-[480px]" />}>
               <GraphDemo />
             </Suspense>
           </DemoBoundary>
@@ -225,7 +224,7 @@ function GraphSection() {
 
 function HealthSection() {
   return (
-    <section id="health" className="relative py-24 scroll-mt-14">
+    <section id="health" className="relative py-16 sm:py-24 scroll-mt-14">
       <div className="mx-auto max-w-5xl px-5">
         <Reveal>
           <HunkLabel text="codebase health" />
@@ -239,7 +238,7 @@ function HealthSection() {
         </Reveal>
         <Reveal delay={120} className="mt-8">
           <DemoBoundary>
-            <Suspense fallback={<DemoFallback height={560} />}>
+            <Suspense fallback={<DemoFallback heightClass="h-[480px] sm:h-[560px]" />}>
               <HealthDemo />
             </Suspense>
           </DemoBoundary>
@@ -254,27 +253,9 @@ function HealthSection() {
   )
 }
 
-const STEPS = [
-  {
-    n: '01',
-    cmd: 'point cotect at a repo',
-    desc: 'Any local git repository. No remote, no setup, no daemon.',
-  },
-  {
-    n: '02',
-    cmd: 'let the agents loose',
-    desc: 'Claude Code, Codex, whatever you run. cotect watches the tree and shows their edits as they land.',
-  },
-  {
-    n: '03',
-    cmd: 'review hunks as they ship',
-    desc: 'Accept, comment, track progress. Your review never mutates the working tree, so agents are never blocked.',
-  },
-]
-
 function HowItWorks() {
   return (
-    <section className="relative py-24">
+    <section className="relative py-16 sm:py-24">
       <div className="mx-auto max-w-5xl px-5">
         <Reveal>
           <HunkLabel text="workflow" />
@@ -282,34 +263,29 @@ function HowItWorks() {
             Three steps, zero ceremony.
           </h2>
         </Reveal>
-        <div className="mt-10 grid gap-4 sm:grid-cols-3">
-          {STEPS.map((s, i) => (
-            <Reveal key={s.n} delay={i * 90}>
-              <div className="h-full rounded-lg border border-border bg-card/40 p-5">
-                <div className="font-mono text-xs text-muted-foreground/60">{s.n}</div>
-                <div className="mt-2 font-mono text-sm text-foreground">
-                  <span className="text-green-500/60 mr-2">$</span>
-                  {s.cmd}
-                </div>
-                <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-        <Reveal delay={280}>
-          <div className="mt-16 rounded-lg border border-green-500/25 bg-green-500/5 p-8 text-center">
-            <p className="font-mono text-lg sm:text-xl">
-              <span className="text-red-400/80 line-through decoration-red-400/60 mr-3">
-                merge and hope
-              </span>
-              <span className="text-green-400">review and know</span>
-            </p>
-            <a
-              href="#download"
-              className="mt-6 inline-block rounded-md bg-green-500/15 border border-green-500/40 px-6 py-3 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors"
-            >
-              download
-            </a>
+        <Reveal delay={120} className="mt-8">
+          <div className="rounded-lg border border-border bg-[#161616] overflow-hidden">
+            <div className="flex items-center gap-1.5 border-b border-border/60 px-4 py-3">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500/40" />
+              <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/40" />
+              <span className="h-2.5 w-2.5 rounded-full bg-green-500/40" />
+            </div>
+            <div className="p-5 sm:p-6 font-mono text-[13px] sm:text-sm leading-relaxed space-y-1">
+              <p>
+                <span className="text-green-500/60 mr-2">$</span>cotect ~/dev/relay
+              </p>
+              <p className="text-muted-foreground">watching working tree · read-only</p>
+              <p className="pt-3">
+                <span className="text-green-500/60 mr-2">$</span>claude "add retry backoff to the
+                fetch helper"
+              </p>
+              <p className="text-muted-foreground">
+                fetchWithRetry.ts changed · 2 hunks on the canvas
+              </p>
+              <p className="pt-3 text-green-400">
+                hunk 1 accepted · hunk 2 commented · working tree untouched
+              </p>
+            </div>
           </div>
         </Reveal>
       </div>
@@ -317,9 +293,54 @@ function HowItWorks() {
   )
 }
 
-function DownloadSection() {
+const PLATFORMS = ['windows', 'mac', 'linux'] as const
+type Platform = (typeof PLATFORMS)[number]
+
+function PlatformCard({ platform, detected }: { platform: Platform; detected: boolean }) {
+  const boxClass = detected
+    ? 'border-green-500/40 bg-green-500/5'
+    : 'border-border bg-card/40 opacity-80'
   return (
-    <section id="download" className="relative py-24 scroll-mt-14">
+    <div className={`rounded-lg border p-5 sm:p-6 ${boxClass}`}>
+      <div className="flex items-center gap-3">
+        <span className="font-mono text-xs text-muted-foreground/60">
+          {platform === 'mac' ? 'macos' : platform}
+        </span>
+        {detected && (
+          <span className="rounded border border-green-500/40 bg-green-500/10 px-1.5 py-0.5 font-mono text-[10px] text-green-400">
+            your system
+          </span>
+        )}
+      </div>
+      {platform === 'linux' ? (
+        <pre className="mt-4 rounded bg-[#1e1e1e] p-3 sm:p-4 font-mono text-[11px] sm:text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
+          {`curl -LO ${DOWNLOADS.linux.appImageUrl}\nchmod +x cotect.AppImage\n./cotect.AppImage`}
+        </pre>
+      ) : (
+        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <a
+            href={DOWNLOADS[platform].url}
+            className="rounded-md bg-green-500/15 border border-green-500/40 px-4 py-2 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors"
+          >
+            {DOWNLOADS[platform].label}
+          </a>
+          {platform === 'mac' && (
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              unsigned build for now: right-click the app and choose Open on first launch.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DownloadSection() {
+  const [os] = useState(() => detectOS())
+  const detected = os === 'unknown' ? null : os
+  const ordered = detected ? [detected, ...PLATFORMS.filter((p) => p !== detected)] : [...PLATFORMS]
+  return (
+    <section id="download" className="relative py-16 sm:py-24 scroll-mt-14">
       <div className="mx-auto max-w-5xl px-5">
         <Reveal>
           <HunkLabel text="download" />
@@ -330,40 +351,12 @@ function DownloadSection() {
             Free while in development. Point it at a repository and start reading.
           </p>
         </Reveal>
-        <div className="mt-10 grid gap-4 sm:grid-cols-3">
-          <Reveal delay={0}>
-            <div className="h-full rounded-lg border border-border bg-card/40 p-5">
-              <div className="font-mono text-xs text-muted-foreground/60">windows</div>
-              <a
-                href={DOWNLOADS.windows.url}
-                className="mt-3 inline-block rounded-md bg-green-500/15 border border-green-500/40 px-4 py-2 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors"
-              >
-                Download for Windows
-              </a>
-            </div>
-          </Reveal>
-          <Reveal delay={90}>
-            <div className="h-full rounded-lg border border-border bg-card/40 p-5">
-              <div className="font-mono text-xs text-muted-foreground/60">macos</div>
-              <a
-                href={DOWNLOADS.mac.url}
-                className="mt-3 inline-block rounded-md bg-green-500/15 border border-green-500/40 px-4 py-2 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors"
-              >
-                Download for macOS
-              </a>
-              <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-                unsigned build for now: right-click the app and choose Open on first launch.
-              </p>
-            </div>
-          </Reveal>
-          <Reveal delay={180}>
-            <div className="h-full rounded-lg border border-border bg-card/40 p-5">
-              <div className="font-mono text-xs text-muted-foreground/60">linux</div>
-              <pre className="mt-3 rounded bg-[#1e1e1e] p-3 font-mono text-[11px] leading-relaxed text-muted-foreground overflow-x-auto">
-                {`curl -LO ${DOWNLOADS.linux.appImageUrl}\nchmod +x cotect.AppImage\n./cotect.AppImage`}
-              </pre>
-            </div>
-          </Reveal>
+        <div className="mt-10 space-y-4">
+          {ordered.map((p, i) => (
+            <Reveal key={p} delay={i * 90}>
+              <PlatformCard platform={p} detected={p === detected} />
+            </Reveal>
+          ))}
         </div>
       </div>
     </section>
