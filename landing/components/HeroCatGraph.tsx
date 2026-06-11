@@ -7,8 +7,8 @@ import iconUrl from '../../public/icon.svg'
 // graph, so the mascot and the product share a visual language.
 
 const RENDER_SIZE = 480
-const GRID_STEP = 12
-const JITTER = 5
+const GRID_STEP = 9
+const JITTER = 4
 const NEIGHBORS = 3
 const DRIFT_AMP = 3.2
 const FPS = 30
