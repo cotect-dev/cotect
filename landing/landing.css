@@ -170,6 +170,13 @@ body {
   }
 }
 
+/* Chrome's default scrollbars look heavy inside the embedded demos (the
+   commit list, the health tables). Thin, dark, track-less everywhere. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
 /* ---------- live demo embeds ---------- */
 
 .demo-editor-host .cm-editor {

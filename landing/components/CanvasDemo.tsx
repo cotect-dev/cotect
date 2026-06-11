@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { CanvasFlow } from '@/views/Canvas'
+import Changes from '@/components/Changes'
+import History from '@/components/History'
 import { useCanvasStore } from '@/store'
 import { useReviewStore, WORKING_TIP } from '@/store/review'
 import { useGitStore } from '@/store/git'
@@ -76,11 +78,44 @@ export function CanvasDemo() {
       ref={boxRef}
       onPointerDownCapture={cancel}
       onKeyDownCapture={cancel}
-      className="relative h-[440px] sm:h-[560px] rounded-lg border border-border overflow-hidden bg-background"
+      className="relative flex h-[440px] sm:h-[560px] rounded-lg border border-border overflow-hidden bg-background"
     >
-      <ReactFlowProvider>
-        <CanvasFlow />
-      </ReactFlowProvider>
+      <div className="relative flex-1 min-w-0">
+        <ReactFlowProvider>
+          <CanvasFlow />
+        </ReactFlowProvider>
+      </div>
+      <aside className="w-60 shrink-0 border-l border-border bg-background/80 max-md:hidden flex flex-col">
+        <DemoPanel label="Changes" className="h-2/5 border-b border-border/50">
+          <Changes />
+        </DemoPanel>
+        <DemoPanel label="History" className="flex-1">
+          <History />
+        </DemoPanel>
+      </aside>
+    </div>
+  )
+}
+
+// The same real panel components the app docks, minus the drag-and-drop tab
+// system.
+function DemoPanel({
+  label,
+  className,
+  children,
+}: {
+  label: string
+  className: string
+  children: ReactNode
+}) {
+  return (
+    <div className={`min-h-0 flex flex-col ${className}`}>
+      <div className="flex items-center border-b border-border/50 shrink-0 select-none">
+        <span className="border-b-2 border-primary/60 px-2.5 py-1.5 text-xs text-foreground">
+          {label}
+        </span>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
     </div>
   )
 }

@@ -7,7 +7,9 @@ import {
   buildCanvasSeed,
   seedDemoStores,
 } from '../../landing/demoData'
-import { DEMO_FILE_PATH } from '../../landing/demoCode'
+import { DEMO_FILE_PATH, DEMO_HEAD, DEMO_AGENT } from '../../landing/demoCode'
+import { Text } from '@codemirror/state'
+import { Chunk } from '@codemirror/merge'
 import { useCanvasStore, useGraphStore, useHealthStore, useBrowserStore } from '@/store'
 import { useGitStore } from '@/store/git'
 import { setDemoMode } from '@/lib/demoMode'
@@ -98,6 +100,23 @@ describe('seedDemoStores', () => {
     expect(h.metrics.length).toBeGreaterThan(8)
     expect(h.hotspots.length).toBeGreaterThan(2)
     expect(h.fileSizes.length).toBeGreaterThan(8)
+  })
+
+  it('seeded working diff hunks match the editor merge chunks exactly', () => {
+    // Review progress is keyed by hunkKey(path, startLine). The editor accepts
+    // hunks at its merge-chunk start lines, so the seeded git hunks must agree
+    // or the Changes panel never tracks accepts (and CanvasDemo's
+    // FIRST_HUNK_START must stay equal to the first chunk's start line).
+    const a = Text.of(DEMO_HEAD.split('\n'))
+    const b = Text.of(DEMO_AGENT.split('\n'))
+    const chunks = Chunk.build(a, b).map((c) => {
+      const startLine = b.lineAt(Math.min(c.fromB, b.length)).number
+      const endLine = b.lineAt(Math.min(Math.max(c.toB - 1, c.fromB), b.length)).number
+      return { start_line: startLine, line_count: endLine - startLine + 1 }
+    })
+    expect(chunks[0].start_line).toBe(4)
+    const seeded = useGitStore.getState().workingDiff.find((f) => f.path === DEMO_FILE_PATH)
+    expect(seeded?.hunks).toEqual(chunks)
   })
 
   it('seeds git so the demo file reads as modified', () => {

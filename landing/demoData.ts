@@ -595,7 +595,7 @@ export function buildCanvasSeed(): {
   }
 }
 
-const DEMO_COMMIT_HASH = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+const DEMO_COMMIT_HASH = 'a1b2c3d'
 
 export function seedDemoStores(): void {
   const { columns, nodes, edges, focusedNodeId } = buildCanvasSeed()
@@ -646,13 +646,65 @@ export function seedDemoStores(): void {
     log: [
       {
         hash: DEMO_COMMIT_HASH,
-        message: 'feat: queue draining on shutdown',
+        message: 'feat: fetch helper with bounded retries',
         body: '',
         author: 'dev',
         timestamp: DEMO_NOW_S - 3600,
         insertions: 24,
         deletions: 8,
-        files: [{ path: DEMO_FILE_PATH, insertions: 19, deletions: 6 }],
+        files: [
+          { path: DEMO_FILE_PATH, insertions: 19, deletions: 6 },
+          { path: 'src/net/fetchWithRetry.test.ts', insertions: 5, deletions: 2 },
+        ],
+      },
+      {
+        hash: 'f7e21b9',
+        message: 'fix: drop queued messages over the size limit',
+        body: '',
+        author: 'dev',
+        timestamp: DEMO_NOW_S - 10800,
+        insertions: 14,
+        deletions: 3,
+        files: [{ path: 'src/lib/queue.ts', insertions: 14, deletions: 3 }],
+      },
+      {
+        hash: 'c09d4ae',
+        message: 'feat: route registry wired into the client',
+        body: '',
+        author: 'dev',
+        timestamp: DEMO_NOW_S - 86400,
+        insertions: 57,
+        deletions: 2,
+        files: [
+          { path: 'src/api/routes.ts', insertions: 48, deletions: 0 },
+          { path: 'src/api/client.ts', insertions: 9, deletions: 2 },
+        ],
+      },
+      {
+        hash: 'b3a8f10',
+        message: 'feat: http client and structured logging',
+        body: '',
+        author: 'dev',
+        timestamp: DEMO_NOW_S - 172800,
+        insertions: 89,
+        deletions: 0,
+        files: [
+          { path: 'src/net/http.ts', insertions: 61, deletions: 0 },
+          { path: 'src/lib/log.ts', insertions: 28, deletions: 0 },
+        ],
+      },
+      {
+        hash: '9d51c77',
+        message: 'chore: project scaffolding',
+        body: '',
+        author: 'dev',
+        timestamp: DEMO_NOW_S - 259200,
+        insertions: 51,
+        deletions: 0,
+        files: [
+          { path: 'src/index.ts', insertions: 32, deletions: 0 },
+          { path: 'src/lib/config.ts', insertions: 19, deletions: 0 },
+        ],
       },
     ],
     headContent: {
@@ -660,22 +712,27 @@ export function seedDemoStores(): void {
       files: { [DEMO_FILE_PATH]: DEMO_HEAD },
     },
     status: {
-      files: [{ path: DEMO_FILE_PATH, status: 'M', insertions: 19, deletions: 6 }],
-      total_insertions: 19,
-      total_deletions: 6,
+      files: [{ path: DEMO_FILE_PATH, status: 'M', insertions: 4, deletions: 2 }],
+      total_insertions: 4,
+      total_deletions: 2,
     },
     workingDiff: [
       {
         path: DEMO_FILE_PATH,
         status: 'M',
-        insertions: 19,
-        deletions: 6,
-        // Two hunks approximating the DEMO_HEAD → DEMO_AGENT diff:
-        //   hunk 1: interface gains maxDelayMs (lines ~3-4 area)
-        //   hunk 2: function signature + body changes (lines ~8-30 area)
+        insertions: 4,
+        deletions: 2,
+        // Exactly the merge chunks of DEMO_HEAD vs DEMO_AGENT (computed via
+        // Chunk.build, after-side line numbers). They must match the editor's
+        // chunk starts: review progress is keyed by hunkKey(path, startLine),
+        // so the Changes panel only tracks accepts when these agree.
+        //   hunk 1 (line 4): interface gains maxDelayMs
+        //   hunk 2 (line 11): defaults change, retries silently 3 -> 5
+        //   hunk 3 (lines 21-22): capped exponential backoff with jitter
         hunks: [
-          { start_line: 3, line_count: 3 },
-          { start_line: 8, line_count: 16 },
+          { start_line: 4, line_count: 1 },
+          { start_line: 11, line_count: 1 },
+          { start_line: 21, line_count: 2 },
         ],
       },
     ],

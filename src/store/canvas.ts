@@ -245,6 +245,16 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           if (!rootCol) return
           const rootPath = rootCol.path
 
+          // The demo cannot rebuild columns from a filesystem; focus the node
+          // if it is already on the seeded canvas, otherwise do nothing.
+          if (isDemoMode()) {
+            const nodeId = joinPath(rootPath, repoRelativePath)
+            if (columns.some((c) => c.nodes.some((n) => n.id === nodeId))) {
+              get().setFocus(nodeId)
+            }
+            return
+          }
+
           const segments = repoRelativePath.split('/').filter(Boolean)
           if (segments.length === 0) return
 
@@ -317,6 +327,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         },
 
         showCommitDiff: async (commitHash, filePath) => {
+          if (isDemoMode()) return
           const { columns } = get()
           const rootCol = columns[0]
           if (!rootCol) return
@@ -372,6 +383,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         },
 
         showRangeDiff: async (filePath, base, head) => {
+          if (isDemoMode()) return
           const { columns } = get()
           const rootCol = columns[0]
           if (!rootCol) return
