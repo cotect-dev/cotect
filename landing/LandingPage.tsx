@@ -173,8 +173,8 @@ function CanvasSection() {
             This is not a screenshot.
           </h2>
           <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
-            The real cotect editor with a small repository open. Click in, move between files with{' '}
-            <Kbd>W</Kbd>
+            This is the real cotect editor with a small repository open. Click in, move between
+            files with <Kbd>W</Kbd>
             <Kbd>A</Kbd>
             <Kbd>S</Kbd>
             <Kbd>D</Kbd>, and review the change an agent just made to{' '}
