@@ -62,6 +62,14 @@ function HunkLabel({ text }: { text: string }) {
   return <span className="hunk-label">{`@@ ${text} @@`}</span>
 }
 
+function Kbd({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="mx-0.5 inline-block rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-foreground/90 align-middle">
+      {children}
+    </kbd>
+  )
+}
+
 function Nav() {
   return (
     <header className="fixed top-0 inset-x-0 z-40 border-b border-border/60 bg-background/75 backdrop-blur-md">
@@ -111,6 +119,7 @@ function Hero() {
   return (
     <section id="top" className="relative overflow-hidden pt-28 pb-16 sm:pt-36 sm:pb-24">
       <div className="hero-glow" aria-hidden />
+      <img src={iconUrl} alt="" aria-hidden className="hero-cat max-sm:hidden" />
       <div className="relative mx-auto max-w-6xl px-5 hero-stagger">
         <p className="font-mono text-xs text-muted-foreground" style={{ ['--i' as string]: 0 }}>
           cotect <span className="text-foreground/30">/</span> a code inspector for the agent era
@@ -165,8 +174,11 @@ function CanvasSection() {
           </h2>
           <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
             The canvas below is the real cotect editor, the same component the desktop app ships. It
-            opened a small repository on its own. Now it is yours: drag the nodes, pan around, and
-            review the change an agent just made to{' '}
+            opened a small repository on its own. Now it is yours: click into it and move between
+            files with <Kbd>W</Kbd>
+            <Kbd>A</Kbd>
+            <Kbd>S</Kbd>
+            <Kbd>D</Kbd>, drag the nodes, and review the change an agent just made to{' '}
             <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>. The
             Changes and History panels are live too, exactly as they dock in the app.
           </p>
