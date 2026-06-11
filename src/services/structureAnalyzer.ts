@@ -292,7 +292,7 @@ export function analyzeGraph(
       type: 'layer-violation',
       severity: 'warning',
       files: imports.map((i) => i.split(' → ')[0]),
-      message: `Layer violation (${direction}): ${imports.length} import(s) flow upward — ${imports.slice(0, 3).join(', ')}${imports.length > 3 ? ` (+${imports.length - 3} more)` : ''}`,
+      message: `Layer violation (${direction}): ${imports.length} import(s) flow upward: ${imports.slice(0, 3).join(', ')}${imports.length > 3 ? ` (+${imports.length - 3} more)` : ''}`,
       detail: { count: imports.length, group: direction },
     })
   }

@@ -16,6 +16,7 @@ import { REF_HEIGHT } from './ImportRefNode'
 import { useGitStore } from '@/store/git'
 import { useReviewStore } from '@/store/review'
 import { samePath, toRepoRelative } from '@/lib/repoPath'
+import { isDemoMode } from '@/lib/demoMode'
 import MarkdownPreview from './MarkdownPreview'
 
 import {
@@ -206,6 +207,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
     const view = viewRef.current
     if (!view) return false
     if (isReadOnlyRef.current || externalChangeRef.current) return false
+    if (isDemoMode()) {
+      setDirty(false)
+      return true
+    }
     setSaving(true)
     try {
       const platform = getPlatform()
@@ -290,6 +295,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       })
 
       const view = new EditorView({ state, parent: container })
+      // The first paint otherwise uses estimated line heights, so the gutter
+      // renders compressed and visibly snaps once the async measure cycle
+      // runs. Measuring synchronously aligns it before the browser paints.
+      // measure(flush) is documented EditorView API but missing from this
+      // version's typings.
+      ;(view as EditorView & { measure: (flush?: boolean) => void }).measure()
       viewRef.current = view
       registerEditorView(view)
       mergedHeadRef.current = null
@@ -738,7 +749,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
       {externalChange && (
         <div className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] bg-yellow-900/30 text-yellow-300 border-b border-yellow-700/40">
-          <span className="truncate">Changed on disk — your unsaved edits are stale</span>
+          <span className="truncate">Changed on disk, your unsaved edits are stale</span>
           <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"

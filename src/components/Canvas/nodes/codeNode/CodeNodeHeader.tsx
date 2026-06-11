@@ -81,8 +81,8 @@ export function CodeNodeHeader({
             className={toggleBtn(unlocked)}
             title={
               unlocked
-                ? 'Lock editing — back to read-only'
-                : 'Unlock editing — files open read-only so concurrent agent writes stay safe'
+                ? 'Lock editing: back to read-only'
+                : 'Unlock editing: files open read-only so concurrent agent writes stay safe'
             }
           >
             {unlocked ? 'editable' : 'read-only'}

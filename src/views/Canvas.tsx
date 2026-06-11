@@ -25,6 +25,7 @@ import { CANVAS_MARGIN } from '@/lib/canvasGeometry'
 import { anchorViewport, clampToFocus, type Viewport } from '@/lib/canvasCamera'
 import { notifyCanvasScrolled } from '@/components/Canvas/nodes/codeNodeRegistry'
 import { defineBinding } from '@/lib/keybindings'
+import { isDemoMode } from '@/lib/demoMode'
 
 const VIEW_FILES = defineBinding({
   id: 'canvas.view.files',
@@ -74,7 +75,7 @@ const edgeTypes = { column: ColumnEdge }
 
 const defaultViewport: RFViewport = { x: CANVAS_MARGIN, y: CANVAS_MARGIN, zoom: 1 }
 
-function CanvasFlow() {
+export function CanvasFlow() {
   const containerRef = useRef<HTMLDivElement>(null)
   const nodes = useCanvasStore((s) => s.nodes)
   const edges = useCanvasStore((s) => s.edges)
@@ -208,7 +209,12 @@ function CanvasFlow() {
   useCanvasKeyboard(containerRef)
 
   useEffect(() => {
-    containerRef.current?.focus()
+    // Skipped in the landing demo: the container handler swallows Tab and
+    // arrow keys, so auto-focusing would trap page-level keyboard navigation
+    // until the visitor clicks elsewhere. Clicking into the demo still
+    // focuses it natively (tabIndex).
+    if (isDemoMode()) return
+    containerRef.current?.focus({ preventScroll: true })
   }, [])
 
   const handleWheel = useCallback(
@@ -292,7 +298,9 @@ function CanvasFlow() {
         zoomOnScroll={false}
         zoomOnDoubleClick={false}
         zoomOnPinch={false}
-        panOnDrag={false}
+        // The app pans via the custom wheel handler only; the embedded demo
+        // needs drag panning so touch devices can move the canvas at all.
+        panOnDrag={isDemoMode()}
         panOnScroll={false}
         nodesDraggable={false}
         nodesConnectable={false}

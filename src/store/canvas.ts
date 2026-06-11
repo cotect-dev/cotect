@@ -12,6 +12,7 @@ import {
 import { invoke } from '@tauri-apps/api/core'
 import { NODE_WIDTH, NODE_H_GAP, CANVAS_MARGIN } from '@/lib/canvasGeometry'
 import { isImageFile } from '@/lib/fileClassification'
+import { isDemoMode } from '@/lib/demoMode'
 import { clampY } from '@/lib/canvasCamera'
 import { basename, joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
@@ -61,6 +62,9 @@ export type CanvasState = {
   previewReady: boolean
   /** Set by ref-pill clicks; consumed by CodeNode once the target editor mounts. */
   pendingScroll: { filePath: string; line: number } | null
+  /** Landing-demo navigation data (null in the app): preset preview columns by
+   *  node path, and the seeded column chain for restoring the diff view. */
+  demoSeed: { previewByPath: Record<string, Column>; columns: Column[] } | null
 
   setViewportHeight: (h: number) => void
   setFocus: (nodeId: string | null) => void
@@ -103,6 +107,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         mdPreviewEnabled: false,
         previewReady: true,
         pendingScroll: null,
+        demoSeed: null,
 
         onNodesChange: (changes) => {
           set({ nodes: applyNodeChanges(changes, get().nodes) })
@@ -244,6 +249,30 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           if (!rootCol) return
           const rootPath = rootCol.path
 
+          // Demo: focus the node if it is on the canvas; if navigation dropped
+          // its column, restore the seeded chain (this is how the Changes
+          // panel always leads back to the diff view). Unknown paths no-op.
+          if (isDemoMode()) {
+            const nodeId = joinPath(rootPath, repoRelativePath)
+            if (columns.some((c) => c.nodes.some((n) => n.id === nodeId))) {
+              get().setFocus(nodeId)
+              return
+            }
+            const seedCols = get().demoSeed?.columns
+            const colIndex = seedCols?.findIndex((c) => c.nodes.some((n) => n.id === nodeId)) ?? -1
+            if (seedCols && colIndex !== -1) {
+              set({
+                columns: seedCols,
+                currentColumnIndex: colIndex,
+                depthChain: seedCols.slice(0, colIndex + 1).map((c) => c.path),
+                focusedNodeId: nodeId,
+                cameraY: CANVAS_MARGIN,
+              })
+              flattenAndRender(get, set)
+            }
+            return
+          }
+
           const segments = repoRelativePath.split('/').filter(Boolean)
           if (segments.length === 0) return
 
@@ -316,6 +345,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         },
 
         showCommitDiff: async (commitHash, filePath) => {
+          if (isDemoMode()) return
           const { columns } = get()
           const rootCol = columns[0]
           if (!rootCol) return
@@ -371,6 +401,7 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
         },
 
         showRangeDiff: async (filePath, base, head) => {
+          if (isDemoMode()) return
           const { columns } = get()
           const rootCol = columns[0]
           if (!rootCol) return
@@ -456,6 +487,10 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
             void get().updatePreview()
             return
           }
+
+          // Demo: directory listings beyond the preset previews would need a
+          // filesystem; stay put instead of erroring.
+          if (isDemoMode()) return
 
           try {
             const path = node.data.path
@@ -596,6 +631,36 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           if (importRefsDwellTimer !== null) {
             clearTimeout(importRefsDwellTimer)
             importRefsDwellTimer = null
+          }
+          // Demo: previews come from preset columns (folders, the diff view)
+          // or the seeded head-content cache (plain files); never from the
+          // filesystem. Anything unknown keeps the columns untouched.
+          if (isDemoMode()) {
+            const { focusedNodeId, columns, currentColumnIndex, demoSeed } = get()
+            const currentCol = columns[currentColumnIndex]
+            const node = currentCol?.nodes.find((n) => n.id === focusedNodeId)
+            if (
+              node &&
+              (node.type === 'folder' || node.type === 'file') &&
+              columns[currentColumnIndex + 1]?.path !== node.data.path
+            ) {
+              const path = node.data.path
+              let previewCol = demoSeed?.previewByPath[path] ?? null
+              if (!previewCol && node.type === 'file') {
+                const contentNode = await buildHeadFallbackNode(path)
+                if (contentNode) {
+                  previewCol = { path, kind: 'file', nodes: [contentNode], edges: [] }
+                }
+              }
+              if (get().focusedNodeId !== focusedNodeId) return
+              if (previewCol) {
+                set({
+                  columns: [...get().columns.slice(0, currentColumnIndex + 1), previewCol],
+                })
+              }
+            }
+            flattenAndRender(get, set)
+            return
           }
           const { focusedNodeId, columns, currentColumnIndex } = get()
           if (!focusedNodeId) {

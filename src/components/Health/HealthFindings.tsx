@@ -66,9 +66,9 @@ const FINDING_TOOLTIPS: Partial<Record<FindingType, string>> = {
   'circular-dependency':
     'Files that import each other in a cycle. Circular dependencies make code harder to refactor and can cause subtle initialization bugs.',
   'high-fan-in':
-    'Files imported by many others. Changes here have a wide blast radius — consider if the API surface is too broad.',
+    'Files imported by many others. Changes here have a wide blast radius. Consider whether the API surface is too broad.',
   'high-fan-out':
-    'Files that import many others. High fan-out often means a file is doing too much — consider splitting responsibilities.',
+    'Files that import many others. High fan-out often means a file is doing too much. Consider splitting responsibilities.',
   'god-module':
     'Files with both high fan-in and high fan-out. These tend to accumulate complexity and become maintenance bottlenecks.',
   orphan: 'Files not imported by anything. May be dead code, or an entry point that was missed.',
@@ -217,7 +217,7 @@ export default function HealthFindings() {
     return (
       <Section title="Architecture findings">
         <div className="rounded-lg border border-border bg-card px-3 py-6 text-center text-sm text-muted-foreground">
-          No findings — clean codebase!
+          No findings. Clean codebase!
         </div>
       </Section>
     )
@@ -226,7 +226,7 @@ export default function HealthFindings() {
   return (
     <Section
       title="Architecture findings"
-      subtitle="Structural signals from the import graph. Heuristics, not hard errors — use as review hints."
+      subtitle="Structural signals from the import graph. Heuristics rather than hard errors, use as review hints."
     >
       <div className="space-y-6">
         {(['error', 'warning', 'info'] as Severity[]).map((severity) => {

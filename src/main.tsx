@@ -29,6 +29,13 @@ preloadChunk(import('@/components/History'), 'History')
 async function bootstrap() {
   await initPlatform()
 
+  // Update check only in the packaged desktop app: dev builds and the
+  // browser/landing bundles have no updater plugin behind the IPC. Dynamic
+  // import keeps the plugin code out of non-Tauri chunks.
+  if (!DEV && '__TAURI_INTERNALS__' in window) {
+    void import('@/services/updater').then(({ checkForUpdates }) => checkForUpdates())
+  }
+
   const root = document.getElementById('root')
   if (!root) throw new Error('Root element #root not found')
 

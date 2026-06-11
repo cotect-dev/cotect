@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { isDemoMode } from '@/lib/demoMode'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -259,10 +260,13 @@ function GraphFlow() {
   const allEdges = useGraphStore((s) => s.allEdges)
   const scan = useGraphStore((s) => s.scan)
   const [showTests, setShowTests] = useState(false)
+  const [demoSelection, setDemoSelection] = useState<string | null>(null)
 
   const lastScannedRef = useRef<string | null>(null)
 
   useEffect(() => {
+    // demo: stores are pre-seeded; scanning would hit the missing filesystem
+    if (isDemoMode()) return
     if (!rootPath || rootPath === lastScannedRef.current) return
     lastScannedRef.current = rootPath
     void scan(rootPath)
@@ -271,14 +275,18 @@ function GraphFlow() {
   const canvasFocusedPath = useCanvasFocusedFilePath(rootPath)
 
   const selectedNodeId = useMemo(() => {
-    if (canvasFocusedPath && allNodes.some((n) => n.id === canvasFocusedPath)) {
+    if (isDemoMode()) {
+      // demo: selection stays local to this view. Following the canvas focus
+      // would let the canvas demo's autoplay retarget the graph demo.
+      if (demoSelection && allNodes.some((n) => n.id === demoSelection)) return demoSelection
+    } else if (canvasFocusedPath && allNodes.some((n) => n.id === canvasFocusedPath)) {
       return canvasFocusedPath
     }
     if (allNodes.length > 0) {
       return allNodes.reduce((best, n) => (n.score > best.score ? n : best), allNodes[0]).id
     }
     return null
-  }, [canvasFocusedPath, allNodes])
+  }, [canvasFocusedPath, allNodes, demoSelection])
 
   const { egoNodes, egoEdges } = useMemo(() => {
     if (!selectedNodeId || allNodes.length === 0)
@@ -315,6 +323,10 @@ function GraphFlow() {
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
       if (node.type === 'folderBg') return
+      if (isDemoMode()) {
+        setDemoSelection(node.id)
+        return
+      }
       void focusFileByPath(node.id)
     },
     [focusFileByPath],
