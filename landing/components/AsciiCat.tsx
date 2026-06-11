@@ -6,7 +6,8 @@ import iconUrl from '../../public/icon.svg'
 // layer, then kept alive by a slow matrix-style churn of glyphs and a scanning
 // shimmer. Hovering opens an x-ray window that dims the surface and reveals
 // a hand-fitted cat skeleton beneath; moving the cursor fires neuron-like
-// lightning along the bones.
+// lightning along the bones. Append ?skeleton to the URL to display the full
+// skeleton without hovering (layout review mode).
 
 const RENDER_SIZE = 480
 const CELL = 7
@@ -75,101 +76,94 @@ interface RibStroke {
   my: number
 }
 
-interface SocketRing {
-  x: number
-  y: number
-  r: number
-}
-
 // The skeleton itself, hand-fitted to the icon's silhouette on the same
-// 69-cell sampling grid using an offline preview tool (the medial axis of
-// the shape does not resemble anatomy). The cat sits in profile facing
-// left: skull top-left, spine along the back, ribcage closing on a sternum,
-// front legs lower-left, pelvis and folded hind leg in the haunch, tail
-// rising on the right. Coordinates are grid cells; w is stroke width.
+// 69-cell sampling grid using an offline preview tool, with every point
+// verified to keep a margin from the silhouette edge (2 cells in thick
+// regions, centered in thin strips like the tail; the left ear strip is too
+// thin to hold a bone at all). The cat sits in profile facing left: skull
+// top-left with an angular orbit, spine along the back, egg-shaped ribcage
+// closing on a sternum, front legs lower-left, pelvis plate and folded hind
+// leg in the haunch, tail rising on the right and tucking behind the haunch
+// at its base. Coordinates are grid cells; w is stroke width.
 const BONES: Array<{ pts: Array<[number, number]>; w?: number; ticks?: boolean }> = [
-  // skull: cranium dome, jaw, cheekbone, two teeth
+  // cranium dome
   {
     pts: [
-      [28, 20],
-      [27.5, 15],
-      [24, 11],
-      [18, 9.5],
-      [13, 10.5],
-      [10, 13],
-      [9.5, 14.5],
+      [26, 20],
+      [25.5, 15.5],
+      [23, 12],
+      [18, 10.8],
+      [13.5, 11.5],
+      [11, 13.5],
+      [10.5, 15.5],
     ],
     w: 1.7,
   },
+  // jaw
   {
     pts: [
-      [9.5, 14.5],
-      [8.5, 18],
-      [9, 20],
-      [11, 21.5],
-      [16, 22.5],
-      [23, 22.5],
-      [28, 20],
+      [10.5, 15.5],
+      [10, 17.5],
+      [11, 19.5],
+      [13, 20.8],
+      [17, 21.3],
+      [22, 21],
+      [26, 20],
     ],
     w: 1.4,
   },
+  // eye socket as an angular orbit
   {
     pts: [
-      [15.2, 17.8],
-      [18, 18.6],
-      [20.5, 18.8],
+      [12, 14.8],
+      [13.8, 15.6],
+      [14.2, 17.4],
+      [12.8, 18.3],
+      [11.6, 16.8],
+      [12, 14.8],
     ],
     w: 1,
   },
+  // cheekbone
   {
     pts: [
-      [11.5, 21.5],
-      [11.5, 23],
+      [14.5, 18],
+      [18, 18.8],
+      [20.5, 19],
     ],
     w: 1,
   },
+  // right ear cartilage
   {
     pts: [
-      [13.5, 22],
-      [13.5, 23.2],
+      [19, 10.5],
+      [18, 8],
+      [17, 6],
+      [16.2, 4.8],
     ],
     w: 1,
   },
-  // ear cartilage
+  // cervical vertebrae
   {
     pts: [
-      [12, 10.5],
-      [11, 4.5],
-    ],
-    w: 1,
-  },
-  {
-    pts: [
-      [18.5, 10],
-      [16.5, 3.5],
-    ],
-    w: 1,
-  },
-  // cervical vertebrae, then the spine along the back
-  {
-    pts: [
-      [26, 19],
-      [28, 22],
-      [30, 26],
+      [24, 19.5],
+      [26, 22.5],
+      [28, 26],
     ],
     w: 2,
     ticks: true,
   },
+  // spine along the back
   {
     pts: [
-      [30, 26],
-      [32, 30],
-      [34.5, 34],
-      [37, 37.5],
-      [40, 41],
-      [43, 44],
-      [46, 47],
-      [48, 50],
+      [28, 26],
+      [30, 30],
+      [32, 34],
+      [35, 38],
+      [38, 42],
+      [41, 45],
+      [44, 48],
+      [46, 50],
     ],
     w: 2.2,
     ticks: true,
@@ -177,22 +171,22 @@ const BONES: Array<{ pts: Array<[number, number]>; w?: number; ticks?: boolean }
   // sternum collecting the rib ends
   {
     pts: [
-      [17.5, 33.5],
-      [18.5, 37],
-      [20, 40.5],
-      [22, 43.8],
+      [19, 31],
+      [18, 34],
+      [18.5, 37.5],
+      [20, 41],
+      [22, 44],
       [24.5, 46.6],
-      [27.5, 48.8],
     ],
     w: 1.1,
   },
   // scapula
   {
     pts: [
-      [26.5, 30],
-      [30, 34],
-      [24.5, 34.5],
-      [26.5, 30],
+      [26, 30],
+      [29.5, 33.5],
+      [24, 34],
+      [26, 30],
     ],
     w: 1.2,
   },
@@ -201,58 +195,71 @@ const BONES: Array<{ pts: Array<[number, number]>; w?: number; ticks?: boolean }
     pts: [
       [26, 35.5],
       [23, 41.5],
-      [21.5, 50],
-      [21, 58.5],
-      [17.5, 63.5],
+      [20.8, 50],
+      [20.2, 58],
+      [19.8, 62.8],
     ],
     w: 1.6,
   },
   {
     pts: [
       [27.5, 36.5],
-      [25, 42.5],
-      [24.5, 51],
-      [24, 59],
-      [21, 64],
+      [24.5, 42.5],
+      [23.2, 51],
+      [22.8, 58],
+      [22.2, 63],
     ],
     w: 1.2,
+  },
+  // pelvis as an angular plate
+  {
+    pts: [
+      [45, 50.5],
+      [47.5, 52],
+      [47, 54],
+      [44.5, 53.5],
+      [45, 50.5],
+    ],
+    w: 1.4,
   },
   // hind leg folded under the haunch: femur, tibia, foot
   {
     pts: [
-      [47.5, 51.5],
-      [42, 53.5],
-      [38.5, 55.5],
+      [46, 53],
+      [42, 54.5],
+      [39, 56],
     ],
     w: 1.8,
   },
   {
     pts: [
-      [38.5, 55.5],
-      [42, 59],
-      [45.5, 62.5],
+      [39, 56],
+      [42.5, 59.5],
+      [45, 62],
     ],
     w: 1.6,
   },
   {
     pts: [
-      [45.5, 62.5],
-      [40, 63.5],
-      [34.5, 64],
+      [45, 62],
+      [40, 63],
+      [36, 63.3],
     ],
     w: 1.3,
   },
-  // tail exiting the rump and rising on the right
+  // tail: emerges from behind the haunch and rises on the right
   {
     pts: [
-      [48.5, 52.5],
-      [50.5, 55.5],
-      [52.5, 56.8],
-      [54, 54.5],
-      [54.5, 48],
-      [54, 40],
-      [54, 33],
-      [54.5, 28],
+      [54, 60],
+      [55, 57.5],
+      [55.8, 55],
+      [56, 52],
+      [55.2, 48.5],
+      [55, 46.5],
+      [54.2, 43],
+      [54, 39],
+      [54, 34],
+      [54.2, 29.5],
     ],
     w: 1.5,
     ticks: true,
@@ -260,31 +267,12 @@ const BONES: Array<{ pts: Array<[number, number]>; w?: number; ticks?: boolean }
 ]
 
 const RIBS: Array<{ from: [number, number]; via: [number, number]; to: [number, number] }> = [
-  { from: [31.2, 28.8], via: [26.8, 33.6], to: [17.5, 33.5] },
-  { from: [33, 31.8], via: [28.2, 36.9], to: [18.5, 37] },
-  { from: [35, 35], via: [30, 40.2], to: [20, 40.5] },
-  { from: [37, 38], via: [32, 43.4], to: [22, 43.8] },
-  { from: [39.5, 41], via: [34.5, 46.3], to: [24.5, 46.6] },
-  { from: [42, 43.7], via: [37.2, 48.7], to: [27.5, 48.8] },
-]
-
-// Eye socket and pelvis.
-const RINGS: Array<{ x: number; y: number; r: number }> = [
-  { x: 12.5, y: 16, r: 2.4 },
-  { x: 47.5, y: 51, r: 2.6 },
-]
-
-// Skull base, spine top, shoulder, elbow, wrist, pelvis, knee, hock, tail base.
-const JOINTS: Array<[number, number]> = [
-  [26, 19],
-  [30, 26],
-  [26, 35.5],
-  [23, 41.5],
-  [21, 58.5],
-  [48, 50],
-  [38.5, 55.5],
-  [45.5, 62.5],
-  [48.5, 52.5],
+  { from: [28.3, 27], via: [25, 31.5], to: [19, 31.5] },
+  { from: [29.5, 29.5], via: [25.2, 34.5], to: [18.2, 34.5] },
+  { from: [31, 32.5], via: [26.3, 37.9], to: [18.7, 38] },
+  { from: [33, 35.8], via: [28, 41.2], to: [20.3, 41.3] },
+  { from: [35.2, 39], via: [30.2, 44.3], to: [22.3, 44.2] },
+  { from: [37.5, 42], via: [32.5, 46.7], to: [24.5, 46.6] },
 ]
 
 function sampleCells(img: HTMLImageElement): Cell[] {
@@ -347,6 +335,9 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     ctx.scale(dpr, dpr)
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    // Review mode: render the entire skeleton at full strength, no hover
+    // needed.
+    const showFull = new URLSearchParams(window.location.search).has('skeleton')
     let raf = 0
     let last = 0
     let visible = true
@@ -366,8 +357,6 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     let boneStrokes: BoneStroke[] = []
     let contourStrokes: BoneStroke[] = []
     let ribStrokes: RibStroke[] = []
-    let socketRings: SocketRing[] = []
-    let jointDots: Array<{ x: number; y: number }> = []
     let bolts: Bolt[] = []
     let lastSpawn = 0
     let movedSinceSpawn = 0
@@ -449,42 +438,54 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       if (!staticLayer) return
       ctx.clearRect(0, 0, RENDER_SIZE, RENDER_SIZE)
       ctx.drawImage(staticLayer, 0, 0, RENDER_SIZE, RENDER_SIZE)
-      if (reduceMotion) return
+      if (reduceMotion && !showFull) return
 
       ctx.font = `${CELL + 1}px monospace`
       ctx.textBaseline = 'top'
       const half = CELL / 2
 
-      // X-ray window: fade the ASCII surface around the cursor so the
-      // skeleton underneath shows through.
-      if (pointer) {
+      // X-ray: in hover mode a soft window around the cursor, in review mode
+      // the whole figure.
+      if (showFull || pointer) {
         ctx.save()
         ctx.globalCompositeOperation = 'destination-out'
-        const hole = ctx.createRadialGradient(
-          pointer.x,
-          pointer.y,
-          0,
-          pointer.x,
-          pointer.y,
-          XRAY_RADIUS,
-        )
-        hole.addColorStop(0, 'rgba(0, 0, 0, 0.8)')
-        hole.addColorStop(1, 'rgba(0, 0, 0, 0)')
-        ctx.fillStyle = hole
-        ctx.beginPath()
-        ctx.arc(pointer.x, pointer.y, XRAY_RADIUS, 0, Math.PI * 2)
-        ctx.fill()
+        if (showFull) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.62)'
+          ctx.fillRect(0, 0, RENDER_SIZE, RENDER_SIZE)
+        } else if (pointer) {
+          const hole = ctx.createRadialGradient(
+            pointer.x,
+            pointer.y,
+            0,
+            pointer.x,
+            pointer.y,
+            XRAY_RADIUS,
+          )
+          hole.addColorStop(0, 'rgba(0, 0, 0, 0.8)')
+          hole.addColorStop(1, 'rgba(0, 0, 0, 0)')
+          ctx.fillStyle = hole
+          ctx.beginPath()
+          ctx.arc(pointer.x, pointer.y, XRAY_RADIUS, 0, Math.PI * 2)
+          ctx.fill()
+        }
         ctx.restore()
 
-        // The anatomy inside the window, brighter near the center: a faint
-        // body contour, bones with vertebra ticks, ribs, socket rings, and
-        // joint markers.
+        // Brightness by proximity to the cursor; flat in review mode.
+        // Negative means outside the window.
+        const strengthFor = (mx: number, my: number): number => {
+          if (showFull) return 1
+          if (!pointer) return -1
+          const d = Math.hypot(mx - pointer.x, my - pointer.y)
+          return d > XRAY_RADIUS ? -1 : 1 - d / XRAY_RADIUS
+        }
+
+        // The anatomy: a faint body contour, then bones with vertebra ticks
+        // and the ribs.
         ctx.lineCap = 'round'
         ctx.lineWidth = 0.7
         for (const s of contourStrokes) {
-          const d = Math.hypot(s.mx - pointer.x, s.my - pointer.y)
-          if (d > XRAY_RADIUS) continue
-          const strength = 1 - d / XRAY_RADIUS
+          const strength = strengthFor(s.mx, s.my)
+          if (strength < 0) continue
           ctx.strokeStyle = `rgba(220, 252, 231, ${0.04 + strength * 0.16})`
           ctx.beginPath()
           ctx.moveTo(s.x1, s.y1)
@@ -493,9 +494,8 @@ export function AsciiCat({ className = '' }: { className?: string }) {
         }
         ctx.lineWidth = 0.9
         for (const s of ribStrokes) {
-          const d = Math.hypot(s.mx - pointer.x, s.my - pointer.y)
-          if (d > XRAY_RADIUS) continue
-          const strength = 1 - d / XRAY_RADIUS
+          const strength = strengthFor(s.mx, s.my)
+          if (strength < 0) continue
           ctx.strokeStyle = `rgba(220, 252, 231, ${0.07 + strength * 0.38})`
           ctx.beginPath()
           ctx.moveTo(s.x1, s.y1)
@@ -503,34 +503,14 @@ export function AsciiCat({ className = '' }: { className?: string }) {
           ctx.stroke()
         }
         for (const s of boneStrokes) {
-          const d = Math.hypot(s.mx - pointer.x, s.my - pointer.y)
-          if (d > XRAY_RADIUS) continue
-          const strength = 1 - d / XRAY_RADIUS
+          const strength = strengthFor(s.mx, s.my)
+          if (strength < 0) continue
           ctx.strokeStyle = `rgba(226, 252, 236, ${0.12 + strength * 0.55})`
           ctx.lineWidth = s.w
           ctx.beginPath()
           ctx.moveTo(s.x1, s.y1)
           ctx.lineTo(s.x2, s.y2)
           ctx.stroke()
-        }
-        ctx.lineWidth = 1.2
-        for (const ring of socketRings) {
-          const d = Math.hypot(ring.x - pointer.x, ring.y - pointer.y)
-          if (d > XRAY_RADIUS + ring.r) continue
-          const strength = Math.max(0, 1 - d / XRAY_RADIUS)
-          ctx.strokeStyle = `rgba(226, 252, 236, ${0.1 + strength * 0.5})`
-          ctx.beginPath()
-          ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2)
-          ctx.stroke()
-        }
-        for (const j of jointDots) {
-          const d = Math.hypot(j.x - pointer.x, j.y - pointer.y)
-          if (d > XRAY_RADIUS) continue
-          const strength = 1 - d / XRAY_RADIUS
-          ctx.fillStyle = `rgba(240, 253, 244, ${0.15 + strength * 0.6})`
-          ctx.beginPath()
-          ctx.arc(j.x, j.y, 1.6, 0, Math.PI * 2)
-          ctx.fill()
         }
       }
 
@@ -736,8 +716,6 @@ export function AsciiCat({ className = '' }: { className?: string }) {
         const y2 = G(r.to[1])
         return { x1, y1, cx, cy, x2, y2, mx: (x1 + 2 * cx + x2) / 4, my: (y1 + 2 * cy + y2) / 4 }
       })
-      socketRings = RINGS.map((r) => ({ x: G(r.x), y: G(r.y), r: r.r * CELL }))
-      jointDots = JOINTS.map(([x, y]) => ({ x: G(x), y: G(y) }))
 
       // Lightning graph: nodes sampled along every bone and rib, chained in
       // order, then cross-linked where chains come close (the joints).
@@ -803,7 +781,7 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       const built = buildLayer(cells)
       staticLayer = built.layer
       layerCtx = built.lctx
-      if (reduceMotion) {
+      if (reduceMotion && !showFull) {
         draw(0)
       } else {
         raf = requestAnimationFrame(loop)
