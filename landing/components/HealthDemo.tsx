@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef } from 'react'
 import { useHealthStore } from '@/store'
 import { HEALTH_DATA, DEMO_ROOT } from '../demoData'
 
@@ -6,17 +6,17 @@ const Health = lazy(() => import('@/components/Health'))
 
 export function HealthDemo() {
   const boxRef = useRef<HTMLDivElement>(null)
-  const [played, setPlayed] = useState(false)
+  const played = useRef(false)
 
   useEffect(() => {
     const el = boxRef.current
-    if (!el || played) return
+    if (!el) return
     let timer: number | undefined
     const io = new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting) return
+        if (!entry.isIntersecting || played.current) return
+        played.current = true
         io.disconnect()
-        setPlayed(true)
         // Safe to fake: Health's auto-analyze only fires when
         // analyzedRoot !== rootPath, and analyzedRoot stays DEMO_ROOT here.
         useHealthStore.setState({ scanState: 'analyzing', progress: 'Collecting file data...' })
@@ -37,7 +37,7 @@ export function HealthDemo() {
       io.disconnect()
       if (timer) clearTimeout(timer)
     }
-  }, [played])
+  }, [])
 
   return (
     <div
