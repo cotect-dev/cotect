@@ -1,0 +1,115 @@
+# Tag-driven release: push v* -> test gate -> 3-OS build matrix -> publish
+# installers + updater manifest to the public cotect-releases repo.
+#
+# Required repository secrets:
+#   TAURI_SIGNING_PRIVATE_KEY          updater signing key (content of the .key file)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD password for that key (empty string if none)
+#   RELEASES_TOKEN                     PAT with contents:write on grzracz/cotect-releases
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  RELEASES_REPO: grzracz/cotect-releases
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn vitest run
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri
+      - run: cargo test
+        working-directory: tauri
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            bundles: appimage,deb,rpm
+            args: ''
+          - platform: windows-latest
+            bundles: nsis
+            args: ''
+          - platform: macos-latest
+            bundles: app,dmg
+            args: --target universal-apple-darwin
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+    runs-on: ${{ matrix.platform }}
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libfuse2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri
+      - run: yarn install --frozen-lockfile
+      - run: yarn tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.platform }}
+          path: |
+            tauri/target/release/bundle/**
+            tauri/target/universal-apple-darwin/release/bundle/**
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare stable asset names and updater manifest
+        run: node scripts/release-assets.mjs
+        env:
+          TAG: ${{ github.ref_name }}
+          IN_DIR: artifacts
+          OUT_DIR: release-assets
+          REPO: ${{ env.RELEASES_REPO }}
+      - name: Create release in cotect-releases
+        run: |
+          gh release create "$TAG" release-assets/* \
+            --repo "$RELEASES_REPO" \
+            --title "Cotect $TAG" \
+            --notes "Cotect $TAG — see https://cotect.dev for details." \
+            --draft
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          TAG: ${{ github.ref_name }}

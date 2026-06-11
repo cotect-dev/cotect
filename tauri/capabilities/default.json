@@ -28,6 +28,8 @@
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
     "fs:allow-exists",
-    "fs:allow-read-dir"
+    "fs:allow-read-dir",
+    "updater:default",
+    "process:allow-restart"
   ]
 }
