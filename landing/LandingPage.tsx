@@ -214,8 +214,9 @@ function CanvasSection() {
             <Kbd>A</Kbd>
             <Kbd>S</Kbd>
             <Kbd>D</Kbd>, and review the change an agent just made to{' '}
-            <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>. The
-            Changes and History panels below are live too.
+            <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>. Once
+            the review is done, copy your comments straight back into your agent and let it fix
+            things.
           </p>
           <p className="mt-2 font-mono text-xs text-amber-400/90">
             hint: look closely at hunk two. nobody asked for more retries.
