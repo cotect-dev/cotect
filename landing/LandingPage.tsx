@@ -94,6 +94,31 @@ function HunkLabel({ text }: { text: string }) {
   return <span className="hunk-label">{`@@ ${text} @@`}</span>
 }
 
+/** Tag-style caption: each tag wraps as a whole unit instead of mid-phrase. */
+function TagLine({
+  items,
+  className = '',
+  style,
+}: {
+  items: string[]
+  className?: string
+  style?: React.CSSProperties
+}) {
+  return (
+    <p
+      className={`flex flex-wrap gap-x-2 gap-y-1 font-mono text-[11px] text-muted-foreground/70 ${className}`}
+      style={style}
+    >
+      {items.map((item, i) => (
+        <span key={item} className="whitespace-nowrap">
+          {item}
+          {i < items.length - 1 && <span className="ml-2 text-foreground/20">·</span>}
+        </span>
+      ))}
+    </p>
+  )
+}
+
 function Kbd({ children }: { children: ReactNode }) {
   return (
     <kbd className="mx-0.5 inline-block rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-foreground/90 align-middle">
@@ -186,14 +211,16 @@ function Hero() {
           </a>
           <HeroDownloadButton />
         </div>
-        <p
-          className="mt-10 font-mono text-[11px] text-muted-foreground/70"
+        <TagLine
+          className="mt-10"
           style={{ ['--i' as string]: 5 }}
-        >
-          read-only by default <span className="mx-2 text-foreground/20">·</span> live working tree{' '}
-          <span className="mx-2 text-foreground/20">·</span> hunk-by-hunk review{' '}
-          <span className="mx-2 text-foreground/20">·</span> ~20 ms file opens
-        </p>
+          items={[
+            'read-only by default',
+            'live working tree',
+            'hunk-by-hunk review',
+            '~20 ms file opens',
+          ]}
+        />
       </div>
     </section>
   )
@@ -232,9 +259,10 @@ function CanvasSection() {
           </NearViewport>
         </Reveal>
         <Reveal delay={200}>
-          <p className="mt-4 font-mono text-[11px] text-muted-foreground/70">
-            read-only by default · live working tree · hunk-by-hunk review
-          </p>
+          <TagLine
+            className="mt-4"
+            items={['read-only by default', 'live working tree', 'hunk-by-hunk review']}
+          />
         </Reveal>
       </div>
     </section>
@@ -266,9 +294,10 @@ function GraphSection() {
           </NearViewport>
         </Reveal>
         <Reveal delay={200}>
-          <p className="mt-4 font-mono text-[11px] text-muted-foreground/70">
-            import resolution · dependency and dependent edges · test files marked
-          </p>
+          <TagLine
+            className="mt-4"
+            items={['import resolution', 'dependency and dependent edges', 'test files marked']}
+          />
         </Reveal>
       </div>
     </section>
@@ -299,9 +328,10 @@ function HealthSection() {
           </NearViewport>
         </Reveal>
         <Reveal delay={200}>
-          <p className="mt-4 font-mono text-[11px] text-muted-foreground/70">
-            circular dependencies · hotspots · context window fit
-          </p>
+          <TagLine
+            className="mt-4"
+            items={['circular dependencies', 'hotspots', 'context window fit']}
+          />
         </Reveal>
       </div>
     </section>
