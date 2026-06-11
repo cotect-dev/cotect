@@ -46,7 +46,7 @@ function samplePoints(img: HTMLImageElement): Pt[] {
           hy: sy,
           phase: Math.random() * Math.PI * 2,
           speed: 0.4 + Math.random() * 0.5,
-          r: 1 + Math.random() * 1.3,
+          r: 0.6 + Math.random() * 0.8,
         })
       }
     }
