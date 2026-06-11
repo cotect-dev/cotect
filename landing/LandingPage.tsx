@@ -333,7 +333,7 @@ function HowItWorks() {
               <p className="text-muted-foreground">watching working tree · read-only</p>
               <p className="pt-5 text-amber-400/80"># 2 · let your agents work</p>
               <p>
-                <span className="text-green-500/60 mr-2">$</span>claude "add retry backoff to the
+                <span className="text-green-500/60 mr-2">$</span>claude -p "add retry backoff to the
                 fetch helper"
               </p>
               <p className="text-muted-foreground">
