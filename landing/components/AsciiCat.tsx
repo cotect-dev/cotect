@@ -100,6 +100,10 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     let raf = 0
     let last = 0
     let visible = true
+    // Guards the async img.onload: under StrictMode the cleanup runs before
+    // the image loads, and an unguarded onload would start an orphan RAF
+    // loop fighting the remounted one (visible as rapid glyph flicker).
+    let disposed = false
     let cells: Cell[] = []
     let staticLayer: HTMLCanvasElement | null = null
     let layerCtx: CanvasRenderingContext2D | null = null
@@ -195,6 +199,7 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     const img = new Image()
     img.src = iconUrl
     img.onload = () => {
+      if (disposed) return
       cells = sampleCells(img)
       const built = buildLayer(cells)
       staticLayer = built.layer
@@ -207,6 +212,7 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     }
 
     return () => {
+      disposed = true
       cancelAnimationFrame(raf)
       io.disconnect()
       window.removeEventListener('pointermove', onPointerMove)
