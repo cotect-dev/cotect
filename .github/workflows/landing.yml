@@ -34,6 +34,9 @@ jobs:
         run: |
           cd dist-landing
           touch .nojekyll
+          # The custom domain lives in the branch; a deploy without it would
+          # detach cotect.dev from the Pages site.
+          echo "cotect.dev" > CNAME
           git init -b gh-pages
           git add -A
           git -c user.name="github-actions[bot]" \
