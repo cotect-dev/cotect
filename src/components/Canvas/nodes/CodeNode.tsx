@@ -295,6 +295,12 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
       })
 
       const view = new EditorView({ state, parent: container })
+      // The first paint otherwise uses estimated line heights, so the gutter
+      // renders compressed and visibly snaps once the async measure cycle
+      // runs. Measuring synchronously aligns it before the browser paints.
+      // measure(flush) is documented EditorView API but missing from this
+      // version's typings.
+      ;(view as EditorView & { measure: (flush?: boolean) => void }).measure()
       viewRef.current = view
       registerEditorView(view)
       mergedHeadRef.current = null
