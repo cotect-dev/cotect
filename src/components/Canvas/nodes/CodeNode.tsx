@@ -743,7 +743,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
 
       {externalChange && (
         <div className="flex items-center justify-between gap-2 px-3 py-1 text-[11px] bg-yellow-900/30 text-yellow-300 border-b border-yellow-700/40">
-          <span className="truncate">Changed on disk — your unsaved edits are stale</span>
+          <span className="truncate">Changed on disk, your unsaved edits are stale</span>
           <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
