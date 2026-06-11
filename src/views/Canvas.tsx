@@ -298,7 +298,9 @@ export function CanvasFlow() {
         zoomOnScroll={false}
         zoomOnDoubleClick={false}
         zoomOnPinch={false}
-        panOnDrag={false}
+        // The app pans via the custom wheel handler only; the embedded demo
+        // needs drag panning so touch devices can move the canvas at all.
+        panOnDrag={isDemoMode()}
         panOnScroll={false}
         nodesDraggable={false}
         nodesConnectable={false}
