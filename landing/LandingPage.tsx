@@ -3,18 +3,26 @@ import logoUrl from '../public/logo.svg'
 import iconUrl from '../public/icon.svg'
 import { DemoBoundary } from './components/DemoBoundary'
 import { AsciiCat } from './components/AsciiCat'
+import { seedReady } from './seed'
 import { DOWNLOADS, detectOS } from './downloads'
 
 // The demos pull in the full app stack (ReactFlow, every CodeMirror language
-// package). Lazy-load them so the hero paints with just React on the wire.
+// package). Lazy-load them so the hero paints with just React on the wire,
+// and gate each on the store seeding kicked off by ./seed.
 const CanvasDemo = lazy(() =>
-  import('./components/CanvasDemo').then((m) => ({ default: m.CanvasDemo })),
+  Promise.all([seedReady, import('./components/CanvasDemo')]).then(([, m]) => ({
+    default: m.CanvasDemo,
+  })),
 )
 const GraphDemo = lazy(() =>
-  import('./components/GraphDemo').then((m) => ({ default: m.GraphDemo })),
+  Promise.all([seedReady, import('./components/GraphDemo')]).then(([, m]) => ({
+    default: m.GraphDemo,
+  })),
 )
 const HealthDemo = lazy(() =>
-  import('./components/HealthDemo').then((m) => ({ default: m.HealthDemo })),
+  Promise.all([seedReady, import('./components/HealthDemo')]).then(([, m]) => ({
+    default: m.HealthDemo,
+  })),
 )
 
 // Height classes mirror each demo component's container so the skeleton
@@ -23,6 +31,29 @@ function DemoFallback({ heightClass }: { heightClass: string }) {
   return (
     <div className={`rounded-lg border border-border bg-[#1e1e1e] animate-pulse ${heightClass}`} />
   )
+}
+
+// Defers mounting (and so chunk downloads) until the section nears the
+// viewport, keeping the heavy editor bundle off the hero's critical path.
+function NearViewport({ children, heightClass }: { children: ReactNode; heightClass: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [near, setNear] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setNear(true)
+          io.disconnect()
+        }
+      },
+      { rootMargin: '600px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return <div ref={ref}>{near ? children : <DemoFallback heightClass={heightClass} />}</div>
 }
 
 /** Scroll-triggered reveal: children animate up once when they enter the viewport. */
@@ -191,11 +222,13 @@ function CanvasSection() {
           </p>
         </Reveal>
         <Reveal delay={120} className="mt-8">
-          <DemoBoundary>
-            <Suspense fallback={<DemoFallback heightClass="h-[916px] sm:h-[876px]" />}>
-              <CanvasDemo />
-            </Suspense>
-          </DemoBoundary>
+          <NearViewport heightClass="h-[916px] sm:h-[876px]">
+            <DemoBoundary>
+              <Suspense fallback={<DemoFallback heightClass="h-[916px] sm:h-[876px]" />}>
+                <CanvasDemo />
+              </Suspense>
+            </DemoBoundary>
+          </NearViewport>
         </Reveal>
         <Reveal delay={200}>
           <p className="mt-4 font-mono text-[11px] text-muted-foreground/70">
@@ -218,15 +251,18 @@ function GraphSection() {
           </h2>
           <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
             cotect resolves imports across the codebase and draws the result. Click any file to see
-            what it pulls in and what depends on it.
+            what it pulls in and what depends on it. Agents only write as well as you direct them,
+            and keeping the shape of the project in your head is what makes your direction good.
           </p>
         </Reveal>
         <Reveal delay={120} className="mt-8">
-          <DemoBoundary>
-            <Suspense fallback={<DemoFallback heightClass="h-[480px] sm:h-[640px]" />}>
-              <GraphDemo />
-            </Suspense>
-          </DemoBoundary>
+          <NearViewport heightClass="h-[480px] sm:h-[640px]">
+            <DemoBoundary>
+              <Suspense fallback={<DemoFallback heightClass="h-[480px] sm:h-[640px]" />}>
+                <GraphDemo />
+              </Suspense>
+            </DemoBoundary>
+          </NearViewport>
         </Reveal>
         <Reveal delay={200}>
           <p className="mt-4 font-mono text-[11px] text-muted-foreground/70">
@@ -253,11 +289,13 @@ function HealthSection() {
           </p>
         </Reveal>
         <Reveal delay={120} className="mt-8">
-          <DemoBoundary>
-            <Suspense fallback={<DemoFallback heightClass="h-[480px] sm:h-[560px]" />}>
-              <HealthDemo />
-            </Suspense>
-          </DemoBoundary>
+          <NearViewport heightClass="h-[480px] sm:h-[560px]">
+            <DemoBoundary>
+              <Suspense fallback={<DemoFallback heightClass="h-[480px] sm:h-[560px]" />}>
+                <HealthDemo />
+              </Suspense>
+            </DemoBoundary>
+          </NearViewport>
         </Reveal>
         <Reveal delay={200}>
           <p className="mt-4 font-mono text-[11px] text-muted-foreground/70">
