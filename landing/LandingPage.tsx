@@ -176,7 +176,7 @@ function CanvasSection() {
         </Reveal>
         <Reveal delay={120} className="mt-8">
           <DemoBoundary>
-            <Suspense fallback={<DemoFallback heightClass="h-[876px] sm:h-[796px]" />}>
+            <Suspense fallback={<DemoFallback heightClass="h-[916px] sm:h-[876px]" />}>
               <CanvasDemo />
             </Suspense>
           </DemoBoundary>
