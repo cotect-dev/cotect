@@ -271,18 +271,21 @@ function HowItWorks() {
               <span className="h-2.5 w-2.5 rounded-full bg-green-500/40" />
             </div>
             <div className="p-5 sm:p-6 font-mono text-[13px] sm:text-sm leading-relaxed space-y-1">
+              <p className="text-amber-400/80"># 1 · open your repo in cotect</p>
               <p>
                 <span className="text-green-500/60 mr-2">$</span>cotect ~/dev/relay
               </p>
               <p className="text-muted-foreground">watching working tree · read-only</p>
-              <p className="pt-3">
+              <p className="pt-5 text-amber-400/80"># 2 · let your agents work</p>
+              <p>
                 <span className="text-green-500/60 mr-2">$</span>claude "add retry backoff to the
                 fetch helper"
               </p>
               <p className="text-muted-foreground">
-                fetchWithRetry.ts changed · 2 hunks on the canvas
+                fetchWithRetry.ts changed · 2 hunks appear on the canvas
               </p>
-              <p className="pt-3 text-green-400">
+              <p className="pt-5 text-amber-400/80"># 3 · review every hunk before it ships</p>
+              <p className="text-green-400">
                 hunk 1 accepted · hunk 2 commented · working tree untouched
               </p>
             </div>
