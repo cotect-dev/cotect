@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from 'react'
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import { CanvasFlow } from '@/views/Canvas'
 import Changes from '@/components/Changes'
@@ -68,6 +68,59 @@ function TouchPanThroughCode({ containerRef }: { containerRef: RefObject<HTMLDiv
   return null
 }
 
+// The canvas only reacts to WASD once it has been clicked (the app's global
+// reclaim in useCanvasKeyboard is off in demo mode). This listener removes
+// that step: a bare W/A/S/D pressed anywhere while the demo is on screen
+// focuses the canvas and performs the move, so visitors can navigate straight
+// from the prose inviting them to.
+function useWasdGrabsFocus(canvasBoxRef: RefObject<HTMLDivElement | null>, onGrab: () => void) {
+  useEffect(() => {
+    const KEYS = new Set(['w', 'a', 's', 'd'])
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey || !KEYS.has(e.key.toLowerCase())) return
+      const container = canvasBoxRef.current?.querySelector<HTMLElement>('[data-canvas-container]')
+      if (!container) return
+      // Once the canvas owns focus its own keydown handler navigates; and a
+      // visitor typing anywhere (e.g. a future signup field) keeps their keys.
+      const active = document.activeElement as HTMLElement | null
+      if (active && container.contains(active)) return
+      if (
+        active &&
+        (['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) ||
+          active.isContentEditable ||
+          active.closest('.cm-editor'))
+      ) {
+        return
+      }
+      const rect = canvasBoxRef.current?.getBoundingClientRect()
+      if (!rect || rect.bottom <= 0 || rect.top >= window.innerHeight) return
+
+      e.preventDefault()
+      onGrab()
+      container.focus({ preventScroll: true })
+      const store = useCanvasStore.getState()
+      switch (e.key.toLowerCase()) {
+        case 'w':
+          store.moveFocus('up')
+          break
+        case 's':
+          store.moveFocus('down')
+          break
+        case 'a':
+          store.navigateLeft()
+          break
+        case 'd':
+          void store.navigateRight()
+          break
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [canvasBoxRef, onGrab])
+}
+
 export function CanvasDemo() {
   const boxRef = useRef<HTMLDivElement>(null)
   const canvasBoxRef = useRef<HTMLDivElement>(null)
@@ -123,9 +176,11 @@ export function CanvasDemo() {
     }
   }
 
-  const cancel = () => {
+  const cancel = useCallback(() => {
     cancelled.current = true
-  }
+  }, [])
+
+  useWasdGrabsFocus(canvasBoxRef, cancel)
 
   return (
     <div ref={boxRef} onPointerDownCapture={cancel} onKeyDownCapture={cancel}>

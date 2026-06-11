@@ -128,11 +128,27 @@ function Kbd({ children }: { children: ReactNode }) {
 }
 
 function Nav() {
+  // Starts tall with a larger logo, condenses once the page scrolls.
+  const [scrolled, setScrolled] = useState(false)
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
   return (
     <header className="fixed top-0 inset-x-0 z-40 border-b border-border/60 bg-background/75 backdrop-blur-md">
-      <div className="mx-auto max-w-6xl px-5 h-14 flex items-center justify-between">
+      <div
+        className={`mx-auto max-w-6xl px-5 flex items-center justify-between transition-[height] duration-300 ${
+          scrolled ? 'h-14' : 'h-20 sm:h-24'
+        }`}
+      >
         <a href="#top" className="flex items-center gap-2">
-          <img src={logoUrl} alt="cotect" className="h-6 w-auto" />
+          <img
+            src={logoUrl}
+            alt="cotect"
+            className={`w-auto transition-[height] duration-300 ${scrolled ? 'h-6' : 'h-9 sm:h-10'}`}
+          />
         </a>
         <nav className="flex items-center gap-5 font-mono text-xs text-muted-foreground">
           <a href="#demo" className="hover:text-foreground transition-colors max-sm:hidden">
@@ -236,14 +252,12 @@ function CanvasSection() {
             This is not a screenshot.
           </h2>
           <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
-            This is the real cotect editor with a small repository open. Click in, move between
-            files with <Kbd>W</Kbd>
+            This is the real cotect editor with a small repository open. Press <Kbd>W</Kbd>
             <Kbd>A</Kbd>
             <Kbd>S</Kbd>
-            <Kbd>D</Kbd>, and review the change an agent just made to{' '}
-            <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>. Once
-            the review is done, copy your comments straight back into your agent and let it fix
-            things.
+            <Kbd>D</Kbd> to move between files and review the change an agent just made to{' '}
+            <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>. All
+            comments you leave can be copied into an agent of your choice.
           </p>
           <p className="mt-2 font-mono text-xs text-amber-400/90">
             hint: look closely at hunk two. nobody asked for more retries.
