@@ -78,26 +78,40 @@ function resolvePython(specifier: string, fromRel: string, knownFiles: Set<strin
 
   const asPath = specifier.replace(/\./g, '/')
 
-  const pyCandidate = asPath + '.py'
-  if (knownFiles.has(pyCandidate) && pyCandidate !== fromRel) return pyCandidate
+  // src-layout repos import `mypkg.core` while the file lives in src/.
+  for (const prefix of ['', 'src/']) {
+    const pyCandidate = prefix + asPath + '.py'
+    if (knownFiles.has(pyCandidate) && pyCandidate !== fromRel) return pyCandidate
 
-  const initCandidate = asPath + '/__init__.py'
-  if (knownFiles.has(initCandidate) && initCandidate !== fromRel) return initCandidate
+    const initCandidate = prefix + asPath + '/__init__.py'
+    if (knownFiles.has(initCandidate) && initCandidate !== fromRel) return initCandidate
+  }
 
   return null
 }
 
 function resolveGo(specifier: string, _fromRel: string, knownFiles: Set<string>): string | null {
-  // External imports contain a domain (has a dot in the first segment)
-  // or are stdlib (single word like "fmt", "net/http")
-  const firstSlash = specifier.indexOf('/')
-  const firstSegment = firstSlash >= 0 ? specifier.slice(0, firstSlash) : specifier
-  if (firstSegment.includes('.')) return null // github.com/foo/bar
-  if (firstSlash < 0) return null // stdlib single-word like "fmt"
+  if (specifier.indexOf('/') < 0) return null // stdlib single-word like "fmt"
 
-  const prefix = specifier + '/'
-  for (const f of knownFiles) {
-    if (f.startsWith(prefix) && f.endsWith('.go')) return f
+  const segments = specifier.split('/')
+  // Import paths start with the go.mod module name, which is rarely a
+  // directory inside the repo: probe the path as-is, minus the module word
+  // ("myapp/internal/db"), and minus a full domain module prefix
+  // ("github.com/user/myapp/internal/db"). Domain imports that survive no
+  // strip are external packages.
+  const candidates: string[] = []
+  if (!segments[0].includes('.')) {
+    candidates.push(segments.join('/'), segments.slice(1).join('/'))
+  } else if (segments.length > 3) {
+    candidates.push(segments.slice(3).join('/'))
+  }
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    const prefix = candidate + '/'
+    for (const f of knownFiles) {
+      if (f.startsWith(prefix) && f.endsWith('.go')) return f
+    }
   }
 
   return null
@@ -119,36 +133,41 @@ function resolveRust(specifier: string, fromRel: string, knownFiles: Set<string>
     return null
   }
 
-  let pathParts: string[]
-  let basePath: string
+  let baseSegments: string[]
+  let specParts: string[]
 
   if (specifier.startsWith('crate::')) {
-    const rest = specifier.slice(7)
-    pathParts = rest.split('::')
-    basePath = 'src/' + pathParts.join('/')
+    // The crate root is the nearest src/ directory above the importing
+    // file, so nested crates (e.g. tauri/src) resolve too.
+    const srcIdx = fromRel.lastIndexOf('/src/')
+    const crateRoot = srcIdx >= 0 ? fromRel.slice(0, srcIdx + 4) : 'src'
+    baseSegments = crateRoot.split('/')
+    specParts = specifier.slice(7).split('::')
   } else if (specifier.startsWith('super::')) {
-    const rest = specifier.slice(7)
-    const fromDir = dirname(fromRel)
-    const parentDir = dirname(fromDir)
-    const parentSegments = parentDir ? parentDir.split('/') : []
-    pathParts = [...parentSegments, ...rest.split('::')]
-    basePath = pathParts.join('/')
+    const parentDir = dirname(dirname(fromRel))
+    baseSegments = parentDir ? parentDir.split('/') : []
+    specParts = specifier.slice(7).split('::')
   } else if (specifier.startsWith('self::')) {
-    const rest = specifier.slice(6)
     const fromDir = dirname(fromRel)
-    const segments = fromDir ? fromDir.split('/') : []
-    pathParts = [...segments, ...rest.split('::')]
-    basePath = pathParts.join('/')
+    baseSegments = fromDir ? fromDir.split('/') : []
+    specParts = specifier.slice(6).split('::')
   } else {
     // External crate — no resolution
     return null
   }
 
-  const rsCandidate = basePath + '.rs'
-  if (knownFiles.has(rsCandidate) && rsCandidate !== fromRel) return rsCandidate
+  // The trailing segments of a use declaration are often items (functions,
+  // structs) rather than modules: probe the full path first, then strip
+  // from the right until a module file matches.
+  for (let take = specParts.length; take >= 1; take--) {
+    const basePath = [...baseSegments, ...specParts.slice(0, take)].join('/')
 
-  const modRsCandidate = basePath + '/mod.rs'
-  if (knownFiles.has(modRsCandidate)) return modRsCandidate
+    const rsCandidate = basePath + '.rs'
+    if (knownFiles.has(rsCandidate) && rsCandidate !== fromRel) return rsCandidate
+
+    const modRsCandidate = basePath + '/mod.rs'
+    if (knownFiles.has(modRsCandidate) && modRsCandidate !== fromRel) return modRsCandidate
+  }
 
   return null
 }

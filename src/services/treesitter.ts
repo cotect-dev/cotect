@@ -3,7 +3,12 @@ import { getConfigForFile, type LanguageId } from '@/services/treesitter-queries
 
 type TSNode = import('web-tree-sitter').Node
 
-const WASM_BASE = '/'
+let wasmBase = '/'
+
+/** Test hook: lets vitest (node environment) load the wasm from disk. */
+export function setWasmBase(base: string): void {
+  wasmBase = base
+}
 
 let initPromise: Promise<void> | null = null
 const languagePromises = new Map<string, Promise<Language>>()
@@ -15,7 +20,7 @@ async function ensureInit(): Promise<void> {
       // web-tree-sitter asks for "web-tree-sitter.wasm" but the file in
       // public/ is "tree-sitter.wasm". Ignore the requested name and
       // return the known path — same approach as the original loader.
-      locateFile: () => `${WASM_BASE}tree-sitter.wasm`,
+      locateFile: () => `${wasmBase}tree-sitter.wasm`,
     })
   }
   await initPromise
@@ -38,7 +43,7 @@ async function loadLanguageForFile(
   const wasmFile = WASM_MAP[config.id]
   if (!languagePromises.has(wasmFile)) {
     await ensureInit()
-    languagePromises.set(wasmFile, Language.load(`${WASM_BASE}${wasmFile}`))
+    languagePromises.set(wasmFile, Language.load(`${wasmBase}${wasmFile}`))
   }
   const language = await languagePromises.get(wasmFile)!
   return { language, id: config.id }
@@ -179,6 +184,16 @@ function collectJsTsImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   return results
 }
 
+// `import x.y as z` wraps the dotted path in an aliased_import; the module
+// path lives in its name field. Plain imports are the dotted_name directly.
+function pythonModulePath(nameNode: TSNode): string | null {
+  if (nameNode.type === 'aliased_import') {
+    return nameNode.childForFieldName('name')?.text ?? null
+  }
+  if (nameNode.type === 'dotted_name' || nameNode.type === 'relative_import') return nameNode.text
+  return null
+}
+
 function collectPythonImportsWithLines(rootNode: TSNode): ImportWithLine[] {
   const results: ImportWithLine[] = []
   const stack: TSNode[] = [rootNode]
@@ -187,20 +202,38 @@ function collectPythonImportsWithLines(rootNode: TSNode): ImportWithLine[] {
     const type = node.type
 
     if (type === 'import_statement') {
-      const name = node.childForFieldName('name')
-      if (name) results.push({ specifier: name.text, line: node.startPosition.row + 1 })
+      // `import a.b, c.d` carries one name field per module.
+      for (let i = 0; i < node.namedChildCount; i++) {
+        const child = node.namedChild(i)
+        if (!child) continue
+        const path = pythonModulePath(child)
+        if (path) results.push({ specifier: path, line: node.startPosition.row + 1 })
+      }
     }
     if (type === 'import_from_statement') {
-      const moduleName = node.childForFieldName('module_name')
+      const line = node.startPosition.row + 1
+      const moduleName =
+        node.childForFieldName('module_name') ??
+        node.namedChildren.find((c) => c.type === 'relative_import' || c.type === 'dotted_name') ??
+        null
       if (moduleName) {
-        results.push({ specifier: moduleName.text, line: node.startPosition.row + 1 })
-      } else {
+        const module = moduleName.text
+        results.push({ specifier: module, line })
+        // `from pkg import mod` may import a module file, which only the
+        // joined path resolves; emit a candidate per imported name. Names
+        // that turn out to be functions or classes simply fail resolution.
         for (let i = 0; i < node.namedChildCount; i++) {
           const child = node.namedChild(i)
-          if (child && (child.type === 'relative_import' || child.type === 'dotted_name')) {
-            results.push({ specifier: child.text, line: node.startPosition.row + 1 })
-            break
-          }
+          if (!child || child.equals(moduleName)) continue
+          const name =
+            child.type === 'aliased_import'
+              ? (child.childForFieldName('name')?.text ?? null)
+              : child.type === 'dotted_name'
+                ? child.text
+                : null
+          if (!name) continue
+          const joined = module.endsWith('.') ? module + name : `${module}.${name}`
+          results.push({ specifier: joined, line })
         }
       }
     }
@@ -240,14 +273,43 @@ function collectRustImportsWithLines(rootNode: TSNode): ImportWithLine[] {
     const node = stack.pop()!
 
     if (node.type === 'use_declaration') {
+      const line = node.startPosition.row + 1
       const arg = node.namedChildren.find(
         (c) =>
           c.type === 'scoped_identifier' ||
           c.type === 'use_as_clause' ||
           c.type === 'scoped_use_list' ||
+          c.type === 'use_wildcard' ||
           c.type === 'identifier',
       )
-      if (arg) results.push({ specifier: arg.text, line: node.startPosition.row + 1 })
+      if (arg) {
+        if (arg.type === 'scoped_use_list') {
+          // `use a::b::{c, d}`: the brace text is not a path. Emit the stem
+          // and one candidate per simple list entry (entries may be modules).
+          const path = arg.childForFieldName('path')
+          if (path) {
+            results.push({ specifier: path.text, line })
+            const list = arg.childForFieldName('list')
+            for (const entry of list?.namedChildren ?? []) {
+              if (entry.type === 'identifier' || entry.type === 'self') {
+                if (entry.type === 'identifier') {
+                  results.push({ specifier: `${path.text}::${entry.text}`, line })
+                }
+              }
+            }
+          }
+        } else if (arg.type === 'use_as_clause') {
+          const path = arg.childForFieldName('path')
+          if (path) results.push({ specifier: path.text, line })
+        } else if (arg.type === 'use_wildcard') {
+          const path = arg.namedChildren.find(
+            (c) => c.type === 'scoped_identifier' || c.type === 'identifier' || c.type === 'crate',
+          )
+          if (path) results.push({ specifier: path.text, line })
+        } else {
+          results.push({ specifier: arg.text, line })
+        }
+      }
     }
 
     if (node.type === 'mod_item') {

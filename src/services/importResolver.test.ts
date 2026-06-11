@@ -138,4 +138,56 @@ describe('resolveImport', () => {
       expect(resolveImport('serde::Serialize', 'src/main.rs', knownFiles, 'rust')).toBeNull()
     })
   })
+
+  describe('real-world layouts', () => {
+    const repo = new Set([
+      'internal/db/db.go',
+      'pkg/util/util.go',
+      'cmd/main.go',
+      'src/mypkg/__init__.py',
+      'src/mypkg/core.py',
+      'tauri/src/main.rs',
+      'tauri/src/db/mod.rs',
+      'tauri/src/db/kv.rs',
+      'tauri/src/git.rs',
+    ])
+
+    // The go.mod module name ('myapp') is not a directory inside the repo.
+    it('resolves go imports prefixed with the module name', () => {
+      expect(resolveImport('myapp/internal/db', 'cmd/main.go', repo, 'go')).toBe(
+        'internal/db/db.go',
+      )
+    })
+
+    it('resolves go self-imports using full domain module paths', () => {
+      expect(resolveImport('github.com/user/myapp/pkg/util', 'cmd/main.go', repo, 'go')).toBe(
+        'pkg/util/util.go',
+      )
+    })
+
+    it('still rejects external domain imports', () => {
+      expect(resolveImport('github.com/stretchr/testify', 'cmd/main.go', repo, 'go')).toBeNull()
+    })
+
+    // src-layout python repos import 'mypkg.core' while files live in src/.
+    it('resolves python src-layout absolute imports', () => {
+      expect(resolveImport('mypkg.core', 'src/mypkg/__init__.py', repo, 'python')).toBe(
+        'src/mypkg/core.py',
+      )
+    })
+
+    // The rust crate root is tauri/src, not the repo root.
+    it('resolves crate:: relative to the importing file crate root', () => {
+      expect(resolveImport('crate::db::kv', 'tauri/src/git.rs', repo, 'rust')).toBe(
+        'tauri/src/db/kv.rs',
+      )
+    })
+
+    // `use crate::db::kv::get_conn` names an item; the module file should win.
+    it('falls back to the parent module when the use leaf is an item', () => {
+      expect(resolveImport('crate::db::kv::get_conn', 'tauri/src/git.rs', repo, 'rust')).toBe(
+        'tauri/src/db/kv.rs',
+      )
+    })
+  })
 })

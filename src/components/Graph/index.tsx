@@ -8,7 +8,6 @@ import {
   BaseEdge,
   Handle,
   Position,
-  useReactFlow,
   type Node,
   type Edge,
   type EdgeProps,
@@ -305,20 +304,6 @@ function GraphFlow() {
     [egoNodes, egoEdges, layoutMeta, selectedNodeId],
   )
 
-  const reactFlow = useReactFlow()
-
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      e.stopPropagation()
-      const viewport = reactFlow.getViewport()
-      void reactFlow.setViewport(
-        { x: viewport.x - e.deltaX, y: viewport.y - e.deltaY, zoom: viewport.zoom },
-        { duration: 0 },
-      )
-    },
-    [reactFlow],
-  )
-
   const focusFileByPath = useCanvasStore((s) => s.focusFileByPath)
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
@@ -353,7 +338,7 @@ function GraphFlow() {
   return (
     <div className="absolute inset-0">
       {scanState === 'ready' && egoNodes.length > 0 && (
-        <div className="absolute inset-0" onWheel={handleWheel}>
+        <div className="absolute inset-0">
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -365,11 +350,11 @@ function GraphFlow() {
             nodesConnectable={false}
             elementsSelectable={false}
             onNodeClick={onNodeClick}
-            zoomOnScroll={false}
+            zoomOnScroll={true}
             zoomOnDoubleClick={false}
-            zoomOnPinch={false}
-            minZoom={1}
-            maxZoom={1}
+            zoomOnPinch={true}
+            minZoom={0.25}
+            maxZoom={2}
             fitView
             fitViewOptions={{ padding: 0.25 }}
           >
