@@ -3,9 +3,10 @@ import iconUrl from '../../public/icon.svg'
 
 // The alien cat from the logo rendered as ASCII art on a canvas: the icon's
 // alpha channel is sampled into a character grid once, drawn to a persistent
-// layer, then kept alive by a slow matrix-style churn of glyphs, a scanning
-// shimmer, and neuron-like lightning that arcs between glyphs under the
-// cursor.
+// layer, then kept alive by a slow matrix-style churn of glyphs and a scanning
+// shimmer. Hovering opens an x-ray window that dims the surface and reveals
+// the figure's skeleton (a thinned medial axis of the same grid); moving the
+// cursor fires neuron-like lightning along the bones.
 
 const RENDER_SIZE = 480
 const CELL = 7
@@ -13,11 +14,14 @@ const FPS = 24
 // Glyph churn rate: cells re-rolled per frame. 3 at 24fps over ~1800 cells
 // turns the whole figure over in roughly 25 seconds.
 const MUTATIONS_PER_FRAME = 3
-const HOVER_RADIUS = 44
-// Bolt pacing: a new arc roughly every BOLT_SPAWN_MS while hovering, capped
-// so a parked cursor never builds up a thicket.
+// Radius of the hover x-ray window, in render coordinates.
+const XRAY_RADIUS = 78
+// Bolt pacing: arcs fire only while the cursor travels (SPAWN_MOVE_PX of
+// accumulated movement per strike), never more often than BOLT_SPAWN_MS, so
+// a parked cursor just holds the x-ray open without looping strikes.
 const BOLT_SPAWN_MS = 140
 const MAX_BOLTS = 6
+const SPAWN_MOVE_PX = 6
 
 // Glyph pools by intensity band; a random pick within the band keeps the
 // shading readable while the texture stays varied and code-flavored.
@@ -41,7 +45,7 @@ interface Cell {
   intensity: number
 }
 
-// One neural arc: a jagged path of cells lit in sequence, then fading.
+// One neural arc: a jagged path of skeleton cells lit in sequence, then fading.
 interface Bolt {
   points: Cell[]
   born: number
@@ -71,6 +75,50 @@ function sampleCells(img: HTMLImageElement): Cell[] {
     }
   }
   return cells
+}
+
+// Zhang-Suen thinning: erodes the occupied grid down to its one-cell-wide
+// medial axis, which reads as the figure's skeleton.
+function skeletonize(occ: boolean[][], dim: number): boolean[][] {
+  const img = occ.map((row) => row.slice())
+  const at = (x: number, y: number) => (x >= 0 && x < dim && y >= 0 && y < dim && img[y][x] ? 1 : 0)
+  let changed = true
+  while (changed) {
+    changed = false
+    for (let pass = 0; pass < 2; pass++) {
+      const del: Array<[number, number]> = []
+      for (let y = 0; y < dim; y++) {
+        for (let x = 0; x < dim; x++) {
+          if (!img[y][x]) continue
+          // Neighbors clockwise from north: p2..p9.
+          const p = [
+            at(x, y - 1),
+            at(x + 1, y - 1),
+            at(x + 1, y),
+            at(x + 1, y + 1),
+            at(x, y + 1),
+            at(x - 1, y + 1),
+            at(x - 1, y),
+            at(x - 1, y - 1),
+          ]
+          const b = p.reduce((acc, v) => acc + v, 0)
+          if (b < 2 || b > 6) continue
+          let a = 0
+          for (let i = 0; i < 8; i++) if (p[i] === 0 && p[(i + 1) % 8] === 1) a++
+          if (a !== 1) continue
+          if (pass === 0) {
+            if (p[0] * p[2] * p[4] !== 0 || p[2] * p[4] * p[6] !== 0) continue
+          } else {
+            if (p[0] * p[2] * p[6] !== 0 || p[0] * p[4] * p[6] !== 0) continue
+          }
+          del.push([x, y])
+        }
+      }
+      for (const [x, y] of del) img[y][x] = false
+      if (del.length) changed = true
+    }
+  }
+  return img
 }
 
 function buildLayer(cells: Cell[]): {
@@ -120,41 +168,28 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     let layerCtx: CanvasRenderingContext2D | null = null
     // Pointer position in canvas coordinates; null while the cursor is away.
     let pointer: { x: number; y: number } | null = null
-    // Grid-coordinate index so bolts can step cell-to-cell and stay on the
-    // figure (empty background has no cells, so arcs never leave the cat).
-    const grid = new Map<string, Cell>()
+    // Skeleton graph: cells on the medial axis, their adjacency for bolt
+    // walks, and a deduped edge list for drawing the bones.
+    let skelCells: Cell[] = []
+    const skelAdj = new Map<Cell, Cell[]>()
+    let skelEdges: Array<[Cell, Cell]> = []
     let bolts: Bolt[] = []
     let lastSpawn = 0
+    let movedSinceSpawn = 0
 
-    const cellNear = (gx: number, gy: number): Cell | null => {
-      const direct = grid.get(`${gx},${gy}`)
-      if (direct) return direct
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const c = grid.get(`${gx + dx},${gy + dy}`)
-          if (c) return c
-        }
-      }
-      return null
-    }
-
-    // Random walk across neighboring cells in a drifting direction; the
-    // direction jitter is what gives the path its lightning jaggedness.
-    const walk = (from: Cell, theta: number, steps: number): Cell[] => {
+    // Non-backtracking random walk along the skeleton, so arcs trace the
+    // bones instead of wandering the surface.
+    const walkSkeleton = (from: Cell, steps: number): Cell[] => {
       const points = [from]
-      let gx = from.x / CELL
-      let gy = from.y / CELL
+      let prev: Cell | null = null
+      let cur = from
       for (let i = 0; i < steps; i++) {
-        theta += (Math.random() - 0.5) * 1.3
-        const stride = 1 + Math.round(Math.random())
-        const next = cellNear(
-          Math.round(gx + Math.cos(theta) * stride),
-          Math.round(gy + Math.sin(theta) * stride),
-        )
-        if (!next || next === points[points.length - 1]) break
-        gx = next.x / CELL
-        gy = next.y / CELL
+        const options = (skelAdj.get(cur) ?? []).filter((n) => n !== prev)
+        if (!options.length) break
+        const next = options[Math.floor(Math.random() * options.length)]
         points.push(next)
+        prev = cur
+        cur = next
       }
       return points
     }
@@ -162,8 +197,8 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     const spawnBolt = (t: number) => {
       if (!pointer) return
       let origin: Cell | null = null
-      let best = HOVER_RADIUS
-      for (const c of cells) {
+      let best = XRAY_RADIUS
+      for (const c of skelCells) {
         const d = Math.hypot(c.x - pointer.x, c.y - pointer.y)
         if (d < best) {
           best = d
@@ -171,19 +206,13 @@ export function AsciiCat({ className = '' }: { className?: string }) {
         }
       }
       if (!origin) return
-      const theta = Math.random() * Math.PI * 2
-      const main = walk(origin, theta, 6 + Math.floor(Math.random() * 7))
+      const main = walkSkeleton(origin, 8 + Math.floor(Math.random() * 10))
       if (main.length < 3) return
       bolts.push({ points: main, born: t, life: 420 + Math.random() * 260 })
       // Occasional fork off the main arc, like a branching dendrite.
       if (main.length > 4 && Math.random() < 0.4) {
         const mid = main[1 + Math.floor(Math.random() * (main.length - 2))]
-        const sign = Math.random() < 0.5 ? 1 : -1
-        const branch = walk(
-          mid,
-          theta + sign * (0.9 + Math.random() * 0.6),
-          3 + Math.floor(Math.random() * 4),
-        )
+        const branch = walkSkeleton(mid, 4 + Math.floor(Math.random() * 5))
         if (branch.length > 2)
           bolts.push({ points: branch, born: t, life: 320 + Math.random() * 180 })
       }
@@ -193,13 +222,17 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       const rect = canvas.getBoundingClientRect()
       const x = ((e.clientX - rect.left) / rect.width) * RENDER_SIZE
       const y = ((e.clientY - rect.top) / rect.height) * RENDER_SIZE
-      pointer =
-        x > -HOVER_RADIUS &&
-        x < RENDER_SIZE + HOVER_RADIUS &&
-        y > -HOVER_RADIUS &&
-        y < RENDER_SIZE + HOVER_RADIUS
+      const next =
+        x > -XRAY_RADIUS &&
+        x < RENDER_SIZE + XRAY_RADIUS &&
+        y > -XRAY_RADIUS &&
+        y < RENDER_SIZE + XRAY_RADIUS
           ? { x, y }
           : null
+      if (pointer && next) {
+        movedSinceSpawn += Math.hypot(next.x - pointer.x, next.y - pointer.y)
+      }
+      pointer = next
     }
     window.addEventListener('pointermove', onPointerMove)
 
@@ -225,17 +258,66 @@ export function AsciiCat({ className = '' }: { className?: string }) {
 
       ctx.font = `${CELL + 1}px monospace`
       ctx.textBaseline = 'top'
+      const half = CELL / 2
 
-      // Hover: neural lightning. Arcs spawn at the cursor, propagate along
-      // the glyph grid point by point, then fade; finished bolts linger and
-      // die out even after the cursor leaves.
-      if (pointer && t - lastSpawn > BOLT_SPAWN_MS && bolts.length < MAX_BOLTS) {
+      // X-ray window: fade the ASCII surface around the cursor so the
+      // skeleton underneath shows through.
+      if (pointer) {
+        ctx.save()
+        ctx.globalCompositeOperation = 'destination-out'
+        const hole = ctx.createRadialGradient(
+          pointer.x,
+          pointer.y,
+          0,
+          pointer.x,
+          pointer.y,
+          XRAY_RADIUS,
+        )
+        hole.addColorStop(0, 'rgba(0, 0, 0, 0.8)')
+        hole.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        ctx.fillStyle = hole
+        ctx.beginPath()
+        ctx.arc(pointer.x, pointer.y, XRAY_RADIUS, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+
+        // Bones: skeleton edges inside the window, brighter near the center,
+        // with joint markers where bones meet.
+        ctx.lineWidth = 1
+        for (const [a, b] of skelEdges) {
+          const d = Math.hypot((a.x + b.x) / 2 - pointer.x, (a.y + b.y) / 2 - pointer.y)
+          if (d > XRAY_RADIUS) continue
+          const strength = 1 - d / XRAY_RADIUS
+          ctx.strokeStyle = `rgba(220, 252, 231, ${0.1 + strength * 0.45})`
+          ctx.beginPath()
+          ctx.moveTo(a.x + half, a.y + half)
+          ctx.lineTo(b.x + half, b.y + half)
+          ctx.stroke()
+        }
+        for (const c of skelCells) {
+          if ((skelAdj.get(c)?.length ?? 0) < 3) continue
+          const d = Math.hypot(c.x - pointer.x, c.y - pointer.y)
+          if (d > XRAY_RADIUS) continue
+          const strength = 1 - d / XRAY_RADIUS
+          ctx.fillStyle = `rgba(220, 252, 231, ${0.2 + strength * 0.6})`
+          ctx.fillRect(c.x + half - 1, c.y + half - 1, 2.5, 2.5)
+        }
+      }
+
+      // Lightning: arcs fire along the skeleton while the cursor moves, then
+      // linger and fade even after it stops or leaves.
+      if (
+        pointer &&
+        movedSinceSpawn > SPAWN_MOVE_PX &&
+        t - lastSpawn > BOLT_SPAWN_MS &&
+        bolts.length < MAX_BOLTS
+      ) {
         lastSpawn = t
+        movedSinceSpawn = 0
         spawnBolt(t)
       }
       if (bolts.length) {
         bolts = bolts.filter((b) => t - b.born < b.life)
-        const half = CELL / 2
         ctx.lineJoin = 'round'
         for (const b of bolts) {
           const age = (t - b.born) / b.life
@@ -251,17 +333,16 @@ export function AsciiCat({ className = '' }: { className?: string }) {
           for (let i = 1; i <= head; i++) {
             ctx.lineTo(b.points[i].x + half, b.points[i].y + half)
           }
-          ctx.strokeStyle = `rgba(187, 247, 208, ${fade * 0.16})`
+          ctx.strokeStyle = `rgba(187, 247, 208, ${fade * 0.2})`
           ctx.lineWidth = 2.4
           ctx.stroke()
-          ctx.strokeStyle = `rgba(220, 252, 231, ${fade * 0.5})`
-          ctx.lineWidth = 0.75
+          ctx.strokeStyle = `rgba(220, 252, 231, ${fade * 0.65})`
+          ctx.lineWidth = 0.9
           ctx.stroke()
-          for (let i = 0; i <= head; i++) {
-            const c = b.points[i]
-            const isHead = i === head && age < 0.4
-            ctx.fillStyle = `rgba(220, 252, 231, ${fade * (isHead ? 0.95 : 0.4 + c.intensity * 0.2)})`
-            ctx.fillText(c.char, c.x, c.y)
+          const headCell = b.points[head]
+          if (age < 0.4) {
+            ctx.fillStyle = `rgba(240, 253, 244, ${fade * 0.95})`
+            ctx.fillText(headCell.char, headCell.x, headCell.y)
           }
         }
       }
@@ -297,7 +378,41 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     img.onload = () => {
       if (disposed) return
       cells = sampleCells(img)
+      const grid = new Map<string, Cell>()
       for (const c of cells) grid.set(`${c.x / CELL},${c.y / CELL}`, c)
+
+      const dim = Math.ceil(RENDER_SIZE / CELL)
+      const occ: boolean[][] = Array.from({ length: dim }, () => new Array(dim).fill(false))
+      for (const c of cells) occ[c.y / CELL][c.x / CELL] = true
+      const skel = skeletonize(occ, dim)
+      const skelByKey = new Map<string, Cell>()
+      skelCells = []
+      for (let gy = 0; gy < dim; gy++) {
+        for (let gx = 0; gx < dim; gx++) {
+          if (!skel[gy][gx]) continue
+          const c = grid.get(`${gx},${gy}`)
+          if (!c) continue
+          skelByKey.set(`${gx},${gy}`, c)
+          skelCells.push(c)
+        }
+      }
+      skelEdges = []
+      for (const c of skelCells) {
+        const gx = c.x / CELL
+        const gy = c.y / CELL
+        const neighbors: Cell[] = []
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue
+            const n = skelByKey.get(`${gx + dx},${gy + dy}`)
+            if (!n) continue
+            neighbors.push(n)
+            if (dy > 0 || (dy === 0 && dx > 0)) skelEdges.push([c, n])
+          }
+        }
+        skelAdj.set(c, neighbors)
+      }
+
       const built = buildLayer(cells)
       staticLayer = built.layer
       layerCtx = built.lctx
