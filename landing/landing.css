@@ -234,6 +234,15 @@ body {
   }
 }
 
+/* On touch devices the code editor's native scroll would swallow pan
+   gestures before the demo's touch-pan handler sees them; the canvas pan
+   moves the code anyway. Mouse/trackpad scrolling is unaffected. */
+@media (pointer: coarse) {
+  .landing .react-flow .cm-scroller {
+    touch-action: none;
+  }
+}
+
 /* Chrome's default scrollbars look heavy inside the embedded demos (the
    commit list, the health tables). Thin, dark, track-less everywhere. */
 * {
