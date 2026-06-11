@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'rea
 import logoUrl from '../public/logo.svg'
 import iconUrl from '../public/icon.svg'
 import { DemoBoundary } from './components/DemoBoundary'
-import { HeroCatGraph } from './components/HeroCatGraph'
+import { AsciiCat } from './components/AsciiCat'
 import { DOWNLOADS, detectOS } from './downloads'
 
 // The demos pull in the full app stack (ReactFlow, every CodeMirror language
@@ -119,8 +119,12 @@ function HeroDownloadButton() {
 function Hero() {
   return (
     <section id="top" className="relative overflow-hidden pt-28 pb-16 sm:pt-36 sm:pb-24">
-      <div className="hero-glow" aria-hidden />
-      <HeroCatGraph className="hero-cat max-sm:hidden" />
+      <div className="aurora" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </div>
+      <AsciiCat className="hero-cat max-sm:hidden" />
       <div className="relative mx-auto max-w-6xl px-5 hero-stagger">
         <p className="font-mono text-xs text-muted-foreground" style={{ ['--i' as string]: 0 }}>
           cotect <span className="text-foreground/30">/</span> a code inspector for the agent era
