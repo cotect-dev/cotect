@@ -2,15 +2,33 @@ import { useEffect, useRef } from 'react'
 import iconUrl from '../../public/icon.svg'
 
 // The alien cat from the logo rendered as ASCII art on a canvas: the icon's
-// alpha channel is sampled into a character grid once, drawn to a static
-// layer, then animated with a slow scanning shimmer and a few twinkling
-// cells per frame.
+// alpha channel is sampled into a character grid once, drawn to a persistent
+// layer, then kept alive by a slow matrix-style churn of glyphs, a scanning
+// shimmer, and a small cursor-following highlight.
 
 const RENDER_SIZE = 480
 const CELL = 7
-const RAMP = ' ·:;=+*#%@'
 const FPS = 24
-const TWINKLES_PER_FRAME = 14
+// Glyph churn rate: cells re-rolled per frame. 3 at 24fps over ~1800 cells
+// turns the whole figure over in roughly 25 seconds.
+const MUTATIONS_PER_FRAME = 3
+const HOVER_RADIUS = 44
+
+// Glyph pools by intensity band; a random pick within the band keeps the
+// shading readable while the texture stays varied and code-flavored.
+const LIGHT = "·:;,'^~"
+const MID = '=+<>/\\()[]?!'
+const DENSE = '#%@&$8{}*'
+const SCRAMBLE = LIGHT + MID + DENSE
+
+function glyphFor(intensity: number): string {
+  const pool = intensity > 0.75 ? DENSE : intensity > 0.45 ? MID : LIGHT
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
+function baseFill(intensity: number): string {
+  return `rgba(134, 239, 172, ${0.12 + intensity * 0.38})`
+}
 
 interface Cell {
   x: number
@@ -34,32 +52,34 @@ function sampleCells(img: HTMLImageElement): Cell[] {
       const py = Math.min(RENDER_SIZE - 1, y + Math.floor(CELL / 2))
       const idx = (py * RENDER_SIZE + px) * 4
       // White body reads at full luminance, the gray whiskers dimmer; fold
-      // both into one intensity so the ramp shades them differently.
+      // both into one intensity so the pools shade them differently.
       const intensity = (data[idx + 3] / 255) * (data[idx] / 255)
       if (intensity > 0.18) {
-        const char = RAMP[Math.min(RAMP.length - 1, Math.floor(intensity * RAMP.length))]
-        if (char !== ' ') cells.push({ x, y, char, intensity })
+        cells.push({ x, y, char: glyphFor(intensity), intensity })
       }
     }
   }
   return cells
 }
 
-function drawStatic(cells: Cell[]): HTMLCanvasElement {
+function buildLayer(cells: Cell[]): {
+  layer: HTMLCanvasElement
+  lctx: CanvasRenderingContext2D | null
+} {
   const layer = document.createElement('canvas')
   const dpr = Math.min(window.devicePixelRatio || 1, 2)
   layer.width = RENDER_SIZE * dpr
   layer.height = RENDER_SIZE * dpr
-  const ctx = layer.getContext('2d')
-  if (!ctx) return layer
-  ctx.scale(dpr, dpr)
-  ctx.font = `${CELL + 1}px monospace`
-  ctx.textBaseline = 'top'
+  const lctx = layer.getContext('2d')
+  if (!lctx) return { layer, lctx }
+  lctx.scale(dpr, dpr)
+  lctx.font = `${CELL + 1}px monospace`
+  lctx.textBaseline = 'top'
   for (const c of cells) {
-    ctx.fillStyle = `rgba(134, 239, 172, ${0.12 + c.intensity * 0.38})`
-    ctx.fillText(c.char, c.x, c.y)
+    lctx.fillStyle = baseFill(c.intensity)
+    lctx.fillText(c.char, c.x, c.y)
   }
-  return layer
+  return { layer, lctx }
 }
 
 export function AsciiCat({ className = '' }: { className?: string }) {
@@ -82,6 +102,37 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     let visible = true
     let cells: Cell[] = []
     let staticLayer: HTMLCanvasElement | null = null
+    let layerCtx: CanvasRenderingContext2D | null = null
+    // Pointer position in canvas coordinates; null while the cursor is away.
+    let pointer: { x: number; y: number } | null = null
+
+    const onPointerMove = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      const x = ((e.clientX - rect.left) / rect.width) * RENDER_SIZE
+      const y = ((e.clientY - rect.top) / rect.height) * RENDER_SIZE
+      pointer =
+        x > -HOVER_RADIUS &&
+        x < RENDER_SIZE + HOVER_RADIUS &&
+        y > -HOVER_RADIUS &&
+        y < RENDER_SIZE + HOVER_RADIUS
+          ? { x, y }
+          : null
+    }
+    window.addEventListener('pointermove', onPointerMove)
+
+    // Matrix churn: re-roll a few random cells per frame in place on the
+    // persistent layer, so letters keep slowly changing across the figure.
+    const mutate = () => {
+      if (!layerCtx) return
+      for (let k = 0; k < MUTATIONS_PER_FRAME; k++) {
+        const c = cells[Math.floor(Math.random() * cells.length)]
+        if (!c) continue
+        c.char = glyphFor(c.intensity)
+        layerCtx.clearRect(c.x - 1, c.y - 1, CELL + 2, CELL + 2)
+        layerCtx.fillStyle = baseFill(c.intensity)
+        layerCtx.fillText(c.char, c.x, c.y)
+      }
+    }
 
     const draw = (t: number) => {
       if (!staticLayer) return
@@ -91,11 +142,27 @@ export function AsciiCat({ className = '' }: { className?: string }) {
 
       ctx.font = `${CELL + 1}px monospace`
       ctx.textBaseline = 'top'
-      for (let i = 0; i < TWINKLES_PER_FRAME; i++) {
-        const c = cells[Math.floor(Math.random() * cells.length)]
-        if (c) {
-          ctx.fillStyle = `rgba(220, 252, 231, ${0.35 + c.intensity * 0.45})`
-          ctx.fillText(c.char, c.x, c.y)
+
+      // Hover: a small, gentle highlight. Only the innermost cells flicker
+      // to a different glyph; the rest just brighten slightly.
+      if (pointer) {
+        const bucket = Math.floor(t / 250)
+        for (let i = 0; i < cells.length; i++) {
+          const c = cells[i]
+          const dx = c.x - pointer.x
+          const dy = c.y - pointer.y
+          const d = Math.sqrt(dx * dx + dy * dy)
+          if (d > HOVER_RADIUS) continue
+          const strength = 1 - d / HOVER_RADIUS
+          if (strength > 0.55) {
+            const char = SCRAMBLE[(i * 31 + bucket * 17) % SCRAMBLE.length]
+            ctx.clearRect(c.x - 1, c.y - 1, CELL + 2, CELL + 2)
+            ctx.fillStyle = `rgba(220, 252, 231, ${0.25 + strength * 0.3})`
+            ctx.fillText(char, c.x, c.y)
+          } else {
+            ctx.fillStyle = `rgba(220, 252, 231, ${strength * 0.2})`
+            ctx.fillText(c.char, c.x, c.y)
+          }
         }
       }
 
@@ -116,6 +183,7 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       raf = requestAnimationFrame(loop)
       if (!visible || t - last < 1000 / FPS) return
       last = t
+      mutate()
       draw(t)
     }
 
@@ -128,7 +196,9 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     img.src = iconUrl
     img.onload = () => {
       cells = sampleCells(img)
-      staticLayer = drawStatic(cells)
+      const built = buildLayer(cells)
+      staticLayer = built.layer
+      layerCtx = built.lctx
       if (reduceMotion) {
         draw(0)
       } else {
@@ -139,6 +209,7 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     return () => {
       cancelAnimationFrame(raf)
       io.disconnect()
+      window.removeEventListener('pointermove', onPointerMove)
     }
   }, [])
 
