@@ -45,7 +45,7 @@ export function HunkReviewLayer({
         >
           <button
             type="button"
-            title={h.state === 'accepted' ? 'Accepted — click to undo' : 'Accept hunk'}
+            title={h.state === 'accepted' ? 'Accepted, click to undo' : 'Accept hunk'}
             onClick={() => onAccept(h)}
             className={`h-5 px-1.5 flex items-center gap-1 rounded border text-[10px] font-medium cursor-pointer shadow-sm ${
               h.state === 'accepted'

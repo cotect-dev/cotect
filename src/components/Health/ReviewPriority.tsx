@@ -23,7 +23,7 @@ export default function ReviewPriority() {
   return (
     <Section
       title="Review priority"
-      subtitle="Files combining frequent change with size — most likely to repay careful review."
+      subtitle="Files combining frequent change with size, the ones most likely to repay careful review."
       tooltip="Risk = recent commit churn × file size, each normalized to the busiest/largest file. History-based churn×size hotspots are the best-supported review-priority signal."
     >
       <div className="divide-y divide-border/50 rounded-lg border border-border bg-card">
