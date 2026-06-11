@@ -12,6 +12,7 @@ import {
 import { invoke } from '@tauri-apps/api/core'
 import { NODE_WIDTH, NODE_H_GAP, CANVAS_MARGIN } from '@/lib/canvasGeometry'
 import { isImageFile } from '@/lib/fileClassification'
+import { isDemoMode } from '@/lib/demoMode'
 import { clampY } from '@/lib/canvasCamera'
 import { basename, joinPath, toRepoRelative } from '@/lib/repoPath'
 import type { AppNode } from '@/types/nodes'
@@ -596,6 +597,13 @@ export const useCanvasStore = createStoreWithHMR(import.meta.hot, 'canvas', () =
           if (importRefsDwellTimer !== null) {
             clearTimeout(importRefsDwellTimer)
             importRefsDwellTimer = null
+          }
+          // The demo canvas has no filesystem to rebuild previews from; the
+          // seeded column chain is the whole world. Re-render focus flags and
+          // leave the columns untouched.
+          if (isDemoMode()) {
+            flattenAndRender(get, set)
+            return
           }
           const { focusedNodeId, columns, currentColumnIndex } = get()
           if (!focusedNodeId) {

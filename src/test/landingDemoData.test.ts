@@ -10,6 +10,7 @@ import {
 import { DEMO_FILE_PATH } from '../../landing/demoCode'
 import { useCanvasStore, useGraphStore, useHealthStore, useBrowserStore } from '@/store'
 import { useGitStore } from '@/store/git'
+import { setDemoMode } from '@/lib/demoMode'
 
 describe('demo dataset consistency', () => {
   it('graph edges reference existing graph nodes', () => {
@@ -112,5 +113,23 @@ describe('seedDemoStores', () => {
     expect(s.focusedNodeId).toBeTruthy()
     const focused = s.nodes.find((n) => n.id === s.focusedNodeId)
     expect(focused).toBeDefined()
+  })
+
+  it('keeps the seeded diff column through the post-seed updatePreview', async () => {
+    // Seeding flips the graph store to ready, which fires the canvas
+    // subscriber that re-runs updatePreview. Without the demo guard that run
+    // replaced the seeded code node with a HEAD fallback, erasing the diff.
+    setDemoMode(true)
+    try {
+      useGraphStore.setState({ scanState: 'idle' })
+      seedDemoStores()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const cols = useCanvasStore.getState().columns
+      const codeNode = cols[cols.length - 1]?.nodes.find((n) => n.type === 'codeNode')
+      expect(codeNode).toBeDefined()
+      expect((codeNode!.data as { headOverride?: string }).headOverride).toBeTruthy()
+    } finally {
+      setDemoMode(false)
+    }
   })
 })

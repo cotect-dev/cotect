@@ -275,9 +275,11 @@ function GraphFlow() {
   const canvasFocusedPath = useCanvasFocusedFilePath(rootPath)
 
   const selectedNodeId = useMemo(() => {
-    if (isDemoMode() && demoSelection && allNodes.some((n) => n.id === demoSelection))
-      return demoSelection
-    if (canvasFocusedPath && allNodes.some((n) => n.id === canvasFocusedPath)) {
+    if (isDemoMode()) {
+      // demo: selection stays local to this view. Following the canvas focus
+      // would let the canvas demo's autoplay retarget the graph demo.
+      if (demoSelection && allNodes.some((n) => n.id === demoSelection)) return demoSelection
+    } else if (canvasFocusedPath && allNodes.some((n) => n.id === canvasFocusedPath)) {
       return canvasFocusedPath
     }
     if (allNodes.length > 0) {
