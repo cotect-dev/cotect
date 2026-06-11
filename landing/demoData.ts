@@ -14,7 +14,7 @@ import {
 import type { Column } from '@/store/canvasHelpers'
 import { useBrowserStore, useCanvasStore, useGraphStore, useHealthStore } from '@/store'
 import { useGitStore } from '@/store/git'
-import { DEMO_FILE_PATH, DEMO_HEAD, DEMO_AGENT } from './demoCode'
+import { DEMO_FILE_PATH, DEMO_HEAD, DEMO_AGENT, DEMO_FILE_CONTENTS } from './demoCode'
 
 export const DEMO_ROOT = '/demo/relay'
 
@@ -484,6 +484,7 @@ export function buildCanvasSeed(): {
   nodes: AppNode[]
   edges: Edge[]
   focusedNodeId: string
+  previewByPath: Record<string, Column>
 } {
   // Col 0: /demo/relay root listing
   const col0Nodes = positionNodes(
@@ -549,6 +550,44 @@ export function buildCanvasSeed(): {
     edges: [],
   }
 
+  // Preset previews for WASD browsing: the sibling folder listings (api, lib)
+  // plus the seeded chain's own columns, so refocusing a folder restores its
+  // listing instead of dead-ending. Plain files fall back to the seeded
+  // head-content cache at navigation time.
+  const apiCol: Column = {
+    path: `${DEMO_ROOT}/src/api`,
+    kind: 'directory',
+    nodes: positionNodes(
+      [
+        makeFileNode(`${DEMO_ROOT}/src/api/client.ts`, 'client.ts'),
+        makeFileNode(`${DEMO_ROOT}/src/api/routes.ts`, 'routes.ts'),
+        makeFileNode(`${DEMO_ROOT}/src/api/client.test.ts`, 'client.test.ts', true),
+      ],
+      2 * COL_STEP,
+    ),
+    edges: [],
+  }
+  const libCol: Column = {
+    path: `${DEMO_ROOT}/src/lib`,
+    kind: 'directory',
+    nodes: positionNodes(
+      [
+        makeFileNode(`${DEMO_ROOT}/src/lib/config.ts`, 'config.ts'),
+        makeFileNode(`${DEMO_ROOT}/src/lib/log.ts`, 'log.ts'),
+        makeFileNode(`${DEMO_ROOT}/src/lib/queue.ts`, 'queue.ts'),
+      ],
+      2 * COL_STEP,
+    ),
+    edges: [],
+  }
+  const previewByPath: Record<string, Column> = {
+    [col1.path]: col1,
+    [col2.path]: col2,
+    [col3.path]: col3,
+    [apiCol.path]: apiCol,
+    [libCol.path]: libCol,
+  }
+
   const allNodes = [...col0Nodes, ...col1Nodes, ...col2Nodes, codeNode]
 
   // Inter-column edges (same convention as flattenAndRender: focused node in col i → focused in col i+1)
@@ -592,13 +631,14 @@ export function buildCanvasSeed(): {
     nodes: allNodes,
     edges,
     focusedNodeId: CHANGED_FILE_ID,
+    previewByPath,
   }
 }
 
 const DEMO_COMMIT_HASH = 'a1b2c3d'
 
 export function seedDemoStores(): void {
-  const { columns, nodes, edges, focusedNodeId } = buildCanvasSeed()
+  const { columns, nodes, edges, focusedNodeId, previewByPath } = buildCanvasSeed()
 
   useBrowserStore.setState({ rootPath: DEMO_ROOT })
 
@@ -612,6 +652,7 @@ export function seedDemoStores(): void {
     viewportHeight: 600,
     mdPreviewEnabled: false,
     previewReady: true,
+    demoSeed: { previewByPath, columns },
   })
 
   useGraphStore.setState({
@@ -709,7 +750,9 @@ export function seedDemoStores(): void {
     ],
     headContent: {
       sha: DEMO_COMMIT_HASH,
-      files: { [DEMO_FILE_PATH]: DEMO_HEAD },
+      // Every browsable file, so WASD previews resolve from this cache. The
+      // changed file maps to its pre-agent content (the diff base).
+      files: { ...DEMO_FILE_CONTENTS, [DEMO_FILE_PATH]: DEMO_HEAD },
     },
     status: {
       files: [{ path: DEMO_FILE_PATH, status: 'M', insertions: 4, deletions: 2 }],

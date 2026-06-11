@@ -134,6 +134,39 @@ describe('seedDemoStores', () => {
     expect(focused).toBeDefined()
   })
 
+  it('demo navigation swaps the preview to other files and back to the diff', async () => {
+    setDemoMode(true)
+    try {
+      useGraphStore.setState({ scanState: 'idle' })
+      seedDemoStores()
+      const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+      const store = useCanvasStore.getState()
+
+      // WASD onto a sibling file: preview becomes its read-only head view.
+      store.setFocus(`${DEMO_ROOT}/src/net/http.ts`)
+      await flush()
+      let cols = useCanvasStore.getState().columns
+      expect(cols[cols.length - 1].path).toBe(`${DEMO_ROOT}/src/net/http.ts`)
+      expect(cols[cols.length - 1].nodes[0]?.type).toBe('codeNode')
+
+      // Folder preset: focusing the api folder swaps in its listing.
+      useCanvasStore.getState().setFocus(`${DEMO_ROOT}/src/api`)
+      await flush()
+      cols = useCanvasStore.getState().columns
+      expect(cols[cols.length - 1].path).toBe(`${DEMO_ROOT}/src/api`)
+      expect(cols[cols.length - 1].nodes.map((n) => n.data.label)).toContain('client.ts')
+
+      // Changes-panel click restores the seeded diff chain from anywhere.
+      await useCanvasStore.getState().focusFileByPath(DEMO_FILE_PATH)
+      await flush()
+      cols = useCanvasStore.getState().columns
+      const codeNode = cols[cols.length - 1].nodes.find((n) => n.type === 'codeNode')
+      expect((codeNode?.data as { headOverride?: string })?.headOverride).toBeTruthy()
+    } finally {
+      setDemoMode(false)
+    }
+  })
+
   it('keeps the seeded diff column through the post-seed updatePreview', async () => {
     // Seeding flips the graph store to ready, which fires the canvas
     // subscriber that re-runs updatePreview. Without the demo guard that run
