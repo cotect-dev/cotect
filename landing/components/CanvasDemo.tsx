@@ -74,31 +74,26 @@ export function CanvasDemo() {
   }
 
   return (
-    <div
-      ref={boxRef}
-      onPointerDownCapture={cancel}
-      onKeyDownCapture={cancel}
-      className="relative flex h-[440px] sm:h-[560px] rounded-lg border border-border overflow-hidden bg-background"
-    >
-      <div className="relative flex-1 min-w-0">
+    <div ref={boxRef} onPointerDownCapture={cancel} onKeyDownCapture={cancel}>
+      <div className="relative h-[440px] sm:h-[560px] rounded-lg border border-border overflow-hidden bg-background">
         <ReactFlowProvider>
           <CanvasFlow />
         </ReactFlowProvider>
       </div>
-      <aside className="w-60 shrink-0 border-l border-border bg-background/80 max-md:hidden flex flex-col">
-        <DemoPanel label="Changes" className="h-2/5 border-b border-border/50">
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 h-[420px] sm:h-[220px] rounded-lg border border-border overflow-hidden bg-background">
+        <DemoPanel label="Changes" className="max-sm:border-b sm:border-r border-border/50">
           <Changes />
         </DemoPanel>
-        <DemoPanel label="History" className="flex-1">
+        <DemoPanel label="History" className="">
           <History />
         </DemoPanel>
-      </aside>
+      </div>
     </div>
   )
 }
 
-// The same real panel components the app docks, minus the drag-and-drop tab
-// system.
+// The same real panel components the app docks as panel windows, minus the
+// drag-and-drop tab system.
 function DemoPanel({
   label,
   className,
