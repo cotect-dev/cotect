@@ -13,6 +13,10 @@ export default defineConfig({
   // (tree-sitter wasm etc.) into the site bundle.
   publicDir: false,
   plugins: [react(), tailwindcss()],
+  server: {
+    // Dev-server access from LAN devices by hostname (phone testing).
+    allowedHosts: ['grzracz-pc'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
