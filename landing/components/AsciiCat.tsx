@@ -5,9 +5,8 @@ import iconUrl from '../../public/icon.svg'
 // alpha channel is sampled into a character grid once, drawn to a persistent
 // layer, then kept alive by a slow matrix-style churn of glyphs and a scanning
 // shimmer. Hovering opens an x-ray window that dims the surface and reveals
-// the figure's skeleton: a thinned medial axis dressed up with ribs,
-// vertebra ticks, and eye sockets, all derived from the silhouette itself.
-// Moving the cursor fires neuron-like lightning along the bones.
+// a hand-fitted cat skeleton beneath; moving the cursor fires neuron-like
+// lightning along the bones.
 
 const RENDER_SIZE = 480
 const CELL = 7
@@ -46,7 +45,7 @@ interface Cell {
   intensity: number
 }
 
-// One neural arc: a jagged path of skeleton cells lit in sequence, then fading.
+// One neural arc: a jagged path of skeleton nodes lit in sequence, then fading.
 interface Bolt {
   points: Cell[]
   born: number
@@ -82,6 +81,212 @@ interface SocketRing {
   r: number
 }
 
+// The skeleton itself, hand-fitted to the icon's silhouette on the same
+// 69-cell sampling grid using an offline preview tool (the medial axis of
+// the shape does not resemble anatomy). The cat sits in profile facing
+// left: skull top-left, spine along the back, ribcage closing on a sternum,
+// front legs lower-left, pelvis and folded hind leg in the haunch, tail
+// rising on the right. Coordinates are grid cells; w is stroke width.
+const BONES: Array<{ pts: Array<[number, number]>; w?: number; ticks?: boolean }> = [
+  // skull: cranium dome, jaw, cheekbone, two teeth
+  {
+    pts: [
+      [28, 20],
+      [27.5, 15],
+      [24, 11],
+      [18, 9.5],
+      [13, 10.5],
+      [10, 13],
+      [9.5, 14.5],
+    ],
+    w: 1.7,
+  },
+  {
+    pts: [
+      [9.5, 14.5],
+      [8.5, 18],
+      [9, 20],
+      [11, 21.5],
+      [16, 22.5],
+      [23, 22.5],
+      [28, 20],
+    ],
+    w: 1.4,
+  },
+  {
+    pts: [
+      [15.2, 17.8],
+      [18, 18.6],
+      [20.5, 18.8],
+    ],
+    w: 1,
+  },
+  {
+    pts: [
+      [11.5, 21.5],
+      [11.5, 23],
+    ],
+    w: 1,
+  },
+  {
+    pts: [
+      [13.5, 22],
+      [13.5, 23.2],
+    ],
+    w: 1,
+  },
+  // ear cartilage
+  {
+    pts: [
+      [12, 10.5],
+      [11, 4.5],
+    ],
+    w: 1,
+  },
+  {
+    pts: [
+      [18.5, 10],
+      [16.5, 3.5],
+    ],
+    w: 1,
+  },
+  // cervical vertebrae, then the spine along the back
+  {
+    pts: [
+      [26, 19],
+      [28, 22],
+      [30, 26],
+    ],
+    w: 2,
+    ticks: true,
+  },
+  {
+    pts: [
+      [30, 26],
+      [32, 30],
+      [34.5, 34],
+      [37, 37.5],
+      [40, 41],
+      [43, 44],
+      [46, 47],
+      [48, 50],
+    ],
+    w: 2.2,
+    ticks: true,
+  },
+  // sternum collecting the rib ends
+  {
+    pts: [
+      [17.5, 33.5],
+      [18.5, 37],
+      [20, 40.5],
+      [22, 43.8],
+      [24.5, 46.6],
+      [27.5, 48.8],
+    ],
+    w: 1.1,
+  },
+  // scapula
+  {
+    pts: [
+      [26.5, 30],
+      [30, 34],
+      [24.5, 34.5],
+      [26.5, 30],
+    ],
+    w: 1.2,
+  },
+  // front legs, near and far
+  {
+    pts: [
+      [26, 35.5],
+      [23, 41.5],
+      [21.5, 50],
+      [21, 58.5],
+      [17.5, 63.5],
+    ],
+    w: 1.6,
+  },
+  {
+    pts: [
+      [27.5, 36.5],
+      [25, 42.5],
+      [24.5, 51],
+      [24, 59],
+      [21, 64],
+    ],
+    w: 1.2,
+  },
+  // hind leg folded under the haunch: femur, tibia, foot
+  {
+    pts: [
+      [47.5, 51.5],
+      [42, 53.5],
+      [38.5, 55.5],
+    ],
+    w: 1.8,
+  },
+  {
+    pts: [
+      [38.5, 55.5],
+      [42, 59],
+      [45.5, 62.5],
+    ],
+    w: 1.6,
+  },
+  {
+    pts: [
+      [45.5, 62.5],
+      [40, 63.5],
+      [34.5, 64],
+    ],
+    w: 1.3,
+  },
+  // tail exiting the rump and rising on the right
+  {
+    pts: [
+      [48.5, 52.5],
+      [50.5, 55.5],
+      [52.5, 56.8],
+      [54, 54.5],
+      [54.5, 48],
+      [54, 40],
+      [54, 33],
+      [54.5, 28],
+    ],
+    w: 1.5,
+    ticks: true,
+  },
+]
+
+const RIBS: Array<{ from: [number, number]; via: [number, number]; to: [number, number] }> = [
+  { from: [31.2, 28.8], via: [26.8, 33.6], to: [17.5, 33.5] },
+  { from: [33, 31.8], via: [28.2, 36.9], to: [18.5, 37] },
+  { from: [35, 35], via: [30, 40.2], to: [20, 40.5] },
+  { from: [37, 38], via: [32, 43.4], to: [22, 43.8] },
+  { from: [39.5, 41], via: [34.5, 46.3], to: [24.5, 46.6] },
+  { from: [42, 43.7], via: [37.2, 48.7], to: [27.5, 48.8] },
+]
+
+// Eye socket and pelvis.
+const RINGS: Array<{ x: number; y: number; r: number }> = [
+  { x: 12.5, y: 16, r: 2.4 },
+  { x: 47.5, y: 51, r: 2.6 },
+]
+
+// Skull base, spine top, shoulder, elbow, wrist, pelvis, knee, hock, tail base.
+const JOINTS: Array<[number, number]> = [
+  [26, 19],
+  [30, 26],
+  [26, 35.5],
+  [23, 41.5],
+  [21, 58.5],
+  [48, 50],
+  [38.5, 55.5],
+  [45.5, 62.5],
+  [48.5, 52.5],
+]
+
 function sampleCells(img: HTMLImageElement): Cell[] {
   const off = document.createElement('canvas')
   off.width = RENDER_SIZE
@@ -105,50 +310,6 @@ function sampleCells(img: HTMLImageElement): Cell[] {
     }
   }
   return cells
-}
-
-// Zhang-Suen thinning: erodes the occupied grid down to its one-cell-wide
-// medial axis, which reads as the figure's skeleton.
-function skeletonize(occ: boolean[][], dim: number): boolean[][] {
-  const img = occ.map((row) => row.slice())
-  const at = (x: number, y: number) => (x >= 0 && x < dim && y >= 0 && y < dim && img[y][x] ? 1 : 0)
-  let changed = true
-  while (changed) {
-    changed = false
-    for (let pass = 0; pass < 2; pass++) {
-      const del: Array<[number, number]> = []
-      for (let y = 0; y < dim; y++) {
-        for (let x = 0; x < dim; x++) {
-          if (!img[y][x]) continue
-          // Neighbors clockwise from north: p2..p9.
-          const p = [
-            at(x, y - 1),
-            at(x + 1, y - 1),
-            at(x + 1, y),
-            at(x + 1, y + 1),
-            at(x, y + 1),
-            at(x - 1, y + 1),
-            at(x - 1, y),
-            at(x - 1, y - 1),
-          ]
-          const b = p.reduce((acc, v) => acc + v, 0)
-          if (b < 2 || b > 6) continue
-          let a = 0
-          for (let i = 0; i < 8; i++) if (p[i] === 0 && p[(i + 1) % 8] === 1) a++
-          if (a !== 1) continue
-          if (pass === 0) {
-            if (p[0] * p[2] * p[4] !== 0 || p[2] * p[4] * p[6] !== 0) continue
-          } else {
-            if (p[0] * p[2] * p[6] !== 0 || p[0] * p[4] * p[6] !== 0) continue
-          }
-          del.push([x, y])
-        }
-      }
-      for (const [x, y] of del) img[y][x] = false
-      if (del.length) changed = true
-    }
-  }
-  return img
 }
 
 function buildLayer(cells: Cell[]): {
@@ -198,20 +359,21 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     let layerCtx: CanvasRenderingContext2D | null = null
     // Pointer position in canvas coordinates; null while the cursor is away.
     let pointer: { x: number; y: number } | null = null
-    // Skeleton graph (cells on the medial axis plus adjacency for bolt
-    // walks) and the precomputed anatomy drawn inside the x-ray window.
-    let skelCells: Cell[] = []
+    // The anatomy drawn inside the x-ray window, plus a node graph sampled
+    // along it for the lightning walks.
+    let skelNodes: Cell[] = []
     const skelAdj = new Map<Cell, Cell[]>()
     let boneStrokes: BoneStroke[] = []
     let contourStrokes: BoneStroke[] = []
     let ribStrokes: RibStroke[] = []
     let socketRings: SocketRing[] = []
+    let jointDots: Array<{ x: number; y: number }> = []
     let bolts: Bolt[] = []
     let lastSpawn = 0
     let movedSinceSpawn = 0
 
-    // Non-backtracking random walk along the skeleton, so arcs trace the
-    // bones instead of wandering the surface.
+    // Non-backtracking random walk along the skeleton graph, so arcs trace
+    // the bones instead of wandering the surface.
     const walkSkeleton = (from: Cell, steps: number): Cell[] => {
       const points = [from]
       let prev: Cell | null = null
@@ -231,7 +393,7 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       if (!pointer) return
       let origin: Cell | null = null
       let best = XRAY_RADIUS
-      for (const c of skelCells) {
+      for (const c of skelNodes) {
         const d = Math.hypot(c.x - pointer.x, c.y - pointer.y)
         if (d < best) {
           best = d
@@ -315,8 +477,8 @@ export function AsciiCat({ className = '' }: { className?: string }) {
         ctx.restore()
 
         // The anatomy inside the window, brighter near the center: a faint
-        // body contour, thickness-weighted bones, ribs and vertebra ticks,
-        // eye-socket rings, and joint markers where bones meet.
+        // body contour, bones with vertebra ticks, ribs, socket rings, and
+        // joint markers.
         ctx.lineCap = 'round'
         ctx.lineWidth = 0.7
         for (const s of contourStrokes) {
@@ -329,12 +491,12 @@ export function AsciiCat({ className = '' }: { className?: string }) {
           ctx.lineTo(s.x2, s.y2)
           ctx.stroke()
         }
-        ctx.lineWidth = 0.8
+        ctx.lineWidth = 0.9
         for (const s of ribStrokes) {
           const d = Math.hypot(s.mx - pointer.x, s.my - pointer.y)
           if (d > XRAY_RADIUS) continue
           const strength = 1 - d / XRAY_RADIUS
-          ctx.strokeStyle = `rgba(220, 252, 231, ${0.06 + strength * 0.32})`
+          ctx.strokeStyle = `rgba(220, 252, 231, ${0.07 + strength * 0.38})`
           ctx.beginPath()
           ctx.moveTo(s.x1, s.y1)
           ctx.quadraticCurveTo(s.cx, s.cy, s.x2, s.y2)
@@ -344,14 +506,14 @@ export function AsciiCat({ className = '' }: { className?: string }) {
           const d = Math.hypot(s.mx - pointer.x, s.my - pointer.y)
           if (d > XRAY_RADIUS) continue
           const strength = 1 - d / XRAY_RADIUS
-          ctx.strokeStyle = `rgba(226, 252, 236, ${0.12 + strength * 0.5})`
+          ctx.strokeStyle = `rgba(226, 252, 236, ${0.12 + strength * 0.55})`
           ctx.lineWidth = s.w
           ctx.beginPath()
           ctx.moveTo(s.x1, s.y1)
           ctx.lineTo(s.x2, s.y2)
           ctx.stroke()
         }
-        ctx.lineWidth = 1.1
+        ctx.lineWidth = 1.2
         for (const ring of socketRings) {
           const d = Math.hypot(ring.x - pointer.x, ring.y - pointer.y)
           if (d > XRAY_RADIUS + ring.r) continue
@@ -361,13 +523,14 @@ export function AsciiCat({ className = '' }: { className?: string }) {
           ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2)
           ctx.stroke()
         }
-        for (const c of skelCells) {
-          if ((skelAdj.get(c)?.length ?? 0) < 3) continue
-          const d = Math.hypot(c.x - pointer.x, c.y - pointer.y)
+        for (const j of jointDots) {
+          const d = Math.hypot(j.x - pointer.x, j.y - pointer.y)
           if (d > XRAY_RADIUS) continue
           const strength = 1 - d / XRAY_RADIUS
-          ctx.fillStyle = `rgba(220, 252, 231, ${0.2 + strength * 0.6})`
-          ctx.fillRect(c.x + half - 1, c.y + half - 1, 2.5, 2.5)
+          ctx.fillStyle = `rgba(240, 253, 244, ${0.15 + strength * 0.6})`
+          ctx.beginPath()
+          ctx.arc(j.x, j.y, 1.6, 0, Math.PI * 2)
+          ctx.fill()
         }
       }
 
@@ -445,81 +608,13 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     img.onload = () => {
       if (disposed) return
       cells = sampleCells(img)
-      const grid = new Map<string, Cell>()
-      for (const c of cells) grid.set(`${c.x / CELL},${c.y / CELL}`, c)
 
       const dim = Math.ceil(RENDER_SIZE / CELL)
       const occ: boolean[][] = Array.from({ length: dim }, () => new Array(dim).fill(false))
       for (const c of cells) occ[c.y / CELL][c.x / CELL] = true
-      const skel = skeletonize(occ, dim)
-      const skelByKey = new Map<string, Cell>()
-      skelCells = []
-      for (let gy = 0; gy < dim; gy++) {
-        for (let gx = 0; gx < dim; gx++) {
-          if (!skel[gy][gx]) continue
-          const c = grid.get(`${gx},${gy}`)
-          if (!c) continue
-          skelByKey.set(`${gx},${gy}`, c)
-          skelCells.push(c)
-        }
-      }
-      const skelEdges: Array<[Cell, Cell]> = []
-      for (const c of skelCells) {
-        const gx = c.x / CELL
-        const gy = c.y / CELL
-        const neighbors: Cell[] = []
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (!dx && !dy) continue
-            const n = skelByKey.get(`${gx + dx},${gy + dy}`)
-            if (!n) continue
-            neighbors.push(n)
-            if (dy > 0 || (dy === 0 && dx > 0)) skelEdges.push([c, n])
-          }
-        }
-        skelAdj.set(c, neighbors)
-      }
-
-      // Local thickness: BFS distance to the nearest empty cell. Holes count
-      // as empty, so the eye sockets thin the skull region correctly.
-      const distGrid: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(-1))
-      const bfs: Array<[number, number]> = []
-      for (let gy = 0; gy < dim; gy++) {
-        for (let gx = 0; gx < dim; gx++) {
-          if (!occ[gy][gx]) {
-            distGrid[gy][gx] = 0
-            bfs.push([gx, gy])
-          }
-        }
-      }
-      for (let qi = 0; qi < bfs.length; qi++) {
-        const [gx, gy] = bfs[qi]
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const nx = gx + dx
-            const ny = gy + dy
-            if (nx < 0 || nx >= dim || ny < 0 || ny >= dim || distGrid[ny][nx] !== -1) continue
-            distGrid[ny][nx] = distGrid[gy][gx] + 1
-            bfs.push([nx, ny])
-          }
-        }
-      }
 
       const half = CELL / 2
-      // Bones weighted by local thickness, so the spine reads heavier than a
-      // whisker bone.
-      boneStrokes = skelEdges.map(([a, b]) => {
-        const th = Math.max(distGrid[a.y / CELL][a.x / CELL], distGrid[b.y / CELL][b.x / CELL])
-        return {
-          x1: a.x + half,
-          y1: a.y + half,
-          x2: b.x + half,
-          y2: b.y + half,
-          mx: (a.x + b.x) / 2 + half,
-          my: (a.y + b.y) / 2 + half,
-          w: Math.min(2.4, 0.8 + th * 0.16),
-        }
-      })
+      const G = (g: number) => g * CELL + half
 
       // Body contour: occupied cells touching the outside, chained into a
       // faint outline so the window reads like a radiograph, not floating
@@ -581,102 +676,128 @@ export function AsciiCat({ className = '' }: { className?: string }) {
             const ny = gy + dy
             if (nx < 0 || nx >= dim || ny < 0 || ny >= dim || !isContour(nx, ny)) continue
             contourStrokes.push({
-              x1: gx * CELL + half,
-              y1: gy * CELL + half,
-              x2: nx * CELL + half,
-              y2: ny * CELL + half,
-              mx: ((gx + nx) / 2) * CELL + half,
-              my: ((gy + ny) / 2) * CELL + half,
+              x1: G(gx),
+              y1: G(gy),
+              x2: G(nx),
+              y2: G(ny),
+              mx: G((gx + nx) / 2),
+              my: G((gy + ny) / 2),
               w: 0.7,
             })
           }
         }
       }
 
-      // Eye sockets: interior holes the flood fill never reached, outlined
-      // as rings.
-      socketRings = []
-      const seen: boolean[][] = Array.from({ length: dim }, () => new Array(dim).fill(false))
-      for (let gy = 0; gy < dim; gy++) {
-        for (let gx = 0; gx < dim; gx++) {
-          if (occ[gy][gx] || outside[gy][gx] || seen[gy][gx]) continue
-          const hole: Array<[number, number]> = [[gx, gy]]
-          seen[gy][gx] = true
-          for (let qi = 0; qi < hole.length; qi++) {
-            const [hx, hy] = hole[qi]
-            for (const [dx, dy] of [
-              [1, 0],
-              [-1, 0],
-              [0, 1],
-              [0, -1],
-            ]) {
-              const nx = hx + dx
-              const ny = hy + dy
-              if (nx < 0 || nx >= dim || ny < 0 || ny >= dim) continue
-              if (occ[ny][nx] || outside[ny][nx] || seen[ny][nx]) continue
-              seen[ny][nx] = true
-              hole.push([nx, ny])
+      // The authored skeleton, scaled to render coordinates.
+      boneStrokes = []
+      for (const bone of BONES) {
+        const w = bone.w ?? 1.4
+        for (let i = 1; i < bone.pts.length; i++) {
+          const [ax, ay] = bone.pts[i - 1]
+          const [bx, by] = bone.pts[i]
+          boneStrokes.push({
+            x1: G(ax),
+            y1: G(ay),
+            x2: G(bx),
+            y2: G(by),
+            mx: G((ax + bx) / 2),
+            my: G((ay + by) / 2),
+            w,
+          })
+          if (bone.ticks) {
+            // Vertebra ticks perpendicular to the bone.
+            const segLen = Math.hypot(bx - ax, by - ay)
+            const px = -(by - ay) / segLen
+            const py = (bx - ax) / segLen
+            const n = Math.max(1, Math.round(segLen / 1.6))
+            for (let k = 0; k < n; k++) {
+              const tt = (k + 0.5) / n
+              const cx = G(ax + (bx - ax) * tt)
+              const cy = G(ay + (by - ay) * tt)
+              boneStrokes.push({
+                x1: cx - px * 3.5,
+                y1: cy - py * 3.5,
+                x2: cx + px * 3.5,
+                y2: cy + py * 3.5,
+                mx: cx,
+                my: cy,
+                w: 0.8,
+              })
             }
           }
-          if (hole.length < 2) continue
-          let sx = 0
-          let sy = 0
-          for (const [hx, hy] of hole) {
-            sx += hx
-            sy += hy
-          }
-          socketRings.push({
-            x: (sx / hole.length + 0.5) * CELL,
-            y: (sy / hole.length + 0.5) * CELL,
-            r: (Math.sqrt(hole.length / Math.PI) + 0.7) * CELL,
-          })
         }
       }
+      ribStrokes = RIBS.map((r) => {
+        const x1 = G(r.from[0])
+        const y1 = G(r.from[1])
+        const cx = G(r.via[0])
+        const cy = G(r.via[1])
+        const x2 = G(r.to[0])
+        const y2 = G(r.to[1])
+        return { x1, y1, cx, cy, x2, y2, mx: (x1 + 2 * cx + x2) / 4, my: (y1 + 2 * cy + y2) / 4 }
+      })
+      socketRings = RINGS.map((r) => ({ x: G(r.x), y: G(r.y), r: r.r * CELL }))
+      jointDots = JOINTS.map(([x, y]) => ({ x: G(x), y: G(y) }))
 
-      // Ribs and vertebrae: strokes perpendicular to the local bone
-      // direction, spaced so adjacent skeleton cells never both carry one.
-      // Wide regions (the torso) get curved ribs reaching toward the
-      // silhouette edge; narrow ones (tail, legs, whiskers) get short
-      // vertebra ticks. The skull keeps ribs out via the socket holes, which
-      // cap the local thickness there.
-      ribStrokes = []
-      const blocked = new Set<Cell>()
-      for (const c of skelCells) {
-        if (blocked.has(c)) continue
-        const neighbors = skelAdj.get(c) ?? []
-        if (neighbors.length === 0 || neighbors.length > 2) continue
-        const gx = c.x / CELL
-        const gy = c.y / CELL
-        const th = distGrid[gy][gx]
-        if (th < 2) continue
-        const ax = neighbors.length === 2 ? neighbors[1].x - neighbors[0].x : c.x - neighbors[0].x
-        const ay = neighbors.length === 2 ? neighbors[1].y - neighbors[0].y : c.y - neighbors[0].y
-        const alen = Math.hypot(ax, ay) || 1
-        const px = -ay / alen
-        const py = ax / alen
-        const x0 = c.x + half
-        const y0 = c.y + half
-        const isRib = th >= 4
-        const reach = isRib ? Math.min(th - 1, 8) * CELL * 0.8 : CELL * 0.9
-        // Ribs bow along the bone direction, like a ribcage sweeping back.
-        const bend = isRib ? reach * 0.35 : 0
-        for (const s of [1, -1]) {
-          const ex = x0 + px * reach * s
-          const ey = y0 + py * reach * s
-          const bx = (x0 + ex) / 2 + (ax / alen) * bend
-          const by = (y0 + ey) / 2 + (ay / alen) * bend
-          ribStrokes.push({
-            x1: x0,
-            y1: y0,
-            cx: bx,
-            cy: by,
-            x2: ex,
-            y2: ey,
-            mx: (x0 + 2 * bx + ex) / 4,
-            my: (y0 + 2 * by + ey) / 4,
-          })
+      // Lightning graph: nodes sampled along every bone and rib, chained in
+      // order, then cross-linked where chains come close (the joints).
+      const chains: Array<Array<[number, number]>> = []
+      for (const bone of BONES) {
+        const chain: Array<[number, number]> = [[G(bone.pts[0][0]), G(bone.pts[0][1])]]
+        for (let i = 1; i < bone.pts.length; i++) {
+          const [ax, ay] = bone.pts[i - 1]
+          const [bx, by] = bone.pts[i]
+          const n = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay) / 1.4))
+          for (let k = 1; k <= n; k++) {
+            chain.push([G(ax + ((bx - ax) * k) / n), G(ay + ((by - ay) * k) / n)])
+          }
         }
-        for (const n of neighbors) blocked.add(n)
+        chains.push(chain)
+      }
+      for (const r of RIBS) {
+        const chain: Array<[number, number]> = []
+        for (let k = 0; k <= 8; k++) {
+          const tt = k / 8
+          const u = 1 - tt
+          chain.push([
+            u * u * G(r.from[0]) + 2 * u * tt * G(r.via[0]) + tt * tt * G(r.to[0]),
+            u * u * G(r.from[1]) + 2 * u * tt * G(r.via[1]) + tt * tt * G(r.to[1]),
+          ])
+        }
+        chains.push(chain)
+      }
+      skelNodes = []
+      const chainNodes: Cell[][] = chains.map((chain) =>
+        chain.map(([x, y]) => {
+          const node: Cell = { x: x - half, y: y - half, char: glyphFor(0.8), intensity: 0.8 }
+          skelNodes.push(node)
+          return node
+        }),
+      )
+      const link = (a: Cell, b: Cell) => {
+        for (const [from, to] of [
+          [a, b],
+          [b, a],
+        ]) {
+          const list = skelAdj.get(from)
+          if (list) list.push(to)
+          else skelAdj.set(from, [to])
+        }
+      }
+      for (const nodes of chainNodes) {
+        for (let i = 1; i < nodes.length; i++) link(nodes[i - 1], nodes[i])
+      }
+      // Fuse chains at shared joints: endpoints adopt any node from another
+      // chain that sits within roughly a cell and a half.
+      for (let ci = 0; ci < chainNodes.length; ci++) {
+        for (const end of [chainNodes[ci][0], chainNodes[ci][chainNodes[ci].length - 1]]) {
+          for (let cj = 0; cj < chainNodes.length; cj++) {
+            if (ci === cj) continue
+            for (const other of chainNodes[cj]) {
+              if (Math.hypot(end.x - other.x, end.y - other.y) < CELL * 1.6) link(end, other)
+            }
+          }
+        }
       }
 
       const built = buildLayer(cells)
