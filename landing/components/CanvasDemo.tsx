@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react'
-import { ReactFlowProvider } from '@xyflow/react'
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
+import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import { CanvasFlow } from '@/views/Canvas'
 import Changes from '@/components/Changes'
 import History from '@/components/History'
@@ -15,8 +15,62 @@ import { DEMO_FILE_PATH } from '../demoCode'
 // `maxDelayMs?: number` at after-side line 4 (verified via presentableDiff).
 const FIRST_HUNK_START = 4
 
+// Touch panning for the regions ReactFlow's own pan refuses: the code node
+// carries `nopan` (so mouse drags select text instead of panning), which also
+// blocks touch. This handler takes exactly those gestures and pans manually.
+// The 8px threshold leaves taps alone, so accept/comment buttons keep working.
+function TouchPanThroughCode({ containerRef }: { containerRef: RefObject<HTMLDivElement | null> }) {
+  const reactFlow = useReactFlow()
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    let lastX = 0
+    let lastY = 0
+    let active = false
+    let moved = false
+
+    const onStart = (e: TouchEvent) => {
+      active = e.touches.length === 1 && !!(e.target as HTMLElement).closest?.('.nopan')
+      if (!active) return
+      moved = false
+      lastX = e.touches[0].clientX
+      lastY = e.touches[0].clientY
+    }
+    const onMove = (e: TouchEvent) => {
+      if (!active || e.touches.length !== 1) return
+      const dx = e.touches[0].clientX - lastX
+      const dy = e.touches[0].clientY - lastY
+      if (!moved && Math.hypot(dx, dy) < 8) return
+      moved = true
+      e.preventDefault()
+      lastX = e.touches[0].clientX
+      lastY = e.touches[0].clientY
+      const vp = reactFlow.getViewport()
+      void reactFlow.setViewport({ x: vp.x + dx, y: vp.y + dy, zoom: vp.zoom }, { duration: 0 })
+    }
+    const onEnd = () => {
+      active = false
+    }
+
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd)
+    el.addEventListener('touchcancel', onEnd)
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+      el.removeEventListener('touchcancel', onEnd)
+    }
+  }, [reactFlow, containerRef])
+
+  return null
+}
+
 export function CanvasDemo() {
   const boxRef = useRef<HTMLDivElement>(null)
+  const canvasBoxRef = useRef<HTMLDivElement>(null)
   const cancelled = useRef(false)
   const played = useRef(false)
   const timers = useRef<number[]>([])
@@ -75,9 +129,13 @@ export function CanvasDemo() {
 
   return (
     <div ref={boxRef} onPointerDownCapture={cancel} onKeyDownCapture={cancel}>
-      <div className="relative h-[480px] sm:h-[640px] rounded-lg border border-border overflow-hidden bg-background">
+      <div
+        ref={canvasBoxRef}
+        className="relative h-[480px] sm:h-[640px] rounded-lg border border-border overflow-hidden bg-background"
+      >
         <ReactFlowProvider>
           <CanvasFlow />
+          <TouchPanThroughCode containerRef={canvasBoxRef} />
         </ReactFlowProvider>
       </div>
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 h-[420px] sm:h-[220px] rounded-lg border border-border overflow-hidden bg-background">
