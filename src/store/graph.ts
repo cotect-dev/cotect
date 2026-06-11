@@ -127,22 +127,38 @@ export const useGraphStore = createStoreWithHMR(import.meta.hot, 'graph', () =>
         const importsByFile = new Map<string, string[]>()
         const lineCounts = new Map<string, number>()
         const charCounts = new Map<string, number>()
-        await Promise.all(
-          absFiles.map(async (abs, i) => {
-            const rel = relFiles[i]
-            try {
-              const source = await platform.fs.readFile(abs)
-              lineCounts.set(rel, source.split('\n').length)
-              charCounts.set(rel, source.length)
-              const specifiers = await parseImports(rel, source)
-              importsByFile.set(rel, specifiers)
-            } catch {
-              importsByFile.set(rel, [])
-              lineCounts.set(rel, 0)
-              charCounts.set(rel, 0)
-            }
-          }),
-        )
+        // Tree-sitter parses synchronously on the main thread. A Promise.all
+        // over the whole repo queues those parses back to back, starving
+        // input and rendering for seconds right after project open (the
+        // canvas froze for the first few movements). Small batches with a
+        // real macrotask yield in between keep the app responsive while the
+        // scan proceeds; MessageChannel avoids setTimeout's nested clamp.
+        const yieldToMain = () =>
+          new Promise<void>((resolve) => {
+            const { port1, port2 } = new MessageChannel()
+            port1.onmessage = () => resolve()
+            port2.postMessage(null)
+          })
+        const BATCH = 8
+        for (let start = 0; start < absFiles.length; start += BATCH) {
+          await Promise.all(
+            absFiles.slice(start, start + BATCH).map(async (abs, k) => {
+              const rel = relFiles[start + k]
+              try {
+                const source = await platform.fs.readFile(abs)
+                lineCounts.set(rel, source.split('\n').length)
+                charCounts.set(rel, source.length)
+                const specifiers = await parseImports(rel, source)
+                importsByFile.set(rel, specifiers)
+              } catch {
+                importsByFile.set(rel, [])
+                lineCounts.set(rel, 0)
+                charCounts.set(rel, 0)
+              }
+            }),
+          )
+          await yieldToMain()
+        }
 
         const rawNodes: GraphFileNode[] = relFiles.map((rel) => {
           const config = getConfigForFile(rel)

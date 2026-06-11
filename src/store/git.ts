@@ -474,7 +474,7 @@ export function startGitWatcher(repoPath: string, currentWindowId: string): void
     ]
     for (const w of watches) {
       invoke('watch_path', w).catch((err) => {
-        console.warn(`[git] watch_path "${w.id}" failed — git state may become stale:`, err)
+        console.warn(`[git] watch_path "${w.id}" failed; git state may become stale:`, err)
       })
       cleanups.push(() => {
         invoke('unwatch_path', { id: w.id }).catch((err) => {

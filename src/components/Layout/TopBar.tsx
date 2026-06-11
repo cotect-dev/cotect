@@ -53,7 +53,7 @@ const PANEL_GROUPS = [{ group: 'git', label: 'Git' }] as const
 
 export default function TopBar({ onResetZoneSizes }: TopBarProps) {
   const [testError, setTestError] = useState(false)
-  if (testError) throw new Error('Test error — this is intentional')
+  if (testError) throw new Error('Test error: this is intentional')
   const platform = getPlatform()
   const panels = useLayoutStore((s) => s.panels)
   const addPanel = useLayoutStore((s) => s.addPanel)

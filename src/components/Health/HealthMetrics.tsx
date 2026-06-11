@@ -121,13 +121,13 @@ export default function HealthMetrics() {
                     <FileLink path={row.path} label={row.path} />
                   </td>
                   <td className="px-3 py-1.5 text-muted-foreground">{row.layer}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{row.lineCount || '—'}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{row.lineCount || '–'}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{row.inDegree}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{row.outDegree}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{row.longestChainDepth}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{row.commitCount || '—'}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{row.commitCount || '–'}</td>
                   <td className="px-3 py-1.5 text-muted-foreground">
-                    {row.lastModified > 0 ? <RelativeTime timestamp={row.lastModified} /> : '—'}
+                    {row.lastModified > 0 ? <RelativeTime timestamp={row.lastModified} /> : '–'}
                   </td>
                 </tr>
               ))}

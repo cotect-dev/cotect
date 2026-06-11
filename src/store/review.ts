@@ -257,7 +257,7 @@ export const useReviewStore = createStoreWithHMR(import.meta.hot, 'review', () =
         exportCommentsMarkdown: () => {
           const active = get().active
           if (!active || active.comments.length === 0) return ''
-          const lines: string[] = [`## Review — commits since ${active.baseCommit.slice(0, 7)}`, '']
+          const lines: string[] = [`## Review: commits since ${active.baseCommit.slice(0, 7)}`, '']
           const sorted = [...active.comments].sort(
             (a, b) => a.filePath.localeCompare(b.filePath) || a.startLine - b.startLine,
           )

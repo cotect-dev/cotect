@@ -43,7 +43,7 @@ export default function HealthSummary() {
       <Chip
         label="Test presence"
         value={`${testPresence}%`}
-        hint="Share of source files with a matching *.test.* / *.spec.* file. A heuristic — not line coverage."
+        hint="Share of source files with a matching *.test.* / *.spec.* file. A heuristic rather than line coverage."
       />
       <Chip
         label="LLM-risky files"

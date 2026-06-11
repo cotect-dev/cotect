@@ -246,10 +246,7 @@ export const tauriPlatform: Platform = {
   syncedState: {
     set(name: string, state: unknown, windowId: string) {
       invoke('set_synced_state', { name, state, source: windowId }).catch((err) => {
-        console.warn(
-          `[syncedState] set("${name}") failed — other windows may see stale state:`,
-          err,
-        )
+        console.warn(`[syncedState] set("${name}") failed; other windows may see stale state:`, err)
       })
     },
 
