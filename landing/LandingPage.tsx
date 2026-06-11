@@ -173,14 +173,13 @@ function CanvasSection() {
             This is not a screenshot.
           </h2>
           <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
-            The canvas below is the real cotect editor, the same component the desktop app ships. It
-            opened a small repository on its own. Now it is yours: click into it and move between
-            files with <Kbd>W</Kbd>
+            The real cotect editor with a small repository open. Click in, move between files with{' '}
+            <Kbd>W</Kbd>
             <Kbd>A</Kbd>
             <Kbd>S</Kbd>
-            <Kbd>D</Kbd>, drag the nodes, and review the change an agent just made to{' '}
+            <Kbd>D</Kbd>, and review the change an agent just made to{' '}
             <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>. The
-            Changes and History panels are live too, exactly as they dock in the app.
+            Changes and History panels below are live too.
           </p>
           <p className="mt-2 font-mono text-xs text-amber-400/90">
             hint: look closely at hunk two. nobody asked for more retries.
