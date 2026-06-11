@@ -65,7 +65,7 @@ function HunkLabel({ text }: { text: string }) {
 function Nav() {
   return (
     <header className="fixed top-0 inset-x-0 z-40 border-b border-border/60 bg-background/75 backdrop-blur-md">
-      <div className="mx-auto max-w-5xl px-5 h-14 flex items-center justify-between">
+      <div className="mx-auto max-w-6xl px-5 h-14 flex items-center justify-between">
         <a href="#top" className="flex items-center gap-2">
           <img src={logoUrl} alt="cotect" className="h-6 w-auto" />
         </a>
@@ -111,7 +111,7 @@ function Hero() {
   return (
     <section id="top" className="relative overflow-hidden pt-28 pb-16 sm:pt-36 sm:pb-24">
       <div className="hero-glow" aria-hidden />
-      <div className="relative mx-auto max-w-5xl px-5 hero-stagger">
+      <div className="relative mx-auto max-w-6xl px-5 hero-stagger">
         <p className="font-mono text-xs text-muted-foreground" style={{ ['--i' as string]: 0 }}>
           cotect <span className="text-foreground/30">/</span> a code inspector for the agent era
         </p>
@@ -129,9 +129,8 @@ function Hero() {
           className="mt-8 max-w-xl text-base sm:text-lg text-muted-foreground leading-relaxed"
           style={{ ['--i' as string]: 3 }}
         >
-          Agents write code faster than anyone can read it. cotect is a fast, read‑first code
-          inspector: watch AI‑written changes land in your repository live, navigate them on an
-          infinite canvas, and review every hunk before it ships.
+          cotect watches your repository while agents write. Each change lands on the canvas the
+          moment it happens, ready to review hunk by hunk.
         </p>
         <div className="mt-10 flex flex-wrap items-center gap-3" style={{ ['--i' as string]: 4 }}>
           <a
@@ -158,7 +157,7 @@ function Hero() {
 function CanvasSection() {
   return (
     <section id="demo" className="relative py-16 sm:py-24 scroll-mt-14">
-      <div className="mx-auto max-w-5xl px-5">
+      <div className="mx-auto max-w-6xl px-5">
         <Reveal>
           <HunkLabel text="-0,0 +1,3 canvas" />
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
@@ -168,7 +167,8 @@ function CanvasSection() {
             The canvas below is the real cotect editor, the same component the desktop app ships. It
             opened a small repository on its own. Now it is yours: drag the nodes, pan around, and
             review the change an agent just made to{' '}
-            <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>.
+            <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>. The
+            Changes and History panels are live too, exactly as they dock in the app.
           </p>
           <p className="mt-2 font-mono text-xs text-amber-400/90">
             hint: look closely at hunk two. nobody asked for more retries.
@@ -194,7 +194,7 @@ function CanvasSection() {
 function GraphSection() {
   return (
     <section id="graph" className="relative py-16 sm:py-24 scroll-mt-14">
-      <div className="mx-auto max-w-5xl px-5">
+      <div className="mx-auto max-w-6xl px-5">
         <Reveal>
           <HunkLabel text="import graph" />
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
@@ -225,7 +225,7 @@ function GraphSection() {
 function HealthSection() {
   return (
     <section id="health" className="relative py-16 sm:py-24 scroll-mt-14">
-      <div className="mx-auto max-w-5xl px-5">
+      <div className="mx-auto max-w-6xl px-5">
         <Reveal>
           <HunkLabel text="codebase health" />
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
@@ -256,7 +256,7 @@ function HealthSection() {
 function HowItWorks() {
   return (
     <section className="relative py-16 sm:py-24">
-      <div className="mx-auto max-w-5xl px-5">
+      <div className="mx-auto max-w-6xl px-5">
         <Reveal>
           <HunkLabel text="workflow" />
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
@@ -282,7 +282,7 @@ function HowItWorks() {
                 fetch helper"
               </p>
               <p className="text-muted-foreground">
-                fetchWithRetry.ts changed · 2 hunks appear on the canvas
+                fetchWithRetry.ts changed · 3 hunks appear on the canvas
               </p>
               <p className="pt-5 text-amber-400/80"># 3 · review every hunk before it ships</p>
               <p className="text-green-400">
@@ -344,7 +344,7 @@ function DownloadSection() {
   const ordered = detected ? [detected, ...PLATFORMS.filter((p) => p !== detected)] : [...PLATFORMS]
   return (
     <section id="download" className="relative py-16 sm:py-24 scroll-mt-14">
-      <div className="mx-auto max-w-5xl px-5">
+      <div className="mx-auto max-w-6xl px-5">
         <Reveal>
           <HunkLabel text="download" />
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
@@ -369,11 +369,11 @@ function DownloadSection() {
 function Footer() {
   return (
     <footer className="border-t border-border/60 py-10">
-      <div className="mx-auto max-w-5xl px-5 flex flex-wrap items-center justify-between gap-4">
+      <div className="mx-auto max-w-6xl px-5 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <img src={iconUrl} alt="" className="h-5 w-5" />
           <span className="font-mono text-xs text-muted-foreground">
-            cotect · for engineers who read more code than they write
+            cotect · verify the change
           </span>
         </div>
         <span className="font-mono text-[11px] text-muted-foreground/60">© 2026 cotect</span>
