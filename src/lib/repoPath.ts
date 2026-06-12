@@ -26,7 +26,10 @@ export function joinPath(parent: string, child: string): string {
 }
 
 export function basename(path: string): string {
-  return path.slice(path.lastIndexOf('/') + 1) || path
+  // Handle both POSIX and Windows separators: native paths from the OS use `\`
+  // on Windows, and joined paths can mix the two.
+  const idx = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  return path.slice(idx + 1) || path
 }
 
 export function samePath(absOrRel: string, statusEntryPath: string, repoPath: string): boolean {

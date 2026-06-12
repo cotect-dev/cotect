@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toRepoRelative, toAbsolute, joinPath, samePath } from './repoPath'
+import { toRepoRelative, toAbsolute, joinPath, samePath, basename } from './repoPath'
 
 describe('toRepoRelative', () => {
   it('strips the repoPath prefix from an absolute path inside the repo', () => {
@@ -74,6 +74,29 @@ describe('joinPath', () => {
 
   it('handles empty child', () => {
     expect(joinPath('/Users/me/proj', '')).toBe('/Users/me/proj')
+  })
+})
+
+describe('basename', () => {
+  it('returns the last segment of a POSIX path', () => {
+    expect(basename('/Users/me/proj/src')).toBe('src')
+  })
+
+  it('returns the last segment of a Windows path with backslash separators', () => {
+    expect(basename('C:\\Users\\me\\proj\\src')).toBe('src')
+  })
+
+  it('does not treat a Windows drive-letter colon as a separator', () => {
+    // Regression: breadcrumbs split on `:` and rendered `\Users\me\proj` here.
+    expect(basename('C:\\Users\\me\\proj')).toBe('proj')
+  })
+
+  it('handles a mixed-separator path (joined `/` over a native `\\` root)', () => {
+    expect(basename('C:\\Users\\me\\proj/src')).toBe('src')
+  })
+
+  it('returns the input when there is no separator', () => {
+    expect(basename('foo.ts')).toBe('foo.ts')
   })
 })
 

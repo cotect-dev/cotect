@@ -3,11 +3,6 @@ import { ChevronRight, ChevronLeft, Home } from 'lucide-react'
 import { useCanvasStore } from '@/store'
 import { basename } from '@/lib/repoPath'
 
-function crumbLabel(path: string): string {
-  if (path.includes(':')) return path.split(':').pop()!
-  return basename(path)
-}
-
 export default memo(function Breadcrumbs() {
   const depthChain = useCanvasStore((s) => s.depthChain)
   const currentColumnIndex = useCanvasStore((s) => s.currentColumnIndex)
@@ -17,7 +12,7 @@ export default memo(function Breadcrumbs() {
     () =>
       depthChain.map((path, i) => ({
         path,
-        label: crumbLabel(path),
+        label: basename(path),
         isCurrent: i === currentColumnIndex,
       })),
     [depthChain, currentColumnIndex],
@@ -33,7 +28,7 @@ export default memo(function Breadcrumbs() {
           <button
             className="text-xs text-muted-foreground hover:text-foreground transition-colors mr-1"
             aria-label="Navigate back (Q)"
-            title={`Back to ${crumbLabel(fileHistory[fileHistory.length - 1])}`}
+            title={`Back to ${basename(fileHistory[fileHistory.length - 1])}`}
             onClick={navigateBack}
           >
             <ChevronLeft className="h-3.5 w-3.5" />
