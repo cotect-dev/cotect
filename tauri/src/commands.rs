@@ -488,7 +488,9 @@ mod tests {
     fn system_install_paths_detected() {
         assert!(is_system_install_path(Path::new("/usr/bin/cotect")));
         assert!(is_system_install_path(Path::new("/opt/cotect/cotect")));
-        assert!(is_system_install_path(Path::new("/nix/store/abc123/bin/cotect")));
+        assert!(is_system_install_path(Path::new(
+            "/nix/store/abc123/bin/cotect"
+        )));
     }
 
     #[test]
