@@ -154,11 +154,8 @@ function Nav() {
           <a href="#demo" className="hover:text-foreground transition-colors max-sm:hidden">
             demo
           </a>
-          <a href="#graph" className="hover:text-foreground transition-colors max-sm:hidden">
-            graph
-          </a>
-          <a href="#health" className="hover:text-foreground transition-colors max-sm:hidden">
-            health
+          <a href="#faq" className="hover:text-foreground transition-colors max-sm:hidden">
+            faq
           </a>
           <a
             href={REPO_URL}
@@ -367,7 +364,7 @@ function HowItWorks() {
         <Reveal>
           <HunkLabel text="workflow" />
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
-            Three steps, zero ceremony.
+            Open, watch, review.
           </h2>
         </Reveal>
         <Reveal delay={120} className="mt-8">
@@ -473,31 +470,75 @@ function DownloadSection() {
   )
 }
 
-function OpenSourceSection() {
+const FAQ: { q: string; lead: string; a: ReactNode }[] = [
+  {
+    q: 'Is cotect free? How will it make money?',
+    lead: 'Free and open source, forever.',
+    a: (
+      <>
+        cotect is Apache-2.0 and free for individual use. The plan for making it sustainable is paid
+        team features later, like shared reviews and collaboration, once they exist. The core app
+        stays free, with no bait and switch. If a tool reads your code all day, you should be able
+        to read its code too:{' '}
+        <a
+          href={REPO_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="text-green-400 hover:text-green-300 transition-colors"
+        >
+          github.com/cotect-dev/cotect
+        </a>
+        .
+      </>
+    ),
+  },
+  {
+    q: 'Does my code leave my machine?',
+    lead: 'No.',
+    a: 'cotect reads your repository locally and renders everything on your own machine. The only time it reaches the network is to check github.com for new versions.',
+  },
+  {
+    q: 'Which agents does it work with?',
+    lead: 'Any of them.',
+    a: 'cotect watches your repository files and Git state, so it surfaces changes from any coding agent or editor that touches your repo, whether that is Claude Code, Codex, OpenCode, or your own hand edits.',
+  },
+  {
+    q: 'Will it change my code?',
+    lead: 'Never.',
+    a: 'cotect is read-first. It does not write to your working tree, stage, or commit for you. It shows you what changed so you can review it hunk by hunk and decide what to do.',
+  },
+  {
+    q: 'Which platforms are supported?',
+    lead: 'macOS, Windows, and Linux.',
+    a: 'Grab a build from the download section above.',
+  },
+]
+
+function FAQSection() {
   return (
-    <section id="open-source" className="relative py-16 sm:py-24 scroll-mt-14">
+    <section id="faq" className="relative py-16 sm:py-24 scroll-mt-14">
       <div className="mx-auto max-w-6xl px-5">
         <Reveal>
-          <HunkLabel text="open source" />
+          <HunkLabel text="faq" />
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
-            Apache-2.0, and a straight answer about money.
+            Frequently asked questions.
           </h2>
-          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
-            cotect is free and open source for individual use, forever. The plan for making it
-            sustainable: paid team features, like shared reviews and collaboration, once they exist.
-            No bait and switch on the core app. If a tool reads your code all day, you should be
-            able to read its code too:{' '}
-            <a
-              href={REPO_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="text-green-400 hover:text-green-300 transition-colors"
-            >
-              github.com/cotect-dev/cotect
-            </a>
-            .
-          </p>
         </Reveal>
+        <dl className="mt-10 max-w-3xl divide-y divide-border/60">
+          {FAQ.map((item, i) => (
+            <Reveal key={item.q} delay={i * 40}>
+              <div className="py-5">
+                <dt className="font-mono text-base sm:text-lg font-medium text-foreground">
+                  {item.q}
+                </dt>
+                <dd className="mt-2 text-muted-foreground leading-relaxed">
+                  <span className="font-semibold text-foreground">{item.lead} </span>
+                  {item.a}
+                </dd>
+              </div>
+            </Reveal>
+          ))}
+        </dl>
       </div>
     </section>
   )
@@ -542,7 +583,7 @@ export function LandingPage() {
         <HealthSection />
         <HowItWorks />
         <DownloadSection />
-        <OpenSourceSection />
+        <FAQSection />
       </main>
       <Footer />
     </div>
