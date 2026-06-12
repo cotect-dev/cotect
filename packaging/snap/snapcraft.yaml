@@ -1,6 +1,6 @@
 name: cotect
 base: core22
-version: '0.2.0'
+version: '0.2.1'
 summary: A fast, read-first code inspector for the agent era
 description: |
   Cotect watches your repository while AI agents write. Every change lands on
@@ -30,7 +30,7 @@ parts:
   # and URL below to match the release being published.
   cotect:
     plugin: dump
-    source: https://github.com/cotect-dev/cotect/releases/download/v0.2.0/Cotect_0.2.0_amd64.deb
+    source: https://github.com/cotect-dev/cotect/releases/download/v0.2.1/Cotect_0.2.1_amd64.deb
     source-type: deb
     stage-packages:
       - libwebkit2gtk-4.1-0

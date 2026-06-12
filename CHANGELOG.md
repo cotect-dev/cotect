@@ -7,6 +7,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-12
+
+### Added
+
+- Settings: an About section showing the app version, platform, and an in-app check for updates
+- Signed and notarized macOS builds (Developer ID), so macOS opens them without a workaround
+- Linux: direct .deb and .rpm downloads on the landing page, plus update notices for package-manager installs
+- FAQ section on the landing page
+
+### Changed
+
+- Thin scrollbars throughout the app, matching the landing page
+
+### Fixed
+
+- Windows: breadcrumbs now render path segments correctly instead of showing the full path
+
 ## [0.2.0] - 2026-06-12
 
 First public release. Cotect is now open source under Apache-2.0 at
