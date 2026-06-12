@@ -114,9 +114,10 @@ pub fn is_wayland() -> bool {
 }
 
 /// System-managed install prefixes: the self-updater cannot write there, and
-/// installs under them (deb/rpm/AUR/nix) are updated by the package manager.
+/// installs under them (deb/rpm/AUR/nix/snap) are updated by the package
+/// manager. Snap mounts the app read-only under /snap/<name>/<rev>.
 fn is_system_install_path(path: &Path) -> bool {
-    ["/usr", "/opt", "/nix"]
+    ["/usr", "/opt", "/nix", "/snap"]
         .iter()
         .any(|prefix| path.starts_with(prefix))
 }
@@ -490,6 +491,9 @@ mod tests {
         assert!(is_system_install_path(Path::new("/opt/cotect/cotect")));
         assert!(is_system_install_path(Path::new(
             "/nix/store/abc123/bin/cotect"
+        )));
+        assert!(is_system_install_path(Path::new(
+            "/snap/cotect/42/usr/bin/cotect"
         )));
     }
 
