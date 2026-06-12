@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Lets software centers (GNOME Software / Ubuntu App Center) render Cotect's
+     name, icon, description, and screenshots instead of a bare package. -->
+<component type="desktop-application">
+  <id>com.cotect.app</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Cotect</name>
+  <summary>A fast, read-first code inspector for the agent era</summary>
+  <description>
+    <p>
+      Cotect watches your repository while AI agents write. Every change lands on
+      an infinite canvas the moment it happens, ready to review hunk by hunk,
+      without touching the working tree.
+    </p>
+  </description>
+  <launchable type="desktop-id">Cotect.desktop</launchable>
+  <icon type="stock">cotect</icon>
+  <categories>
+    <category>Development</category>
+  </categories>
+  <url type="homepage">https://cotect.dev</url>
+  <url type="bugtracker">https://github.com/cotect-dev/cotect/issues</url>
+  <url type="vcs-browser">https://github.com/cotect-dev/cotect</url>
+  <developer id="dev.cotect">
+    <name>Grzegorz Raczek</name>
+  </developer>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://cotect.dev/og.png</image>
+      <caption>Cotect, a read-first code inspector for the agent era</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.2.1" date="2026-06-12" />
+  </releases>
+</component>

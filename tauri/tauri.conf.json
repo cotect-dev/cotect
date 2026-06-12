@@ -45,6 +45,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/share/metainfo/com.cotect.app.metainfo.xml": "metainfo/com.cotect.app.metainfo.xml"
+        }
+      }
+    }
   }
 }
