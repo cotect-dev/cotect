@@ -56,6 +56,13 @@ jobs:
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # macOS code signing + notarization (only consumed by the macOS build).
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_PATH: ${{ runner.temp }}/apple-api-key.p8
     steps:
       - uses: actions/checkout@v6
       - name: Install Tauri system dependencies
@@ -75,6 +82,11 @@ jobs:
         with:
           workspaces: tauri
       - run: yarn install --frozen-lockfile
+      - name: Provision notarization API key
+        if: startsWith(matrix.platform, 'macos')
+        run: printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$APPLE_API_KEY_PATH"
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
       - run: yarn tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
       - uses: actions/upload-artifact@v7
         with:
