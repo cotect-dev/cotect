@@ -12,7 +12,7 @@ brew install pkgconf glib cairo atk gtk+3 pango gdk-pixbuf
 ```
 
 On Linux, install the Tauri prerequisites for your distro
-(webkit2gtk 4.1, libayatana-appindicator, librsvg — see
+(webkit2gtk 4.1, libayatana-appindicator, librsvg; see
 `.github/workflows/ci.yml` for the exact Ubuntu package list).
 
 ## Setup

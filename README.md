@@ -12,20 +12,20 @@
 
 Agents write more code than you can read in a pull-request diff. Cotect
 watches your repository while they work: every change lands on an infinite
-canvas the moment it happens, ready to review hunk by hunk — and it never
+canvas the moment it happens, ready to review hunk by hunk. It never
 touches your working tree, so agents keep working while you read.
 
 ## What it does
 
-- **Live canvas** — files and changes appear as they happen, laid out
+- **Live canvas.** Files and changes appear as they happen, laid out
   spatially instead of as a file list.
-- **Hunk-by-hunk review** — accept or comment on each hunk; comments can be
+- **Hunk-by-hunk review.** Accept or comment on each hunk; comments can be
   copied straight into the agent of your choice.
-- **Import graph** — Cotect resolves imports across the codebase and draws
+- **Import graph.** Cotect resolves imports across the codebase and draws
   the shape of the project: what a file pulls in, what depends on it.
-- **Codebase health** — structural findings, churn hotspots, and oversized
+- **Codebase health.** Structural findings, churn hotspots, and oversized
   files, computed from the repository itself.
-- **Read-only by default** — reviewing never mutates git state or the
+- **Read-only by default.** Reviewing never mutates git state or the
   working tree.
 
 ## Install
@@ -42,10 +42,10 @@ chmod +x cotect.AppImage
 ./cotect.AppImage
 ```
 
-## Free, open source — and the plan for money
+## Free, open source, and the plan for money
 
 Cotect is Apache-2.0 and **free for individual use, forever**. The planned
-business model is **paid team features** — shared reviews and collaboration —
+business model is **paid team features** (shared reviews and collaboration)
 built on top of the open-source app. Stating that on day one is deliberate:
 if a tool reads your code all day, you shouldn't have to guess how it will
 eventually monetize you.
@@ -56,8 +56,8 @@ See [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Issues — especially "this broke on my
-repo" reports — are very welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Issues are very welcome, especially
+"this broke on my repo" reports.
 
 ## License
 

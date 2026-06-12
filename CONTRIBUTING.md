@@ -1,6 +1,6 @@
 # Contributing to Cotect
 
-Thanks for your interest. Cotect is young and currently a solo project —
+Thanks for your interest. Cotect is young and currently a solo project, so
 small, focused PRs are the easiest to review and land.
 
 ## Before you start
