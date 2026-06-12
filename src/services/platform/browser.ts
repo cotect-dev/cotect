@@ -1,4 +1,11 @@
-import type { Platform, FSEntry, CursorWindowInfo, WindowMonitorInfo, MonitorInfo } from './types'
+import type {
+  Platform,
+  FSEntry,
+  CursorWindowInfo,
+  WindowMonitorInfo,
+  MonitorInfo,
+  AppInfo,
+} from './types'
 
 const LS_PREFIX = 'cotect:'
 
@@ -23,6 +30,16 @@ function getBcChannel(): BroadcastChannel {
 export const browserPlatform: Platform = {
   async isWayland() {
     return false
+  },
+
+  app: {
+    async info(): Promise<AppInfo> {
+      return { version: import.meta.env.VITE_APP_VERSION ?? 'dev', os: 'web', arch: '', build: '' }
+    },
+
+    async openExternal(url: string): Promise<void> {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    },
   },
 
   windows: {

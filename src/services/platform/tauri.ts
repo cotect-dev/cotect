@@ -1,8 +1,16 @@
 import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
+import { getVersion } from '@tauri-apps/api/app'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { Platform, FSEntry, CursorWindowInfo, WindowMonitorInfo, MonitorInfo } from './types'
+import type {
+  Platform,
+  FSEntry,
+  CursorWindowInfo,
+  WindowMonitorInfo,
+  MonitorInfo,
+  AppInfo,
+} from './types'
 
 function getWindowId(): string {
   const params = new URLSearchParams(window.location.search)
@@ -19,6 +27,20 @@ export const tauriPlatform: Platform = {
       _isWayland = await invoke<boolean>('is_wayland')
     }
     return _isWayland
+  },
+
+  app: {
+    async info(): Promise<AppInfo> {
+      const [version, sys] = await Promise.all([
+        getVersion(),
+        invoke<{ os: string; arch: string; build: string }>('app_info'),
+      ])
+      return { version, ...sys }
+    },
+
+    async openExternal(url: string): Promise<void> {
+      await invoke('open_external', { url })
+    },
   },
 
   windows: {

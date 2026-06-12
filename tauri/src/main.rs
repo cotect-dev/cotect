@@ -56,6 +56,8 @@ fn main() {
             commands::read_binary_file,
             commands::is_wayland,
             commands::is_self_updatable,
+            commands::app_info,
+            commands::open_external,
             commands::get_cursor_window,
             commands::get_window_monitor,
             commands::set_window_on_monitor,

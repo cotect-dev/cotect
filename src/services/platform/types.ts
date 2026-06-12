@@ -43,8 +43,23 @@ export interface MonitorInfo {
   scale_factor: number
 }
 
+export interface AppInfo {
+  version: string
+  os: string
+  arch: string
+  /** Bundle build label shown alongside os/arch (e.g. "universal" on macOS); may be empty. */
+  build: string
+}
+
 export interface Platform {
   isWayland(): Promise<boolean>
+
+  app: {
+    /** Version + platform/build info for the About settings section. */
+    info(): Promise<AppInfo>
+    /** Open an http(s) URL in the user's default browser. */
+    openExternal(url: string): Promise<void>
+  }
 
   windows: {
     getWindowId(): string

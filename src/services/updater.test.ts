@@ -13,7 +13,7 @@ vi.mock('@tauri-apps/plugin-updater', () => ({ check: mocks.check }))
 vi.mock('@tauri-apps/plugin-dialog', () => ({ ask: mocks.ask, message: mocks.message }))
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: mocks.relaunch }))
 
-import { checkForUpdates } from './updater'
+import { checkForUpdates, getUpdateStatus } from './updater'
 
 function fakeUpdate(version = '0.3.0') {
   return {
@@ -38,6 +38,37 @@ function inMemoryStorage() {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.stubGlobal('localStorage', inMemoryStorage())
+})
+
+describe('getUpdateStatus', () => {
+  it('returns the update and self-updatable flag', async () => {
+    mocks.invoke.mockResolvedValue(true)
+    const update = fakeUpdate()
+    mocks.check.mockResolvedValue(update)
+    const status = await getUpdateStatus()
+    expect(status.selfUpdatable).toBe(true)
+    expect(status.update).toBe(update)
+  })
+
+  it('returns a null update when on the latest version', async () => {
+    mocks.invoke.mockResolvedValue(true)
+    mocks.check.mockResolvedValue(null)
+    const status = await getUpdateStatus()
+    expect(status.update).toBeNull()
+  })
+
+  it('reflects package-managed installs as not self-updatable', async () => {
+    mocks.invoke.mockResolvedValue(false)
+    mocks.check.mockResolvedValue(fakeUpdate())
+    const status = await getUpdateStatus()
+    expect(status.selfUpdatable).toBe(false)
+  })
+
+  it('propagates a failed check', async () => {
+    mocks.invoke.mockResolvedValue(true)
+    mocks.check.mockRejectedValue(new Error('offline'))
+    await expect(getUpdateStatus()).rejects.toThrow('offline')
+  })
 })
 
 describe('checkForUpdates', () => {

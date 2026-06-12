@@ -480,6 +480,66 @@ pub fn show_in_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct AppInfo {
+    os: String,
+    arch: String,
+    /// Bundle build label shown alongside os/arch (e.g. "universal" on macOS).
+    build: String,
+}
+
+#[tauri::command]
+pub fn app_info() -> AppInfo {
+    let build = if cfg!(target_os = "macos") {
+        "universal"
+    } else {
+        ""
+    };
+    AppInfo {
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        build: build.to_string(),
+    }
+}
+
+/// Open a web URL in the user's default browser. Restricted to http(s) and free
+/// of shell metacharacters so a URL can never smuggle extra commands.
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("Only http(s) URLs may be opened".to_string());
+    }
+    if url
+        .chars()
+        .any(|c| c.is_control() || " \"'\\<>|&".contains(c))
+    {
+        return Err("URL contains disallowed characters".to_string());
+    }
+
+    #[cfg(target_os = "linux")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", &url]);
+        c
+    };
+
+    cmd.spawn()
+        .map_err(|e| format!("Failed to open URL: {e}"))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -495,6 +555,21 @@ mod tests {
         assert!(is_system_install_path(Path::new(
             "/snap/cotect/42/usr/bin/cotect"
         )));
+    }
+
+    #[test]
+    fn app_info_reports_os_and_arch() {
+        let info = app_info();
+        assert!(!info.os.is_empty());
+        assert!(!info.arch.is_empty());
+    }
+
+    #[test]
+    fn open_external_rejects_non_web_and_metacharacters() {
+        assert!(open_external("file:///etc/passwd".to_string()).is_err());
+        assert!(open_external("ftp://example.com".to_string()).is_err());
+        assert!(open_external("https://cotect.dev; rm -rf".to_string()).is_err());
+        assert!(open_external("https://cotect.dev/a&b".to_string()).is_err());
     }
 
     #[test]
