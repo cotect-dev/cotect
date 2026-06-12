@@ -113,6 +113,25 @@ pub fn is_wayland() -> bool {
         && std::env::var("XDG_SESSION_TYPE").is_ok_and(|v| v == "wayland")
 }
 
+/// System-managed install prefixes: the self-updater cannot write there, and
+/// installs under them (deb/rpm/AUR/nix) are updated by the package manager.
+fn is_system_install_path(path: &Path) -> bool {
+    ["/usr", "/opt", "/nix"]
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+}
+
+#[tauri::command]
+pub fn is_self_updatable() -> bool {
+    if cfg!(target_os = "linux") {
+        std::env::current_exe()
+            .map(|exe| !is_system_install_path(&exe))
+            .unwrap_or(false)
+    } else {
+        true
+    }
+}
+
 #[cfg(target_os = "linux")]
 use gdk::prelude::*;
 #[cfg(target_os = "linux")]
@@ -464,6 +483,24 @@ pub fn show_in_folder(path: String) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn system_install_paths_detected() {
+        assert!(is_system_install_path(Path::new("/usr/bin/cotect")));
+        assert!(is_system_install_path(Path::new("/opt/cotect/cotect")));
+        assert!(is_system_install_path(Path::new("/nix/store/abc123/bin/cotect")));
+    }
+
+    #[test]
+    fn user_paths_are_not_system_installs() {
+        assert!(!is_system_install_path(Path::new(
+            "/home/user/Applications/cotect.AppImage"
+        )));
+        // AppImage mount point contains "usr" but not as the root prefix.
+        assert!(!is_system_install_path(Path::new(
+            "/tmp/.mount_cotect1234/usr/bin/cotect"
+        )));
+    }
 
     #[test]
     fn read_file_content_rejects_oversized() {

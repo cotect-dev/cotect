@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core'
 import { check } from '@tauri-apps/plugin-updater'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { relaunch } from '@tauri-apps/plugin-process'
@@ -7,6 +8,9 @@ import { relaunch } from '@tauri-apps/plugin-process'
 // running version untouched.
 export async function checkForUpdates(): Promise<void> {
   try {
+    // Package-manager installs (deb/rpm/AUR) update through the package
+    // manager; the updater cannot write to system paths anyway.
+    if (!(await invoke<boolean>('is_self_updatable'))) return
     const update = await check()
     if (!update) return
     const install = await ask(
