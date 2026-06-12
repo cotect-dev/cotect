@@ -2,7 +2,7 @@
   "name": "cotect",
   "private": true,
   "version": "0.1.0",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
