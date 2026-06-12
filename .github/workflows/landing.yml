@@ -1,6 +1,6 @@
-# Deploys the landing page to GitHub Pages on the public cotect-releases
-# repo (gh-pages branch) on every push to main. Uses the same RELEASES_TOKEN
-# PAT as the release workflow (contents: write on cotect-releases).
+# Builds the landing page and deploys it to this repo's GitHub Pages site
+# (cotect.dev) on every push to main. The custom domain is configured in the
+# repo's Pages settings, not in the artifact.
 name: landing
 
 on:
@@ -18,9 +18,15 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -30,18 +36,16 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       - run: yarn landing:build
-      - name: Push to cotect-releases gh-pages
-        run: |
-          cd dist-landing
-          touch .nojekyll
-          # The custom domain lives in the branch; a deploy without it would
-          # detach cotect.dev from the Pages site.
-          echo "cotect.dev" > CNAME
-          git init -b gh-pages
-          git add -A
-          git -c user.name="github-actions[bot]" \
-              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "deploy landing from $GITHUB_SHA"
-          git push --force "https://x-access-token:${RELEASES_TOKEN}@github.com/grzracz/cotect-releases.git" gh-pages
-        env:
-          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-landing
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

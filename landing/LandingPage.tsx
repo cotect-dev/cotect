@@ -4,7 +4,7 @@ import iconUrl from '../public/icon.svg'
 import { DemoBoundary } from './components/DemoBoundary'
 import { AsciiCat } from './components/AsciiCat'
 import { seedReady } from './seed'
-import { DOWNLOADS, detectOS } from './downloads'
+import { DOWNLOADS, detectOS, REPO_URL } from './downloads'
 
 // The demos pull in the full app stack (ReactFlow, every CodeMirror language
 // package). Lazy-load them so the hero paints with just React on the wire,
@@ -159,6 +159,14 @@ function Nav() {
           </a>
           <a href="#health" className="hover:text-foreground transition-colors max-sm:hidden">
             health
+          </a>
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            github
           </a>
           <a
             href="#download"
@@ -450,7 +458,7 @@ function DownloadSection() {
             Download cotect.
           </h2>
           <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
-            Free while in development. Point it at a repository and start reading.
+            Free and open source. Point it at a repository and start reading.
           </p>
         </Reveal>
         <div className="mt-10 space-y-4">
@@ -460,6 +468,36 @@ function DownloadSection() {
             </Reveal>
           ))}
         </div>
+      </div>
+    </section>
+  )
+}
+
+function OpenSourceSection() {
+  return (
+    <section id="open-source" className="relative py-16 sm:py-24 scroll-mt-14">
+      <div className="mx-auto max-w-6xl px-5">
+        <Reveal>
+          <HunkLabel text="open source" />
+          <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
+            Apache-2.0, and a straight answer about money.
+          </h2>
+          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
+            cotect is free and open source for individual use, forever. The plan for making it
+            sustainable: paid team features, like shared reviews and collaboration, once they exist.
+            No bait and switch on the core app. If a tool reads your code all day, you should be
+            able to read its code too:{' '}
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="text-green-400 hover:text-green-300 transition-colors"
+            >
+              github.com/cotect-dev/cotect
+            </a>
+            .
+          </p>
+        </Reveal>
       </div>
     </section>
   )
@@ -475,7 +513,18 @@ function Footer() {
             cotect · verify the change
           </span>
         </div>
-        <span className="font-mono text-[11px] text-muted-foreground/60">© 2026 cotect</span>
+        <div className="flex items-center gap-4 font-mono text-[11px] text-muted-foreground/60">
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-muted-foreground transition-colors"
+          >
+            github
+          </a>
+          <span>Apache-2.0</span>
+          <span>© 2026 cotect</span>
+        </div>
       </div>
     </footer>
   )
@@ -493,6 +542,7 @@ export function LandingPage() {
         <HealthSection />
         <HowItWorks />
         <DownloadSection />
+        <OpenSourceSection />
       </main>
       <Footer />
     </div>

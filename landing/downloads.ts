@@ -1,7 +1,8 @@
-// Artifacts live in the public cotect-releases repo; the release workflow
+// Artifacts live in this repo's GitHub releases; the release workflow
 // uploads them under these fixed names, so `latest` always points at the
 // newest build.
-const RELEASES = 'https://github.com/grzracz/cotect-releases/releases/latest/download'
+export const REPO_URL = 'https://github.com/cotect-dev/cotect'
+const RELEASES = `${REPO_URL}/releases/latest/download`
 
 export type OS = 'mac' | 'windows' | 'linux' | 'unknown'
 
