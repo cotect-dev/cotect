@@ -62,7 +62,6 @@ jobs:
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-      APPLE_API_KEY_PATH: ${{ runner.temp }}/apple-api-key.p8
     steps:
       - uses: actions/checkout@v6
       - name: Install Tauri system dependencies
@@ -84,7 +83,10 @@ jobs:
       - run: yarn install --frozen-lockfile
       - name: Provision notarization API key
         if: startsWith(matrix.platform, 'macos')
-        run: printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$APPLE_API_KEY_PATH"
+        run: |
+          KEY_PATH="$RUNNER_TEMP/apple-api-key.p8"
+          printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
       - run: yarn tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
