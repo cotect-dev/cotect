@@ -13,8 +13,9 @@ export default defineConfig({
   // project subpath and at the cotect.dev root.
   base: './',
   // Branding SVGs are imported as modules; don't copy the app's public/
-  // (tree-sitter wasm etc.) into the site bundle.
-  publicDir: false,
+  // (tree-sitter wasm etc.) into the site bundle. landing/public holds the
+  // site-only static assets (og.png for link previews).
+  publicDir: 'public',
   plugins: [react(), tailwindcss()],
   server: {
     // Dev-server access from LAN devices by hostname (phone testing).
