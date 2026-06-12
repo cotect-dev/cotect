@@ -2,7 +2,7 @@ import { check } from '@tauri-apps/plugin-updater'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { relaunch } from '@tauri-apps/plugin-process'
 
-// Startup update check against the cotect-releases manifest. Fire-and-forget:
+// Startup update check against the GitHub releases manifest. Fire-and-forget:
 // any failure (offline, manifest missing, signature mismatch) leaves the
 // running version untouched.
 export async function checkForUpdates(): Promise<void> {

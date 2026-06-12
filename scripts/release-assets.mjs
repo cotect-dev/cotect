@@ -1,10 +1,10 @@
-// Prepares release assets for the public cotect-releases repo: collects the
-// per-OS bundle artifacts from the CI matrix, renames them to the stable
-// names the landing page links to, and writes the Tauri updater manifest
-// (latest.json) whose URLs point at the tag's immutable download paths.
+// Prepares release assets: collects the per-OS bundle artifacts from the CI
+// matrix, renames them to the stable names the landing page links to, and
+// writes the Tauri updater manifest (latest.json) whose URLs point at the
+// tag's immutable download paths.
 //
 // Env: TAG (e.g. v0.1.0), IN_DIR (downloaded artifacts), OUT_DIR (assets to
-// upload), REPO (owner/name of the releases repo).
+// upload), REPO (owner/name of the repo releases are published to).
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
