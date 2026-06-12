@@ -1,18 +1,31 @@
 import { invoke } from '@tauri-apps/api/core'
 import { check } from '@tauri-apps/plugin-updater'
-import { ask } from '@tauri-apps/plugin-dialog'
+import { ask, message } from '@tauri-apps/plugin-dialog'
 import { relaunch } from '@tauri-apps/plugin-process'
+
+// Remembers which version a package-manager install was already told about,
+// so the announcement shows once per version instead of on every launch.
+const ANNOUNCED_VERSION_KEY = 'updater.announcedVersion'
 
 // Startup update check against the GitHub releases manifest. Fire-and-forget:
 // any failure (offline, manifest missing, signature mismatch) leaves the
 // running version untouched.
 export async function checkForUpdates(): Promise<void> {
   try {
-    // Package-manager installs (deb/rpm/AUR) update through the package
-    // manager; the updater cannot write to system paths anyway.
-    if (!(await invoke<boolean>('is_self_updatable'))) return
+    const selfUpdatable = await invoke<boolean>('is_self_updatable')
     const update = await check()
     if (!update) return
+    if (!selfUpdatable) {
+      // Package-manager installs (deb/rpm/AUR) cannot overwrite themselves;
+      // announce the version and let the package manager deliver it.
+      if (localStorage.getItem(ANNOUNCED_VERSION_KEY) === update.version) return
+      await message(
+        `Cotect ${update.version} is available (you have ${update.currentVersion}). Install it through your package manager.`,
+        { title: 'Update available', kind: 'info' },
+      )
+      localStorage.setItem(ANNOUNCED_VERSION_KEY, update.version)
+      return
+    }
     const install = await ask(
       `Cotect ${update.version} is available (you have ${update.currentVersion}).`,
       {
