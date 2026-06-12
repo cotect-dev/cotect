@@ -20,7 +20,7 @@ export async function checkForUpdates(): Promise<void> {
       // announce the version and let the package manager deliver it.
       if (localStorage.getItem(ANNOUNCED_VERSION_KEY) === update.version) return
       await message(
-        `Cotect ${update.version} is available (you have ${update.currentVersion}). Install it through your package manager.`,
+        `Cotect ${update.version} is available (you have ${update.currentVersion}). Get it from cotect.dev or your package manager.`,
         { title: 'Update available', kind: 'info' },
       )
       localStorage.setItem(ANNOUNCED_VERSION_KEY, update.version)
