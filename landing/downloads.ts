@@ -9,7 +9,11 @@ export type OS = 'mac' | 'windows' | 'linux' | 'unknown'
 export const DOWNLOADS = {
   windows: { label: 'Download for Windows', url: `${RELEASES}/cotect-setup.exe` },
   mac: { label: 'Download for macOS', url: `${RELEASES}/cotect.dmg` },
-  linux: { appImageUrl: `${RELEASES}/cotect.AppImage` },
+  linux: {
+    debUrl: `${RELEASES}/cotect-amd64.deb`,
+    rpmUrl: `${RELEASES}/cotect-x86_64.rpm`,
+    appImageUrl: `${RELEASES}/cotect.AppImage`,
+  },
 } as const
 
 export function detectOS(platform?: string): OS {
