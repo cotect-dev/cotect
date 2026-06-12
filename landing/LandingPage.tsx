@@ -454,11 +454,6 @@ function PlatformCard({ platform, detected }: { platform: Platform; detected: bo
           >
             {DOWNLOADS[platform].label}
           </a>
-          {platform === 'mac' && (
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              unsigned build for now: right-click the app and choose Open on first launch.
-            </p>
-          )}
         </div>
       )}
     </div>
