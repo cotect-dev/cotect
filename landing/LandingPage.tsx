@@ -4,7 +4,8 @@ import iconUrl from '../public/icon.svg'
 import { DemoBoundary } from './components/DemoBoundary'
 import { AsciiCat } from './components/AsciiCat'
 import { seedReady } from './seed'
-import { DOWNLOADS, detectOS, REPO_URL } from './downloads'
+import { DOWNLOADS, detectOS, detectLinuxPkg, REPO_URL } from './downloads'
+import { AppleIcon, LinuxIcon, WindowsIcon } from './icons'
 
 // The demos pull in the full app stack (ReactFlow, every CodeMirror language
 // package). Lazy-load them so the hero paints with just React on the wire,
@@ -403,13 +404,51 @@ function HowItWorks() {
 const PLATFORMS = ['windows', 'mac', 'linux'] as const
 type Platform = (typeof PLATFORMS)[number]
 
+/** A shell snippet with a copy button; one click on the block also selects it all. */
+function CopyableCommand({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1500)
+      })
+      .catch(() => {})
+  }
+  return (
+    <div className="relative">
+      <pre className="select-all rounded bg-[#1e1e1e] p-3 sm:p-4 pr-14 font-mono text-[11px] sm:text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
+        {text}
+      </pre>
+      <button
+        onClick={copy}
+        aria-label="Copy commands"
+        className="absolute top-2 right-2 rounded border border-border bg-background/70 px-2 py-1 font-mono text-[10px] text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+      >
+        {copied ? 'copied' : 'copy'}
+      </button>
+    </div>
+  )
+}
+
+// Green primary for the recommended package, muted outline for the alternative.
+function linuxBtn(primary: boolean): string {
+  return primary
+    ? 'rounded-md bg-green-500/15 border border-green-500/40 px-4 py-2 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors'
+    : 'rounded-md border border-border px-4 py-2 font-mono text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors'
+}
+
 function PlatformCard({ platform, detected }: { platform: Platform; detected: boolean }) {
   const boxClass = detected
     ? 'border-green-500/40 bg-green-500/5'
     : 'border-border bg-card/40 opacity-80'
+  const preferredLinuxPkg = detectLinuxPkg()
+  const OsIcon = platform === 'mac' ? AppleIcon : platform === 'windows' ? WindowsIcon : LinuxIcon
   return (
     <div className={`rounded-lg border p-5 sm:p-6 ${boxClass}`}>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
+        <OsIcon className="h-4 w-4 text-muted-foreground/80" />
         <span className="font-mono text-xs text-muted-foreground/60">
           {platform === 'mac' ? 'macos' : platform}
         </span>
@@ -420,28 +459,24 @@ function PlatformCard({ platform, detected }: { platform: Platform; detected: bo
         )}
       </div>
       {platform === 'linux' ? (
-        <div className="mt-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-            <a
-              href={DOWNLOADS.linux.debUrl}
-              className="rounded-md bg-green-500/15 border border-green-500/40 px-4 py-2 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors"
-            >
-              Download .deb
+        <div className="mt-4 space-y-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <a href={DOWNLOADS.linux.debUrl} className={linuxBtn(preferredLinuxPkg === 'deb')}>
+              .deb (Ubuntu, Debian)
             </a>
-            <a
-              href={DOWNLOADS.linux.rpmUrl}
-              className="rounded-md border border-border px-4 py-2 font-mono text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-            >
-              .rpm
+            <a href={DOWNLOADS.linux.rpmUrl} className={linuxBtn(preferredLinuxPkg === 'rpm')}>
+              .rpm (Fedora, openSUSE)
             </a>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              installs like any app, with a launcher entry. Ubuntu/Debian take the .deb, Fedora the
-              .rpm.
-            </p>
           </div>
-          <pre className="rounded bg-[#1e1e1e] p-3 sm:p-4 font-mono text-[11px] sm:text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
-            {`# or the portable AppImage:\ncurl -LO ${DOWNLOADS.linux.appImageUrl}\nchmod +x cotect.AppImage\n./cotect.AppImage`}
-          </pre>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            installs like any app, with a launcher entry.
+          </p>
+          <div className="space-y-1.5">
+            <p className="font-mono text-xs text-muted-foreground/60">or the portable AppImage</p>
+            <CopyableCommand
+              text={`curl -LO ${DOWNLOADS.linux.appImageUrl}\nchmod +x cotect.AppImage\n./cotect.AppImage`}
+            />
+          </div>
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">

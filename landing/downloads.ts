@@ -28,3 +28,15 @@ export function detectOS(platform?: string): OS {
   if (/linux/i.test(p)) return 'linux'
   return 'unknown'
 }
+
+export type LinuxPkg = 'deb' | 'rpm'
+
+// The browser does not reliably expose the Linux distro (Chrome sends a generic
+// "Linux x86_64"). Firefox includes a vendor token, so we can spot rpm-based
+// distros when it is present; everything else defaults to .deb, which covers
+// the Debian/Ubuntu family that dominates desktop Linux.
+export function detectLinuxPkg(ua?: string): LinuxPkg {
+  const s = ua ?? (typeof navigator !== 'undefined' ? navigator.userAgent : '')
+  if (/fedora|red ?hat|rhel|suse|mandriva|mageia/i.test(s)) return 'rpm'
+  return 'deb'
+}
