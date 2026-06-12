@@ -35,6 +35,10 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "publisher": "Grzegorz Raczek",
+    "homepage": "https://cotect.dev",
+    "shortDescription": "A fast, read-first code inspector for the agent era",
+    "longDescription": "Cotect watches your repository while AI agents write. Every change lands on an infinite canvas the moment it happens, ready to review hunk by hunk, without touching the working tree.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
