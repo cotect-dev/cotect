@@ -1,0 +1,50 @@
+# Builds the classic snap from the published release's .deb and, when store
+# credentials are configured, publishes it. Runs on its own so a snap problem
+# never blocks the GitHub release. Set the SNAPCRAFT_STORE_CREDENTIALS secret
+# (snapcraft export-login) once the `cotect` name is registered and granted
+# classic confinement.
+name: snap
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      STORE_CREDS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Pin the snap to the released version
+        if: ${{ github.event.release.tag_name != '' }}
+        run: |
+          ver="${TAG#v}"
+          sed -i "s|^version: .*|version: '${ver}'|" packaging/snap/snapcraft.yaml
+          sed -i "s|/releases/download/v[^/]*/Cotect_[^_]*_amd64\.deb|/releases/download/v${ver}/Cotect_${ver}_amd64.deb|" packaging/snap/snapcraft.yaml
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+
+      - uses: snapcore/action-build@v1
+        id: build
+        with:
+          path: packaging/snap
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: snap
+          path: ${{ steps.build.outputs.snap }}
+
+      - name: Publish to the Snap Store
+        if: ${{ env.STORE_CREDS != '' }}
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: stable
