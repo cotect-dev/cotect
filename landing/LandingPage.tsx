@@ -423,9 +423,29 @@ function PlatformCard({ platform, detected }: { platform: Platform; detected: bo
         )}
       </div>
       {platform === 'linux' ? (
-        <pre className="mt-4 rounded bg-[#1e1e1e] p-3 sm:p-4 font-mono text-[11px] sm:text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
-          {`curl -LO ${DOWNLOADS.linux.appImageUrl}\nchmod +x cotect.AppImage\n./cotect.AppImage`}
-        </pre>
+        <div className="mt-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+            <a
+              href={DOWNLOADS.linux.debUrl}
+              className="rounded-md bg-green-500/15 border border-green-500/40 px-4 py-2 font-mono text-sm text-green-300 hover:bg-green-500/25 transition-colors"
+            >
+              Download .deb
+            </a>
+            <a
+              href={DOWNLOADS.linux.rpmUrl}
+              className="rounded-md border border-border px-4 py-2 font-mono text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+            >
+              .rpm
+            </a>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              installs like any app, with a launcher entry. Ubuntu/Debian take the .deb, Fedora the
+              .rpm.
+            </p>
+          </div>
+          <pre className="rounded bg-[#1e1e1e] p-3 sm:p-4 font-mono text-[11px] sm:text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
+            {`# or the portable AppImage:\ncurl -LO ${DOWNLOADS.linux.appImageUrl}\nchmod +x cotect.AppImage\n./cotect.AppImage`}
+          </pre>
+        </div>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
           <a

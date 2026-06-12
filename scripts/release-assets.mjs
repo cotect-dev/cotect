@@ -38,20 +38,19 @@ const need = (re, what) => {
   return f
 }
 
-// Stable name -> source file. The versioned deb/rpm keep their names; only
-// the assets with permanent landing-page URLs get renamed.
+// Stable name -> source file. Every asset the landing page or a package
+// manager links gets a permanent name; per-tag download URLs stay immutable.
 const assets = new Map([
   ['cotect.AppImage', need(/\.AppImage$/, 'Linux AppImage')],
   ['cotect.AppImage.sig', need(/\.AppImage\.sig$/, 'AppImage signature')],
+  ['cotect-amd64.deb', need(/\.deb$/, 'Debian package')],
+  ['cotect-x86_64.rpm', need(/\.rpm$/, 'RPM package')],
   ['cotect-setup.exe', need(/-setup\.exe$/, 'Windows NSIS installer')],
   ['cotect-setup.exe.sig', need(/-setup\.exe\.sig$/, 'NSIS signature')],
   ['cotect.dmg', need(/\.dmg$/, 'macOS dmg')],
   ['cotect-macos.app.tar.gz', need(/\.app\.tar\.gz$/, 'macOS updater archive')],
   ['cotect-macos.app.tar.gz.sig', need(/\.app\.tar\.gz\.sig$/, 'macOS updater signature')],
 ])
-for (const f of files) {
-  if (/\.(deb|rpm)$/.test(f)) assets.set(f.split('/').pop(), f)
-}
 
 mkdirSync(OUT_DIR, { recursive: true })
 for (const [name, src] of assets) {
