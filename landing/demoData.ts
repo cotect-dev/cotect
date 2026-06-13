@@ -590,8 +590,9 @@ export function buildCanvasSeed(): {
 
   const allNodes = [...col0Nodes, ...col1Nodes, ...col2Nodes, codeNode]
 
-  // Inter-column edges (same convention as flattenAndRender: focused node in col i → focused in col i+1)
-  // Col 2 is current (currentColumnIndex=2), CHANGED_FILE_ID is focused, CODE_NODE_ID is the preview
+  // Inter-column edges (same convention as flattenAndRender: focused node in col i → focused in col i+1).
+  // The full drill-in chain is pre-drawn so the static first paint already shows
+  // every connector; the autoplay just walks focus along it from col 0 onward.
   const EDGE_STYLE = { stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1.5 }
   const edges: Edge[] = [
     {
@@ -630,7 +631,10 @@ export function buildCanvasSeed(): {
     columns: [col0, col1, col2, col3],
     nodes: allNodes,
     edges,
-    focusedNodeId: CHANGED_FILE_ID,
+    // Start at the very beginning of the chain (root listing, src folder
+    // focused) so the autoplay drills forward instead of opening on the end
+    // state and jumping back to col 0.
+    focusedNodeId: SRC_FOLDER_ID,
     previewByPath,
   }
 }
@@ -647,8 +651,8 @@ export function seedDemoStores(): void {
     nodes,
     edges,
     focusedNodeId,
-    currentColumnIndex: 2,
-    depthChain: [DEMO_ROOT, `${DEMO_ROOT}/src`, `${DEMO_ROOT}/src/net`],
+    currentColumnIndex: 0,
+    depthChain: [DEMO_ROOT],
     viewportHeight: 600,
     mdPreviewEnabled: false,
     previewReady: true,

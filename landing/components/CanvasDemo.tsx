@@ -149,12 +149,14 @@ export function CanvasDemo() {
   }, [])
 
   function runScript() {
+    // The seed already opens on the root listing with src focused (col 0), so
+    // the script just walks focus forward from there: net -> changed file ->
+    // accept. The initial hold lets the root register before the first drill.
     const steps: Array<[number, () => void]> = [
-      [600, () => useCanvasStore.getState().setFocus(DEMO_SCRIPT_IDS.srcFolder)],
-      [1400, () => useCanvasStore.getState().setFocus(DEMO_SCRIPT_IDS.netFolder)],
-      [2200, () => useCanvasStore.getState().setFocus(DEMO_SCRIPT_IDS.changedFile)],
+      [900, () => useCanvasStore.getState().setFocus(DEMO_SCRIPT_IDS.netFolder)],
+      [1700, () => useCanvasStore.getState().setFocus(DEMO_SCRIPT_IDS.changedFile)],
       [
-        3200,
+        2700,
         () => {
           const rs = useReviewStore.getState()
           if (!rs.active) {
