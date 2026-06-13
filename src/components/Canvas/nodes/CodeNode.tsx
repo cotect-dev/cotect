@@ -464,6 +464,10 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
           const pc = coordsAt(doc.line(s - 1).from)
           if (pc) top = Math.min(top, pc.bottom - layerTop)
         }
+        // Float the controls a line higher so they sit in the margin above the
+        // hunk rather than covering its opening line. Clamped to 0 below, so a
+        // hunk at the very top keeps its controls in view.
+        top -= view.defaultLineHeight
       }
       const bottom = ec ? ec.bottom - layerTop : Infinity
       const visible = (!!sc || !!ec) && bottom > 0 && top < viewH
@@ -811,6 +815,7 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             entry / commit override) — stripes land after the deferred merge,
             and mounting the column only then would jolt the editor's width. */}
         {!mdPreview &&
+          !data.hideMinimap &&
           editorHeight > 0 &&
           (gitEntry !== null || hasHeadOverride || minimapStripes.length > 0) && (
             <Minimap

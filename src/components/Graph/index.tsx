@@ -250,15 +250,31 @@ function useCanvasFocusedFilePath(rootPath: string | null): string | null {
   }, [focusedNodeId, canvasNodes, rootPath])
 }
 
-function GraphFlow() {
+interface GraphProps {
+  /** File ids to drop from the graph (used to trim the demo to a readable
+   *  slice on small screens). */
+  excludeIds?: string[]
+  /** When false the canvas is static: no pan, zoom, drag, click, or tests
+   *  toggle. Used for the non-interactive mobile embed. */
+  interactive?: boolean
+}
+
+function GraphFlow({ excludeIds, interactive = true }: GraphProps) {
   const rootPath = useBrowserStore((s) => s.rootPath)
   const scanState = useGraphStore((s) => s.scanState)
   const scannedCount = useGraphStore((s) => s.scannedCount)
   const errorMessage = useGraphStore((s) => s.errorMessage)
-  const allNodes = useGraphStore((s) => s.allNodes)
-  const allEdges = useGraphStore((s) => s.allEdges)
+  const rawNodes = useGraphStore((s) => s.allNodes)
+  const rawEdges = useGraphStore((s) => s.allEdges)
   const scan = useGraphStore((s) => s.scan)
   const [showTests, setShowTests] = useState(false)
+
+  const exclude = useMemo(() => new Set(excludeIds ?? []), [excludeIds])
+  const allNodes = useMemo(() => rawNodes.filter((n) => !exclude.has(n.id)), [rawNodes, exclude])
+  const allEdges = useMemo(
+    () => rawEdges.filter((e) => !exclude.has(e.source) && !exclude.has(e.target)),
+    [rawEdges, exclude],
+  )
   const [demoSelection, setDemoSelection] = useState<string | null>(null)
 
   const lastScannedRef = useRef<string | null>(null)
@@ -346,13 +362,15 @@ function GraphFlow() {
             edgeTypes={edgeTypes}
             colorMode="dark"
             proOptions={proOptions}
-            nodesDraggable={true}
+            nodesDraggable={interactive}
             nodesConnectable={false}
             elementsSelectable={false}
-            onNodeClick={onNodeClick}
-            zoomOnScroll={true}
+            onNodeClick={interactive ? onNodeClick : undefined}
+            panOnDrag={interactive}
+            zoomOnScroll={interactive}
             zoomOnDoubleClick={false}
-            zoomOnPinch={true}
+            zoomOnPinch={interactive}
+            preventScrolling={interactive}
             minZoom={0.25}
             maxZoom={2}
             fitView
@@ -377,7 +395,7 @@ function GraphFlow() {
         </div>
       )}
 
-      {scanState === 'ready' && egoNodes.length > 0 && (
+      {interactive && scanState === 'ready' && egoNodes.length > 0 && (
         <div className="absolute bottom-3 left-3 flex items-center gap-2 pointer-events-auto">
           <div className="px-2.5 py-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border text-[11px] text-muted-foreground font-mono flex items-center gap-3">
             <span>{egoNodes.length} files</span>
@@ -406,8 +424,8 @@ function GraphFlow() {
               imported by
             </span>
             <button
-              onClick={() => setShowTests((v) => !v)}
-              className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors"
+              onClick={interactive ? () => setShowTests((v) => !v) : undefined}
+              className={`flex items-center gap-1 ${interactive ? 'cursor-pointer hover:text-foreground transition-colors' : 'cursor-default'}`}
               style={{ opacity: showTests ? 1 : 0.5 }}
             >
               <FlaskConical style={{ width: 12, height: 12, color: '#ca8a04' }} />
@@ -420,10 +438,10 @@ function GraphFlow() {
   )
 }
 
-export default function Graph() {
+export default function Graph(props: GraphProps) {
   return (
     <ReactFlowProvider>
-      <GraphFlow />
+      <GraphFlow {...props} />
     </ReactFlowProvider>
   )
 }

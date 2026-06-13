@@ -41,6 +41,8 @@ export interface CodeNodeData extends NodeDisplayFlags, Record<string, unknown> 
   headOverride?: string | null
   readOnly?: boolean
   commitHash?: string
+  /** Suppresses the change minimap (used by the compact landing-page mount). */
+  hideMinimap?: boolean
   /** Present when this node is a read-only commit-range review diff. */
   review?: { filePath: string } // repo-relative path under review
 }
