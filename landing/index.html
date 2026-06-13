@@ -3,23 +3,56 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0a0a0a" />
     <title>cotect · verify the change</title>
     <meta
       name="description"
       content="cotect is a fast, read-first code inspector for the agent era: watch AI-written changes land in your repo live, navigate them on an infinite canvas, and review every hunk before it ships."
     />
+    <link rel="canonical" href="https://cotect.dev/" />
+
+    <!-- Favicons live in landing/public so they are static, crawler-visible
+         links served from the site root rather than injected at runtime. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta property="og:site_name" content="cotect" />
     <meta property="og:title" content="cotect · verify the change" />
     <meta
       property="og:description"
       content="A fast, read-first code inspector for the agent era."
     />
     <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://cotect.dev/" />
     <meta property="og:image" content="https://cotect.dev/og.png" />
     <meta property="og:image:width" content="2560" />
     <meta property="og:image:height" content="1280" />
+    <meta property="og:image:alt" content="cotect — verify the change" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="cotect · verify the change" />
+    <meta
+      name="twitter:description"
+      content="A fast, read-first code inspector for the agent era."
+    />
     <meta name="twitter:image" content="https://cotect.dev/og.png" />
+    <meta name="twitter:image:alt" content="cotect — verify the change" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "cotect",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Windows, Linux",
+        "url": "https://cotect.dev/",
+        "description": "A fast, read-first code inspector for the agent era: watch AI-written changes land in your repo live, navigate them on an infinite canvas, and review every hunk before it ships.",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
     <script
       defer
       data-domain="cotect.dev"
