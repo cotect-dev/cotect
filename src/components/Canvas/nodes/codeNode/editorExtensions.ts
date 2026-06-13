@@ -29,7 +29,7 @@ import {
 import { indentOnInput, bracketMatching, foldGutter, foldKeymap } from '@codemirror/language'
 import { indentationMarkers } from '@replit/codemirror-indentation-markers'
 import { vscodeDark } from '../cmThemeVSCode'
-import { getLanguageExt } from '../cmLanguages'
+import { getLanguageExt } from '@/components/Canvas/nodes/cmLanguages'
 import { rainbowBrackets, commentHighlightField, commentHighlightTheme } from '../cmPlugins'
 import { codeEditorTheme } from './editorTheme'
 import { importClickExtension, type InlineImportMap } from './importClick'

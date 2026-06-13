@@ -22,9 +22,17 @@ export default defineConfig({
     allowedHosts: ['grzracz-pc'],
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    // Array form so the cmLanguages override is matched before the general
+    // '@' prefix. The demos open only TS/JSON, so swap the app's ~30-language
+    // syntax registry for a JS/TS+JSON subset and keep the heavy Lezer
+    // grammars (cpp, php, rust, markdown, …) off the marketing bundle.
+    alias: [
+      {
+        find: '@/components/Canvas/nodes/cmLanguages',
+        replacement: path.resolve(__dirname, './landing/cmLanguagesLite.ts'),
+      },
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+    ],
   },
   build: {
     outDir: path.resolve(__dirname, 'dist-landing'),

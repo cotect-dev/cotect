@@ -1,4 +1,14 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useDragHandle } from '@/hooks/useDragHandle'
 import type { NodeProps } from '@xyflow/react'
 import { Handle, Position } from '@xyflow/react'
@@ -17,7 +27,9 @@ import { useGitStore } from '@/store/git'
 import { useReviewStore } from '@/store/review'
 import { samePath, toRepoRelative } from '@/lib/repoPath'
 import { isDemoMode } from '@/lib/demoMode'
-import MarkdownPreview from './MarkdownPreview'
+// react-markdown + remark/micromark is a heavy tree only reached when a .md
+// file is shown in preview mode, so keep it out of the editor's main chunk.
+const MarkdownPreview = lazy(() => import('./MarkdownPreview'))
 
 import {
   MIN_CODE_NODE_WIDTH,
@@ -791,11 +803,13 @@ export default memo(function CodeNode({ data }: NodeProps<CodeNode>) {
             style={{ display: mdPreview ? 'none' : undefined }}
           />
           {mdPreview && (
-            <MarkdownPreview
-              content={mdContent}
-              filePath={data.filePath}
-              maxHeight={`calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`}
-            />
+            <Suspense fallback={null}>
+              <MarkdownPreview
+                content={mdContent}
+                filePath={data.filePath}
+                maxHeight={`calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`}
+              />
+            </Suspense>
           )}
           {reviewFilePath && editorReady && hunkDisplays.length > 0 && (
             <HunkReviewLayer
