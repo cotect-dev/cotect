@@ -5,7 +5,22 @@ import { DemoBoundary } from './components/DemoBoundary'
 import { AsciiCat } from './components/AsciiCat'
 import { seedReady } from './seed'
 import { DOWNLOADS, detectOS, detectLinuxPkg, REPO_URL } from './downloads'
-import { AppleIcon, LinuxIcon, WindowsIcon } from './icons'
+import {
+  AppleIcon,
+  LinuxIcon,
+  WindowsIcon,
+  GitHubIcon,
+  LinkedInIcon,
+  XIcon,
+  BlueskyIcon,
+} from './icons'
+
+const SOCIAL_ICONS = [
+  { label: 'GitHub', href: REPO_URL, Icon: GitHubIcon },
+  { label: 'X', href: 'https://x.com/cotect_dev', Icon: XIcon },
+  { label: 'LinkedIn', href: 'https://linkedin.com/company/cotect-dev', Icon: LinkedInIcon },
+  { label: 'Bluesky', href: 'https://bsky.app/profile/cotect.dev', Icon: BlueskyIcon },
+] as const
 
 // The demos pull in the full app stack (ReactFlow, every CodeMirror language
 // package). Lazy-load them so the hero paints with just React on the wire,
@@ -23,6 +38,20 @@ const GraphDemo = lazy(() =>
 const HealthDemo = lazy(() =>
   Promise.all([seedReady, import('./components/HealthDemo')]).then(([, m]) => ({
     default: m.HealthDemo,
+  })),
+)
+// The phone demo mounts the real CodeNode, so it needs the same store seeding
+// the canvas demo does.
+const MobileCodeNodeDemo = lazy(() =>
+  Promise.all([seedReady, import('./components/MobileCodeNodeDemo')]).then(([, m]) => ({
+    default: m.MobileCodeNodeDemo,
+  })),
+)
+// The phone graph mounts the real Graph component, so it needs the same store
+// seeding the desktop graph does.
+const MobileGraphDemo = lazy(() =>
+  Promise.all([seedReady, import('./components/MobileGraphDemo')]).then(([, m]) => ({
+    default: m.MobileGraphDemo,
   })),
 )
 
@@ -162,9 +191,10 @@ function Nav() {
             href={REPO_URL}
             target="_blank"
             rel="noreferrer"
-            className="hover:text-foreground transition-colors"
+            aria-label="GitHub"
+            className="text-muted-foreground hover:text-foreground transition-colors"
           >
-            github
+            <GitHubIcon className="h-[18px] w-[18px]" />
           </a>
           <a
             href="#download"
@@ -231,7 +261,20 @@ function Hero() {
           >
             try the live demo ↓
           </a>
-          <HeroDownloadButton />
+          {/* Desktop: download the app. Mobile: that's a dead end (you can't
+              install a desktop tool on a phone), so point at the repo instead —
+              one tap, works logged out, and it's where the project's trust lives. */}
+          <div className="max-sm:hidden">
+            <HeroDownloadButton />
+          </div>
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="sm:hidden rounded-md border border-border px-5 py-2.5 font-mono text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+          >
+            view on github
+          </a>
         </div>
         <TagLine
           className="mt-10"
@@ -257,7 +300,8 @@ function CanvasSection() {
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
             This is not a screenshot.
           </h2>
-          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
+          {/* Keyboard copy for the real editor; touch copy for the phone demo. */}
+          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed max-sm:hidden">
             This is the real cotect editor with a small repository open. Press <Kbd>W</Kbd>
             <Kbd>A</Kbd>
             <Kbd>S</Kbd>
@@ -265,14 +309,31 @@ function CanvasSection() {
             <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>. All
             comments you leave can be copied into an agent of your choice.
           </p>
+          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed sm:hidden">
+            This is the real cotect editor, showing the change an agent just made to{' '}
+            <code className="font-mono text-foreground/80 text-sm">fetchWithRetry.ts</code>. Review
+            it hunk by hunk: accept what's good, comment on what isn't, and copy your notes into the
+            agent of your choice.
+          </p>
           <p className="mt-2 font-mono text-xs text-amber-400/90">
             hint: look closely at hunk two. nobody asked for more retries.
           </p>
         </Reveal>
-        <Reveal delay={120} className="mt-8">
-          <NearViewport heightClass="h-[916px] sm:h-[876px]">
+        {/* Phones get a single real CodeNode (the diff/review component on its
+            own); sm+ gets the full multi-column canvas editor. */}
+        <Reveal delay={120} className="mt-8 sm:hidden">
+          <NearViewport heightClass="h-[620px]">
             <DemoBoundary>
-              <Suspense fallback={<DemoFallback heightClass="h-[916px] sm:h-[876px]" />}>
+              <Suspense fallback={<DemoFallback heightClass="h-[620px]" />}>
+                <MobileCodeNodeDemo />
+              </Suspense>
+            </DemoBoundary>
+          </NearViewport>
+        </Reveal>
+        <Reveal delay={120} className="mt-8 max-sm:hidden">
+          <NearViewport heightClass="h-[876px]">
+            <DemoBoundary>
+              <Suspense fallback={<DemoFallback heightClass="h-[876px]" />}>
                 <CanvasDemo />
               </Suspense>
             </DemoBoundary>
@@ -298,16 +359,32 @@ function GraphSection() {
           <h2 className="mt-4 font-mono text-2xl sm:text-3xl font-semibold tracking-tight">
             See the shape of the repository.
           </h2>
-          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
+          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed max-sm:hidden">
             cotect resolves imports across the codebase and draws the result. Click any file to see
             what it pulls in and what depends on it. Agents only write as well as you direct them,
             and keeping the shape of the project in your head is what makes your direction good.
           </p>
+          <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed sm:hidden">
+            cotect resolves imports across the codebase and draws the result, so you can see what
+            each file pulls in and what depends on it. Agents only write as well as you direct them,
+            and keeping the shape of the project in your head is what makes your direction good.
+          </p>
         </Reveal>
-        <Reveal delay={120} className="mt-8">
-          <NearViewport heightClass="h-[480px] sm:h-[640px]">
+        {/* Phones get a small fixed slice of the graph with interaction off;
+            sm+ gets the real, interactive ego graph. */}
+        <Reveal delay={120} className="mt-8 sm:hidden">
+          <NearViewport heightClass="h-[340px]">
             <DemoBoundary>
-              <Suspense fallback={<DemoFallback heightClass="h-[480px] sm:h-[640px]" />}>
+              <Suspense fallback={<DemoFallback heightClass="h-[340px]" />}>
+                <MobileGraphDemo />
+              </Suspense>
+            </DemoBoundary>
+          </NearViewport>
+        </Reveal>
+        <Reveal delay={120} className="mt-8 max-sm:hidden">
+          <NearViewport heightClass="h-[640px]">
+            <DemoBoundary>
+              <Suspense fallback={<DemoFallback heightClass="h-[640px]" />}>
                 <GraphDemo />
               </Suspense>
             </DemoBoundary>
@@ -432,6 +509,30 @@ function CopyableCommand({ text }: { text: string }) {
   )
 }
 
+/** Copies the site URL so a phone visitor can paste it to themselves and open
+ *  cotect on a desktop later. */
+function CopyLink() {
+  const [copied, setCopied] = useState(false)
+  const url = 'https://cotect.dev'
+  const copy = () => {
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1500)
+      })
+      .catch(() => {})
+  }
+  return (
+    <button
+      onClick={copy}
+      className="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 font-mono text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+    >
+      {copied ? 'link copied' : 'copy cotect.dev'}
+    </button>
+  )
+}
+
 // Green primary for the recommended package, muted outline for the alternative.
 function linuxBtn(primary: boolean): string {
   return primary
@@ -507,6 +608,18 @@ function DownloadSection() {
           <p className="mt-4 max-w-2xl text-muted-foreground leading-relaxed">
             Free and open source. Point it at a repository and start reading.
           </p>
+          {/* On a phone none of these install, but the cards still answer "what
+              does it run on?". Frame it and offer a way to pick this back up on
+              a desktop. */}
+          <div className="mt-5 sm:hidden">
+            <p className="text-sm text-muted-foreground/80 leading-relaxed">
+              cotect is a desktop app. Open it on your computer to install, or send yourself the
+              link.
+            </p>
+            <div className="mt-3">
+              <CopyLink />
+            </div>
+          </div>
         </Reveal>
         <div className="mt-10 space-y-4">
           {ordered.map((p, i) => (
@@ -605,15 +718,20 @@ function Footer() {
           </span>
         </div>
         <div className="flex items-center gap-4 font-mono text-[11px] text-muted-foreground/60">
-          <a
-            href={REPO_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-muted-foreground transition-colors"
-          >
-            github
-          </a>
-          <span>Apache-2.0</span>
+          <span className="flex items-center gap-3.5">
+            {SOCIAL_ICONS.map(({ label, href, Icon }) => (
+              <a
+                key={label}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={label}
+                className="text-muted-foreground/60 hover:text-foreground transition-colors"
+              >
+                <Icon className="h-4 w-4" />
+              </a>
+            ))}
+          </span>
           <span>© 2026 cotect</span>
         </div>
       </div>

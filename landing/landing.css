@@ -261,3 +261,14 @@ body {
      the editor needs its own solid footing. */
   background-color: #1e1e1e;
 }
+
+/* On a phone the single CodeNode renders at full content height: dropping the
+   editor's viewport-height cap removes all vertical overflow, so vertical
+   finger-scrolling chains to the page instead of being trapped — while the
+   scroller keeps its own horizontal scroll for long lines. */
+.mobile-codenode .cm-editor {
+  max-height: none !important;
+}
+.mobile-codenode .cm-scroller {
+  overscroll-behavior: auto !important;
+}
