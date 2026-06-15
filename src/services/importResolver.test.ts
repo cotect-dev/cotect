@@ -237,4 +237,57 @@ describe('resolveImport', () => {
       expect(resolveImport('helpers', from, withShadow, 'python')).toBe('app/jobs/helpers.py')
     })
   })
+
+  // The source root can be a sibling tree the ancestor walk cannot reach: a
+  // src/ layout imported from tests/, or a monorepo lib dir with any name.
+  // Dotted imports fall back to matching the module path as a suffix anywhere.
+  describe('python sibling source trees', () => {
+    const monorepo = new Set([
+      'services/api/main.py',
+      'services/api/routes.py',
+      'libs/common/__init__.py',
+      'libs/common/models.py',
+      'libs/common/db/__init__.py',
+      'libs/common/db/session.py',
+    ])
+    const from = 'services/api/main.py'
+
+    it('resolves a dotted import into a sibling lib tree of any name', () => {
+      expect(resolveImport('common.models', from, monorepo, 'python')).toBe('libs/common/models.py')
+      expect(resolveImport('common.db.session', from, monorepo, 'python')).toBe(
+        'libs/common/db/session.py',
+      )
+    })
+
+    it('resolves a dotted import to a sibling package __init__.py', () => {
+      expect(resolveImport('common.db', from, monorepo, 'python')).toBe(
+        'libs/common/db/__init__.py',
+      )
+    })
+
+    it('prefers the sibling tree closest to the importing file', () => {
+      // Neither root is an ancestor of services/api, so both go through the
+      // suffix fallback; services/web shares the services/ prefix and wins.
+      const multi = new Set([
+        'services/api/main.py',
+        'services/web/shared/models.py',
+        'vendor/shared/models.py',
+      ])
+      expect(resolveImport('shared.models', from, multi, 'python')).toBe(
+        'services/web/shared/models.py',
+      )
+    })
+
+    it('does not invent an edge for a bare import that shadows a stray file name', () => {
+      // `import yaml` is almost certainly the third-party package even though an
+      // unrelated yaml.py exists elsewhere; single-segment imports never fall
+      // back to a repo-wide suffix match.
+      const withStray = new Set(['services/api/main.py', 'vendor/yaml.py'])
+      expect(resolveImport('yaml', from, withStray, 'python')).toBeNull()
+    })
+
+    it('returns null when a dotted import matches nothing', () => {
+      expect(resolveImport('numpy.linalg', from, monorepo, 'python')).toBeNull()
+    })
+  })
 })

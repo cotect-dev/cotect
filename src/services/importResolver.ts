@@ -18,6 +18,15 @@ function normalizePath(segments: string[]): string {
   return stack.join('/')
 }
 
+/** Number of leading path segments two directories share. */
+function sharedDirDepth(a: string, b: string): number {
+  const aSeg = a ? a.split('/') : []
+  const bSeg = b ? b.split('/') : []
+  let n = 0
+  while (n < aSeg.length && n < bSeg.length && aSeg[n] === bSeg[n]) n++
+  return n
+}
+
 const JS_RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
 
 function probeJsTsPath(resolved: string, fromRel: string, knownFiles: Set<string>): string | null {
@@ -50,13 +59,14 @@ function resolveJsTs(specifier: string, fromRel: string, knownFiles: Set<string>
 }
 
 function resolvePython(specifier: string, fromRel: string, knownFiles: Set<string>): string | null {
+  const fromDir = dirname(fromRel)
+  const fromSegments = fromDir ? fromDir.split('/') : []
+
   let dots = 0
   while (dots < specifier.length && specifier[dots] === '.') dots++
 
   if (dots > 0) {
     const rest = specifier.slice(dots)
-    const fromDir = dirname(fromRel)
-    const fromSegments = fromDir ? fromDir.split('/') : []
 
     // Each dot beyond the first goes up one directory
     // from . import x → same package
@@ -79,22 +89,12 @@ function resolvePython(specifier: string, fromRel: string, knownFiles: Set<strin
   const asPath = specifier.replace(/\./g, '/')
 
   // Absolute imports resolve against a sys.path entry, which we can't know
-  // statically. The import root is often a nested directory rather than the
-  // repo root — a jobs/plugins folder added to PYTHONPATH, a monorepo service
-  // dir — so probe the importing file's own directory and every ancestor up to
-  // the repo root, closest first (the nearest package root wins, matching
-  // Python). Keep an explicit src/ anchor for the common src-layout where the
-  // importer (e.g. a test) lives outside src/.
-  const fromDir = dirname(fromRel)
-  const fromSegments = fromDir ? fromDir.split('/') : []
-
-  const prefixes: string[] = []
+  // statically. First probe the importing file's own directory and every
+  // ancestor up to the repo root, closest first: when the import root is the
+  // file's own package tree — the common case, including nested roots like a
+  // jobs folder placed on PYTHONPATH — the nearest match wins, matching Python.
   for (let i = fromSegments.length; i >= 0; i--) {
-    prefixes.push(fromSegments.slice(0, i).join('/'))
-  }
-  if (!prefixes.includes('src')) prefixes.push('src')
-
-  for (const prefix of prefixes) {
+    const prefix = fromSegments.slice(0, i).join('/')
     const base = prefix ? prefix + '/' : ''
 
     const pyCandidate = base + asPath + '.py'
@@ -102,6 +102,31 @@ function resolvePython(specifier: string, fromRel: string, knownFiles: Set<strin
 
     const initCandidate = base + asPath + '/__init__.py'
     if (knownFiles.has(initCandidate) && initCandidate !== fromRel) return initCandidate
+  }
+
+  // The source root may instead be a sibling tree the ancestor walk cannot
+  // reach: a src/ layout imported from tests/, or a monorepo lib dir of any
+  // name. Match any file whose path ends with the module path and pick the root
+  // closest to the importing file. Restricted to dotted (multi-segment) modules
+  // because a bare `import yaml` that happens to hit a stray yaml.py elsewhere
+  // in the repo is far more likely a third-party package than a real edge.
+  if (specifier.includes('.')) {
+    const suffixes = [asPath + '.py', asPath + '/__init__.py']
+    const matches: string[] = []
+    for (const f of knownFiles) {
+      if (f === fromRel) continue
+      if (suffixes.some((s) => f === s || f.endsWith('/' + s))) matches.push(f)
+    }
+    if (matches.length > 0) {
+      const rootDepth = (f: string): number => {
+        const matched = suffixes.find((s) => f === s || f.endsWith('/' + s))!
+        const rootDir = f === matched ? '' : f.slice(0, f.length - matched.length - 1)
+        return sharedDirDepth(rootDir, fromDir)
+      }
+      // Closest root first; then the shallowest, then a stable path order.
+      matches.sort((a, b) => rootDepth(b) - rootDepth(a) || a.length - b.length || (a < b ? -1 : 1))
+      return matches[0]
+    }
   }
 
   return null
