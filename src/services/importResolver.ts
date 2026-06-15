@@ -78,12 +78,29 @@ function resolvePython(specifier: string, fromRel: string, knownFiles: Set<strin
 
   const asPath = specifier.replace(/\./g, '/')
 
-  // src-layout repos import `mypkg.core` while the file lives in src/.
-  for (const prefix of ['', 'src/']) {
-    const pyCandidate = prefix + asPath + '.py'
+  // Absolute imports resolve against a sys.path entry, which we can't know
+  // statically. The import root is often a nested directory rather than the
+  // repo root — a jobs/plugins folder added to PYTHONPATH, a monorepo service
+  // dir — so probe the importing file's own directory and every ancestor up to
+  // the repo root, closest first (the nearest package root wins, matching
+  // Python). Keep an explicit src/ anchor for the common src-layout where the
+  // importer (e.g. a test) lives outside src/.
+  const fromDir = dirname(fromRel)
+  const fromSegments = fromDir ? fromDir.split('/') : []
+
+  const prefixes: string[] = []
+  for (let i = fromSegments.length; i >= 0; i--) {
+    prefixes.push(fromSegments.slice(0, i).join('/'))
+  }
+  if (!prefixes.includes('src')) prefixes.push('src')
+
+  for (const prefix of prefixes) {
+    const base = prefix ? prefix + '/' : ''
+
+    const pyCandidate = base + asPath + '.py'
     if (knownFiles.has(pyCandidate) && pyCandidate !== fromRel) return pyCandidate
 
-    const initCandidate = prefix + asPath + '/__init__.py'
+    const initCandidate = base + asPath + '/__init__.py'
     if (knownFiles.has(initCandidate) && initCandidate !== fromRel) return initCandidate
   }
 

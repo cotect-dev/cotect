@@ -176,6 +176,13 @@ describe('resolveImport', () => {
       )
     })
 
+    // A test outside src/ still imports the package by its absolute name.
+    it('resolves src-layout package imports from a file outside src/', () => {
+      expect(resolveImport('mypkg.core', 'tests/test_core.py', repo, 'python')).toBe(
+        'src/mypkg/core.py',
+      )
+    })
+
     // The rust crate root is tauri/src, not the repo root.
     it('resolves crate:: relative to the importing file crate root', () => {
       expect(resolveImport('crate::db::kv', 'tauri/src/git.rs', repo, 'rust')).toBe(
@@ -188,6 +195,46 @@ describe('resolveImport', () => {
       expect(resolveImport('crate::db::kv::get_conn', 'tauri/src/git.rs', repo, 'rust')).toBe(
         'tauri/src/db/kv.rs',
       )
+    })
+  })
+
+  // The import root is a nested directory (here app/jobs/), so `from helpers
+  // import X` and `from store.client import Y` are absolute imports relative to
+  // that directory, not the repo root or src/.
+  describe('python nested source roots', () => {
+    const nested = new Set([
+      'app/jobs/main.py',
+      'app/jobs/helpers.py',
+      'app/jobs/config.py',
+      'app/jobs/store/__init__.py',
+      'app/jobs/store/client.py',
+      'app/jobs/pipeline/__init__.py',
+      'app/jobs/pipeline/builder.py',
+    ])
+    const from = 'app/jobs/main.py'
+
+    it('resolves a sibling module imported absolutely', () => {
+      expect(resolveImport('helpers', from, nested, 'python')).toBe('app/jobs/helpers.py')
+    })
+
+    it('resolves a subpackage module imported absolutely', () => {
+      expect(resolveImport('store.client', from, nested, 'python')).toBe('app/jobs/store/client.py')
+      expect(resolveImport('pipeline.builder', from, nested, 'python')).toBe(
+        'app/jobs/pipeline/builder.py',
+      )
+    })
+
+    it('resolves a subpackage to its __init__.py', () => {
+      expect(resolveImport('store', from, nested, 'python')).toBe('app/jobs/store/__init__.py')
+    })
+
+    it('still returns null for third-party imports from a nested file', () => {
+      expect(resolveImport('requests.adapters', from, nested, 'python')).toBeNull()
+    })
+
+    it('prefers the source root closest to the importing file', () => {
+      const withShadow = new Set([...nested, 'app/helpers.py', 'helpers.py'])
+      expect(resolveImport('helpers', from, withShadow, 'python')).toBe('app/jobs/helpers.py')
     })
   })
 })
