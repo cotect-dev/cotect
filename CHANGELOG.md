@@ -9,6 +9,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [0.2.2] - 2026-06-15
 
+### Changed
+
+- New macOS app icon: the cat now sits on the dark brand background (matching the social avatar) instead of a transparent white silhouette, so it reads clearly in the Dock.
+- Redesigned the macOS installer (.dmg) with a themed background and a drag-to-Applications arrow, matching the app's look.
+
 ### Fixed
 
 - Python dependency graph: local imports now resolve for projects whose import root is not the repository root. Absolute imports such as `from utils import ...` or `from package.module import ...` are matched against the importing file's own package tree and against sibling source trees (for example a monorepo lib directory or a `src/` layout). Files that imported their dependencies this way previously showed no connections and now appear linked in the graph.
