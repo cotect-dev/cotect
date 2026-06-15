@@ -50,37 +50,53 @@
         bottom: -140px;
         background: rgba(34, 197, 94, 0.12);
       }
+      /* macOS forces the icon-label text to black over a custom DMG background,
+         so a soft light pad sits under each label (centred on the icons at x:165
+         and x:495, just below them) to keep the black text legible. */
+      .labelpad {
+        position: absolute;
+        top: 257px;
+        height: 34px;
+        border-radius: 17px;
+        background: rgba(255, 255, 255, 0.32);
+        filter: blur(7px);
+      }
+      .labelpad.app {
+        left: 98px;
+        width: 134px;
+      }
+      .labelpad.apps {
+        left: 423px;
+        width: 144px;
+      }
       /* Connector arrow, centred in the gap between the app icon (x:165) and the
          Applications folder (x:495), vertically aligned with their icons. */
       .arrow {
         position: absolute;
-        left: 240px;
+        left: 247px;
         top: 166px;
       }
     </style>
   </head>
   <body>
     <div class="aurora"><span></span><span></span></div>
+    <div class="labelpad app"></div>
+    <div class="labelpad apps"></div>
     <svg class="arrow" width="180" height="48" viewBox="0 0 180 48" fill="none">
       <defs>
-        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="3.5" />
         </filter>
       </defs>
-      <g
-        stroke="#4ade80"
-        stroke-width="3"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        filter="url(#glow)"
-        opacity="0.45"
-      >
-        <line x1="6" y1="24" x2="150" y2="24" />
-        <polyline points="130,9 156,24 130,39" />
+      <!-- Dashed shaft mimicking the graph edges, with a small filled triangle
+           head set off to its right. -->
+      <g filter="url(#glow)" opacity="0.45">
+        <line x1="6" y1="24" x2="142" y2="24" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 7" />
+        <polygon points="149,18 149,30 160,24" fill="#4ade80" />
       </g>
-      <g stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="6" y1="24" x2="150" y2="24" />
-        <polyline points="130,9 156,24 130,39" />
+      <g>
+        <line x1="6" y1="24" x2="142" y2="24" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 7" />
+        <polygon points="149,18 149,30 160,24" fill="#4ade80" />
       </g>
     </svg>
   </body>
