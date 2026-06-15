@@ -18,6 +18,13 @@ const FPS = 24
 const MUTATIONS_PER_FRAME = 3
 // Radius of the hover x-ray window, in render coordinates.
 const XRAY_RADIUS = 92
+// One-time intro: a diagonal x-ray band sweeps top-left to bottom-right on load
+// (like a shine) so the skeleton reveal is noticeable without hovering.
+// INTRO_BAND is the band's half-width; the sweep cancels as soon as the cursor
+// reaches the cat.
+const INTRO_DELAY = 350
+const INTRO_DURATION = 4000
+const INTRO_BAND = 90
 
 // Glyph pools by intensity band; a random pick within the band keeps the
 // shading readable while the texture stays varied and code-flavored.
@@ -33,6 +40,8 @@ function glyphFor(intensity: number): string {
 function baseFill(intensity: number): string {
   return `rgba(134, 239, 172, ${0.12 + intensity * 0.38})`
 }
+
+const easeInOutCubic = (x: number): number => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2)
 
 interface Cell {
   x: number
@@ -183,6 +192,10 @@ export function AsciiCat({ className = '' }: { className?: string }) {
     let layerCtx: CanvasRenderingContext2D | null = null
     // Pointer position in canvas coordinates; null while the cursor is away.
     let pointer: { x: number; y: number } | null = null
+    // One-time intro sweep: introStart is stamped on the first animated frame;
+    // introDone latches once the sweep has played or the cursor reaches the cat.
+    let introStart = -1
+    let introDone = false
     // The skeleton sampled into the glyph grid: each entry pairs a cell with
     // how much bone covers it, so the hover highlights existing characters
     // instead of drawing a separate image.
@@ -199,6 +212,8 @@ export function AsciiCat({ className = '' }: { className?: string }) {
         y < RENDER_SIZE + XRAY_RADIUS
           ? { x, y }
           : null
+      // Cursor reached the cat: hand over to hover and stop the auto-sweep.
+      if (pointer) introDone = true
     }
     window.addEventListener('pointermove', onPointerMove)
 
@@ -225,6 +240,16 @@ export function AsciiCat({ className = '' }: { className?: string }) {
       ctx.font = `${CELL + 1}px monospace`
       ctx.textBaseline = 'top'
       const half = CELL / 2
+
+      if (introStart < 0) introStart = t
+      const introElapsed = t - introStart
+      if (!introDone && introElapsed >= INTRO_DELAY + INTRO_DURATION) introDone = true
+      const introActive =
+        !introDone &&
+        !showFull &&
+        pointer === null &&
+        boneCells.length > 0 &&
+        introElapsed >= INTRO_DELAY
 
       // X-ray: dim the surface, then repaint the glyphs sitting on bone in a
       // bright bone tint, so the skeleton shows up as highlighted characters.
@@ -265,6 +290,32 @@ export function AsciiCat({ className = '' }: { className?: string }) {
           // Falloff shaped like the old radial mask: strong at the center,
           // about half strength at 70% radius, gone at the rim.
           const f = 1 - (d / XRAY_RADIUS) ** 2
+          ctx.fillStyle = `rgba(227, 247, 234, ${w * f * 0.95})`
+          ctx.fillText(cell.char, cell.x, cell.y)
+        }
+      } else if (introActive) {
+        // One-time intro: a diagonal x-ray band sweeps top-left to bottom-right
+        // like a shine, lighting the bones it crosses. Position along the sweep
+        // is the line x + y = sweep; distance to a cell is measured perpendicular
+        // to it (divide by sqrt(2)).
+        const eased = easeInOutCubic((introElapsed - INTRO_DELAY) / INTRO_DURATION)
+        const bandDiag = INTRO_BAND * Math.SQRT2
+        const sweep = -bandDiag + eased * (2 * RENDER_SIZE + 2 * bandDiag)
+        const c = sweep / 2
+        const off = INTRO_BAND / Math.SQRT2
+        ctx.save()
+        ctx.globalCompositeOperation = 'destination-out'
+        const band = ctx.createLinearGradient(c - off, c - off, c + off, c + off)
+        band.addColorStop(0, 'rgba(0, 0, 0, 0)')
+        band.addColorStop(0.5, 'rgba(0, 0, 0, 0.8)')
+        band.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        ctx.fillStyle = band
+        ctx.fillRect(0, 0, RENDER_SIZE, RENDER_SIZE)
+        ctx.restore()
+        for (const { cell, w } of boneCells) {
+          const d = Math.abs(cell.x + half + cell.y + half - sweep) / Math.SQRT2
+          if (d >= INTRO_BAND) continue
+          const f = 1 - (d / INTRO_BAND) ** 2
           ctx.fillStyle = `rgba(227, 247, 234, ${w * f * 0.95})`
           ctx.fillText(cell.char, cell.x, cell.y)
         }
