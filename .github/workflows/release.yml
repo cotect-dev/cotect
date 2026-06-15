@@ -90,20 +90,27 @@ jobs:
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
       - run: yarn tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
-      - name: Build, notarize and staple the styled DMG
+      - name: Import Developer ID certificate for DMG signing
+        if: startsWith(matrix.platform, 'macos')
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      - name: Build, sign, notarize and staple the styled DMG
         if: startsWith(matrix.platform, 'macos')
         run: |
           # Tauri styles its DMG via Finder/AppleScript, which the headless
           # runner skips, so build the DMG with dmgbuild (it writes the
           # .DS_Store itself). The bundled app is already Developer ID signed,
-          # notarized and stapled by the step above, so the DMG only needs to be
-          # notarized + stapled for Gatekeeper to accept it on download.
+          # notarized and stapled by the step above; the DMG itself is then
+          # signed, notarized and stapled so Gatekeeper accepts it on download.
           app="tauri/target/universal-apple-darwin/release/bundle/macos/Cotect.app"
           dmg="tauri/target/universal-apple-darwin/release/bundle/dmg/Cotect.dmg"
           python3 -m venv "$RUNNER_TEMP/dmgvenv"
           "$RUNNER_TEMP/dmgvenv/bin/pip" install --quiet dmgbuild
           mkdir -p "$(dirname "$dmg")"
           DMG_APP="$app" "$RUNNER_TEMP/dmgvenv/bin/dmgbuild" -s tauri/dmg/dmgbuild-settings.py Cotect "$dmg"
+          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$dmg"
           xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
           xcrun stapler staple "$dmg"
       - uses: actions/upload-artifact@v7
