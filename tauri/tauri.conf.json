@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedoc/tauri-schema/main/schema/2.0/tauri.conf.json",
   "productName": "Cotect",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "identifier": "com.cotect.app",
   "build": {
     "frontendDist": "../dist",
