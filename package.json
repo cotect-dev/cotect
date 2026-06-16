@@ -21,6 +21,7 @@
     "test:coverage": "vitest run --coverage",
     "test:rust": "cd tauri && cargo test",
     "test:all": "vitest run && cd tauri && cargo test",
+    "release:start": "node scripts/release-start.mjs",
     "postinstall": "node scripts/sync-wasm.mjs",
     "prepare": "husky"
   },
