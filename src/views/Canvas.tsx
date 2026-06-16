@@ -219,6 +219,20 @@ export function CanvasFlow() {
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
+      // In the embedded landing demo the canvas is a self-contained widget that
+      // pans on every wheel tick (the desktop counterpart to TouchPanThroughCode),
+      // so the code node never becomes a dead zone that swallows the gesture
+      // between the `.nowheel` editor and ReactFlow's preventScrolling.
+      if (isDemoMode()) {
+        e.stopPropagation()
+        const viewport = reactFlow.getViewport()
+        void reactFlow.setViewport(
+          { x: viewport.x - e.deltaX, y: viewport.y - e.deltaY, zoom: viewport.zoom },
+          { duration: 0 },
+        )
+        return
+      }
+
       // Panes marked `.nowheel` (the code editor's `.cm-scroller`, the markdown
       // preview) scroll natively. If we also pan the canvas or re-forward the
       // delta to the editor, the same wheel tick gets applied twice — which

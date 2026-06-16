@@ -481,7 +481,8 @@ function HowItWorks() {
 const PLATFORMS = ['windows', 'mac', 'linux'] as const
 type Platform = (typeof PLATFORMS)[number]
 
-/** A shell snippet with a copy button; one click on the block also selects it all. */
+/** A shell snippet with a copy button; text selects normally so visitors can
+ *  grab just part of it (e.g. the download URL) instead of the whole block. */
 function CopyableCommand({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
@@ -495,7 +496,7 @@ function CopyableCommand({ text }: { text: string }) {
   }
   return (
     <div className="relative">
-      <pre className="select-all rounded bg-[#1e1e1e] p-3 sm:p-4 pr-14 font-mono text-[11px] sm:text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
+      <pre className="rounded bg-[#1e1e1e] p-3 sm:p-4 pr-14 font-mono text-[11px] sm:text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
         {text}
       </pre>
       <button
