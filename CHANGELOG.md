@@ -16,6 +16,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Code view: the filename header now stays pinned while only the code scrolls. On some Linux WebViews (WebKitGTK) the editor failed to cap its height, so the whole node grew to the full file length and scrolling moved the header along with the code.
 - Landing page: the canvas demo pans with the mouse wheel again on desktop.
 - Landing page: the Linux AppImage command no longer selects the whole block on click, so you can highlight just the download URL.
 

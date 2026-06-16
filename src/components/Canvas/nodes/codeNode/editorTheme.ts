@@ -11,6 +11,16 @@ export const codeEditorTheme = EditorView.theme({
   },
   '.cm-scroller': {
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+    // Cap the height on the scroll container itself, not just on `&`
+    // (.cm-editor). The scroller inherits `height: 100%` from CodeMirror's base
+    // theme, which only resolves the viewport cap when its parent's height is
+    // definite. Tauri's WebView is WebKitGTK on Linux (vs Chromium/WKWebView
+    // elsewhere), and there `height: 100%` against the max-height-only editor
+    // stays indefinite, so the editor never caps and grows to the full file
+    // height — the node then scrolls by panning the canvas, dragging the header
+    // along with it. Owning max-height + overflow on the same element makes the
+    // internal scroll reliable on every WebView.
+    maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`,
     overflowY: 'auto',
     overscrollBehavior: 'contain',
     scrollbarWidth: 'none',
