@@ -10,6 +10,8 @@ export const codeEditorTheme = EditorView.theme({
     maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`,
   },
   '.cm-scroller': {
+    backgroundColor: 'var(--color-background)',
+    backfaceVisibility: 'hidden',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
     // Cap the height on the scroll container itself, not just on `&`
     // (.cm-editor). The scroller inherits `height: 100%` from CodeMirror's base
@@ -22,6 +24,7 @@ export const codeEditorTheme = EditorView.theme({
     // internal scroll reliable on every WebView.
     maxHeight: `calc(100vh - ${CODE_NODE_HEIGHT_RESERVED}px)`,
     overflowY: 'auto',
+    overflowAnchor: 'none',
     overscrollBehavior: 'contain',
     scrollbarWidth: 'none',
     '&::-webkit-scrollbar': { display: 'none' },
