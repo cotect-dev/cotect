@@ -1,3 +1,5 @@
+import { memo } from 'react'
+
 interface CodeNodeHeaderProps {
   displayPath: string
   dirPrefix: string
@@ -20,7 +22,7 @@ interface CodeNodeHeaderProps {
   onToggleUnlocked: () => void
 }
 
-const badge = 'text-[10px] px-1.5 py-0.5 rounded font-mono'
+const badge = 'h-5 px-1.5 rounded font-mono text-[10px] leading-5'
 const toggleBtn = (active: boolean) =>
   `${badge} cursor-pointer transition-colors ${
     active ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground hover:text-foreground'
@@ -28,7 +30,7 @@ const toggleBtn = (active: boolean) =>
 
 /** Title bar for a CodeNode: file path, status badges (commit / new / modified /
  *  editing) and the markdown-preview and line-wrap toggles. Purely presentational. */
-export function CodeNodeHeader({
+export const CodeNodeHeader = memo(function CodeNodeHeader({
   displayPath,
   dirPrefix,
   fileName,
@@ -49,14 +51,26 @@ export function CodeNodeHeader({
   onToggleUnlocked,
 }: CodeNodeHeaderProps) {
   return (
-    <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-muted/30">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="text-xs font-medium truncate" title={displayPath}>
+    <div
+      className="relative z-10 flex h-8 min-h-8 max-h-8 shrink-0 items-center overflow-hidden px-3 border-b border-border/50 bg-background"
+      style={{
+        backfaceVisibility: 'hidden',
+        contain: 'layout paint style',
+        isolation: 'isolate',
+        transform: 'translateZ(0)',
+        willChange: 'transform',
+      }}
+    >
+      <div className="flex flex-1 items-center gap-2 min-w-0 overflow-hidden">
+        <span
+          className="block min-w-0 max-w-full text-xs leading-4 font-medium truncate"
+          title={displayPath}
+        >
           {dirPrefix && <span className="text-foreground/40">{dirPrefix}</span>}
           <span className="text-foreground">{fileName}</span>
         </span>
       </div>
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="ml-2 flex items-center gap-1.5 shrink-0 overflow-hidden">
         {isMd && (
           <button type="button" onClick={onToggleMdPreview} className={toggleBtn(mdPreview)}>
             {mdPreview ? 'preview' : 'source'}
@@ -99,4 +113,4 @@ export function CodeNodeHeader({
       </div>
     </div>
   )
-}
+})
