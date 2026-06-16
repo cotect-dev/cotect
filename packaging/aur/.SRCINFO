@@ -1,6 +1,6 @@
 pkgbase = cotect-bin
 	pkgdesc = A fast, read-first code inspector for the agent era
-	pkgver = 0.2.0
+	pkgver = 0.3.0
 	pkgrel = 1
 	url = https://cotect.dev
 	arch = x86_64
@@ -11,7 +11,7 @@ pkgbase = cotect-bin
 	conflicts = cotect
 	options = !strip
 	options = !debug
-	source = https://github.com/cotect-dev/cotect/releases/download/v0.2.0/Cotect_0.2.0_amd64.deb
-	sha256sums = 7a282e65f770fd3d1b9a5175e065947881a23e00c7247ad21e921d18d495430f
+	source = https://github.com/cotect-dev/cotect/releases/download/v0.3.0/cotect-amd64.deb
+	sha256sums = d1f4b408ace9a5f12d8714238c8522b9fe1a6255ed772ea37ba27d887fe24f9c
 
 pkgname = cotect-bin

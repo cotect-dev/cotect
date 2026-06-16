@@ -1,6 +1,15 @@
 # Maintainer: Grzegorz Raczek <greg@cotect.dev>
+#
+# Bumped automatically by .github/workflows/aur.yml when a GitHub release is
+# published: the workflow rewrites pkgver and sha256sums, regenerates .SRCINFO,
+# and pushes to the AUR. The release asset name is stable across versions (see
+# scripts/release-assets.mjs), so the source URL only varies by ${pkgver}.
+#
+# This is a -bin package: it repackages the official .deb (extracts its
+# data.tar payload) rather than building from source. The app links the system
+# webkit2gtk/gtk listed in depends().
 pkgname=cotect-bin
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="A fast, read-first code inspector for the agent era"
 arch=('x86_64')
@@ -10,9 +19,11 @@ depends=('webkit2gtk-4.1' 'gtk3')
 provides=('cotect')
 conflicts=('cotect')
 options=('!strip' '!debug')
-source=("https://github.com/cotect-dev/cotect/releases/download/v${pkgver}/Cotect_${pkgver}_amd64.deb")
-sha256sums=('7a282e65f770fd3d1b9a5175e065947881a23e00c7247ad21e921d18d495430f')
+source=("https://github.com/cotect-dev/cotect/releases/download/v${pkgver}/cotect-amd64.deb")
+sha256sums=('d1f4b408ace9a5f12d8714238c8522b9fe1a6255ed772ea37ba27d887fe24f9c')
 
 package() {
-  bsdtar -xf "${srcdir}/data.tar.gz" -C "${pkgdir}"
+  # A .deb is an ar archive; its data.tar.* holds the installed tree. Glob the
+  # compression suffix so a future dpkg/Tauri switch (xz, zst) keeps working.
+  bsdtar -xf "${srcdir}"/data.tar.* -C "${pkgdir}"
 }

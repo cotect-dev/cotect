@@ -1,0 +1,57 @@
+# Publishes the cotect-bin AUR package when a GitHub release goes live.
+#
+# Triggered on `release: published` (not the tag push), so it fires the moment
+# the draft release is published manually. By then the .deb asset is live at its
+# stable public URL and frozen, so the checksum it computes is guaranteed to
+# match what users download.
+#
+# Required repository secret:
+#   AUR_SSH_PRIVATE_KEY  private half of an SSH key registered to the AUR
+#                        cotect-bin maintainer account. Scope it to the AUR
+#                        only — it must not grant access to this GitHub repo.
+name: aur
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Skip prereleases and any non-v tag; the AUR package tracks stable releases.
+    if: ${{ !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v') }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Pin pkgver and checksum to the published .deb
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          url="https://github.com/${REPO}/releases/download/${TAG}/cotect-amd64.deb"
+          echo "Checksumming $url"
+          sha="$(curl -fsSL "$url" | sha256sum | cut -d' ' -f1)"
+          echo "sha256=$sha"
+
+          cd packaging/aur
+          sed -i "s/^pkgver=.*/pkgver=${version}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s/^sha256sums=.*/sha256sums=('${sha}')/" PKGBUILD
+
+          echo "--- rendered PKGBUILD ---"
+          cat PKGBUILD
+
+      - name: Push to the AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4
+        with:
+          pkgname: cotect-bin
+          pkgbuild: packaging/aur/PKGBUILD
+          commit_username: ${{ github.actor }}
+          commit_email: greg@cotect.dev
+          commit_message: "cotect-bin ${{ github.event.release.tag_name }}"
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
