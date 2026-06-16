@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import GeneralSection from './GeneralSection'
 import EditorSection from './EditorSection'
+import WhatsNewSection from './WhatsNewSection'
 
-type SectionId = 'general' | 'editor'
+type SectionId = 'general' | 'whatsnew' | 'editor'
 
 const NAV: { id: SectionId; label: string }[] = [
   { id: 'general', label: 'General' },
+  { id: 'whatsnew', label: "What's new" },
   { id: 'editor', label: 'Editor' },
 ]
 
@@ -32,7 +34,9 @@ export default function Settings() {
 
       <div className="flex-1 min-w-0 overflow-y-auto px-6 py-6">
         <div className="max-w-2xl">
-          {active === 'general' ? <GeneralSection /> : <EditorSection />}
+          {active === 'general' && <GeneralSection />}
+          {active === 'whatsnew' && <WhatsNewSection />}
+          {active === 'editor' && <EditorSection />}
         </div>
       </div>
     </div>
