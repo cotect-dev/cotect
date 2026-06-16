@@ -1,7 +1,7 @@
 {
   "name": "cotect",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -21,6 +21,7 @@
     "test:coverage": "vitest run --coverage",
     "test:rust": "cd tauri && cargo test",
     "test:all": "vitest run && cd tauri && cargo test",
+    "release:start": "node scripts/release-start.mjs",
     "postinstall": "node scripts/sync-wasm.mjs",
     "prepare": "husky"
   },

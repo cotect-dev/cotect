@@ -13,10 +13,14 @@ import {
   LinkedInIcon,
   XIcon,
   BlueskyIcon,
+  DiscordIcon,
 } from './icons'
+
+const DISCORD_URL = 'https://discord.gg/F9CExWH5Cm'
 
 const SOCIAL_ICONS = [
   { label: 'GitHub', href: REPO_URL, Icon: GitHubIcon },
+  { label: 'Discord', href: DISCORD_URL, Icon: DiscordIcon },
   { label: 'X', href: 'https://x.com/cotect_dev', Icon: XIcon },
   { label: 'LinkedIn', href: 'https://linkedin.com/company/cotect-dev', Icon: LinkedInIcon },
   { label: 'Bluesky', href: 'https://bsky.app/profile/cotect.dev', Icon: BlueskyIcon },
@@ -262,18 +266,19 @@ function Hero() {
             try the live demo ↓
           </a>
           {/* Desktop: download the app. Mobile: that's a dead end (you can't
-              install a desktop tool on a phone), so point at the repo instead —
-              one tap, works logged out, and it's where the project's trust lives. */}
+              install a desktop tool on a phone), so point at Discord instead —
+              one tap, and it lands a phone visitor where the community is so they
+              can come back to install on a desktop. */}
           <div className="max-sm:hidden">
             <HeroDownloadButton />
           </div>
           <a
-            href={REPO_URL}
+            href={DISCORD_URL}
             target="_blank"
             rel="noreferrer"
             className="sm:hidden rounded-md border border-border px-5 py-2.5 font-mono text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
           >
-            view on github
+            join discord
           </a>
         </div>
         <TagLine
@@ -481,7 +486,8 @@ function HowItWorks() {
 const PLATFORMS = ['windows', 'mac', 'linux'] as const
 type Platform = (typeof PLATFORMS)[number]
 
-/** A shell snippet with a copy button; one click on the block also selects it all. */
+/** A shell snippet with a copy button; text selects normally so visitors can
+ *  grab just part of it (e.g. the download URL) instead of the whole block. */
 function CopyableCommand({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
@@ -495,7 +501,7 @@ function CopyableCommand({ text }: { text: string }) {
   }
   return (
     <div className="relative">
-      <pre className="select-all rounded bg-[#1e1e1e] p-3 sm:p-4 pr-14 font-mono text-[11px] sm:text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
+      <pre className="rounded bg-[#1e1e1e] p-3 sm:p-4 pr-14 font-mono text-[11px] sm:text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
         {text}
       </pre>
       <button
@@ -710,7 +716,7 @@ function FAQSection() {
 function Footer() {
   return (
     <footer className="border-t border-border/60 py-10">
-      <div className="mx-auto max-w-6xl px-5 flex flex-wrap items-center justify-between gap-4">
+      <div className="mx-auto max-w-6xl px-5 flex flex-col items-center gap-4 sm:flex-row sm:flex-wrap sm:justify-between">
         <div className="flex items-center gap-2">
           <img src={iconUrl} alt="" className="h-5 w-5" />
           <span className="font-mono text-xs text-muted-foreground">
