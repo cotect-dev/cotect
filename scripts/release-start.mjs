@@ -21,10 +21,6 @@
 //   --date <YYYY-MM-DD>  CHANGELOG release date (default: today)
 //   --dry-run         Print what would change without touching anything
 //   -h, --help        Show this help
-//
-// The AUR packaging (packaging/aur/*) is intentionally left untouched: its
-// sha256sum can only be computed from the published .deb, so it is bumped after
-// the release, not when the branch is cut.
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -371,9 +367,6 @@ function main() {
       'dim',
       `  • When ready, merge to ${opts.base} and tag: git tag v${next} && git push origin v${next}`,
     ),
-  )
-  info(
-    paint('dim', '  • After the release publishes, bump packaging/aur/* with the new .deb sha256.'),
   )
 }
 
